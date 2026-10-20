@@ -159,3 +159,13 @@ acceptance, Telegram delivery or scheduler activation. Record the TODO task ID,
 actual session/process identity, source/candidate, explicit limits, known usage and
 executed checks in private evidence. Human-facing summaries include verified TODO
 IDs and titles. Current-session work does not require a native goal or card.
+
+## Interactive updates
+
+For interactive updates, lead with the concrete artifact or result and say plainly
+whether work is executing, waiting or idle; keep unchanged implementation details out
+of repeated messages. After a user asks to continue tool work, return a visible result
+or precise remaining blocker, never an empty response. Coalesce delayed completion
+notices into the current task report: a late failure from an already-repaired attempt
+is not a fresh regression, and an already-reported pass is not another completed task.
+Keep run/source bindings in receipts, not in user-facing narration.

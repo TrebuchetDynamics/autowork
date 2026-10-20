@@ -119,6 +119,7 @@ class DispatchTests(unittest.TestCase):
         with patch.dict(os.environ, AUTOWORK_RUNNER_FULL_CHECK='python3 scripts/check.py'):
             gated = dispatch.prompt(task, self.repo, 'b', 'HEAD', self.root / 'r.json')
         self.assertNotIn('Run the full offline gate once', gated)
+        self.assertIn('No person is attached to this session', plain)  # TOOLSET-282-43
         self.assertIn('Do not run the full check (`python3 scripts/check.py`)', gated)
         self.assertIn('Leave the full check out of the report', gated)
         for text in ('unrelated_failures', 'environment_failures', 'rerun each alone once',

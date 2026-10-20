@@ -17,6 +17,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- The autowork core SKILL.md is back to 12.6 KB of its 16 KB budget: partial-delivery
+  discipline, the canonical-checkout/session/lease rules and interactive-update reporting moved
+  word for word into `references/iteration-and-decisions.md`, `references/owner-cycle.md` and
+  `references/dispatch-and-reporting.md`, each linked from the core (TOOLSET-284-e0).
+
 - Planning skills now plan for parallel work: `Touches:` is described everywhere as
   the expected write set that only orders parallel work (never a hold), and the
   planning craft adds task sizing, disjoint write sets (hot-file extraction,
@@ -274,6 +279,29 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Worker and review trees get the main checkout's installed dependencies for tracked lockfiles
+  (`node_modules` beside package-lock.json, pnpm-lock.yaml, yarn.lock or npm-shrinkwrap.json;
+  `.venv` beside uv.lock or poetry.lock) without a setting, when the lockfile is identical in
+  both trees. A review without them held a task 45 hours for a package its lockfile declares
+  (TOOLSET-283-15).
+
+- A held commit whose branch the runner itself merged past (only merges of session revisions
+  after the recorded commit) is adopted within the three-adoption limit, or rerun fresh from
+  the kept tip past it, instead of becoming an owner `rescope or split` question; a conflict-free
+  merge a resolver left uncommitted in a task worktree is aborted before verification
+  (TOOLSET-280-4f).
+
+- A worker never waits for a person's approval: its prompt says the task contract is the
+  approved design, and a worker that ends its session on a question without a commit or
+  report is resumed once in the same session; asking twice holds the task quoting the
+  question, not as a dead worker (TOOLSET-282-43).
+
+- Candidates that passed a batch land on their batch verdicts: until they have landed, the
+  runner defers a reload and takes no code from main into the session (planning and docs
+  still come through), and the log and TUI say `landing`, not `verifying`. A reload four
+  seconds after `landing them now` had sent one passed candidate to the back of the queue
+  for 15 hours (TOOLSET-281-0d).
+
 - A worker that committed and wrote its report but never exited keeps its commit at the
   worker timeout: the slot is reported with that commit instead of interrupted. A
   finished task was discarded twice this way and raised as an owner rescope question.
@@ -288,6 +316,14 @@ claim of a tagged release, completed installation or live workflow qualification
   (`target/`, `build/`, `.dart_tool/` that Git ignores): it is removed first. Kept for
   `.dart_tool/` alone, a session never rotated and said so every cycle; a session kept for
   other files now says so once.
+- A green main check carries over commits that change only planning files (TODO.md,
+  TODO.archive.md, goals.json, BLOCKERS.md) instead of checking main again: the runner's
+  own questions commits took a host check slot that a waiting review needed. A red main
+  is still checked again.
+- A batch of four or more candidates whose full check fails is checked again as two halves
+  (`batch-split.json`), and only a failing batch of two or three sends its candidates one
+  at a time. One broken test sent all six members of each failed batch to an hour-long
+  review of their own, and 23 finished commits waited about a day.
 - A bounded check reaps the processes it adopts as a subreaper once they exit. Unreaped,
   a test fixture's finished worker stayed a zombie that still looked alive, so inside
   every review about 110 runner tests waited out their 120 s limit and failed. Reviews ran

@@ -111,6 +111,61 @@ class IntegrationTests(unittest.TestCase):
                   f'-c user.name=Owner commit -qm "owner {path}"; fi')
         return ['bash', '-c', script], runs
 
+    def runner_merges(self, root, times):
+        """The session moves by an unrelated commit and is merged into the task branch, ``times`` times,
+        as a fleet resolver did 13 and 15 times while adoption was refused (TOOLSET-280-4f)."""
+        for n in range(times):
+            (self.repo / f'main-{n}.txt').write_text('main\n')
+            self.git('add', f'main-{n}.txt')
+            self.git('commit', '-qm', f'main {n}')
+            self.git('merge', '--no-edit', '-q', 'main', cwd=root)
+        return self.git('rev-parse', 'HEAD', cwd=root)
+
+    def test_a_branch_the_runner_merged_past_its_commit_is_adopted_within_the_limit(self):
+        root, commit = self.worker()
+        tip = self.runner_merges(root, 2)
+        result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 30)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual((self.repo / 'A.txt').read_text(), 'worker\n')
+        events = [json.loads(line) for line in (self.common / 'journal.jsonl').read_text().splitlines()]
+        adopted = [e for e in events if e['event'] == 'runner_merged_adopted']
+        self.assertEqual([(e['commit'], e['merged_count']) for e in adopted], [(tip, 1)])
+
+    def test_past_the_adoption_limit_it_is_rerun_from_the_kept_tip_not_asked(self):
+        root, commit = self.worker()
+        tip = self.runner_merges(root, 3)
+        slot = state.slots(self.common)[0]
+        state.write_slot(self.common, dict(slot, merged_count=3, merged_base=self.baseline), slot)
+        module = self.module()
+        result = module.integrate(self.repo, self.owner, 'A', ['true'], 30)
+        self.assertEqual((result['outcome'], result['cause']), ('HELD', 'runner_merged'), result)
+        sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'pi-autowork'))
+        from pi_autowork import questions
+        held = dict(state.slots(self.common)[0], task=slot['task_id'], attempt=2)
+        self.assertFalse(questions.exhausted(held))  # technical: never a question for the owner
+        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'REQUEUED')
+        kept = self.git('for-each-ref', '--format=%(refname:short) %(objectname)', 'refs/heads/autowork/A-set-aside-*')
+        self.assertIn(tip, kept)  # the next attempt's prompt lists this branch and tip
+
+    def test_an_unrecorded_commit_on_the_branch_still_holds_for_a_person(self):
+        root, commit = self.worker()
+        (root / 'A.txt').write_text('later\n')
+        self.git('commit', '-qam', 'unrecorded', cwd=root)
+        result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 30)
+        self.assertEqual((result['outcome'], result['reason']), ('HELD', 'reported commit/branch/lineage mismatch'))
+
+    def test_a_merge_left_uncommitted_in_the_task_worktree_is_aborted_first(self):
+        root, commit = self.worker()
+        (self.repo / 'main-x.txt').write_text('main\n')
+        self.git('add', 'main-x.txt')
+        self.git('commit', '-qm', 'main x')
+        self.git('merge', '--no-commit', '--no-ff', 'main', cwd=root)
+        result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 30)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertFalse(Path(self.git('rev-parse', '--path-format=absolute', '--git-path', 'MERGE_HEAD', cwd=root)).exists())
+        events = [json.loads(line)['event'] for line in (self.common / 'journal.jsonl').read_text().splitlines()]
+        self.assertIn('abandoned_merge_aborted', events)
+
     def test_a_session_moved_only_by_planning_commits_lands_the_validated_merge_without_revalidating(self):
         self.worker()
         module = self.module()

@@ -50,6 +50,9 @@ class GateCommandTests(unittest.TestCase):
         env = {k: v for k, v in os.environ.items()
                if k not in ('PI_AUTOWORK_VALIDATE', 'PI_AUTOWORK_MAIN_CHECK')}
         env['PI_AUTOWORK_MAIN_CHECK'] = 'python3 -m pytest -q'  # main's check, not the gate's
+        # Its quiet rerun takes a check slot: a private pool, or inside a review it queued
+        # behind every runner's full suite on the host.
+        env['PI_AUTOWORK_CHECK_ROOT'] = str(self.repo / '.git' / 'check-slots')
         with patch.dict(os.environ, env, clear=True):
             command = main_check.full_check(str(self.repo))
             self.assertEqual(command, 'python3 -m unittest test_mod')

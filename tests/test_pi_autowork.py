@@ -169,6 +169,12 @@ elif role == 'verify':
         subprocess.run(['git', '-C', main, 'add', '-A'])
         subprocess.run(['git', '-C', main, '-c', 'user.email=m@example.invalid', '-c', 'user.name=Main', 'commit', '-qm', 'main moved'])
         finish(text='Checked.\nPI_AUTOWORK_VERIFY: pass all checks')
+    elif behavior == 'main_code':  # main gains an unrelated code commit while the batch reviews
+        main = os.environ['FAKE_MAIN_REPO']
+        open(os.path.join(main, 'tool.py'), 'w').write('VERSION = 2\n')
+        subprocess.run(['git', '-C', main, 'add', 'tool.py'])
+        subprocess.run(['git', '-C', main, '-c', 'user.email=m@example.invalid', '-c', 'user.name=Main', 'commit', '-qm', 'toolset fix'])
+        finish(text='Checked.\nPI_AUTOWORK_VERIFY: pass all checks')
     elif behavior == 'move_session':  # a second conflict, after the first merge was adopted
         listing = git('worktree', 'list', '--porcelain').stdout
         session = next(b.split('\n')[0][len('worktree '):] for b in listing.split('\n\n')
@@ -1221,6 +1227,20 @@ class EngineTests(Fixture):
         self.assertEqual(sorted(r['task'] for r in self.runs('verify')), ['A', 'B', 'C'])  # each reviewed once
         self.assertNotIn('worker ledger proposal', (self.repo / 'TODO.md').read_text())
         self.assertIn('A: its edit to TODO.md was left out; the docs maintainer will review it', result.stdout)
+
+    def test_batch_passed_candidates_land_on_their_verdicts_when_main_gains_code(self):
+        """TOOLSET-281-0d: after the first batch-passed candidate landed, the session took main's new
+        code, so the next one's verdict no longer matched its tree and it went back to a queue of
+        single reviews for 15 hours. Main's code now waits until both have landed."""
+        self.env['PI_AUTOWORK_BATCH'] = '6'
+        self.env['PI_AUTOWORK_MAIN_CHECK'] = 'true'
+        self.plan({'worker:A': ['barrier'], 'worker:B': ['barrier'], 'verify:A': ['main_code']})
+        result = self.run_runner('--until-empty', timeout=240)
+        self.assertIn('Batch: 2 passed (A, B)', result.stdout)
+        self.assertTrue(self.done('A', 'B', 'C'), result.stdout)
+        self.assertEqual(sorted(r['task'] for r in self.runs('verify')), ['A', 'B', 'C'], result.stdout)  # none twice
+        self.assertIn('B: landing — passed in its batch; not reviewed again', result.stdout)
+        self.assertIn('VERSION = 2', (self.repo / 'tool.py').read_text())  # main's code was kept, after them
 
     def test_a_batched_candidate_that_fails_its_review_is_held_and_the_other_lands(self):
         self.env['PI_AUTOWORK_BATCH'] = '6'

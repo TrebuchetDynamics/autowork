@@ -326,6 +326,12 @@ ordinary tree), but only where Git ignores it and the mirror shows up as no chan
 Hard links share file contents, so the copy is cooperative, not write-protected: a
 tool that edits a file in place edits the original. List only what tasks read.
 
+Installed dependencies of tracked lockfiles need no setting: `node_modules` beside a
+`package-lock.json`, `npm-shrinkwrap.json`, `pnpm-lock.yaml` or `yarn.lock`, and `.venv`
+beside a `uv.lock` or `poetry.lock`, are mirrored the same way when the main checkout has
+them and the lockfile is identical in both trees. A task that changes its lockfile gets
+none, and the worker log says why; it installs its own.
+
 Per-repository settings live in `~/.config/pi-autowork/<repository>.env`
 (`PI_AUTOWORK_ENV_DIR`), the file `--install-service` writes. Every launcher reads it:
 the service, `autowork run` and a terminal; variables already set in the environment

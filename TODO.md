@@ -52,11 +52,23 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Now
 
+### TOOLSET-284-e0 — The autowork core SKILL.md has room again: detail moves to references/
+
+- [x] TOOLSET-284-e0 — The autowork core SKILL.md has room again: detail moves to references/
+- Touches: skills/autowork/SKILL.md, skills/autowork/references/
+- Short: Core SKILL.md back under budget
+- Status: done 2026-10-20 (interactive session): core 15994 -> 12595 bytes; three sections moved verbatim to existing references with one-line pointers; picker-policy and text-asserting tests pass.
+- Goal: PI-RUNNER
+- Scope: skills/autowork/SKILL.md is 15994 of the 16000 bytes test_picker_policy allows, so any task that adds a line to it fails its review (TOOLSET-230-bf: 16421 bytes). Move detailed procedure out of the core into existing or new files under skills/autowork/references/, leaving in the core a one-line pointer per moved section and every phrase other tests assert in it. No behavior or policy change; wording moves, it is not rewritten.
+- Acceptance: skills/autowork/SKILL.md is at most 13000 bytes, leaving room for later tasks (test_picker_policy.PickerPolicyTests.test_core_stays_lean_and_points_to_every_reference); every reference file is still linked from the core (same test); every test that asserts core or reference text still passes (python3 scripts/check.py skills/autowork/scripts tests).
+- Checks: python3 scripts/check.py skills/autowork/scripts/test_picker_policy.py; python3 scripts/check.py skills/autowork/scripts tests
+- Dependencies: None.
+
 ### TOOLSET-283-15 — Installed dependencies of a tracked lockfile are linked into worker and review trees without per-runner settings
 
-- [ ] TOOLSET-283-15 — Installed dependencies of a tracked lockfile are linked into worker and review trees without per-runner settings
+- [x] TOOLSET-283-15 — Installed dependencies of a tracked lockfile are linked into worker and review trees without per-runner settings
 - Short: Lockfile dependencies link into trees
-- Status: open
+- Status: done 2026-10-20 (interactive session): lockfile dependency directories linked into worker and review trees when the lockfile matches; reason logged when not; (3) covered by linking before review plus the existing provision-and-reverify path.
 - Goal: PI-RUNNER
 - Evidence: (2026-10-20, one fleet runner): a task was held 45 h after its review failed with 'missing server dependency' for a package that the repository's package.json and package-lock.json declare and its main checkout has installed. The runner's link list named only one unrelated directory, so the review tree had no node_modules and the hold became an owner question.
 - Touches: pi-autowork/pi_autowork/workspaces.py, pi-autowork/pi_autowork/worker.py, pi-autowork/tests/test_worker_tmp.py, tests/test_pi_autowork.py, docs/reference.md
@@ -69,9 +81,9 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ### TOOLSET-282-43 — A headless worker never stops to ask for approval; an interactive skill's approval step counts as given by the task contract
 
-- [ ] TOOLSET-282-43 — A headless worker never stops to ask for approval; an interactive skill's approval step counts as given by the task contract
+- [x] TOOLSET-282-43 — A headless worker never stops to ask for approval; an interactive skill's approval step counts as given by the task contract
 - Short: Headless worker never waits for approval
-- Status: open
+- Status: done 2026-10-20 (interactive session): approval rule in the worker prompt; one same-session resume after a question; a second question holds the task quoting it; worker and prompt tests.
 - Goal: PI-RUNNER
 - Evidence: (2026-10-20, one fleet runner): a task's second attempt loaded an interactive design skill, wrote its plan and ended with 'The brainstorming skill requires explicit approval of this design before implementation. Do you approve?' after 28 s. The runner recorded 'dead worker without a commit or changes', held the task on its last attempt and asked the owner to rescope it.
 - Touches: pi-autowork/pi_autowork/worker.py, pi-autowork/pi_autowork/coordinator.py, skills/autowork/scripts/parallel_dispatch.py, tests/test_pi_autowork.py, pi-autowork/tests/test_worker_tmp.py
@@ -84,9 +96,9 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ### TOOLSET-281-0d — A candidate that passed its batch lands before the runner reloads, and after an interrupted landing it lands first
 
-- [ ] TOOLSET-281-0d — A candidate that passed its batch lands before the runner reloads, and after an interrupted landing it lands first
+- [x] TOOLSET-281-0d — A candidate that passed its batch lands before the runner reloads, and after an interrupted landing it lands first
 - Short: Batch pass lands before reload
-- Status: open
+- Status: done 2026-10-20 (interactive session): reload and session merge wait for batch-passed candidates to land; `landing` phase in log and TUI; unit and runner tests.
 - Goal: PI-RUNNER
 - Evidence: (2026-10-20, this repository's runner): at 20:56 a batch passed three candidates and logged 'landing them now'; 4 s later the runner reloaded onto a new toolset. Two landed; the third has sat in 'integrating' for over 15 h behind about 20 queued candidates, each reviewed one at a time.
 - Touches: pi-autowork/pi_autowork/coordinator.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, tests/test_pi_autowork.py, pi-autowork/pi_autowork/fleet_view.py
@@ -99,9 +111,9 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ### TOOLSET-280-4f — A held commit whose branch the runner itself merged past is recovered by the runner, never asked of the owner as a rescope
 
-- [ ] TOOLSET-280-4f — A held commit whose branch the runner itself merged past is recovered by the runner, never asked of the owner as a rescope
+- [x] TOOLSET-280-4f — A held commit whose branch the runner itself merged past is recovered by the runner, never asked of the owner as a rescope
 - Short: Runner-merged held branch self-recovers
-- Status: open
+- Status: done 2026-10-20 (interactive session): runner-merged tips adopted within the limit or rerun from the kept tip (`runner_merged`, technical); abandoned clean merges aborted; fixture tests.
 - Goal: PI-RUNNER
 - Sources: [integration](skills/autowork/scripts/parallel_integrate.py) (`verify`: raises `reported commit/branch/lineage mismatch` when `refs/heads/<branch>` is not `slot['commit']`; `merged`; `retry_held`, `_retire`), [slot state](skills/autowork/scripts/parallel_state.py) (`merge_adoption`, `exhausted`, `readoptable`), [coordinator](pi-autowork/pi_autowork/coordinator.py) (`resolve_task_conflict`, `adopt_merge`); TOOLSET-251-c4 in [the archive](TODO.archive.md#toolset-251-c4) (adoption limit and per-revision rule).
 - Evidence: (2026-10-20, one fleet runner, stalled about 20 h, 8 dependents held): two tasks on their second attempt had passed every listed check on their recorded commits. Before TOOLSET-251-c4 reached that runner, its conflict resolver merged later session commits into each branch 13 and 15 times while the engine refused adoption, so the slot kept the old commit. When the hold was later cleared for technical recovery, verify found the branch past the recorded commit and the runner asked the owner to rescope or split both tasks. One worktree also held an uncommitted, conflict-free merge with no live process. The owner answered each by hand with a retry that restores the kept branch.
@@ -1896,6 +1908,6 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | PARALLEL: Run independent Autowork tasks in parallel workers with one coordinator | partial | executed <code>TOOLSET-091-00 live 2026-10-15: Pi 1.2.0 workers (gpt-6.1-sol) via pi-autowork.sh on a disposable repo: 2 overlapping workers, sequential integration, C after A, combined check pass, no push, 158 s vs 240 s sequential; SIGKILLed coordinator restart adopted live workers without duplicates. Codex 0.162.1 workers cannot commit in the workspace-write sandbox (sequential fallback). Hermes workers not run by owner decision.</code> → pass | TOOLSET-279-eb |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
-| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | Terminal drag selection: offline gate, PTY and source review pass ([TOOLSET-275-c1](TODO.archive.md#toolset-275-c1)) | TOOLSET-096-7e, TOOLSET-099-87, TOOLSET-117-cb, TOOLSET-118-68, TOOLSET-119-2b, TOOLSET-120-fc, TOOLSET-122-27, TOOLSET-125-3c, TOOLSET-126-02, TOOLSET-127-8f, TOOLSET-129-6c, TOOLSET-129-c4, TOOLSET-130-15, TOOLSET-131-ac, TOOLSET-132-af, TOOLSET-138-62, TOOLSET-139-62, TOOLSET-144-c0, TOOLSET-145-6d, TOOLSET-147-54, TOOLSET-153-64, TOOLSET-154-d3, TOOLSET-155-e2, TOOLSET-156-75, TOOLSET-158-08, TOOLSET-163-f7, TOOLSET-164-f1, TOOLSET-173-94, TOOLSET-178-47, TOOLSET-179-cf, TOOLSET-182-ce, TOOLSET-184-1d, TOOLSET-192-71, TOOLSET-200-c1, TOOLSET-225-75, TOOLSET-230-bf, TOOLSET-231-49, TOOLSET-234-51, TOOLSET-234-d4, TOOLSET-235-0d, TOOLSET-242-d5, TOOLSET-245-6a, TOOLSET-248-60, TOOLSET-249-5b, TOOLSET-252-4c, TOOLSET-254-80, TOOLSET-255-55, TOOLSET-256-4b, TOOLSET-257-bd, TOOLSET-259-ca, TOOLSET-260-ae, TOOLSET-261-15, TOOLSET-262-13, TOOLSET-263-94, TOOLSET-264-39, TOOLSET-265-16, TOOLSET-266-7a, TOOLSET-267-a0, TOOLSET-270-a9, TOOLSET-271-d6, TOOLSET-273-e0, TOOLSET-274-f0, TOOLSET-276-11, TOOLSET-276-2c, TOOLSET-276-3d, TOOLSET-276-3f, TOOLSET-276-a9, TOOLSET-277-52, TOOLSET-278-91, TOOLSET-280-4f, TOOLSET-281-0d, TOOLSET-282-43, TOOLSET-283-15 |
+| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | Terminal drag selection: offline gate, PTY and source review pass ([TOOLSET-275-c1](TODO.archive.md#toolset-275-c1)) | TOOLSET-096-7e, TOOLSET-099-87, TOOLSET-117-cb, TOOLSET-118-68, TOOLSET-119-2b, TOOLSET-120-fc, TOOLSET-122-27, TOOLSET-125-3c, TOOLSET-126-02, TOOLSET-127-8f, TOOLSET-129-6c, TOOLSET-129-c4, TOOLSET-130-15, TOOLSET-131-ac, TOOLSET-132-af, TOOLSET-138-62, TOOLSET-139-62, TOOLSET-144-c0, TOOLSET-145-6d, TOOLSET-147-54, TOOLSET-153-64, TOOLSET-154-d3, TOOLSET-155-e2, TOOLSET-156-75, TOOLSET-158-08, TOOLSET-163-f7, TOOLSET-164-f1, TOOLSET-173-94, TOOLSET-178-47, TOOLSET-179-cf, TOOLSET-182-ce, TOOLSET-184-1d, TOOLSET-192-71, TOOLSET-200-c1, TOOLSET-225-75, TOOLSET-230-bf, TOOLSET-231-49, TOOLSET-234-51, TOOLSET-234-d4, TOOLSET-235-0d, TOOLSET-242-d5, TOOLSET-245-6a, TOOLSET-248-60, TOOLSET-249-5b, TOOLSET-252-4c, TOOLSET-254-80, TOOLSET-255-55, TOOLSET-256-4b, TOOLSET-257-bd, TOOLSET-259-ca, TOOLSET-260-ae, TOOLSET-261-15, TOOLSET-262-13, TOOLSET-263-94, TOOLSET-264-39, TOOLSET-265-16, TOOLSET-266-7a, TOOLSET-267-a0, TOOLSET-270-a9, TOOLSET-271-d6, TOOLSET-273-e0, TOOLSET-274-f0, TOOLSET-276-11, TOOLSET-276-2c, TOOLSET-276-3d, TOOLSET-276-3f, TOOLSET-276-a9, TOOLSET-277-52, TOOLSET-278-91 |
 
 <!-- goals:coverage:end -->

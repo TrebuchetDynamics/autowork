@@ -248,9 +248,13 @@ class Coordinator:
         failed = self.batch_failed()
         fresh = [(t, commit) for t, commit in reported if not worker.batch_record(self.state, t).exists()
                  and f'{t}@{commit}' not in failed]
+        if size < 2 or len(fresh) < 2 or self.reexec_due() or self.batch_pending():
+            return []  # land the last batch first: a new one would be built on another tree
+        half = self.batch_half({f'{t}@{commit}' for t, commit in fresh})
+        if half:
+            fresh = [(t, commit) for t, commit in fresh if f'{t}@{commit}' in half]
         key = ','.join(f'{t}@{commit}' for t, commit in sorted(fresh))
-        if (size < 2 or len(fresh) < 2 or self.seen.get('batch-tried') == key or self.reexec_due()
-                or self.batch_pending()):  # land the last batch first: a new one would be built on another tree
+        if self.seen.get('batch-tried') == key:
             return []
         self.seen['batch-tried'] = key
         self.batch_revisions = [f'{t}@{commit}' for t, commit in fresh]
@@ -263,6 +267,31 @@ class Coordinator:
             return set(json.loads((self.state / 'batch-failed.json').read_text()))
         except (OSError, ValueError, TypeError):
             return set()
+
+    def batch_half(self, fresh):
+        """The next half of a failed batch still to be checked, or None. A failed batch was split in
+        two rather than sent one at a time: six candidates each waited out a review of their own,
+        about an hour each, because one of them broke a test. A half no longer fresh (landed, or a
+        new revision) shrinks; one left with a single candidate integrates it alone."""
+        path = self.state / 'batch-split.json'
+        try:
+            halves = [h for h in json.loads(path.read_text()) if isinstance(h, list)]
+        except (OSError, ValueError, TypeError):
+            return None
+        found, alone = None, []
+        while halves and found is None:
+            half = [r for r in halves.pop(0) if r in fresh]
+            if len(half) >= 2:
+                found = half
+            else:
+                alone += half
+        if alone:
+            (self.state / 'batch-failed.json').write_text(json.dumps(sorted(self.batch_failed() | set(alone))) + '\n')
+        if halves:
+            path.write_text(json.dumps(halves) + '\n')
+        else:
+            path.unlink(missing_ok=True)
+        return found
 
     def start_batch(self, tasks):
         """TOOLSET-258-07: one full check on the candidates' merged tree and their reviews side
@@ -282,11 +311,22 @@ class Coordinator:
 
     def batch_done(self, result):
         if result.get('outcome') == 'BATCH_GATE_FAILED':
-            LOG.say(f'Batch: the full check failed on the merged tree ({str(result.get("reason") or "")[:300]}); '
-                    'its candidates integrate one at a time')
-            checked = set(result.get('tasks') or [])
-            failed = self.batch_failed() | {r for r in getattr(self, 'batch_revisions', [])
-                                             if r.split('@')[0] in checked}
+            failure = f'Batch: the full check failed on the merged tree ({str(result.get("reason") or "")[:300]}); '
+            revisions = {r.split('@')[0]: r for r in getattr(self, 'batch_revisions', [])}
+            checked = [revisions[t] for t in result.get('tasks') or [] if t in revisions]
+            if len(checked) >= 4:
+                middle = len(checked) // 2
+                path = self.state / 'batch-split.json'
+                try:
+                    halves = json.loads(path.read_text())
+                except (OSError, ValueError):
+                    halves = []
+                path.write_text(json.dumps([checked[:middle], checked[middle:], *halves]) + '\n')
+                LOG.say(failure + f'checking its halves ({len(checked[:middle])} and {len(checked[middle:])} '
+                        'candidates) to find the one that fails')
+                return
+            LOG.say(failure + 'its candidates integrate one at a time')
+            failed = self.batch_failed() | set(checked)
             (self.state / 'batch-failed.json').write_text(json.dumps(sorted(failed)) + '\n')
             return
         parts = [f'{len(result.get("passed") or [])} passed ({", ".join(result.get("passed") or []) or "none"})']
@@ -322,6 +362,24 @@ class Coordinator:
         except OSError:
             return []
         return [t for t in order if worker.batch_record(self.state, t).exists()]
+
+    def batch_landing(self):
+        """Batch-passed candidates not landed yet (TOOLSET-281-0d). Their verdicts hold only for
+        the trees they were reached on, so until they land the runner neither re-executes nor
+        merges code from main into the session: a reload 4 s after `landing them now` sent one
+        passed candidate back to the end of a queue of single reviews for 15 hours. The verdicts'
+        own two-hour lifetime (batch_pending) bounds the wait."""
+        chain = self.batch_chain()
+        if not chain or not self.batch_pending():
+            return []
+        states = {r.get('task'): r.get('state') for r in self.tasks()}
+        return [t for t in chain if states.get(t) in ('reported', 'integrating')]
+
+    def base_has_code(self):
+        """Whether main holds anything but planning files and docs the session lacks; a batch
+        verdict survives those (worker.same_code)."""
+        changed = git(self.repo, 'diff', '--name-only', f'{self.integ_branch}...{self.base}').split()
+        return any(p not in PLANNING_FILES and not p.startswith('docs/') for p in changed)
 
     def batch_pending(self):
         """Batch verdicts not used yet: the session holds still for them, or their trees no longer match."""
@@ -764,6 +822,13 @@ class Coordinator:
             return False  # a review or a merge resolution is running; the session merges after it
         if not self.integ and not self.load_session():
             return True
+        landing = self.batch_landing()
+        if landing and self.base_has_code():
+            note = f"{', '.join(landing)} land first, on the trees their batch passed"
+            if self.seen.get('merge-batch') != note:
+                self.seen['merge-batch'] = note
+                LOG.say(f'Merge pending: {note}')
+            return False
         self.commit_session_leftovers()
         ahead = self.ahead()
         if ahead == 0:
@@ -1499,9 +1564,10 @@ class Coordinator:
                 return
             if task in handled:
                 continue
-            if self.reexec_due():
+            if self.reexec_due() and task not in chain:
                 # Back-to-back reviews left no gap for a reload: one runner kept its morning
-                # release for hours (TOOLSET-236-4d). Re-execute now, between two reviews.
+                # release for hours (TOOLSET-236-4d). Re-execute now, between two reviews; a
+                # batch-passed candidate lands first, or the reload would wait on it forever.
                 self.resolve_deferred(deferred)
                 self.restart_if_updated()
                 return
@@ -1516,7 +1582,7 @@ class Coordinator:
             # after a moment is the review, and only it reads "verifying".
             finished = self.collect_integration(wait=1.5)
             if finished is None:
-                self.note_state(task, 'integrating')
+                self.note_integrating(task, chain)
                 finished = self.collect_integration(wait=3.5)
             if finished is None:
                 self.resolve_deferred(deferred)
@@ -1529,11 +1595,19 @@ class Coordinator:
                     queue.insert(0, first[1])
                 continue
             if finished[1].get('outcome') in ('INTEGRATED', 'HELD'):
-                self.note_state(task, 'integrating')  # a quick review still ran: say so before its answer
+                self.note_integrating(task, chain)  # a quick review still ran: say so before its answer
             self.integrated(*finished, resolve_conflicts=False)
             if finished[1].get('cause') == 'conflict':
                 deferred.append(task)
         self.resolve_deferred(deferred)
+
+    def note_integrating(self, task, chain):
+        """A batch-passed candidate lands on its batch's verdict: 'landing', not 'verifying', which
+        read as a fresh review for the 15 hours one such candidate waited (TOOLSET-281-0d)."""
+        if task in chain:
+            self.note_state(task, 'landing', 'passed in its batch; not reviewed again')
+        else:
+            self.note_state(task, 'integrating')
 
     def resolve_deferred(self, deferred):
         """Resolve the conflicts this pass held back, then batch their merged revisions so they
@@ -1708,6 +1782,13 @@ class Coordinator:
         rev = git(self.repo, 'rev-parse', self.base)
         if not rev or rev == record.get('rev'):
             return
+        if record.get('state') == 'green' and record.get('rev'):
+            # The runner's own questions and planning commits moved main: a full check for each
+            # (8 of 39 in a day) took a host check slot that a waiting review needed.
+            changed = (git(self.repo, 'diff', '--name-only', record['rev'], rev) or '').split()
+            if changed and all(p in PLANNING_FILES for p in changed):
+                main_check.write(self.state, dict(record, rev=rev, green=rev))
+                return
         # It waits for room at most MAIN_CHECK_WAIT: with eight workers and batches a review or a
         # loaded host was nearly always there, and main went unchecked for hours while it was red.
         if time.time() - float(record.get('finished') or 0) < self.MAIN_CHECK_WAIT:
@@ -2394,12 +2475,15 @@ class Coordinator:
         are adopted. Not while a review or a Pi job runs, nor once a review has ended but its
         answer is not read yet (TOOLSET-187-1d: a reload deferred behind a review re-executed the
         moment it ended and lost it): the cycle reads it, and a later cycle re-executes."""
-        if self.integration or self.child or self.resolvers:
+        landing = [] if self.integration or self.child or self.resolvers else self.batch_landing()
+        if self.integration or self.child or self.resolvers or landing:
             what = (f"the review of {self.integration['task']}" if self.integration else
-                    f"the merge resolution of {', '.join(sorted(self.resolvers))}" if self.resolvers else 'a Pi job')
+                    f"the merge resolution of {', '.join(sorted(self.resolvers))}" if self.resolvers else
+                    'a Pi job' if self.child else '')
+            what = f'{what} to end' if what else f"{', '.join(landing)} to land (passed in a batch)"
             if self.seen.get('reexec-pending') != what:
                 self.seen['reexec-pending'] = what
-                LOG.say(f'Reload pending: waiting for {what} to end')
+                LOG.say(f'Reload pending: waiting for {what}')
             return
         package = self.package
         if reload:

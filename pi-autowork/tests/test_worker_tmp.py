@@ -663,6 +663,128 @@ class BatchFailureTests(unittest.TestCase):
             self.assertEqual(self.coordinator(folder).batch_due([('A', 'a2'), ('B', 'b1')]), [])
             self.assertEqual(self.coordinator(folder).batch_due([('A', 'a2'), ('E', 'e1')]), ['A', 'E'])
 
+    def test_a_failed_batch_of_four_or_more_is_split_in_halves_until_the_failing_one_is_alone(self):
+        """23 commits waited: each failed batch of six sent all six to a review of their own."""
+        reported = [(t, t.lower()) for t in 'ABCDEFG']
+        with tempfile.TemporaryDirectory() as folder, patch('pi_autowork.coordinator.LOG'):
+            runner = self.coordinator(folder)
+            self.assertEqual(runner.batch_due(reported), list('ABCDEFG'))
+            runner.batch_done({'outcome': 'BATCH_GATE_FAILED', 'tasks': list('ABCDEF')})  # G was past the size
+            self.assertEqual(self.coordinator(folder).batch_due(reported), list('ABC'))
+            runner = self.coordinator(folder)
+            self.assertEqual(runner.batch_due(reported), list('DEF'))  # restarted between the halves
+            runner.batch_done({'outcome': 'BATCH_GATE_FAILED', 'tasks': list('DEF')})  # three: one at a time
+            landed = [r for r in reported if r[0] not in 'ABC']
+            self.assertEqual(self.coordinator(folder).batch_due(landed), [])  # D, E and F alone; G waits for a pair
+            # A half that shrinks to one candidate (the others landed) sends it alone too.
+            Path(folder, 'batch-split.json').write_text(json.dumps([['G@g', 'H@h'], ['I@i', 'J@j']]))
+            self.assertEqual(self.coordinator(folder).batch_due([('G', 'g'), ('I', 'i'), ('J', 'j')]), ['I', 'J'])
+            self.assertIn('G@g', json.loads(Path(folder, 'batch-failed.json').read_text()))
+
+
+class BatchLandingTests(unittest.TestCase):
+    """TOOLSET-281-0d: a reload 4 s after `landing them now` sent one batch-passed candidate back to
+    a queue of single reviews for 15 hours. Until the passed candidates land, the runner neither
+    re-executes nor merges code from main into the session their verdicts were reached on."""
+
+    def runner(self, folder, states, record_age=0):
+        from pi_autowork import coordinator
+        runner = coordinator.Coordinator.__new__(coordinator.Coordinator)
+        runner.state, runner.seen = Path(folder), {}
+        runner.integration = runner.child = None
+        (runner.state / 'batch').mkdir()
+        for task in states:
+            (runner.state / 'batch' / f'{task}.json').write_text(json.dumps({'at': time.time() - record_age}))
+        (runner.state / 'batch-order.txt').write_text('\n'.join(states) + '\n')
+        runner.tasks = lambda snapshot=None: [{'task': t, 'state': s} for t, s in states.items()]
+        return runner, coordinator
+
+    def test_a_reload_waits_for_batch_passed_candidates_to_land(self):
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator = self.runner(folder, {'A': 'closed', 'B': 'integrating', 'C': 'reported'})
+            said = []
+            with patch.object(coordinator.LOG, 'say', side_effect=said.append), \
+                    patch.object(coordinator.os, 'execv', side_effect=AssertionError('re-executed')):
+                self.assertIsNone(runner.reexec('Toolset updated to abc; restarting on it'))
+            self.assertEqual(said, ['Reload pending: waiting for B, C to land (passed in a batch)'])
+
+    def test_landed_or_expired_batch_verdicts_hold_nothing(self):
+        with tempfile.TemporaryDirectory() as folder:
+            runner, _ = self.runner(folder, {'A': 'closed', 'B': 'held'})
+            self.assertEqual(runner.batch_landing(), [])  # landed, or held: nothing to wait for
+        with tempfile.TemporaryDirectory() as folder:
+            runner, _ = self.runner(folder, {'B': 'reported'}, record_age=7300)
+            self.assertEqual(runner.batch_landing(), [])  # past the verdicts' two hours
+
+    def test_the_session_takes_no_code_from_main_until_the_batch_lands(self):
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator = self.runner(folder, {'B': 'reported'})
+            runner.repo, runner.integ, runner.integ_branch, runner.base = '/repo', '/session', 'pi-autowork/s', 'main'
+            runner.session_busy = lambda: False
+            runner.commit_session_leftovers = lambda: self.fail('the session was touched')
+            said = []
+            with patch.object(coordinator.LOG, 'say', side_effect=said.append), \
+                    patch.object(coordinator, 'git', return_value='pi-autowork/pi_autowork/worker.py\n'):
+                self.assertFalse(runner.merge_main())
+                self.assertFalse(runner.merge_main())
+            self.assertEqual(said, ['Merge pending: B land first, on the trees their batch passed'])  # said once
+            runner.commit_session_leftovers, runner.ahead = (lambda: None), (lambda: 0)
+            with patch.object(coordinator, 'git', return_value='TODO.md\ndocs/plan.md\n'):
+                self.assertTrue(runner.merge_main())  # planning and docs leave the verdicts valid
+class HeadlessApprovalTests(unittest.TestCase):
+    """TOOLSET-282-43: a worker loaded an interactive design skill, ended its session with "Do you
+    approve?" after 28 s, and the runner held the task as a dead worker for the owner to rescope."""
+
+    def run_worker(self, replies):
+        from pi_autowork import worker
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        root = Path(folder.name)
+        tree = root / 'tree'
+        subprocess.run(['git', 'init', '-q', str(tree)], check=True)
+        git = lambda *a: subprocess.run(['git', '-C', str(tree), '-c', 'user.email=t@example.invalid',
+                                         '-c', 'user.name=T', *a], check=True, capture_output=True, text=True)
+        git('commit', '-q', '--allow-empty', '-m', 'base')
+        baseline = git('rev-parse', 'HEAD').stdout.strip()
+        prompt, report = root / 'prompt.md', root / 'attempt-1' / 'report.json'
+        report.parent.mkdir()
+        prompt.write_text(f'Task: T-1\nBaseline: {baseline}\nReport file: {report}\n')
+        calls = []
+
+        def job(settings, role, task, directory, message, session, limit, extra):
+            calls.append((message, session))
+            reply = replies[len(calls) - 1]
+            if reply == 'work':
+                (tree / 'done.txt').write_text('done\n')
+                git('add', 'done.txt')
+                git('commit', '-qm', 'work')
+                report.write_text(json.dumps({'task': 'T-1', 'commit': git('rev-parse', 'HEAD').stdout.strip()}))
+                return {'ok': True, 'text': 'Committed.'}
+            return {'ok': True, 'text': reply}
+
+        with patch.object(worker.pi_runtime, 'job', side_effect=job), \
+                patch.object(worker.pi_runtime, 'Settings', return_value=None):
+            code = worker.worker(str(root / 'state'), str(tree), str(prompt), str(report), 60)
+        return code, calls, report
+
+    def test_a_worker_that_asks_for_approval_is_resumed_once_in_its_session(self):
+        code, calls, report = self.run_worker(['Here is my design.\n\n**Do you approve?**', 'work'])
+        self.assertEqual(code, 0)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0][1], calls[1][1])  # the same session, the same attempt
+        self.assertIn('No person is attached', calls[1][0])
+        self.assertIsNotNone(json.loads(report.read_text())['commit'])
+
+    def test_a_worker_that_asks_twice_is_held_with_its_question(self):
+        code, calls, report = self.run_worker(['Do you approve?', 'Which option do you prefer?'])
+        self.assertEqual((code, len(calls)), (1, 2))
+        self.assertEqual(json.loads(report.read_text())['blockers'],
+                         ['the worker asked twice instead of implementing: Which option do you prefer?'])
+
+    def test_a_finished_worker_or_a_plain_ending_is_not_resumed(self):
+        self.assertEqual(len(self.run_worker(['work'])[1]), 1)
+        self.assertEqual(len(self.run_worker(['I could not finish.'])[1]), 1)
+
 
 class BusyLineTests(unittest.TestCase):
     """The wait for a session in the main checkout is said once per session: its changing status
