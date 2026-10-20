@@ -40,6 +40,25 @@ def code_stamp():
     except (OSError, ValueError):
         return 0
 QUESTIONS_SHOWN = 3
+# The detail pane's key hints, short enough for one line on 80 columns.
+SHORT_LABELS = {'fallback model': 'fallback', 'answer blockers': 'blockers', 'start service': 'start',
+                'remove service': 'remove'}
+
+
+def tilde(path):
+    home = str(Path.home())
+    return '~' + path[len(home):] if path and (path == home or path.startswith(home + '/')) else path
+
+
+def doing(lane):
+    """What a worker is doing, without what the row already says: its own task ID after
+    "said:", and "said:" after "reviewer:"."""
+    text = ' '.join(fleet_view.doing(lane).split())
+    text = text.replace('reviewer: said: ', 'reviewer: ', 1)
+    for prefix in ('said: ', 'reviewer: '):
+        if text.startswith(prefix + lane.task):
+            text = prefix + text[len(prefix + lane.task):].lstrip(' :,')
+    return text
 
 
 class Confirm(ModalScreen[bool]):
@@ -346,7 +365,12 @@ class FleetApp(App):
 
     @staticmethod
     def fit(text, room):
-        return fleet_view.short(text, room - 3)  # short() appends '...' past its limit
+        """``text`` in ``room`` columns: cut at a word, or mid-word when that keeps far more."""
+        if len(text) <= room:
+            return text
+        cut = text[:room - 1]
+        words = cut.rsplit(' ', 1)[0]
+        return (words if len(words) > room * 2 // 3 else cut).rstrip(' ,;:·') + '…'
 
     def fill(self, table, rows, fixed, text, minimum=16):
         """Show ``rows`` ({column: (text, style)}) in ``table``. The fixed columns always show,
@@ -440,9 +464,8 @@ class FleetApp(App):
         text.append(f'{runner.name}  ', style='bold')
         text.append(sentence + '\n', style=style)
         run, land, wait, held, total = fleet_view.task_counts(runner)
-        text.append(f'{total} open tasks: ', style='bold')
-        text.append(f'{run} being worked on · {land} finished, waiting to land · {wait} waiting to start · '
-                    f'{held} held\n')
+        text.append(f'{total} open: ', style='bold')
+        text.append(f'{run} working · {land} to land · {wait} waiting · {held} held\n')
         waiting = fleet_view.waiting_line(runner)
         if waiting:
             text.append(f'{runner.waiting} waiting: ', style='dim')
@@ -466,17 +489,20 @@ class FleetApp(App):
         if runner.held:
             text.append('held: ', style='bold yellow')
             text.append(', '.join(t + (f' {fleet_view.CAUSES.get(c, c)}' if c else '') for t, c in runner.held) + '\n')
-        details = [runner.repo or '(repository unknown)']
+        # Short: the full model IDs are in the m and M pickers. One line on 80 columns.
+        details = [tilde(runner.repo) or '(repository unknown)']
         if runner.model:
-            details.append(f'model {runner.model}, fallback {runner.fallback}')
+            details.append(f'model {runner.model.rsplit("/", 1)[-1]}, fallback {runner.fallback.rsplit("/", 1)[-1]}')
         text.append('  '.join(details) + '\n', style='dim')
         if runner.toolset:  # a development checkout instead of the Pi package: say so
             text.append(f'toolset {runner.toolset} (PI_AUTOWORK_TOOLSET, not the Pi package)\n', style='yellow')
         if self.view_only:
             text.append('view only', style='dim')
         else:
-            text.append('  '.join(f'[{a.key}] {a.label}' for a in self.available(runner)) + '  [d] start a repository',
-                        style='dim')
+            # This runner's keys; d (add a repository) is not about it and is in the footer.
+            for number, action in enumerate(self.available(runner)):
+                text.append(('  ' if number else '') + action.key, style='bold')
+                text.append(' ' + SHORT_LABELS.get(action.label, action.label), style='dim')
         if text.plain != getattr(self, '_detail', None):
             self._detail = text.plain
             detail.update(text)
@@ -489,7 +515,7 @@ class FleetApp(App):
                  'Phase': (lane.phase, 'bold yellow' if lane.phase.startswith('waiting') else 'bold green'),
                  'Try': (str(lane.attempt), ''), 'For': (fleet_view.duration(lane.minutes), ''),
                  'Quiet': (fleet_view.quiet(lane).removeprefix('quiet '), 'bold yellow'),
-                 'Doing': (' '.join(fleet_view.doing(lane).split()), '')} for lane in runner.lanes]
+                 'Doing': (doing(lane), '')} for lane in runner.lanes]
         keep = table.cursor_row
         if self.fill(table, rows, self.LANE_COLUMNS, self.LANE_TEXT) and rows:
             table.move_cursor(row=min(keep, len(rows) - 1))

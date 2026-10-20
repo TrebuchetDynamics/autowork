@@ -9,7 +9,8 @@ import tempfile
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pi_autowork.tui import BrowseScreen, FleetApp, LogScreen, WorkerScreen  # noqa: E402
+from pi_autowork import fleet_view  # noqa: E402
+from pi_autowork.tui import BrowseScreen, FleetApp, LogScreen, WorkerScreen, doing  # noqa: E402
 
 
 class Result:
@@ -17,6 +18,12 @@ class Result:
 
 
 async def main():
+    # A worker's own words, without what its row already says; cut mid-word only to keep far more.
+    lane = fleet_view.Lane(task='T-1', phase='verifying', detail='', attempt=1, minutes=1,
+                           activity='said: T-1 committed as `abc`.', activity_age=1)
+    assert doing(lane) == 'reviewer: committed as `abc`.', doing(lane)
+    assert FleetApp.fit('reviewer: committed as abc', 16) == 'reviewer: commi…', FleetApp.fit('reviewer: committed as abc', 16)
+    assert FleetApp.fit('one two three four', 15) == 'one two three…'
     with tempfile.TemporaryDirectory() as folder:
         base = Path(folder)
         state, env = base / 'state' / 'india', base / 'env'
@@ -65,15 +72,14 @@ async def main():
             detail = str(app.query_one('#detail').render())
             # TOOLSET-166-b4: the verdict first, then why tasks wait, grouped.
             assert detail.lstrip().startswith('india  Waiting — 19 wait for TASK-036 (overlapping files)'), detail
-            assert 'on you' not in detail and 'model openai-codex/gpt-6.1-sol' in detail, detail
+            assert 'on you' not in detail and 'model gpt-6.1-sol' in detail, detail
             assert '23 waiting: 19 wait for TASK-036 (overlapping files) · 4 on dependencies' in detail, detail
             runners = app.query_one('#runners')
             assert [str(c.label) for c in runners.columns.values()] == ['Runner', 'State', 'Run', 'Land', 'Wait',
                                                                         'Held', 'Total', 'Needs', 'Now']
             assert [str(c) for c in runners.get_row_at(0)[2:7]] == ['0', '0', '23', '1', '24']
             assert '19 wait for TASK-036 (overlapping files)' in str(runners.get_row_at(0)[7])
-            assert '24 open tasks: 0 being worked on · 0 finished, waiting to land · 23 waiting to start · 1 held' \
-                in detail, detail
+            assert '24 open: 0 working · 0 to land · 23 waiting · 1 held' in detail, detail
             log = '\n'.join(line.text for line in app.query_one('#log').lines)
             assert 'TASK-036: waiting' in log and 'pending —' not in log, log
             await pilot.press('s')                      # stop asks first; n declines
