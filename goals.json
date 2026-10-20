@@ -441,7 +441,8 @@
         "TOOLSET-107-93",
         "TOOLSET-109-f1",
         "TOOLSET-113-04",
-        "TOOLSET-146-bc"
+        "TOOLSET-146-bc",
+        "TOOLSET-146-bc-LIVE"
       ],
       "title": "Make core-document completeness and drift machine-checkable"
     },
@@ -541,7 +542,7 @@
       "id": "PARALLEL",
       "priority": 89,
       "source": "docs/project.md#parallel-autowork-2026-10-15",
-      "status": "met",
+      "status": "partial",
       "tasks": [
         "TOOLSET-085-1a",
         "TOOLSET-086-9f",
@@ -549,7 +550,8 @@
         "TOOLSET-088-a7",
         "TOOLSET-089-72",
         "TOOLSET-090-2d",
-        "TOOLSET-091-00"
+        "TOOLSET-091-00",
+        "TOOLSET-279-eb"
       ],
       "title": "Run independent Autowork tasks in parallel workers with one coordinator"
     },
@@ -800,7 +802,18 @@
         "TOOLSET-276-3f",
         "TOOLSET-276-a9",
         "TOOLSET-277-52",
-        "TOOLSET-278-91"
+        "TOOLSET-278-91",
+        "TOOLSET-280-4f",
+        "TOOLSET-281-0d",
+        "TOOLSET-282-43",
+        "TOOLSET-283-15",
+        "TOOLSET-284-e0",
+        "TOOLSET-285-29",
+        "TOOLSET-285-47",
+        "TOOLSET-286-32",
+        "TOOLSET-287-44",
+        "TOOLSET-288-cf",
+        "TOOLSET-289-71"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -808,17 +821,13 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
+      "TOOLSET-287-44",
       "TOOLSET-277-52",
       "TOOLSET-270-a9",
       "TOOLSET-271-d6",
-      "TOOLSET-273-e0",
       "TOOLSET-274-f0",
-      "TOOLSET-252-4c",
-      "TOOLSET-234-d4",
       "TOOLSET-230-bf",
       "TOOLSET-200-c1",
-      "TOOLSET-242-d5",
-      "TOOLSET-138-62",
       "TOOLSET-139-62",
       "TOOLSET-179-cf",
       "TOOLSET-158-08",
@@ -837,11 +846,15 @@
       "TOOLSET-119-2b",
       "TOOLSET-118-68",
       "TOOLSET-099-87",
-      "TOOLSET-146-bc",
       "TOOLSET-156-75",
       "TOOLSET-129-c4",
       "TOOLSET-130-15",
       "TOOLSET-235-0d",
+      "TOOLSET-278-91",
+      "TOOLSET-279-eb",
+      "TOOLSET-288-cf",
+      "TOOLSET-286-32",
+      "TOOLSET-285-47",
       "TOOLSET-276-2c",
       "TOOLSET-276-a9",
       "TOOLSET-276-3f",
@@ -849,13 +862,11 @@
       "TOOLSET-276-11",
       "TOOLSET-266-7a",
       "TOOLSET-267-a0",
-      "TOOLSET-259-ca",
       "TOOLSET-260-ae",
       "TOOLSET-261-15",
       "TOOLSET-262-13",
       "TOOLSET-263-94",
       "TOOLSET-264-39",
-      "TOOLSET-254-80",
       "TOOLSET-255-55",
       "TOOLSET-256-4b",
       "TOOLSET-257-bd",
@@ -897,12 +908,12 @@
       "TOOLSET-149-df",
       "TOOLSET-150-71",
       "TOOLSET-151-01",
-      "TOOLSET-278-91",
       "TOOLSET-123-a0",
       "TOOLSET-129-6c",
       "TOOLSET-101-f6",
       "TOOLSET-145-6d",
-      "TOOLSET-215-91"
+      "TOOLSET-215-91",
+      "TOOLSET-146-bc-LIVE"
     ]
   },
   "tasks": [
@@ -978,26 +989,10 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-138-62",
-      "section": "Now",
-      "status": "open",
-      "title": "Reconcile the fleet's unmerged parallel-admission branch into main"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-139-62",
       "section": "Now",
       "status": "open",
       "title": "Heal toolset pin drift so every runner receives released fixes"
-    },
-    {
-      "depends_on": [],
-      "goal": "DOCS-COMPLETENESS",
-      "id": "TOOLSET-146-bc",
-      "section": "Now",
-      "status": "open",
-      "title": "Run conditional Docs Sync during verified Autowork closeout"
     },
     {
       "depends_on": [
@@ -1119,14 +1114,6 @@
       "title": "Integration and closeout move the runner's branch with a ref update, never through a working copy"
     },
     {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-234-d4",
-      "section": "Now",
-      "status": "open",
-      "title": "A main-repair worker gets the runner's main-check evidence: log, exit code, revisions and isolated reruns"
-    },
-    {
       "depends_on": [
         "TOOLSET-200-c1"
       ],
@@ -1135,24 +1122,6 @@
       "section": "Now",
       "status": "open",
       "title": "One busy status read is not 'unavailable': the last state stays, and unavailable dates from the first failed read"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-242-d5",
-      "section": "Now",
-      "status": "open",
-      "title": "A task archived as done is done in the ledger too, and a not-runnable reason names what blocks it"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-229-d0"
-      ],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-252-4c",
-      "section": "Now",
-      "status": "open",
-      "title": "A worker blocker that names another open task waits for that task, occupies nothing meanwhile, and resumes when it lands"
     },
     {
       "depends_on": [],
@@ -1181,14 +1150,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-273-e0",
-      "section": "Now",
-      "status": "open",
-      "title": "Planning merge drivers survive a toolset self-update (GitHub #5)"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-274-f0",
       "section": "Now",
       "status": "open",
@@ -1201,6 +1162,30 @@
       "section": "Now",
       "status": "open",
       "title": "Restore the offline gate for the picker-policy failures at 171b26b"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-278-91",
+      "section": "Now",
+      "status": "open",
+      "title": "A commit kept without its worker's report resumes that worker, not a batch or the merge resolver"
+    },
+    {
+      "depends_on": [],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-279-eb",
+      "section": "Now",
+      "status": "open",
+      "title": "A failed batch is split in halves to find the breaking candidate, not reviewed one candidate at a time"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-287-44",
+      "section": "Now",
+      "status": "open",
+      "title": "A merge conflict the resolver may still adopt is never an owner question"
     },
     {
       "depends_on": [],
@@ -1554,14 +1539,6 @@
       "title": "A waiting line is logged when the reasons change, not each minute a drain counter moves"
     },
     {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-254-80",
-      "section": "Next",
-      "status": "open",
-      "title": "Explain full-check results from their recorded evidence, never from an absent log"
-    },
-    {
       "depends_on": [
         "TOOLSET-254-80"
       ],
@@ -1592,14 +1569,6 @@
       "section": "Next",
       "status": "open",
       "title": "Consume claim evidence through bounded repair and exact-target closeout"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-259-ca",
-      "section": "Next",
-      "status": "open",
-      "title": "Plans prefer independent tasks; a long dependency chain needs a reason"
     },
     {
       "depends_on": [
@@ -1718,10 +1687,26 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-278-91",
+      "id": "TOOLSET-285-47",
       "section": "Next",
       "status": "open",
-      "title": "A commit kept without its worker's report resumes that worker, not a batch or the merge resolver"
+      "title": "Harden release-retention and pruning test isolation under concurrent checks"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-286-32",
+      "section": "Next",
+      "status": "open",
+      "title": "Harden conflicting-owner-plan journey against fixture races"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-288-cf",
+      "section": "Next",
+      "status": "open",
+      "title": "Two runner tests fail only under full-check load"
     },
     {
       "depends_on": [
@@ -1765,6 +1750,16 @@
       "section": "Needs decision",
       "status": "open",
       "title": "Qualify Pi API-key and subscription login locally with owner credentials"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-146-bc"
+      ],
+      "goal": "DOCS-COMPLETENESS",
+      "id": "TOOLSET-146-bc-LIVE",
+      "section": "Needs decision",
+      "status": "open",
+      "title": "Live checks for TOOLSET-146-bc"
     },
     {
       "depends_on": [],
@@ -2596,6 +2591,14 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
+      "id": "TOOLSET-138-62",
+      "section": "Done",
+      "status": "done",
+      "title": "Reconcile the fleet's unmerged parallel-admission branch into main"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
       "id": "TOOLSET-140-f4",
       "section": "Done",
       "status": "done",
@@ -2608,6 +2611,14 @@
       "section": "Done",
       "status": "done",
       "title": "Query pending and completed tasks from repository evidence without writes"
+    },
+    {
+      "depends_on": [],
+      "goal": "DOCS-COMPLETENESS",
+      "id": "TOOLSET-146-bc",
+      "section": "Done",
+      "status": "done",
+      "title": "Run conditional Docs Sync during verified Autowork closeout"
     },
     {
       "depends_on": [],
@@ -3120,6 +3131,14 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
+      "id": "TOOLSET-234-d4",
+      "section": "Done",
+      "status": "done",
+      "title": "A main-repair worker gets the runner's main-check evidence: log, exit code, revisions and isolated reruns"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
       "id": "TOOLSET-236-4d",
       "section": "Done",
       "status": "done",
@@ -3156,6 +3175,14 @@
       "section": "Done",
       "status": "done",
       "title": "A task that fails the same way within minutes stops and asks, instead of rerunning"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-242-d5",
+      "section": "Done",
+      "status": "done",
+      "title": "A task archived as done is done in the ledger too, and a not-runnable reason names what blocks it"
     },
     {
       "depends_on": [],
@@ -3206,6 +3233,16 @@
       "title": "A conflict-held commit merged again by the resolver is adopted again when the session moved, and the resolver never runs for a merge the engine will refuse"
     },
     {
+      "depends_on": [
+        "TOOLSET-229-d0"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-252-4c",
+      "section": "Done",
+      "status": "done",
+      "title": "A worker blocker that names another open task waits for that task, occupies nothing meanwhile, and resumes when it lands"
+    },
+    {
       "depends_on": [],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-253-0d",
@@ -3216,10 +3253,26 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
+      "id": "TOOLSET-254-80",
+      "section": "Done",
+      "status": "done",
+      "title": "Explain full-check results from their recorded evidence, never from an absent log"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
       "id": "TOOLSET-258-07",
       "section": "Done",
       "status": "done",
       "title": "Verified candidates integrate as a batch: one merged tree, one full check, their reviews side by side"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-259-ca",
+      "section": "Done",
+      "status": "done",
+      "title": "Plans prefer independent tasks; a long dependency chain needs a reason"
     },
     {
       "depends_on": [],
@@ -3248,10 +3301,76 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
+      "id": "TOOLSET-273-e0",
+      "section": "Done",
+      "status": "done",
+      "title": "Planning merge drivers survive a toolset self-update (GitHub #5)"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
       "id": "TOOLSET-275-c1",
       "section": "Done",
       "status": "done",
       "title": "Select and copy terminal TUI text by mouse dragging"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-280-4f",
+      "section": "Done",
+      "status": "done",
+      "title": "A held commit whose branch the runner itself merged past is recovered by the runner, never asked of the owner as a rescope"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-281-0d",
+      "section": "Done",
+      "status": "done",
+      "title": "A candidate that passed its batch lands before the runner reloads, and after an interrupted landing it lands first"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-282-43",
+      "section": "Done",
+      "status": "done",
+      "title": "A headless worker never stops to ask for approval; an interactive skill's approval step counts as given by the task contract"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-283-15",
+      "section": "Done",
+      "status": "done",
+      "title": "Installed dependencies of a tracked lockfile are linked into worker and review trees without per-runner settings"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-284-e0",
+      "section": "Done",
+      "status": "done",
+      "title": "The autowork core SKILL.md has room again: detail moves to references/"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-285-29",
+      "section": "Done",
+      "status": "done",
+      "title": "A task whose last attempt failed its review is reworked once with the findings, never left silently held"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-129-c4"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-289-71",
+      "section": "Done",
+      "status": "done",
+      "title": "Task status shows Active, Mergeable, Waiting or Blocker with a detail"
     },
     {
       "depends_on": [

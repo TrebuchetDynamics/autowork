@@ -26,8 +26,10 @@ FILES = {
 
 def task(tid, *, touches='src/a.py, tests/test_a.py', scope='Change the thing.',
          acceptance='`test_a` covers the change.',
-         checks='python3 -m unittest discover -s tests -p test_a.py', deps='None.', extra=''):
+         checks='python3 -m unittest discover -s tests -p test_a.py', deps='None.', extra='', short='Title'):
     lines = [f'- [ ] {tid} — Title of {tid}', '- Status: open']
+    if short is not None:
+        lines.append(f'- Short: {short} of {tid}')
     if touches is not None:
         lines.append(f'- Touches: {touches}')
     if scope is not None:
@@ -252,6 +254,10 @@ class WarningTests(unittest.TestCase):
         self.assertEqual(codes(result, 'warnings'), ['acceptance-no-test'])
         result = self.lint(now=task('T-2', acceptance='tests/test_a.py::test_one passes.'))
         self.assertEqual(result['warnings'], [])
+
+    def test_a_task_without_a_short_title(self):
+        """Task lists (the TUI's Tasks window) show `Short:`, at most 40 characters."""
+        self.assertEqual(codes(self.lint(now=task('T-1', short=None)), 'warnings'), ['no-short'])
 
     def test_long_body(self):
         result = self.lint(now=task('T-1', extra='- Notes: ' + 'word ' * 1300))

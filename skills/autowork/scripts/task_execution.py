@@ -128,8 +128,21 @@ def archived_done(repo):
 
 @lru_cache(maxsize=16)
 def _archived_done(content):
-    return frozenset(key for key, items in _task_document(content)[1].items()
-                     if len(items) == 1 and items[0][1].lower() == 'x')
+    text, bodies = _task_document(content)
+    archive = archive_module()
+    prose = re.sub(r'<!--.*?-->', lambda m: re.sub(r'[^\r\n]', ' ', m[0]),
+                   goals_module().markdown_prose(text), flags=re.S)
+    records, _ = archive.entries(text, prose, set(bodies))
+    # Only independently closed heading-only tasks delimit checkbox bodies.
+    # An Evidence/Acceptance subsection must retain its overlap and ambiguity.
+    headings = {tid for start, end, tid, mark in records
+                if mark is None and archive.explicitly_closed(prose[start:end], mark)}
+    records, _ = archive.entries(text, prose, set(bodies) | headings)
+    return frozenset(tid for start, end, tid, mark in records
+                     if sum(row[2] == tid for row in records) == 1
+                     and not any(other_start < end and start < other_end
+                                 for other_start, other_end, other_id, _ in records if other_id != tid)
+                     and archive.explicitly_closed(prose[start:end], mark))
 
 
 def unique(pairs):
@@ -585,6 +598,45 @@ def dependency_done(repo, inputs):
     return done
 
 
+def ledger_reason(repo, tid, inputs, fields, section, *, include_dependencies=True):
+    """Explain the same ledger gates as goals.queue; never relax admission."""
+    indexed = inputs['indexed']
+    task = indexed.get(tid)
+    if task is None:
+        return f'ledger: {tid} is missing from goals.json'
+    archived = archived_done(repo)
+    if task['status'] != 'done' and tid in archived:
+        return f"ledger: {tid} is {task['status']} in goals.json but archived as done"
+    status = re.split(r'[;\.\s]', fields.get('Status', task['status']))[0]
+    if status != task['status']:
+        return f"ledger: {tid} is {task['status']} in goals.json but {status} in TODO.md; files disagree"
+    if task['section'] != section:
+        return f"ledger: {tid} is in {task['section']} in goals.json but {section} in TODO.md; files disagree"
+    if task['status'] in ('done', 'superseded'):
+        return f"ledger: {tid} is {task['status']} in goals.json but unchecked in TODO.md"
+    for dep in task['depends_on']:
+        prerequisite = indexed.get(dep)
+        if prerequisite is None:
+            return f'ledger: dependency {dep} is missing from goals.json'
+        if prerequisite['status'] == 'done':
+            continue
+        if dep in archived:
+            return f"ledger: {dep} is {prerequisite['status']} in goals.json but archived as done"
+        reason = f"ledger: dependency {dep} is {prerequisite['status']} in goals.json"
+        if prerequisite['section'] not in ('Now', 'Next'):
+            return reason + f" in {prerequisite['section']} (outside Now/Next)"
+        if include_dependencies:
+            return reason
+    goals = {g['id']: g for g in inputs['ledger']['goals']}
+    goal = goals[task['goal']]
+    if goal['status'] == 'met':
+        return f"ledger: goal {goal['id']} is met in goals.json but {tid} is unfinished in TODO.md"
+    for dep in goal['depends_on']:
+        if include_dependencies and goals[dep]['status'] != 'met':
+            return f"ledger: goal dependency {dep} is {goals[dep]['status']} in goals.json"
+    return None
+
+
 def contract_reason(repo, tid, inputs, done, plan=None):
     """The sequential eligibility rules, also used by the one-pass status reader."""
     goals = goals_module()
@@ -598,19 +650,14 @@ def contract_reason(repo, tid, inputs, done, plan=None):
         return 'duplicate task contract fields'
     if mark.lower() == 'x' or section not in ('Now', 'Next'):
         return 'completed or decision-held'
-    if inputs['ledger'] and tid not in inputs['ordered']:
-        return 'ledger dependency or disposition holds execution'
+    if inputs['ledger'] and (reason := ledger_reason(repo, tid, inputs, fields, section)):
+        return reason
     if not (fields.get('Scope') and fields.get('Acceptance') and goals.task_checks(fields)):
         return 'needs unique Scope, Acceptance and Checks fields'
     deps = fields.get('Dependencies', 'None.').strip().strip('.').strip()
     ids = parallel_plan.dependency_ids(deps, inputs['known'])
     if ids and any(item not in done() for item in ids):
         return f'unresolved dependency {deps}'
-    if inputs['ledger']:
-        task = indexed[tid]
-        status = re.split(r'[;\.\s]', fields.get('Status', task['status']))[0]
-        if task['section'] != section or status != task['status']:
-            return 'TODO and goals.json disagree; repair from source evidence'
     if plan:
         sources = re.findall(r'\]\(([^)]+)\)', fields.get('Sources', ''))
         if plan not in sources:
@@ -712,15 +759,34 @@ def command(args, repo, state, common, task, lease, lock_fd):
                            pass_fds=(lock_fd,), run_id=run_id)
 
 
-def wait_check_command(child, timeout, fd):
+def reap_exited(keep):
+    """Reap the exited processes this subreaper adopted, except those in ``keep``.
+
+    A check's orphans are reparented here; unreaped, each stays a zombie that still
+    answers kill(0), so a test runner inside a review waited 120 s on every worker
+    that had already finished, and ~110 tests failed in each review."""
+    for pid in child_pids(os.getpid()):
+        if pid not in keep:
+            try:
+                os.waitpid(pid, os.WNOHANG)
+            except ChildProcessError:
+                pass
+
+
+def wait_check_command(child, timeout, fd, keep=()):
     """An integration's active budget excludes its full-suite slot waits, not test execution.
 
-    Only the validator supervisor inherits the notification fd. Timestamped transitions
-    account for polling delay and repeated merged/base waits; process exit wins over EOF.
+    Only the validator supervisor inherits the notification fd (None: no slot waits).
+    Timestamped transitions account for polling delay and repeated merged/base waits;
+    process exit wins over EOF. Adopted orphans are reaped while it waits.
     """
     started, paused, waiting, pending = time.monotonic(), 0, None, b''
+    keep, reaped = {*keep, child.pid}, started
     while True:
         now = time.monotonic()
+        if now - reaped >= .5:
+            reap_exited(keep)
+            reaped = now
         if fd is not None and select_fds([fd], [], [], 0)[0]:
             chunk = os.read(fd, 65536)
             if not chunk:
@@ -797,10 +863,7 @@ def bounded_command(argv, repo, common, task_id, timeout, before=None, *,
             try:
                 if on_start:
                     on_start(child)
-                if check_slot_wait:
-                    code, queued = wait_check_command(child, timeout, wait_read)
-                else:
-                    code = child.wait(timeout=timeout)
+                code, queued = wait_check_command(child, timeout, wait_read, existing_children)
             except subprocess.TimeoutExpired as error:
                 queued = getattr(error, 'check_slot_wait_seconds', 0)
                 timed_out = True

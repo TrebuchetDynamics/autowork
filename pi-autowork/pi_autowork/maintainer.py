@@ -17,6 +17,8 @@ from pathlib import Path
 import re
 import time
 
+from .common import git
+
 ROLE = 'DOCS-MAINTAINER'
 PLANNING_CAUSES = ('scope', 'scope_request', 'blocker', 'contract_changed', 'no_change')
 PLANNING_FILES = ('TODO.md', 'goals.json', 'BLOCKERS.md', 'TODO.archive.md', 'CHANGELOG.md')
@@ -24,6 +26,7 @@ PLANNING_DIRS = ('docs/tasks/',)
 LIMIT = 12
 PLAN_TASK_LIMIT = 8
 PLAN_ROUNDS = 10
+REPLAY_REFUSED = 'archive replay refused: '
 
 
 def triggers(rows, main=None, findings=None, reported_flakes=(), ledger_errors=(), limit=LIMIT):
@@ -35,16 +38,19 @@ def triggers(rows, main=None, findings=None, reported_flakes=(), ledger_errors=(
         # Do not let changing task holds/main commits retrigger the same ledger repair.
         return [('LEDGER', 'invalid goals.json', '\n'.join(errors))]
     found = []
+    evidence = (main or {}).get('evidence') or ''
+    bundle = f'; evidence bundle: {evidence}' if evidence else ''
     if (main or {}).get('state') == 'red':
         commits = '; '.join((main.get('commits') or [])[:10]) or 'unknown'
-        found.append(('MAIN', 'main red', f"failing: {', '.join(main.get('failures') or [])}; commits since the last "
-                                         f"green main: {commits}"[:900]))
+        found.append(('MAIN', 'main red', f"failing: {', '.join(sorted(main.get('failures') or []))}; commits since the last "
+                                         f"green main: {commits}"[:900] + bundle))
     if (main or {}).get('state') == 'broken':
         found.append(('MAIN', 'check broken', f"the full check crashed twice before any test result at "
-                                              f"{(main.get('rev') or '')[:12]}: {main.get('crash') or 'unknown'}"[:900]))
+                                              f"{(main.get('rev') or '')[:12]}: {main.get('crash') or 'unknown'}"[:900] + bundle))
     for test_id, revisions in ((main or {}).get('flaky_history') or {}).items():
-        if len(set(revisions)) >= 3 and test_id not in reported_flakes:
-            found.append(('MAIN', 'flaky test', f'{test_id}; flaky on revisions: {", ".join(revisions[:3])}'))
+        if len(set(revisions)) >= 3 and (test_id not in reported_flakes
+                                        or (evidence and test_id in (main.get('flaky') or []))):
+            found.append(('MAIN', 'flaky test', f'{test_id}; flaky on revisions: {", ".join(revisions[:3])}' + bundle))
     for row in rows:
         task, state, reason = row.get('task'), row.get('state'), ' '.join(str(row.get('reason') or '').split())
         if not task:
@@ -74,10 +80,100 @@ def triggers(rows, main=None, findings=None, reported_flakes=(), ledger_errors=(
     return sorted(found)[:limit]
 
 
+def archive_closures(repo, execution):
+    """Replay only unique, explicitly done history, including archive-only IDs."""
+    repo = Path(repo)
+    ledger = execution.task_ledger(repo)
+    if not ledger:
+        return []
+    bodies = execution.task_bodies(repo / 'TODO.md')
+    done = execution.archived_done(repo)
+    return [(t['id'], 'archive close', f"ledger: {t['id']} is {t['status']} in goals.json but archived as done")
+            for t in ledger['tasks'] if t['status'] in ('open', 'in_progress') and t['id'] in done
+            and len(bodies.get(t['id'], [])) <= 1
+            and not any(re.search(r'^[ \t]*[-*] \[ \]', execution.goals_module().task_prose(body), re.M)
+                        for body, _, _ in bodies.get(t['id'], []))]
+
+
+def replay_archive(repo, names, execution, goals_cli):
+    """Mechanical work inside the maintainer checkout; no acceptance is inferred.
+
+    goals.py owns ledger mutation and archival. The exact live body is marked under
+    its coordination/atomic-write guard, just as the engine's verified close does.
+    The transaction caller discards the checkout if any step fails.
+    """
+    repo = Path(repo)
+    current = {task for task, _, _ in archive_closures(repo, execution)}
+    if not set(names) <= current:
+        return False, 'archive completion evidence changed'
+    goals = execution.goals_module()
+    try:
+        for task in names:
+            result = goals_cli('task', str(repo), task, 'done')
+            if result.returncode:
+                return False, result.stdout + result.stderr
+            with goals.coordination(repo):
+                todo = repo / 'TODO.md'
+                before = todo.read_bytes()
+                text = before.decode()
+                blocks = [b for b in goals.task_blocks(text) if b['id'] == task]
+                if len(blocks) > 1:
+                    return False, f'{task}: duplicate live entry'
+                if blocks:
+                    block = blocks[0]
+                    body = text[block['start']:block['end']]
+                    prose = goals.task_prose(body)
+                    marks = [m for m in re.finditer(goals.TASK_MARK, prose, re.M) if m[2] == task]
+                    statuses = list(re.finditer(
+                        r'(?m)^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?Status:(?:\*\*)?[ \t]*([^\r\n]*)', prose))
+                    if len(marks) != 1 or len(statuses) > 1:
+                        return False, f'{task}: ambiguous live checkbox or Status'
+                    replacements = [(marks[0].start(1), marks[0].end(1), 'x')]
+                    replacements += [(m.start(1), m.end(1), 'done') for m in statuses]
+                    for start, end, value in sorted(replacements, reverse=True):
+                        body = body[:start] + value + body[end:]
+                    goals.atomic_write(todo, text[:block['start']] + body + text[block['end']:], expected_bytes=before)
+        result = goals_cli('archive', str(repo))
+        if result.returncode:
+            return False, result.stdout + result.stderr
+        remaining = execution.task_bodies(repo / 'TODO.md')
+        if any(task in remaining for task in names):
+            return False, 'archive did not move the repaired live entries'
+        return True, ''
+    except (OSError, ValueError, SystemExit) as exc:
+        return False, str(exc)
+
+
+def archive_rejections(state, closures, *, entries, reasons):
+    """A failed mechanical replay becomes one substantive repair, even without a live row."""
+    run = last(state)
+    ids = set(run.get('task_ids', [])) | set(entries)
+    rejected = []
+    for item in closures:
+        receipt = run.get('items', {}).get(item_key(item), {})
+        if (matches(receipt, item, entries.get(item[0], {}), reasons, ids)
+                and receipt.get('outcome', '').startswith(REPLAY_REFUSED)):
+            rejected.append((item[0], 'archive close refused', receipt['outcome']))
+    return rejected
+
+
+def overlap(row):
+    """The dispatcher's wait for a file another task names (parallel_plan), or ''."""
+    reason = ' '.join(str(row.get('reason') or '').split())
+    return reason if row.get('state') == 'waiting' and reason.startswith('shares ') else ''
+
+
+def overlaps(rows, limit=6):
+    """[(task, 'overlap', why)] for the highest-priority tasks waiting on another task's file:
+    re-cut before they run, a conflict costs no resolver run and no second review."""
+    return [(r['task'], 'overlap', why) for r in rows if r.get('task') and (why := overlap(r))][:limit]
+
+
 def key(found):
     """The set's identity. A red main is the same trigger while the same tests fail: tasks now
     land one by one, so its commits since the last green grow without anything new to repair."""
-    same = [(task, kind, why.split('; commits since')[0] if task == 'MAIN' else why) for task, kind, why in found]
+    same = [(task, kind, why.split('; evidence bundle:')[0].split('; commits since')[0]
+             if task == 'MAIN' else why) for task, kind, why in found]
     return hashlib.sha256(json.dumps(same).encode()).hexdigest()[:16]
 
 
@@ -89,6 +185,9 @@ def planning_only(paths):
 PROMPT = (
     'You are the DOCS-MAINTAINER of {repo}: you repair task docs so that held and unrunnable tasks can '
     'run again, without the owner. The runner cannot run these tasks as they are written:\n{items}\n'
+    'For archive close refused: model-free replay of explicitly done history could not finish with a valid ledger. '
+    'Read the named task in the TODO archive and repair the exact reported invariant from source evidence; '
+    'a task close is not proof that its goal is met. Never invent passing evidence or check off remaining acceptance. '
     'For ledger edit: the task integrated, but its candidate\'s ledger edits (including resolver edits) '
     'were left out. Review the saved patch against the current ledger; the task may already be archived. '
     'Apply only justified changes through the docs-sync ledger tools, or drop the proposal. Never apply '
@@ -100,17 +199,29 @@ PROMPT = (
     'task; restate a contract that demands what no one provides (a coordinator receipt, handoff, registry or '
     'verification the repository has no mechanism for) to what an unattended worker can do, and let it repair a '
     'defect already in the code that stops its checks; '
-    'supersede a duplicate with python3 {goals} supersede; re-sort to unblock a dependency chain '
+    'supersede a duplicate with python3 {goals} supersede; re-sort to unblock a dependency chain, '
+    'preferring to split off independent parts with disjoint Touches '
     '(never above the owner\'s first tasks in Now). For LEDGER (goals.py validate errors): repair the ledger '
     'and its planning docs from repository evidence. An unverified goal with no open task needs a task for '
     'its remaining proof, or an evidence-backed status correction; never invent proof or mark it verified '
     'just to pass validation. For MAIN (flaky test): the test failed in the full run '
     'but passed alone on three different revisions. Unless an open task already covers it, add one test-hardening '
-    'task with those revisions as Evidence; investigate isolation, resource load and fixture timing, not a '
+    'task with those revisions and the named evidence bundle directory as Evidence; investigate isolation, '
+    'resource load and fixture timing, not a '
     'product-code repair. Main is not red for a flaky test. For MAIN (check broken): the full check itself crashed before '
     'reporting any test result, so no test is known to fail. Never add a repair task for test names. Unless an open task '
     'covers it, add one task to make the full check run to its results (pin or provision the crashing tool from the '
     'repository\'s setup docs, or restate the repository\'s `Full check:` line), with the crash line as Evidence. '
+    'For overlap (the task waits because it names a file another task also names: one running, one whose '
+    'commit waits to land, or one ahead of it in the queue; started together they conflict at merge, which costs '
+    'a resolver run and a second review): you may add, remove, merge and split tasks that have not started, and '
+    'reorder them, so that what runs next has disjoint Touches. Prefer, in order: merge it into the other task '
+    'when that one has not started either (combine Scope, Touches, Acceptance and Checks into one entry and '
+    'supersede the other with python3 {goals} supersede); split the shared-file part into a follow-up task that '
+    'depends on the other task, so the rest starts now with Touches that no longer name that file; supersede it '
+    'when the other task already delivers it; otherwise make the order explicit in Dependencies. Never edit the '
+    'entry of a task that is running or whose commit waits to land; keep every Acceptance item in whichever task '
+    'now owns it; never widen product scope. '
     'For repeated quick hold: three consecutive attempts held within ten minutes on the same missing input. '
     'This blocker gets one repair, not repeated cosmetic entry edits. Restate the task so the named missing '
     'input is produced (add a producer task and dependency), or move it to Needs decision. Only when the '
@@ -121,7 +232,12 @@ PROMPT = (
     'through {goals}; otherwise restate the task so it names the change to make. '
     'For MAIN (main red, main fails its full offline check): unless an '
     'open task already covers those failures, add one repair task first in Now with python3 {goals} add-task '
-    'and write its entry with the failing tests and the commits as Evidence, Touches from the failing tests '
+    'and write its entry with the failing tests, commits and named evidence bundle revision directory as Evidence. '
+    'For every MAIN item, read the bundle in place (main_check.json, main-check.log, main-check.exit, '
+    'main-check-reruns.log and flaky_history.json); never copy it into worktrees or commits. '
+    'If an open repair or hardening task already covers the same failing tests, update its Evidence '
+    'with the current revision bundle, commits and isolated reruns; never add a second task for those tests. '
+    'Keep its accepted scope and task ID. Set Touches from the failing tests '
     'and the files those commits changed, and the full check as its Checks. For review findings (the last '
     'attempt was reviewed and found wanting): split the task into what its commit already does and a follow-up '
     'whose Acceptance lists the reviewer\'s findings, or restate it so the findings are explicit; keep every '
@@ -296,13 +412,51 @@ def reason_class(why, task_ids=()):
 def item_key(item):
     if item[1] == 'repeated quick hold':
         return 'quick-hold:' + item[0] + ':' + item[2].split(';', 1)[0]
-    return key([item]) if item[0] in ('MAIN', 'LEDGER') or item[1] == 'ledger edit' else 'task:' + item[0]
+    return key([item]) if item[0] in ('MAIN', 'LEDGER') or item[1] in ('ledger edit', 'archive close', 'archive close refused') else 'task:' + item[0]
+
+
+def main_evidence(item):
+    return item[2].partition('; evidence bundle: ')[2] if item[0] == 'MAIN' else ''
+
+
+def own_main_refresh(repo, item, receipt, revision, edits):
+    """Only runner-recorded maintenance changed main, including overflow batches.
+
+    Every nonmerge commit must belong to a recorded range, and the tree between
+    ranges must be unchanged. Thus owner planning edits and merge resolutions
+    cannot be mistaken for our own Evidence updates.
+    """
+    evidence = receipt.get('evidence')
+    if item[0] != 'MAIN' or not evidence or not revision or not edits:
+        return False
+    old = Path(evidence).name
+    observed = git(repo, 'rev-list', '--no-merges', f'{old}..{revision}')
+    if not observed:
+        return False
+    observed = set(observed.splitlines())
+    ranges, known = [], set()
+    for start, end in edits:
+        own = git(repo, 'rev-list', '--no-merges', f'{start}..{end}')
+        commits = set(own.splitlines()) if own else set()
+        if commits & observed:
+            ranges.append((start, end))
+            known.update(commits)
+    if known != observed:
+        return False
+    cursor = old
+    for start, end in ranges:
+        if git(repo, 'diff', '--binary', '--no-ext-diff', cursor, start) != '':
+            return False
+        cursor = end
+    return git(repo, 'diff', '--binary', '--no-ext-diff', cursor, revision) == ''
 
 
 def matches(receipt, item, entry, reasons, task_ids):
     if not receipt:
         return False
-    if item[0] in ('MAIN', 'LEDGER') or item[1] in ('repeated quick hold', 'ledger edit'):
+    if item[0] == 'MAIN':
+        return receipt.get('evidence', '') == main_evidence(item)
+    if item[0] == 'LEDGER' or item[1] in ('repeated quick hold', 'ledger edit'):
         return True  # the key identifies the test/error, blocker or exact patch, even after archival
     why = (reasons or {}).get(item[0], item[2])
     return (receipt.get('digest') == entry.get('digest', '')
@@ -337,7 +491,7 @@ def pending(state, found, *, entries=None, reasons=None):
         if matches(receipt, item, (entries or {}).get(item[0], {}), reasons, ids):
             if receipt['outcome'] != RETRYABLE or receipt['tries'] >= TRIES:
                 continue
-        elif (item[0] == 'MAIN' and key([item]) in run.get('handled_triggers', [])
+        elif (item[0] == 'MAIN' and not main_evidence(item) and key([item]) in run.get('handled_triggers', [])
               and run.get('outcome') != RETRYABLE):
             continue  # pre-item-receipt MAIN records
         selected.append(item)
@@ -375,7 +529,8 @@ def due(state, trigger_key, found=None, *, entries=None, reasons=None):
     return run.get('outcome') == RETRYABLE and int(run.get('tries') or 1) < TRIES
 
 
-def remember(state, *, trigger_key, found, outcome, changed=(), entries=None, before=None, reasons=None, now=None):
+def remember(state, *, trigger_key, found, outcome, changed=(), entries=None, before=None, reasons=None,
+             main_edit=(), now=None):
     previous = last(state)
     tries = int(previous.get('tries') or 1) + 1 if previous.get('key') == trigger_key else 1
     value = dict(role=ROLE, key=trigger_key, at=time.time() if now is None else now, outcome=outcome,
@@ -397,7 +552,14 @@ def remember(state, *, trigger_key, found, outcome, changed=(), entries=None, be
         records[identity] = dict(task=task, reason=why, reason_class=reason_class(why, ids),
                                  digest=entry.get('digest', ''), outcome=outcome, tries=attempts + 1,
                                  fields=(fields or ['entry text']) if outcome == 'merged' and task in changed else [])
+        if task == 'MAIN':
+            records[identity]['evidence'] = main_evidence(item)
     value['items'] = records
+    edits = list(previous.get('main_edits') or [])
+    if outcome == 'merged' and main_edit and any(item[0] == 'MAIN' for item in found):
+        edits.append(list(main_edit))
+    if edits:
+        value['main_edits'] = edits
     if previous.get('handled_triggers'):
         value['handled_triggers'] = previous['handled_triggers']
     flaky_tests = set(previous.get('flaky_tests') or [])

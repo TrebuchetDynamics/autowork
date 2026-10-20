@@ -105,3 +105,25 @@ do not wait for a Docs Sync job. Keep ledger evidence. Without goals.json, inspe
 checks and pass verified closed IDs with `archive <repo> --verified-tasks ID1,ID2`.
 Report retained conflicts; read-only runs skip this write. Follow the
 [archive contract](../../docs-sync/references/todo-archive.md).
+
+## Partial delivery and the critical path
+
+Before another partial delivery, compare it with the exact acceptance criterion
+still preventing closure: name the positive capability it delivers or the required
+gate it removes. Do not keep selecting adjacent parser, cancellation or refusal
+controls while the same missing trust input or runtime capability stays untouched;
+growing commit/test counts can conceal an unchanged critical path. Repair genuine
+security or data-loss defects, but do not use incidental hardening as a substitute
+for finishing the selected outcome. If the remaining capability is unavailable,
+make the existing fix-or-skip disposition and advance dependency-ready independent
+work within scope; never imply that refusal-only tests supply the positive path.
+Recover independently useful fixes from an idle candidate only after verifying
+provenance and current writer inactivity; compare adopted bytes, rerun affected
+checks and obtain required review. Prefer one coherent final candidate and the
+union of mandatory affected checks over a full rebuild/review for each tiny guard.
+Reuse a sanitized cache/target and check receipts only when their bound inputs
+match; retain required mutations, independent review and integration checks.
+Integrate a partial slice only when repository policy permits it; record its
+commit and exact remaining gates under the original TODO ID. Never call focused
+passes a full-suite pass, waive a gate, close the parent, or infer dependency,
+publication or upstream authority from partial delivery.

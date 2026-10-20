@@ -60,8 +60,8 @@ paths or globs it is expected to change (a trailing `/` covers a directory). Nam
 exact files from the scope, sources and the code you inspected, including its tests
 and docs; when a file is not known yet, widen to the owning directories rather than
 omit the field. Parallel Autowork uses `Touches:` to run likely-independent work
-first and never holds a task for it: overlap is settled by merging in priority order,
-and a real conflict costs a resolver run, so the plan is what keeps write sets apart
+first, and a task naming a file that unlanded work also names waits for it: the plan
+is what keeps write sets apart, so tasks can run together
 ([disjoint write sets](PLANNING-CRAFT.md#disjoint-write-sets)). A task without
 `Touches:` ranks after the tasks that have it. Add `Resources:` where needed (`live`
 or `exclusive` to run alone, or shared names such as `test-db`). Only when no path
@@ -69,6 +69,10 @@ can be bounded, write `Resources: exclusive` with the reason instead of leaving
 `Touches:` out. Do not list the root `TODO.md`, `TODO.archive.md`, `goals.json` or
 `CHANGELOG.md`: the coordinator owns them. Proposed or Needs-decision tasks may
 leave `Touches:` until they become executable.
+Every task you create or rewrite also gets `Short:`, one line of at most 40
+characters naming the outcome, for task lists such as the autowork TUI's Tasks
+window (`Short: Retained commits resume their worker`). `goals.py validate` rejects
+a longer one; `goals.py plan-lint` reports a task without one.
 Keep unsupported ideas visibly Proposed/Needs decision instead of fabricating
 acceptance. If research finds no new work, retain existing bytes and report why.
 Missing Graphify or a failed readiness gate must be reported honestly; saving a

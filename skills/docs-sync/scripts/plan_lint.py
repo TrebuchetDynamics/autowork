@@ -595,6 +595,9 @@ class Linter:
             if not re.search(r'\btest_\w|\w_test\b|\.test\.\w|\S::\w', acceptance):
                 self.add('warning', tid, 'acceptance-no-test',
                          'Acceptance names no test; name the `test_...` or `path::name` that proves it')
+        if not fields.get('Short'):
+            self.add('warning', tid, 'no-short',
+                     'no `Short:` title (at most 40 characters) for task lists such as the TUI\'s Tasks window')
         if len(info['body']) > MAX_BODY:
             self.add('warning', tid, 'long-body',
                      f'body is {len(info["body"])} characters (> {MAX_BODY}); move history to the archive or a linked doc')
