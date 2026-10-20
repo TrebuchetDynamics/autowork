@@ -52,6 +52,21 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Now
 
+### TOOLSET-285-29 — A task whose last attempt failed its review is reworked once with the findings, never left silently held
+
+- [ ] TOOLSET-285-29 — A task whose last attempt failed its review is reworked once with the findings, never left silently held
+- Short: Review-failed last attempt is reworked
+- Status: open
+- Goal: PI-RUNNER
+- Evidence: (2026-10-20, one fleet runner): a task's second attempt failed its review ('required scheduler and signed-execution acceptance evidence is missing'). The engine offers fresh retries only to first attempts, and the question list classes review failures as technical, so the task was neither retried nor asked about and appeared nowhere among the runner's roots or questions.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/test_parallel_integrate.py, pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_questions.py, tests/test_pi_autowork.py
+- Scope: (1) A held slot whose cause is a review failure (validation, not environment) on its last attempt gets one fresh rework attempt of the same task: the previous commit is kept on a -set-aside-N branch, and the new prompt names that tip and quotes the reviewer's findings as what to fix. (2) A second review failure of the rework becomes an owner question quoting both findings. (3) Until then, status, the TUI and BLOCKERS.md show such a task as 'reworking after review' or as the question, never as nothing: no held task may be neither retried nor asked.
+- Acceptance: In fixtures: a task whose second attempt fails review with a finding gets exactly one rework attempt whose prompt contains the finding and the kept tip; a rework that passes lands; a rework that fails again yields one owner question quoting both findings; a status snapshot never shows a held task with no retry, no question and no root.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 -m unittest discover -s pi-autowork/tests -p test_questions.py; python3 scripts/check.py tests/test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to review content, gates or the attempt limit for other causes; an environment hold keeps its provisioning path.
+
 ### TOOLSET-284-e0 — The autowork core SKILL.md has room again: detail moves to references/
 
 - [x] TOOLSET-284-e0 — The autowork core SKILL.md has room again: detail moves to references/

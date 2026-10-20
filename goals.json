@@ -806,7 +806,8 @@
         "TOOLSET-281-0d",
         "TOOLSET-282-43",
         "TOOLSET-283-15",
-        "TOOLSET-284-e0"
+        "TOOLSET-284-e0",
+        "TOOLSET-285-29"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -1228,6 +1229,14 @@
       "section": "Now",
       "status": "open",
       "title": "A failed batch is split in halves to find the breaking candidate, not reviewed one candidate at a time"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-285-29",
+      "section": "Now",
+      "status": "open",
+      "title": "A task whose last attempt failed its review is reworked once with the findings, never left silently held"
     },
     {
       "depends_on": [],
