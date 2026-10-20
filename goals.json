@@ -1567,14 +1567,6 @@
       "title": "A waiting line is logged when the reasons change, not each minute a drain counter moves"
     },
     {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-254-80",
-      "section": "Next",
-      "status": "open",
-      "title": "Explain full-check results from their recorded evidence, never from an absent log"
-    },
-    {
       "depends_on": [
         "TOOLSET-254-80"
       ],
@@ -3241,6 +3233,14 @@
       "section": "Done",
       "status": "done",
       "title": "The gate reuses a base run whose tree differs only in planning files, instead of running the base suite again"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-254-80",
+      "section": "Done",
+      "status": "done",
+      "title": "Explain full-check results from their recorded evidence, never from an absent log"
     },
     {
       "depends_on": [],

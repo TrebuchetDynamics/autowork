@@ -986,24 +986,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No split of a task with Resources: exclusive or live; no change to 156-75's other triggers.
 - Planner's call: splitting into disjoint scopes is the form of parallelism the evidence supports best, and idle slots are the moment it pays.
 
-### TOOLSET-254-80 — Explain full-check results from their recorded evidence, never from an absent log
-
-- [ ] TOOLSET-254-80 — Explain full-check results from their recorded evidence, never from an absent log
-- Short: Explain full checks from their evidence
-- Status: open
-- Goal: PI-RUNNER
-- Payoff: Prevent a reviewer from reading all tests passed when the accepted gate used exceptions or its detailed evidence is missing.
-- Sources: [accepted continuous runner](docs/project.md#continuous-pi-runner-2026-10-15); [claim-grounded verification research](docs/research/pi-autowork-reference-architectures.md#source-grounded-verification-and-large-agent-claims); pi-autowork/pi_autowork/worker.py (full_suite_gate, run_gate, gate_log, gate_note); completed TOOLSET-227-a8 check reuse.
-- Touches: pi-autowork/pi_autowork/worker.py, pi-autowork/tests/test_worker_tmp.py, tests/test_pi_autowork.py
-- Scope: Preserve the runner-owned full-check and its existing cache/passing policy, but carry the producing gate outcome, command/tree identity, original inventory result, exception classification and available owned evidence reference into gate_note's reviewer explanation. A cached result reused by a different task must refer to its actual producing evidence, not infer all green from an absent current-task log. Explicitly distinguish all-green, accepted baseline-equivalent failures, accepted isolated-rerun classification and accepted result with unavailable detail. Missing/unreadable/mismatched legacy evidence remains unavailable and cannot be rewritten as all tests passed. Use existing state/records; no historical receipt engine, new reviewer or extra full check to regenerate explanatory text.
-- Acceptance: Existing compact fixtures cover first all-green result, baseline/flaky exception acceptance preserving original failures/skips, cached reuse on the same tree/command for a different task, absent/empty/unreadable log, stale/mismatched evidence and legacy aggregate-only cache. Reviewer text states only what that exact gate record establishes, never it passed solely because no names were parsed. Legacy accepted aggregate results disclose missing detail without fabricating a fresh run or changing existing admission policy. Changed tree/command retains existing invalidation; unknown metadata is not claimed to satisfy future stronger environment-bound reuse. Required full-gate/review behavior, task privacy and source ownership protections remain unchanged; explain-only reuse launches no duplicate check. These cases are planned, unrun.
-- Checks: Planned after implementation: python3 scripts/check.py pi-autowork/tests/test_worker_tmp.py tests/test_pi_autowork.py; python3 scripts/check.py; git diff --check. Extend the existing fake-runner/gate fixtures rather than add a new broad suite.
-- Dependencies: None.
-- Ownership: Normal Toolset execution and integration owner; serialize current worker.py/review work and never repin an active candidate or reviewer.
-- Exclusions: No new LLM judge, source-truth guarantee, semantic model benchmark, larger swarm, Obsidian export, runtime/service/profile changes, deployment, publication, test waiver, failure-history rewrite or resurrection of modules targeted by TOOLSET-202-9a. Research persistence does not dispatch implementation.
-- Planner's call: A narrow producer-evidence fidelity successor to delivered check reuse, not its reimplementation. Keep 130-15 as the read-model consumer and 118-68/228-0c as capacity owners. Diagnose from structured producing evidence before parsing task-local logs; preserve unsupported and unavailable distinctions.
-- Next action: Add a table-driven fake gate/record regression showing cached cross-task reuse with a missing current-task log and an exception-qualified producing run. Make the minimal existing gate-record/gate_note correction, then run the focused fixtures and mandatory offline/review gates. Do not run real model calls or increase worker count to verify this behavior.
-
 ### TOOLSET-255-55 — Bind task claims to runner-owned evidence without changing legacy acceptance
 
 - [ ] TOOLSET-255-55 — Bind task claims to runner-owned evidence without changing legacy acceptance
