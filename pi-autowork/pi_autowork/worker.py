@@ -731,9 +731,11 @@ def batch_order(session, reported):
     parallel_dispatch, parallel_integrate, parallel_state = engine_modules()
     common = parallel_state.common_dir(Path(session))
     slots = {s['task_id']: s for s in parallel_state.slots(common)}
-    busy = {t for t, s in slots.items() if parallel_integrate.writers_busy(s)}
+    eligible = {t for t, s in slots.items() if s['state'] == 'reported'
+                and not parallel_integrate.writers_busy(s) and not parallel_state.worker_live(s)
+                and not parallel_state.missing_commit_report(common, s)}
     order = [t['id'] for t in parallel_dispatch.contracts(Path(session))]
-    return [t for t in order if t in reported and t not in busy], {t: slots[t] for t in reported if t in slots}
+    return [t for t in order if t in reported and t in eligible], {t: slots[t] for t in reported if t in eligible}
 
 
 def new_failures(state, checkout):

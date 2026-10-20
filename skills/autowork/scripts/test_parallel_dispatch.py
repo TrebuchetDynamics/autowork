@@ -823,6 +823,10 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         ready, release = self.root / 'ready', self.root / 'continue'
         self.set_spec({'A': {'files': {'a.txt': 'reconciling'}, 'ready': str(ready), 'release': str(release)}})
         self.apply()
+        slot = state.slots(self.common)[0]
+        prompt = (dispatch.data_dir(self.common, slot) / 'prompt.md').read_text()
+        self.assertIn('Landed prerequisites: B', prompt)
+        self.assertNotIn('Do not reimplement the task or make another commit', prompt)
         deadline = time.monotonic() + 5
         while not ready.exists() and time.monotonic() < deadline:
             time.sleep(0.01)

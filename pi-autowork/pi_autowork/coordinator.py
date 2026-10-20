@@ -1534,6 +1534,11 @@ class Coordinator:
         for row in rows:
             task, state, reason = row.get('task'), row.get('state') or '', row.get('reason') or ''
             before = self.seen.get(task)
+            if (not self.stop and (state == 'reported' or
+                                  (state == 'held' and row.get('cause') in ('report', 'conflict')))
+                    and row.get('commit') and self.resume_report(row)):
+                self.settled = True
+                continue  # also while draining: it is unfinished work on the same attempt
             if state == 'held' and row.get('cause') == 'conflict' and not self.session_busy():
                 if self.resolve_task_conflict(row):
                     self.settled = True
@@ -2200,6 +2205,24 @@ class Coordinator:
             return False
         LOG.say(f'{task}: the runner answered its blocker; resuming its attempt ({fleet_view.short(verdict[1], 160)})')
         return True
+
+    def resume_report(self, row):
+        """Reportless commits belong to their worker, including legacy conflict holds.
+
+        Prepare recovery through the engine even when --once/budget draining skips
+        refill; the usual paused-attempt admission then launches only this attempt.
+        """
+        _, _, state = worker.engine_modules()
+        common = state.common_dir(self.integ)
+        slot = next((s for s in state.slots(common) if s['task_id'] == row['task']), None)
+        if (not slot or slot.get('report_resume_attempt') == slot['attempt'] or state.worker_live(slot)
+                or not state.missing_commit_report(common, slot)):
+            return False
+        result = self.engine('--parallel-reverify', row['task'], '--reviewer-version', 'report-only')
+        if result.get('report_only'):
+            LOG.say(f'{row["task"]}: resuming its worker on the same attempt to report its retained commit')
+            return True
+        return False
 
     def resolve_task_conflict(self, row):
         """A commit held for a merge conflict with the session is merged with it in its own

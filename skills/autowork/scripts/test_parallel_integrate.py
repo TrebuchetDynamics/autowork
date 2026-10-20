@@ -775,7 +775,9 @@ finally:
         report = execution.read(data / 'report.json')
         (data / 'report.json').unlink()
         held = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
-        self.assertEqual((held['outcome'], held['reason']), ('HELD', 'the worker wrote no report.json'))
+        self.assertEqual((held['outcome'], held['cause']), ('HELD', 'report'))
+        self.assertIn('the worker wrote no report.json', held['reason'])
+        self.assertIn(str(data / 'report.json'), held['reason'])
         slot = state.slots(self.common)[0]
         state.write_slot(self.common, dict(slot, state='reported', reason=None, cause=None), slot)
         execution.save(data / 'report.json', dict(report, pending_live=[{'check': 'run on a phone', 'reason': 'device'}]))
