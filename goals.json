@@ -801,7 +801,8 @@
         "TOOLSET-276-3f",
         "TOOLSET-276-a9",
         "TOOLSET-277-52",
-        "TOOLSET-278-91"
+        "TOOLSET-278-91",
+        "TOOLSET-280-4f"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -1219,6 +1220,14 @@
       "section": "Now",
       "status": "open",
       "title": "A failed batch is split in halves to find the breaking candidate, not reviewed one candidate at a time"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-280-4f",
+      "section": "Now",
+      "status": "open",
+      "title": "A held commit whose branch the runner itself merged past is recovered by the runner, never asked of the owner as a rescope"
     },
     {
       "depends_on": [],

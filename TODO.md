@@ -52,6 +52,23 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Now
 
+### TOOLSET-280-4f — A held commit whose branch the runner itself merged past is recovered by the runner, never asked of the owner as a rescope
+
+- [ ] TOOLSET-280-4f — A held commit whose branch the runner itself merged past is recovered by the runner, never asked of the owner as a rescope
+- Short: Runner-merged held branch self-recovers
+- Status: open
+- Goal: PI-RUNNER
+- Sources: [integration](skills/autowork/scripts/parallel_integrate.py) (`verify`: raises `reported commit/branch/lineage mismatch` when `refs/heads/<branch>` is not `slot['commit']`; `merged`; `retry_held`, `_retire`), [slot state](skills/autowork/scripts/parallel_state.py) (`merge_adoption`, `exhausted`, `readoptable`), [coordinator](pi-autowork/pi_autowork/coordinator.py) (`resolve_task_conflict`, `adopt_merge`); TOOLSET-251-c4 in [the archive](TODO.archive.md#toolset-251-c4) (adoption limit and per-revision rule).
+- Evidence: (2026-10-20, one fleet runner, stalled about 20 h, 8 dependents held): two tasks on their second attempt had passed every listed check on their recorded commits. Before TOOLSET-251-c4 reached that runner, its conflict resolver merged later session commits into each branch 13 and 15 times while the engine refused adoption, so the slot kept the old commit. When the hold was later cleared for technical recovery, verify found the branch past the recorded commit and the runner asked the owner to rescope or split both tasks. One worktree also held an uncommitted, conflict-free merge with no live process. The owner answered each by hand with a retry that restores the kept branch.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/test_parallel_state.py, pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
+- Scope: (1) When verify finds the branch tip is not the recorded commit, but the recorded commit is an ancestor of the tip and every first-parent commit after it is a merge whose other parent is a canonical (session or main) revision, the slot is not held for a person: if merge_adoption allows it, the tip is adopted as by --parallel-merged (report commit and changed_files updated, merged_count counted); otherwise the task is requeued as technical recovery with its kept branch named in the new attempt's prompt so the worker restores it and reruns the checks. (2) A worktree whose resolver run has ended and that still holds a merge in progress (MERGE_HEAD present) is cleaned by the runner before verify or adoption: with no unmerged paths and a live owner absent, the merge is aborted (the resolver can merge again later); the event is journaled. (3) The owner question for 'reported commit/branch/lineage mismatch' is raised only when the tip does not descend from the recorded commit, or descends through a non-merge commit nobody recorded; its text names which.
+- Acceptance: In fixtures: a conflict-held slot whose branch gained several resolver merges beyond its recorded commit (adoption limit reached, then hold cleared) is requeued as technical recovery with the kept tip named, never a USER_DECISION; one within the limit is adopted and reaches review; a worktree left mid-merge with no conflicts is aborted and journaled before verify; a branch with an unrecorded non-merge commit still raises the owner question, naming that commit. No report or slot is rewritten to claim a pass.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_state.py; python3 scripts/check.py tests/test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to the adoption limit, gates, review or how a conflict is detected; no rewritten report or slot that claims a check the merged tree did not run.
+- Planner's call: Now (owner blockers pass, 2026-10-20): the runner caused this hold itself, so it must clear it itself; the owner only plans and answers real decisions.
+
 ### TOOLSET-277-52 — Restore the offline gate for the picker-policy failures at 171b26b
 
 - [ ] TOOLSET-277-52 — Restore the offline gate for the picker-policy failures at 171b26b
