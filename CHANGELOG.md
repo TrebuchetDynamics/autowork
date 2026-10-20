@@ -594,6 +594,8 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- Seeded, replayable model-based tests drive the parallel worker slot state machine and check every step against a reference model (`test_parallel_state_model.py`).
+
 - The runner answers worker blockers it can resolve, and the attempt resumes in its own
   worktree instead of waiting for the owner: a short triage job reads the report and
   either answers from what the runner guarantees and the repository's evidence (private
