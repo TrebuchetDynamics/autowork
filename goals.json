@@ -809,7 +809,8 @@
         "TOOLSET-284-e0",
         "TOOLSET-285-29",
         "TOOLSET-285-47",
-        "TOOLSET-286-32"
+        "TOOLSET-286-32",
+        "TOOLSET-287-44"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -1201,6 +1202,14 @@
       "section": "Now",
       "status": "open",
       "title": "A failed batch is split in halves to find the breaking candidate, not reviewed one candidate at a time"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-287-44",
+      "section": "Now",
+      "status": "open",
+      "title": "A merge conflict the resolver may still adopt is never an owner question"
     },
     {
       "depends_on": [],
