@@ -316,6 +316,9 @@ claim of a tagged release, completed installation or live workflow qualification
   (`target/`, `build/`, `.dart_tool/` that Git ignores): it is removed first. Kept for
   `.dart_tool/` alone, a session never rotated and said so every cycle; a session kept for
   other files now says so once.
+- Host check slots admit a review's suites before background main checks waiting with
+  them; a main check that has waited 30 minutes takes its turn with reviews. Every
+  runner's main check held the slots while reviews that land work waited behind them.
 - A green main check carries over commits that change only planning files (TODO.md,
   TODO.archive.md, goals.json, BLOCKERS.md) instead of checking main again: the runner's
   own questions commits took a host check slot that a waiting review needed. A red main
