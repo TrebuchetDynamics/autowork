@@ -45,10 +45,6 @@ def goals_module():
     spec = importlib.util.spec_from_file_location('todo_goals', path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    # queue() also asks for task bodies when checking priority drift. This private
-    # module shares the same pure parse as the file-content cache below.
-    cached_bodies = lru_cache(maxsize=16)(module.task_bodies)
-    module.task_bodies = lambda text: deepcopy(cached_bodies(text))
     return module
 
 
@@ -575,7 +571,8 @@ def _queue_inputs(todo_content, ledger_content):
         if problems:
             raise ValueError('invalid goals.json: ' + '; '.join(problems))
         ledger = goals.normalize(ledger)
-        picks, priority = goals.queue(ledger, text, allow_drift=True)
+        # Reuse the content-keyed parse explicitly, regardless of the queue's module.
+        picks, priority = goals.queue(ledger, text, allow_drift=True, bodies=bodies)
         ordered = [task['id'] for task, _ in picks]
         indexed = {task['id']: task for task in ledger['tasks']}
     else:
