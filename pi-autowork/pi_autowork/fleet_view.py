@@ -274,6 +274,8 @@ def doing(lane):
         return 'waiting for a check slot, ' + (lane.detail or '0 ahead')
     if lane.phase == 'waiting to integrate':
         return 'waiting to integrate: ' + (lane.detail or 'another integration first')
+    if lane.phase == 'batch check':
+        return 'batch check: ' + (lane.detail or 'one full check for the batch')
     if lane.phase in ('integrating', 'integrated'):
         return lane.phase
     text = doing_text(lane.activity) if lane.activity else ''
@@ -287,7 +289,7 @@ def doing(lane):
 def quiet(lane):
     """'quiet 12m' when the worker's last action is QUIET_AFTER seconds or older, else ''."""
     if (lane.activity_age is None or lane.activity_age < QUIET_AFTER
-            or lane.phase in ('waiting to integrate', 'waiting for a check slot')):
+            or lane.phase in ('waiting to integrate', 'waiting for a check slot', 'batch check')):
         return ''
     return 'quiet ' + duration(lane.activity_age // 60)
 
@@ -421,7 +423,7 @@ def waiting_line(runner, limit=4):
 # the headline says whether it moves, the detail how far it got. Engine states stay internal.
 ACTIVE, MERGEABLE, WAITING, BLOCKER = 'Active', 'Mergeable', 'Waiting', 'Blocker'
 # An implemented commit has not been checked: it waits, it is not Mergeable.
-WAIT_PHASES = {'implemented': 'Implemented', 'waiting to integrate': 'Merge turn',
+WAIT_PHASES = {'implemented': 'Implemented', 'waiting to integrate': 'Merge turn', 'batch check': 'Batch check',
                'waiting for a check slot': 'Check slot', 'paused': 'Paused', 'pending': 'Pending'}
 ACTIVE_PHASES = {'starting': 'Starting', 'running': 'Implementing', 'implementing': 'Implementing',
                  'verifying': 'Verifying', 'integrating': 'Merging', 'landing': 'Merging'}
@@ -468,6 +470,27 @@ def task_counts(runner):
     return active, mergeable, waiting, blocker, active + mergeable + waiting + blocker
 
 
+def reviews(state_dir, proc='/proc'):
+    """({task: its own review runs}, {task: a batch checking it runs}) for the runner whose state is
+    ``state_dir``, from live `worker.py --verify STATE TASK` and `--verify-batch STATE SESSION
+    SCRIPT TASK...` processes. The runner log's last "verifying" outlives a review that died."""
+    state = os.path.realpath(state_dir)
+    single, batch = set(), set()
+    for entry in Path(proc).glob('[0-9]*'):
+        try:
+            argv = (entry / 'cmdline').read_bytes().decode(errors='replace').split('\0')
+        except OSError:
+            continue
+        for i, arg in enumerate(argv[:-2]):
+            if arg in ('--verify', '--verify-batch') and os.path.realpath(argv[i + 1]) == state:
+                if arg == '--verify':
+                    single.add(argv[i + 2])
+                else:
+                    batch.update(a for a in argv[i + 4:] if a)
+                break
+    return single, batch
+
+
 def lanes(runner, now=None):
     """Tasks in flight for this runner, from the engine's slots, the runner log and Pi transcripts."""
     now = time.time() if now is None else now
@@ -479,6 +502,7 @@ def lanes(runner, now=None):
     except (OSError, subprocess.SubprocessError):
         return []
     phases = _phases(runner.state_dir) if runner.state_dir else {}
+    single, batch = reviews(runner.state_dir) if runner.state_dir else (set(), set())
     out = []
     for path in sorted(Path(common or '/nonexistent', 'autowork-execution', 'slots').glob('*.json')):
         try:
@@ -494,6 +518,10 @@ def lanes(runner, now=None):
             progress = main_check.slot_status(Path(runner.state_dir) / 'full-check' / f'{task}.status.json')
             if progress.get('state') == 'waiting' and main_check.alive(progress.get('pid')):
                 phase, detail = 'waiting for a check slot', f"{progress.get('ahead', 0)} ahead"
+        if phase == 'verifying' and runner.state_dir and task not in single:
+            # Its review is gone: hours of "verifying" for three tasks whose reviews had died.
+            phase, detail = (('batch check', 'one full check for the batch') if task in batch else
+                             ('waiting to integrate', 'its review is not running'))
         started = slot.get('started_at')
         activity, age = _activity(runner.state_dir, task, now) if runner.state_dir else ('', None)
         out.append(Lane(task=task, phase=phase, detail=detail, attempt=slot.get('attempt', 1),

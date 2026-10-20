@@ -417,6 +417,31 @@ class FleetViewTests(unittest.TestCase):
         (slots / 'T-0.json').write_text(json.dumps({'task_id': 'T-0', 'state': 'reported', 'attempt': 1}))
         self.assertEqual([lane.task for lane in fleet_view.lanes(runner)], ['T-1', 'T-0', 'T-2'])
 
+    def test_a_review_that_died_is_not_verifying(self):
+        """Three tasks read "verifying" for 13 to 25 hours after their reviews died: the runner log's
+        last word is not a live review."""
+        state = self.base / 'state' / 'key'
+        proc = self.base / 'proc'
+        for pid, argv in ((10, ['python3', 'worker.py', '--verify', str(state), 'A']),
+                          (11, ['bash', 'pa.sh', '--verify-batch', str(state), '/s', 'pa.sh', 'B', 'C']),
+                          (12, ['python3', 'worker.py', '--verify', '/elsewhere', 'D'])):
+            (proc / str(pid)).mkdir(parents=True)
+            (proc / str(pid) / 'cmdline').write_bytes('\0'.join(argv).encode() + b'\0')
+        state.mkdir(parents=True)
+        self.assertEqual(fleet_view.reviews(str(state), proc=str(proc)), ({'A'}, {'B', 'C'}))
+        repo = self.base / 'repo'
+        subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+        slots = repo / '.git' / 'autowork-execution' / 'slots'
+        slots.mkdir(parents=True)
+        for task in 'ABE':
+            (slots / f'{task}.json').write_text(json.dumps({'task_id': task, 'state': 'integrating', 'attempt': 1}))
+        (state / 'runner.log').write_text(''.join(f'2026-10-20T14:00:00-06:00 {t}: verifying\n' for t in 'ABE'))
+        runner = fleet_view.Runner(name='repo', repo=str(repo), state_dir=str(state))
+        with mock.patch.object(fleet_view, 'reviews', return_value=({'A'}, {'B'})):
+            found = {lane.task: fleet_view.status(lane) for lane in fleet_view.lanes(runner)}
+        self.assertEqual(found, {'A': ('Active', 'Verifying'), 'B': ('Waiting', 'Batch check'),
+                                 'E': ('Waiting', 'Merge turn')})
+
     def test_phase_text_is_split_into_a_short_phase_and_its_detail(self):
         self.assertEqual(fleet_view._split_phase('verifying'), ('verifying', ''))
         self.assertEqual(fleet_view._split_phase('paused; resumes on attempt 1 — with uncommitted changes'),
