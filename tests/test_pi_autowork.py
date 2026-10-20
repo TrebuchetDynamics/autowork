@@ -615,6 +615,22 @@ class EngineTests(Fixture):
         self.assertEqual(self.git(self.repo, 'check-attr', 'merge', '--', 'docs/history.md'),
                          'docs/history.md: merge: docs-sync-archive')
         attributes = (self.repo / '.gitattributes').read_bytes()
+        for kind in ('goals', 'todo', 'archive'):
+            self.git(self.repo, 'config', '--local', f'merge.docs-sync-{kind}.driver',
+                     f'{shlex.quote(sys.executable)} /pruned-release/goals.py merge-driver {kind} %O %A %B')
+        # Config repair must also happen when uncommitted planning blocks startup.
+        head = self.git(self.repo, 'rev-parse', 'HEAD')
+        planning = (self.repo / 'TODO.md').read_bytes()
+        (self.repo / 'goals.json').write_text('{}\n')
+        result = self.run_runner('--once')
+        self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
+        for kind in ('goals', 'todo', 'archive'):
+            driver = self.git(self.repo, 'config', '--local', '--get', f'merge.docs-sync-{kind}.driver')
+            self.assertEqual(shlex.split(driver)[1], str(ROOT / 'skills/docs-sync/scripts/goals.py'))
+        self.assertEqual(self.git(self.repo, 'rev-parse', 'HEAD'), head)
+        self.assertEqual((self.repo / 'TODO.md').read_bytes(), planning)
+        self.assertEqual((self.repo / 'goals.json').read_text(), '{}\n')
+        (self.repo / 'goals.json').unlink()
         result = self.run_runner('--once')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual((self.repo / '.gitattributes').read_bytes(), attributes)
@@ -2838,6 +2854,37 @@ class EngineTests(Fixture):
 
 
 class SetupTests(Fixture):
+    def test_git_can_merge_planning_after_the_registering_release_is_pruned(self):
+        from unittest.mock import patch
+        sys.path.insert(0, str(ROOT / 'pi-autowork'))
+        from pi_autowork import release
+        package = self.root / 'package with spaces'
+        self.git(self.root, 'clone', '-q', '--shared', str(ROOT), str(package))
+        self.env['FAKE_PI_TOOLSET'] = str(package)
+        result = self.run_runner('--once')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        selected = self.state / 'releases' / self.git(package, 'rev-parse', 'HEAD')
+        self.assertTrue(selected.is_dir())
+        glob = Path.glob
+        with patch.object(Path, 'glob', lambda path, pattern:
+                iter(()) if path == Path('/proc') else glob(path, pattern)):
+            for number in (2, 3):  # the two newest releases survive pruning
+                (package / 'RELEASE').write_text(f'{number}\n')
+                self.git(package, 'add', 'RELEASE')
+                self.git(package, 'commit', '-qm', f'release {number}')
+                release.prepare(self.state, package)
+        self.assertFalse(selected.exists(), 'the stable driver must not pin the registering release')
+        archive = self.repo / 'TODO.archive.md'
+        self.git(self.repo, 'checkout', '-qb', 'other-history')
+        archive.write_text(archive.read_text() + '\n- [x] OTHER — Other completed task\n')
+        self.git(self.repo, 'commit', '-qam', 'other history')
+        self.git(self.repo, 'checkout', '-q', 'main')
+        archive.write_text(archive.read_text() + '\n- [x] OWNER — Owner completed task\n')
+        self.git(self.repo, 'commit', '-qam', 'owner history')
+        self.git(self.repo, 'merge', '-q', '--no-edit', 'other-history')
+        self.assertIn('- [x] OTHER', archive.read_text())
+        self.assertIn('- [x] OWNER', archive.read_text())
+
     def test_copied_script_targets_its_repository_from_any_directory(self):
         shutil.copy(RUNNER, self.repo / 'pi-autowork.sh')
         self.git(self.repo, 'add', 'pi-autowork.sh')

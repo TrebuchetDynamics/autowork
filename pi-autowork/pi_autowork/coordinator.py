@@ -717,17 +717,25 @@ class Coordinator:
         os.environ['PI_AUTOWORK_SESSION'] = branch
         return True
 
-    def setup_planning_merges(self):
-        """Local executable paths stay in Git config; portable attributes travel in Git."""
+    def register_planning_merges(self):
+        """Repair local driver commands even when planning is not ready for a session."""
         if not self.merge_drivers_registered:
+            # Git also runs these after the runner exits. Keep engine calls on
+            # self.goals pinned, but register the package that outlives releases.
+            driver_goals = Path(self.package) / 'skills/docs-sync/scripts/goals.py'
             for kind in ('goals', 'todo', 'archive'):
                 prefix = f'merge.docs-sync-{kind}'
-                command = (f'{shlex.quote(sys.executable)} {shlex.quote(str(self.goals))} '
+                command = (f'{shlex.quote(sys.executable)} {shlex.quote(str(driver_goals))} '
                            f'merge-driver {kind} %O %A %B')
                 for key, value in (('driver', command), ('recursive', 'binary')):
-                    if not git_ok(self.repo, 'config', '--local', f'{prefix}.{key}', value):
-                        raise Finish(1, 'Cannot register planning merge drivers')
+                    if git(self.repo, 'config', '--local', '--get', f'{prefix}.{key}') != value:
+                        if not git_ok(self.repo, 'config', '--local', f'{prefix}.{key}', value):
+                            raise Finish(1, 'Cannot register planning merge drivers')
             self.merge_drivers_registered = True
+
+    def setup_planning_merges(self):
+        """Local executable paths stay in Git config; portable attributes travel in Git."""
+        self.register_planning_merges()
         if self.session_busy():
             return  # restored reviews own their pinned session until they finish
         path = Path(self.integ) / '.gitattributes'
@@ -2806,6 +2814,7 @@ class Coordinator:
         signal.signal(signal.SIGHUP, self.on_reload)
         LOG.say(f'Started (PID {os.getpid()}). Stop with Ctrl+C.')
         try:
+            self.register_planning_merges()
             while True:
                 self.cycle()
         except Finish as done:
