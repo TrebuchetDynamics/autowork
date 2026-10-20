@@ -16,7 +16,8 @@ class PickerPolicyTests(unittest.TestCase):
             self.assertIn(phrase,text)
     def test_no_early_exit_and_terminal_results_continue(self):
         text=full_text()
-        for phrase in ['version: 0.28.2', "Ask, don't block", 'otherwise run the docs-sync fallback', 'goals.py next', 'never fingerprint-exit', 'Resume the saved continuation before discovery', 'A completed slice is not itself a stop condition under continuation authority', 'default and explicit caller stops still apply', 'Disable change-only fingerprint monitors', 'CONTINUE selection', 'work_search', 'not a runtime guarantee']:
+        # Patch versions are metadata, not continuation policy.
+        for phrase in ["Ask, don't block", 'otherwise run the docs-sync fallback', 'goals.py next', 'never fingerprint-exit', 'Resume the saved continuation before discovery', 'A completed slice is not itself a stop condition under continuation authority', 'default and explicit caller stops still apply', 'Disable change-only fingerprint monitors', 'CONTINUE selection', 'work_search', 'not a runtime guarantee']:
             self.assertIn(phrase, text)
         for obsolete in ['Step 0 — fast exit', 'return `[SILENT]` immediately', 'Step 0 fast exit bounds']:
             self.assertNotIn(obsolete, text)
