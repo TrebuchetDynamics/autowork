@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 import runpy
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -238,6 +239,45 @@ def write(state, value):
     return value
 
 
+def publish_evidence(state, common, revision, value):
+    """Publish a complete, read-only snapshot outside worktrees; retain five revisions."""
+    root = Path(common) / 'autowork-execution/main-evidence'
+    root.mkdir(parents=True, exist_ok=True)
+    bundle = root / revision
+    value['evidence'] = str(bundle)
+    value['checked_rev'] = revision  # recheck records clear rev so the scheduler will run again
+
+    def remove(path):
+        path.chmod(0o700)
+        shutil.rmtree(path)
+
+    with tempfile.TemporaryDirectory(prefix='.publishing-', dir=root) as staging:
+        staging = Path(staging)
+        (staging / 'main_check.json').write_text(json.dumps(value) + '\n')
+        (staging / 'flaky_history.json').write_text(json.dumps(value.get('flaky_history') or {}) + '\n')
+        for name in ('main-check.log', 'main-check.exit', 'main-check-reruns.log'):
+            source = Path(state) / name
+            # A green run has no reruns; never publish diagnostics left by an older run.
+            if name == 'main-check-reruns.log' and exit_code(state) == 0:
+                content = b''
+            else:
+                try:
+                    content = source.read_bytes()
+                except FileNotFoundError:
+                    content = b''
+            (staging / name).write_bytes(content)
+        for path in staging.iterdir():
+            path.chmod(0o400)
+        if bundle.exists():
+            remove(bundle)
+        staging.rename(bundle)
+        bundle.chmod(0o500)
+    revisions = sorted((path for path in root.iterdir() if path.is_dir() and not path.name.startswith('.')),
+                       key=lambda path: path.stat().st_mtime_ns, reverse=True)
+    for old in revisions[5:]:
+        remove(old)
+
+
 def exit_code(state):
     """Only a complete receipt counts: shell redirection can expose an empty file first."""
     try:
@@ -371,12 +411,13 @@ def rerun_failures(log, root, receipt, rev, timeout=600, cmd=None):
 
     def rerun(test_id, directory):
         """(passed, diagnostics) of one test run alone."""
-        notes = f'RERUN {test_id} in {directory}\n'
+        argv = [sys.executable, '-m', 'unittest', test_id]
+        notes = f'RERUN {test_id} in {directory}\ncommand: {shlex.join(argv)}\n'
         try:
             # A file, not a pipe: a detached daemon inheriting stdout must not
             # make communicate() wait forever for EOF after the test times out.
             with tempfile.TemporaryFile() as capture, subprocess.Popen(
-                    [sys.executable, '-m', 'unittest', test_id], cwd=directory, env=env,
+                    argv, cwd=directory, env=env,
                     stdout=capture, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                     start_new_session=True) as process:
                 timed_out = False
@@ -391,6 +432,7 @@ def rerun_failures(log, root, receipt, rev, timeout=600, cmd=None):
                 output = capture.read(size).decode('utf-8', errors='replace')
         except OSError as error:
             return False, notes + f'Could not rerun {test_id}: {error}\n'
+        notes += f'exit code: {process.returncode}\n'
         if timed_out:
             return False, notes + output + f'TIMEOUT: {test_id} after {timeout:g}s\n'
         return (process.returncode == 0 and bool(re.search(r'^Ran [1-9]\d* tests? in ', output, re.M))

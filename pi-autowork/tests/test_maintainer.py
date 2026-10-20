@@ -101,6 +101,86 @@ class MaintainerTests(unittest.TestCase):
                                                     'B': 'PI_AUTOWORK_VERIFY: fail — x'})
         self.assertEqual(found, [('A', 'review findings', 'PI_AUTOWORK_VERIFY: fail — Back is not handled')])
 
+    def test_main_evidence_refreshes_the_same_repair_identity_once_per_revision(self):
+        for kind in ('red', 'flaky'):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as state:
+                main = dict(state='red' if kind == 'red' else 'green', rev='abc',
+                            failures=['test_sample.Sample.test_fail', 'test_other.Other.test_fail'] if kind == 'red' else [],
+                            flaky=['test_sample.Sample.test_fail'] if kind == 'flaky' else [],
+                            flaky_history={'test_sample.Sample.test_fail': ['a', 'b', 'c']} if kind == 'flaky' else {},
+                            commits=['abc first'], evidence='/git/autowork-execution/main-evidence/abc')
+                first = maintainer.triggers([], main)
+                self.assertIn(main['evidence'], first[0][2])
+                identity = maintainer.item_key(first[0])
+                maintainer.remember(state, trigger_key=maintainer.key(first), found=first, outcome='merged')
+                reported = maintainer.last(state).get('flaky_tests', [])
+                self.assertEqual(maintainer.pending(state, maintainer.triggers([], main, reported_flakes=reported)), [])
+                main.update(rev='def', evidence='/git/autowork-execution/main-evidence/def', commits=['def next'],
+                            failures=list(reversed(main['failures'])))
+                fresh = maintainer.triggers([], main, reported_flakes=reported)
+                self.assertEqual(maintainer.item_key(fresh[0]), identity)
+                self.assertEqual(maintainer.pending(state, fresh), fresh)
+                message = maintainer.prompt(fresh, '/repo', 'goals.py')
+                self.assertIn(main['evidence'], message)
+                self.assertIn('update its Evidence', message)
+                self.assertIn('never add a second task', message)
+                maintainer.remember(state, trigger_key=maintainer.key(fresh), found=fresh, outcome='merged')
+                self.assertEqual(maintainer.pending(state, fresh), [])
+                self.assertEqual(len(maintainer.last(state)['items']), 1)
+
+    def test_main_evidence_refresh_does_not_retrigger_itself_but_owner_changes_do(self):
+        from pi_autowork import main_check
+        from pi_autowork.coordinator import Coordinator
+        from pi_autowork.common import git, git_ok
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, state = Path(tmp) / 'repo', Path(tmp) / 'state'
+            repo.mkdir()
+            state.mkdir()
+            for args in [('init', '-q'), ('config', 'user.name', 'Test'),
+                         ('config', 'user.email', 'test@example.invalid')]:
+                self.assertTrue(git_ok(repo, *args))
+            (repo / '.gitignore').write_text('/.worktrees/\n')
+            entry = repo / 'TODO.md'
+            entry.write_text('- [ ] FIX — Repair main\n  Evidence: original\n')
+            self.assertTrue(git_ok(repo, 'add', '.'))
+            self.assertTrue(git_ok(repo, 'commit', '-qm', 'base'))
+            runner = Coordinator.__new__(Coordinator)
+            runner.state, runner.repo, runner.integ, runner.stop = state, repo, repo, False
+            runner.toolset, runner.goals, runner.verify_timeout = Path(__file__).resolve().parents[2], 'goals.py', 1
+            runner.in_flight = runner.session_busy = lambda: False
+            prompts = []
+            def check():
+                rev = git(repo, 'rev-parse', 'HEAD')
+                tests = [f'test_sample.Sample.test_{i:02}' for i in range(maintainer.LIMIT + 1)]
+                main_check.write(state, dict(state='green', rev=rev, flaky=tests,
+                                              flaky_history={test: ['a', 'b', 'c'] for test in tests},
+                                              evidence=str(repo / '.git/autowork-execution/main-evidence' / rev)))
+            def model(role, task, scratch, message, *args):
+                prompts.append(message)
+                path = Path(scratch) / 'TODO.md'
+                path.write_text('- [ ] FIX — Repair main\n  Evidence: ' + main_check.read(state)['evidence']
+                                + f'\n  Maintenance batch: {len(prompts)}\n')
+                self.assertTrue(git_ok(scratch, 'commit', '-qam', 'refresh existing repair evidence'))
+                return True, ''
+            runner.pi_job = model
+            check()
+            self.assertTrue(runner.maintain(main_only=True))
+            self.assertTrue(runner.maintain(main_only=True))  # overflow is a second maintenance commit
+            check()  # main changed only because the maintainer refreshed Evidence
+            self.assertFalse(runner.maintain(main_only=True))
+            for path in (entry, repo / 'implementation.py'):
+                path.write_text(path.read_text() + '\nOwner change\n' if path.exists() else '# changed\n')
+                self.assertTrue(git_ok(repo, 'add', '.'))
+                self.assertTrue(git_ok(repo, 'commit', '-qm', 'independent owner change'))
+                check()
+                self.assertTrue(runner.maintain(main_only=True))
+                self.assertTrue(runner.maintain(main_only=True))
+                check()
+                self.assertFalse(runner.maintain(main_only=True))
+            self.assertEqual(len(prompts), 6)
+            self.assertEqual(entry.read_text().count('- [ ] FIX'), 1)
+
     def test_a_run_refused_because_the_session_moved_is_tried_again_once(self):
         with tempfile.TemporaryDirectory() as state:
             found = [('A', 'held: scope', 'x')]

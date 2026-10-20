@@ -125,6 +125,28 @@ class DispatchTests(unittest.TestCase):
                      'git worktree add --detach', 'commit anyway', 'never blockers'):
             self.assertIn(text, gated)
 
+    def test_worker_gets_main_evidence_location_and_repair_instructions(self):
+        data = self.common / 'slot-data/A/attempt-1'
+        data.mkdir(parents=True)
+        prompt = data / 'prompt.md'
+        prompt.write_text(dispatch.prompt(execution.select_all(self.repo, None, None)[0],
+                                         self.repo, 'b', 'HEAD', data / 'report.json'))
+        output = data / 'evidence-path'
+        script = ('import os, sys, time; from pathlib import Path; '
+                  'Path(sys.argv[1]).write_text(os.environ.get("AUTOWORK_MAIN_EVIDENCE", "missing")); '
+                  'time.sleep(30)')
+        # An invoking runner/worker's repository must not leak into this repository's child.
+        with patch.dict(os.environ, AUTOWORK_MAIN_EVIDENCE='/wrong/repository'):
+            child = dispatch.launch([sys.executable, '-c', script, str(output)], self.repo, data, 1, prompt)
+        self.addCleanup(dispatch.stop, child, str(self.repo))
+        for _ in range(200):
+            if output.exists():
+                break
+            time.sleep(.01)
+        self.assertEqual(output.read_text(), str(self.common / 'main-evidence'))
+        self.assertIn('$AUTOWORK_MAIN_EVIDENCE/<revision>/', prompt.read_text())
+        self.assertIn('Never ask a person for these', prompt.read_text())
+
     def test_independent_tasks_run_together_in_separate_worktrees(self):
         self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 1.0},
                        'B': {'files': {'b.txt': 'b'}, 'sleep': 1.0}})
