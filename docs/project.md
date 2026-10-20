@@ -1872,3 +1872,37 @@ review remain required.
 of the missing-Pi bootstrap and live reinstall tasks. Keep TOOLSET-123-de and
 TOOLSET-123-a0 and their existing IDs, order, dependencies and acceptance. This task
 implements the supported recovery behavior, not live adoption or remote publication.
+
+## Task status vocabulary (2026-10-20)
+
+Status: Accepted
+
+Decision: the owner found Run, Land, Wait and Held unclear: "Land" read as already
+delivered, and "held" mixed a state with its cause, so a blocker the agent repairs
+itself looked like a question for the owner. Every task now shows one headline
+word plus a detail, and each axis answers one question:
+
+| Headline | Means | Detail examples |
+| --- | --- | --- |
+| Active | being worked on now | Starting, Implementing, Verifying, Reviewing, Merging |
+| Mergeable | every required check and review passed; only the merge remains | Verified, Reviewed |
+| Waiting | queued behind a prerequisite, capacity or its turn; nothing is wrong | Implemented, Merged, Paused, the dependency or resource named |
+| Blocker | an obstacle must be resolved first | the cause (Conflict, Failed check, Missing report, …) and who resolves it: Agent repair, Needs you, External |
+
+Rules:
+
+- Progress words are details, never headlines. *Implemented* means code exists, not
+  that it was checked: such a task is `Waiting · Implemented` until a check runs.
+  *Merged* means it reached the named branch, not that the task is *Done*; *Done*
+  means its acceptance criteria are met.
+- *Mergeable* is earned by evidence only: a commit without passing checks and review is
+  never Mergeable, whatever its engine state.
+- *Blocker* says who resolves it. *Needs you* is kept for a decision, authorization or
+  input automation cannot supply; a merge conflict or a failed check is normally
+  *Agent repair*.
+- *Waiting* always names its reason; a wait without a reason is a defect.
+- Engine slot states (`dispatched`, `reported`, `held`, …) stay internal names; the
+  display derives the headline from them and their evidence. Runner-level states
+  (working, paused, stopped, unavailable) are a separate axis and keep their labels.
+
+Implementation: TOOLSET-289-71.

@@ -742,6 +742,25 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Next
 
+### TOOLSET-289-71 — Task status shows Active, Mergeable, Waiting or Blocker with a detail
+
+- [ ] TOOLSET-289-71 — Task status shows Active, Mergeable, Waiting or Blocker with a detail
+- Short: Status reads Active/Mergeable/…
+- Status: open
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [accepted vocabulary](docs/project.md#task-status-vocabulary-2026-10-20) (owner, 2026-10-20); [fleet view](pi-autowork/pi_autowork/fleet_view.py) (`task_counts`, `QUEUED`, `PHASES`); [TUI](pi-autowork/pi_autowork/tui.py) (`RUNNER_COLUMNS` Run/Land/Wait/Held and the detail line "working · to land · waiting · held"); [health](pi-autowork/pi_autowork/health.py) (`NEEDS_PERSON`, "held for a person").
+- Evidence: the owner asked what Run, Land, Wait and Held mean and whether Held is a blocker. "Land" counts `implemented` commits (`QUEUED`) that have not been checked yet, so it is not "ready to merge"; "Held" covers both agent-repairable causes and real owner questions.
+- Touches: pi-autowork/pi_autowork/fleet_view.py, pi-autowork/pi_autowork/tui.py, pi-autowork/pi_autowork/health.py, pi-autowork/tests/test_fleet_view.py, pi-autowork/tests/test_health.py
+- Consumes: TOOLSET-129-c4's single Needs action (reason, audience, source) for a Blocker's "who resolves it".
+- Scope: (1) One pure function maps a slot and its evidence to (headline, detail, resolver): headline one of Active, Mergeable, Waiting, Blocker; Mergeable only when the recorded checks and review passed and only the merge remains; `held` becomes Blocker with its cause and resolver Agent repair, Needs you or External (Needs you only for causes the engine cannot repair, the `NEEDS_PERSON` set made explicit). (2) The runner table's columns become Active, Mergeable, Waiting, Blocker, Total; the detail line, task rows and `autowork status` use the same words and show `headline · detail`. (3) Every Waiting row names its reason. (4) Engine state names and runner-level states are unchanged; no alias keeps the old column names.
+- Acceptance: Given a reported commit without checks, the row reads `Waiting · Implemented`, never Mergeable (`test_fleet_view.py::test_implemented_is_waiting_not_mergeable`). Given checks and review passed, `Mergeable` (`test_mergeable_needs_passed_gates`). A conflict hold reads `Blocker · Conflict · Agent repair`; a blocker the worker reported for credentials reads `… · Needs you` (`test_blocker_names_its_resolver`). The runner table header is exactly Runner, State, Active, Mergeable, Waiting, Blocker, Total, Needs, Now (`test_runner_columns`).
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_fleet_view.py; python3 -m unittest discover -s pi-autowork/tests -p test_health.py; python3 scripts/check.py
+- Dependencies: TOOLSET-129-c4.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to engine slot states, hold causes or retry behaviour; TOOLSET-276-a9 owns the hold-cause table.
+- Planner's call: after 129-c4 because both rewrite the Needs cell and the runner table in the same files.
+
 ### TOOLSET-288-cf — Two runner tests fail only under full-check load
 
 - [ ] TOOLSET-288-cf — Two runner tests fail only under full-check load
