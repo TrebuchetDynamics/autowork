@@ -1730,6 +1730,17 @@ finally:
         self.assertEqual(self.git('rev-parse', 'HEAD^1'), head)
         self.assertEqual(state.slots(self.common)[0]['attempt'], 1)
 
+    def test_an_unlanded_candidate_whose_integration_tree_has_review_files_merges_again(self):
+        """A restart left the review's files in the integration tree: held as changed, the
+        finished task got a fresh worker. Never landed, the tree is kept as a patch instead."""
+        module, head = self.interrupted_while_main_moved()
+        root = Path(state.slots(self.common)[0]['integration']['worktree'])
+        (root / 'review-scratch.txt').write_text('left by the review\n')
+        result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual(state.slots(self.common)[0]['attempt'], 1)
+        self.assertTrue(list((self.common / 'integration-residue').glob('*.patch')))
+
     def test_a_held_review_whose_merge_never_landed_is_offered_again_once(self):
         module, head = self.interrupted_while_main_moved()
         slot = state.slots(self.common)[0]

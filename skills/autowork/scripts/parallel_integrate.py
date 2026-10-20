@@ -670,6 +670,12 @@ def recover_integration(repo, common, slot, contracts):
     verify_scope(repo, common, slot, contracts, files)
     if files != info.get('changed_files'):
         raise ValueError('abandoned integration delta does not match intent')
+    if not landed(repo, info['commit']):
+        # Never landed: remerge on the current head and revalidate, retaining the worker attempt.
+        # The head may have moved, since the runner lands its session beside a running review.
+        # Its integration tree is not needed (a restart left one with a review's files in it):
+        # the next integration keeps what is in it as a patch before reusing it.
+        return None
     # Older intents have no path. Recover only an unambiguous journaled checkout
     # with the exact candidate, including a retained pre-upgrade sibling tree.
     journal = common / 'journal.jsonl'
@@ -687,10 +693,6 @@ def recover_integration(repo, common, slot, contracts):
             candidates.append(root)
     if len(candidates) != 1:
         raise ValueError('abandoned integration tree changed or ambiguous; preserve for diagnosis')
-    if not landed(repo, info['commit']):
-        # Never landed: remerge on the current head and revalidate, retaining the worker attempt.
-        # The head may have moved, since the runner lands its session beside a running review.
-        return None
     validated_receipt(repo, common, slot)
     state.change(common, slot, 'integrated', {})
     return {'outcome': 'INTEGRATED', 'task': slot['task_id'], 'integration': info,
