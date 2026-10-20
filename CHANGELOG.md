@@ -274,6 +274,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A review holds a 100-port block of its own, as each worker does, exported as
+  `$AUTOWORK_PORT_BASE` for the full check and the reviewer. A task whose checks need it
+  failed its review as "fail environment — missing launch-assigned AUTOWORK_PORT_BASE".
 - Integration, recovery and close compare a task's contract without its display-only lines
   (`Short:`, `Priority reason`). Adding `Short:` to every entry left tasks integrated before
   it unable to close, and an interrupted one held for "lacks exact contract evidence".

@@ -464,6 +464,45 @@ class WorkerTmpTests(unittest.TestCase):
 class ReviewScratchTests(unittest.TestCase):
     """Reviewers copied whole repositories into RAM-backed /tmp and left them there."""
 
+    def test_a_review_holds_a_port_block_of_its_own_until_it_ends(self):
+        """A task whose checks bind $AUTOWORK_PORT_BASE failed its review for want of it."""
+        import fcntl
+        with tempfile.TemporaryDirectory() as folder:
+            repo, state = Path(folder) / 'repo', Path(folder) / 'state'
+            subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+            subprocess.run(['git', '-C', str(repo), '-c', 'user.name=t', '-c', 'user.email=t@example.invalid',
+                            'commit', '-q', '--allow-empty', '-m', 'base'], check=True)
+            state.mkdir()
+            dispatch, _, _ = worker.engine_modules()
+            seen = {}
+
+            def held(base):
+                fd = os.open(dispatch.port_lease_dir() / str((base - 20100) // 100 + 1), os.O_RDWR)
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+                    return False
+                except BlockingIOError:
+                    return True
+                finally:
+                    os.close(fd)
+
+            def job(settings, role, task, checkout, prompt, *rest):
+                seen['base'] = int(os.environ['AUTOWORK_PORT_BASE'])
+                seen['held'] = held(seen['base'])
+                return {'ok': True, 'text': 'PI_AUTOWORK_VERIFY: pass all good'}
+
+            old_cwd = os.getcwd()
+            os.chdir(repo)
+            try:
+                with patch.object(worker.pi_runtime, 'job', job), patch.object(worker, 'pending_live', lambda c, t: []), \
+                        patch.dict(os.environ, {'PI_AUTOWORK_REVIEW_ROOT': str(state)}):
+                    self.assertEqual(worker.verify(str(state), 'T-1'), 0)
+            finally:
+                os.chdir(old_cwd)
+            self.assertTrue(seen['held'], 'the review ran without holding its port block')
+            self.assertFalse(held(seen['base']), 'the block stayed leased after the review')
+
     def test_a_review_gets_its_own_tmpdir_which_is_removed_afterwards(self):
         with tempfile.TemporaryDirectory() as folder:
             repo, state = Path(folder) / 'repo', Path(folder) / 'state'
