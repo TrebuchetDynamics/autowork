@@ -17,8 +17,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
-- A batch whose full check fails names its suspects: the candidates whose changes the
-  new failing tests import (transitively) or read by name. They integrate one at a time and
+- A batch whose full check fails names its suspects: the candidates that wrote a line a
+  new failure's traceback ran through (`git blame`), else those whose changes the failing
+  tests import (transitively) or read by name. They integrate one at a time and
   the rest batch again at once; when a failure points at no candidate, or at all of them,
   the batch is halved as before. Halving cost a 20-minute full check per round.
 - Task status reads as one headline plus a detail (TOOLSET-289-71): the fleet table's

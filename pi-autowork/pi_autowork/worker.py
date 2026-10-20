@@ -773,11 +773,61 @@ def imported_files(checkout, start, index, limit=500):
     return found
 
 
+FRAME = re.compile(r'^\s*File "([^"]+)", line (\d+), in ')
+
+
+def tracebacks(log):
+    """{test id: [(path, line)]}: the frames of each failure or error in unittest output."""
+    found, current = {}, None
+    for line in log.splitlines():
+        head = re.match(r'^(?:FAIL|ERROR): \S+ \(([^)]+)\)', line)
+        if head:
+            current = found.setdefault(head[1], [])
+        elif line.startswith(('-----', '=====')) and current is not None and current:
+            current = None
+        elif current is not None and (frame := FRAME.match(line)):
+            current.append((frame[1], int(frame[2])))
+    return found
+
+
+def traceback_blame(checkout, frames, tracked, owner):
+    """The candidates that wrote a line the failure ran through: `git blame` of each frame in a
+    tracked file, by its path inside the checkout (the log may name another chain's copy)."""
+    blamed = set()
+    for path, line in frames:
+        parts = Path(path).parts
+        relative = next(('/'.join(parts[i:]) for i in range(len(parts)) if '/'.join(parts[i:]) in tracked), None)
+        if relative is None:
+            continue  # the standard library or a temporary file
+        out = git(checkout, 'blame', '--porcelain', '-L', f'{line},{line}', 'HEAD', '--', relative) or ''
+        if task := owner(out.split(' ', 1)[0]):
+            blamed.add(task)
+    return blamed
+
+
 def batch_suspects(state, checkout, base, steps):
-    """The batch candidates whose changes the new failing tests import or name:
-    halving a failed batch cost a full check per round. Every failure must point at a candidate,
-    and not all of them may be suspects; otherwise [] and the batch is halved as before."""
+    """The batch candidates a new failing test points at: those that wrote a line its traceback
+    ran through (`git blame`), else those whose changes it imports or reads by name. Halving a
+    failed batch cost a full check per round. Every failure must point at a candidate, and not
+    all of them may be suspects; otherwise [] and the batch is halved as before."""
     failing = new_failures(state, checkout)
+    try:
+        tree = git(checkout, 'rev-parse', 'HEAD^{tree}')
+        record = json.loads((Path(state) / 'full-check' / f'tree-{tree}.json').read_text())
+        frames = tracebacks(Path(record['log']).read_text(errors='replace'))
+    except (OSError, ValueError, KeyError, TypeError):
+        frames = {}
+
+    def contains(commit, rev):
+        return subprocess.run(['git', '-C', str(checkout), 'merge-base', '--is-ancestor', commit, rev],
+                              capture_output=True).returncode == 0
+
+    def owner(commit):
+        """The first candidate whose step brought ``commit``; None for the base's own."""
+        if not re.fullmatch(r'[0-9a-f]{40}', commit) or contains(commit, base):
+            return None
+        return next((task for task, head in steps if contains(commit, head)), None)
+
     files = (git(checkout, 'ls-files') or '').splitlines()
     index = {}
     for path in files:
@@ -790,6 +840,10 @@ def batch_suspects(state, checkout, base, steps):
         before = head
     suspects = set()
     for test in failing:
+        blamed = traceback_blame(checkout, frames.get(test, ()), set(files), owner)
+        if blamed:
+            suspects |= blamed
+            continue
         module = next((part for part in test.split('.') if part.startswith('test')), '')
         reach = set()
         for path in index.get(module, ()):

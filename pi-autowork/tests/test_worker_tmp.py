@@ -816,6 +816,18 @@ class BatchFailureTests(unittest.TestCase):
             self.assertEqual(suspects(['test_a.ATests.test_x', 'test_doc.DocTests.test_y']), ['A', 'C'])
             self.assertEqual(suspects(['test_a.ATests.test_x', 'test_gone.T.test']), [])  # one unexplained
             self.assertEqual(suspects(['test_a.ATests.test_x'], excused=['test_a.ATests.test_x']), [])  # base fails it too
+            # The traceback names the line: B wrote it, though the test imports only A's module.
+            log = Path(folder, 'gate.log')
+            log.write_text('ERROR: test_x (test_a.ATests.test_x)\n' + '-' * 70 + '\nTraceback (most recent call last):\n'
+                           '  File "/var/tmp/aw-b-1-x/chain/tests/test_a.py", line 1, in test_x\n'
+                           '  File "/var/tmp/aw-b-1-x/chain/pkg/b.py", line 1, in <module>\n'
+                           '  File "/usr/lib/python3.12/unittest/case.py", line 58, in testPartExecutor\n'
+                           "AttributeError: 'Coordinator' object has no attribute 'base'\n\n" + '-' * 70 + '\nRan 1 test\n')
+            record.write_text(json.dumps({'result': {'failures': ['test_a.ATests.test_x']}, 'log': str(log)}))
+            self.assertEqual(worker.batch_suspects(str(state), str(repo), base, steps), ['B'])
+            # Only base lines in the traceback: the imports decide.
+            log.write_text(log.read_text().replace('/pkg/b.py', '/pkg/a.py'))
+            self.assertEqual(worker.batch_suspects(str(state), str(repo), base, steps), ['A'])
             record.unlink()
             self.assertEqual(worker.batch_suspects(str(state), str(repo), base, steps), [])  # no record
 
