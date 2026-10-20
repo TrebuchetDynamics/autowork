@@ -810,7 +810,8 @@
         "TOOLSET-285-29",
         "TOOLSET-285-47",
         "TOOLSET-286-32",
-        "TOOLSET-287-44"
+        "TOOLSET-287-44",
+        "TOOLSET-288-cf"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -1723,6 +1724,14 @@
       "section": "Next",
       "status": "open",
       "title": "Harden conflicting-owner-plan journey against fixture races"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-288-cf",
+      "section": "Next",
+      "status": "open",
+      "title": "Two runner tests fail only under full-check load"
     },
     {
       "depends_on": [
