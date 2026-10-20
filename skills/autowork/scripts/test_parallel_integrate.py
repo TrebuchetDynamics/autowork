@@ -1033,6 +1033,20 @@ finally:
         self.assertEqual(state.slots(self.common), [])
         self.assertEqual(self.git('rev-parse', 'autowork/A-set-aside-1'), slot['commit'])
 
+    def test_a_commit_whose_review_was_interrupted_is_set_aside_unless_its_merge_landed(self):
+        """A restart left a commit integrating with no review running, and the owner's request
+        to set it aside was refused while it waited 15 hours for a review."""
+        self.worker('A')
+        slot = state.slots(self.common)[0]
+        path = state.slot_path(self.common, 'A')
+        path.write_text(json.dumps(dict(slot, state='integrating', integration={'commit': self.baseline})))
+        with self.assertRaisesRegex(ValueError, 'already landed'):
+            self.module().set_aside(self.repo, self.owner, 'A')  # its merge is in main: record it, not rerun
+        path.write_text(json.dumps(dict(slot, state='integrating', integration={'commit': slot['commit']})))
+        result = self.module().set_aside(self.repo, self.owner, 'A')
+        self.assertEqual((result['outcome'], result['previous_state']), ('SET_ASIDE', 'integrating'))
+        self.assertEqual(self.git('rev-parse', 'autowork/A-set-aside-1'), slot['commit'])
+
     def test_close_and_set_aside_remove_only_the_retired_slots_temporary_directory(self):
         module = self.module()
         temps = {}

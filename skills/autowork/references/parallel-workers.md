@@ -383,9 +383,12 @@ nothing parallel was claimed or started.
   does and returns `REQUEUED`; the task then dispatches fresh. An entry that was
   removed is retired with `requeued: false`. An unchanged entry stays held. A new
   coordinator claims the lease before these checks, so a one-shot run sees them.
-- **Set aside:** `--parallel-set-aside TASK` retires a held slot with no attempt
-  left, or an integrated one whose TODO entry was rewritten after validation (its
-  merge stays in the main branch; the new entry is new work). Every attempt's
+- **Set aside:** `--parallel-set-aside TASK` retires a finished commit waiting to
+  merge (also one whose review a restart interrupted, unless that merge already
+  landed), a held slot with no attempt left, or an integrated one whose TODO entry
+  was rewritten after validation (its merge stays in the main branch; the new entry
+  is new work). The runner sets aside a commit at the merge adoption limit itself,
+  so its task runs fresh on current main. Every attempt's
   worktree and branch is kept, renamed with `-set-aside-N`, and the slot record and
   data move to `slot-history/TASK/N`; the next refill dispatches the task fresh.
 - **Earlier task work:** [the worker prompt](../scripts/parallel_dispatch.py) lists

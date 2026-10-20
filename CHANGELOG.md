@@ -22,6 +22,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- `--parallel-set-aside` accepts a finished commit whose review a restart interrupted
+  (left `integrating`, no review running), unless that integration's merge already
+  landed in main.
 - A finished commit that reaches the merge adoption limit (three merges with main, each
   after other tasks landed in its files) is set aside and its task runs fresh on current
   main, the new worker shown the earlier branch, instead of becoming an owner question.
