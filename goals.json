@@ -1204,6 +1204,14 @@
     },
     {
       "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-278-91",
+      "section": "Now",
+      "status": "open",
+      "title": "A commit kept without its worker's report resumes that worker, not a batch or the merge resolver"
+    },
+    {
+      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -1714,14 +1722,6 @@
       "section": "Next",
       "status": "open",
       "title": "Every hold cause is a known value with its recovery rule in one table"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-278-91",
-      "section": "Next",
-      "status": "open",
-      "title": "A commit kept without its worker's report resumes that worker, not a batch or the merge resolver"
     },
     {
       "depends_on": [
