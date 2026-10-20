@@ -274,6 +274,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A worker that committed and wrote its report but never exited keeps its commit at the
+  worker timeout: the slot is reported with that commit instead of interrupted. A
+  finished task was discarded twice this way and raised as an owner rescope question.
+
 - A review whose merged tree had a failing test no longer waits hours for a quiet
   rerun: it waits at most `PI_AUTOWORK_QUIET_WAIT` (default 900 s) for this repository's
   main check and a host check slot, then reruns the failures one at a time without one.

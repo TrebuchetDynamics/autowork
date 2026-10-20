@@ -504,6 +504,21 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.assertFalse(state.worker_live(slot))
         self.assertEqual((self.repo / '.worktrees/autowork-A/a.txt').read_text(), 'partial')
 
+    def test_a_worker_that_hangs_after_reporting_keeps_its_commit_at_the_timeout(self):
+        """A worker passed every check, committed and wrote its report, then its session never
+        exited: the timeout discarded the commit twice and asked the owner to rescope the task."""
+        self.write_todo(task('A', 'a.txt'))
+        self.set_spec({'A': {'files': {'a.txt': 'done'}, 'sleep': 0, 'linger': 60}})
+        self.run_cli('--apply', '--parallel', '--worker-timeout', '2')
+        self.wait(20, '--worker-timeout', '2')
+        slot = state.slots(self.common)[0]
+        self.assertEqual(slot['state'], 'reported')
+        head = subprocess.run(['git', '-C', slot['worktree'], 'rev-parse', 'HEAD'], check=True,
+                              capture_output=True, text=True).stdout.strip()
+        self.assertEqual(slot['commit'], head)
+        self.assertIn('kept running after reporting', slot['reason'])
+        self.assertFalse(state.worker_live(slot))
+
     def test_crashed_worker_restarts_once_in_the_same_worktree(self):
         self.write_todo(task('A', 'a.txt'))
         self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 0.1, 'commit': False, 'exit': 1}})
