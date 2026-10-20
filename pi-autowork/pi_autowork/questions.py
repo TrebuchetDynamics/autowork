@@ -81,8 +81,10 @@ def exhausted(row):
                                           or bool(row.get('quick_hold')))
 
 
-def build(snapshot, todo, goals, repairs=()):
-    """Questions from an engine status snapshot, without a model: dicts sorted easiest first."""
+def build(snapshot, todo, goals, repairs=(), resolving=()):
+    """Questions from an engine status snapshot, without a model: dicts sorted easiest first.
+    ``resolving`` names held conflicts the runner's merge resolver still settles by itself: seven
+    such holds were posted as owner questions while three resolvers were clearing them."""
     rows = {r.get('task'): r for r in snapshot.get('tasks') or [] if r.get('task')}
     roots = {r['id']: r for r in snapshot.get('roots') or []}
     found = {}
@@ -130,7 +132,7 @@ def build(snapshot, todo, goals, repairs=()):
             f'{task} — {title}' if title else task, (roots.get(task) or {}).get('blocks', 0))
 
     for task, row in rows.items():
-        if task in found or not exhausted(row):
+        if task in found or task in resolving or not exhausted(row):
             continue
         title = _title(todo, task, goals)
         line = f'{task} — {title}' if title else task
