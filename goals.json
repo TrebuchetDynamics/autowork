@@ -1182,14 +1182,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-272-1c",
-      "section": "Now",
-      "status": "open",
-      "title": "A Touches-only rescope that adds a protected file integrates against the answered contract, or is refused plainly (GitHub #8)"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-273-e0",
       "section": "Now",
       "status": "open",
@@ -3245,6 +3237,14 @@
       "section": "Done",
       "status": "done",
       "title": "A runner never commits or publishes uncommitted changes it did not make (GitHub #3)"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-272-1c",
+      "section": "Done",
+      "status": "done",
+      "title": "A Touches-only rescope that adds a protected file integrates against the answered contract, or is refused plainly (GitHub #8)"
     },
     {
       "depends_on": [],

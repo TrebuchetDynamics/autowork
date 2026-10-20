@@ -4753,3 +4753,26 @@ Source section: Now
 - Ownership: Toolset coordinator.
 - Exclusions: No change to worker-worktree commits (`Left uncommitted in the session worktree`): those are the runner's own.
 - Planner's call (2026-10-19): Now, first. Publishing unreviewed owner work is the one failure that damages the repository rather than throughput. The issue's expected behaviour decides the policy: only planning files keep the quiet-edit sweep; everything else belongs to whoever wrote it.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-272-1c"></a>
+
+### TOOLSET-272-1c — A Touches-only rescope that adds a protected file integrates against the answered contract, or is refused plainly (GitHub #8)
+
+- [x] TOOLSET-272-1c — A Touches-only rescope that adds a protected file integrates against the answered contract, or is refused plainly (GitHub #8)
+- Status: done
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [GitHub #8](https://github.com/TrebuchetDynamics/autowork/issues/8); [state](skills/autowork/scripts/parallel_state.py) (`rescopable`, `rescope`, `rescoped_contract`); [integration](skills/autowork/scripts/parallel_integrate.py) (`verify_scope` reads `dispatched_contract`, the attempt's original `contract.txt`).
+- Evidence (2026-10-19, one fleet runner): a task held for changing `package.json` was rescoped by the owner to declare it. The rescope was accepted, then integration checked the original contract, held it again for the same file and never offered it again; the owner had to cherry-pick the commit by hand.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/test_parallel_state.py
+- Scope: (1) When a slot was rescoped by a Touches-only answer that names the protected path, protected-file admission reads `rescoped_contract`, and the commit integrates serially (nothing else integrating beside it). (2) A rescoped slot that is held again for a path its rescope did not name becomes one owner question that says a rerun or a contract change is needed; it is never left held silently.
+- Acceptance: In fixtures: a commit changing `package.json`, held, then rescoped with `package.json` in `Touches:`, integrates on the next cycle and alone; a rescope that misses the held path gives one question naming that path.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_state.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No admission change for slots that were not rescoped.
+- Planner's call (2026-10-19): Now. An answer the runner accepts must take effect; same shape as 271-d6, so whichever lands second reuses the other's re-offer path.
