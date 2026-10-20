@@ -1607,14 +1607,6 @@
       "title": "Consume claim evidence through bounded repair and exact-target closeout"
     },
     {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-259-ca",
-      "section": "Next",
-      "status": "open",
-      "title": "Plans prefer independent tasks; a long dependency chain needs a reason"
-    },
-    {
       "depends_on": [
         "TOOLSET-222-e1",
         "TOOLSET-228-0c"
@@ -3257,6 +3249,14 @@
       "section": "Done",
       "status": "done",
       "title": "Verified candidates integrate as a batch: one merged tree, one full check, their reviews side by side"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-259-ca",
+      "section": "Done",
+      "status": "done",
+      "title": "Plans prefer independent tasks; a long dependency chain needs a reason"
     },
     {
       "depends_on": [],

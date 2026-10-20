@@ -4963,3 +4963,28 @@ Source section: Now
 - Owner decision: 2026-10-18 — Verify current-history equivalents; keep any old pin whose actual ancestry is unproven. This changes the 138-62 acceptance/history contract and corresponding 139-62 interpretation only; no service operation, reset, remote publication or history rewrite is authorized.
 - History evidence: Fresh read-only ancestry checks find original 3848aaa5eb07aaec97005360a7827b6401f1dc38, 28d38ebb09f2f73a4108a9216e201d250d800364 and de023264547f9f6e248a8bd28c4175174c307a43 outside both main and the observed origin/main ref, contrary to the former task status. Current 34d988b7962c7942c97dcf703ff8fc17b3741db2 and 3504855659952b9a42ea6b6f78310878d0733f42 are ancestors of both observed refs. Original 3848aaa and current 34d988b have stable patch ID c05c5b1c7932ab86d8d3555ec30202f6f4908aa0. Patch equality is not source qualification or runtime pin ancestry; no engine/full-suite tests were run by this planning pass.
 - Next action: Reuse the current implementation and the retained no-change worker report; verify the cited current-history commits against the actual qualification target, inspect one admission path and run the unchanged named engine/full offline checks. Close only from current executed evidence. Do not remerge retained original history, ask the same ancestry question or mark tests passed from patch identity.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-259-ca"></a>
+
+### TOOLSET-259-ca — Plans prefer independent tasks; a long dependency chain needs a reason
+
+- [x] TOOLSET-259-ca — Plans prefer independent tasks; a long dependency chain needs a reason
+- Short: Plans prefer independent tasks
+- Status: done
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [plan](docs/plans/2026-10-19-more-parallel-workers.md) (decision 7); [planning craft](skills/shared/PLANNING-CRAFT.md) (`Plan for an unattended worker`); [docs maintainer](pi-autowork/pi_autowork/maintainer.py) (`PROMPT`).
+- Evidence: across the fleet, dependency waits were the most common reason on every runner but one (2026-10-19 05:30).
+- Touches: skills/shared/PLANNING-CRAFT.md, pi-autowork/pi_autowork/maintainer.py, pi-autowork/tests/test_maintainer.py
+- Scope: (1) The planning craft adds: prefer tasks with disjoint Touches that can run at once; a chain longer than three tasks names why each link depends on the last; split a task that touches unrelated areas. (2) The builder check asks which saved tasks could run in parallel and why the rest cannot. (3) The docs maintainer's re-sort, when it unblocks a chain, prefers splitting off independent parts.
+- Acceptance: The craft and the maintainer prompt contain the rules; the maintainer test asserts the prompt line.
+- Checks: python3 scripts/check.py pi-autowork/tests/test_maintainer.py
+- Dependencies: None.
+- Ownership: Toolset skills.
+- Exclusions: No automatic rewriting of existing plans.
+- Planner's call: the cheapest parallelism is a plan whose tasks do not wait on each other.

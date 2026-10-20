@@ -894,24 +894,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No new scheduler/service/model pool, product scope or acceptance change, credentials, Hermes upgrade, profile/cron changes, unsupported task-format conversion, weakened checks, erased partial work or runtime qualification from fixture passes.
 - Next action: After event identities are wired, extend existing item receipts with source-bound daily accounting and a controlled-clock regression, then replace remaining ID-in-diff reporting with actual parsed body comparison.
 
-### TOOLSET-259-ca — Plans prefer independent tasks; a long dependency chain needs a reason
-
-- [ ] TOOLSET-259-ca — Plans prefer independent tasks; a long dependency chain needs a reason
-- Short: Plans prefer independent tasks
-- Status: open
-- Goal: PI-RUNNER
-- Payoff: Run Autowork continuously through Pi with a model fallback.
-- Sources: [plan](docs/plans/2026-10-19-more-parallel-workers.md) (decision 7); [planning craft](skills/shared/PLANNING-CRAFT.md) (`Plan for an unattended worker`); [docs maintainer](pi-autowork/pi_autowork/maintainer.py) (`PROMPT`).
-- Evidence: across the fleet, dependency waits were the most common reason on every runner but one (2026-10-19 05:30).
-- Touches: skills/shared/PLANNING-CRAFT.md, pi-autowork/pi_autowork/maintainer.py, pi-autowork/tests/test_maintainer.py
-- Scope: (1) The planning craft adds: prefer tasks with disjoint Touches that can run at once; a chain longer than three tasks names why each link depends on the last; split a task that touches unrelated areas. (2) The builder check asks which saved tasks could run in parallel and why the rest cannot. (3) The docs maintainer's re-sort, when it unblocks a chain, prefers splitting off independent parts.
-- Acceptance: The craft and the maintainer prompt contain the rules; the maintainer test asserts the prompt line.
-- Checks: python3 scripts/check.py pi-autowork/tests/test_maintainer.py
-- Dependencies: None.
-- Ownership: Toolset skills.
-- Exclusions: No automatic rewriting of existing plans.
-- Planner's call: the cheapest parallelism is a plan whose tasks do not wait on each other.
-
 ### TOOLSET-260-ae — Every worker on the host takes a slot from one shared worker pool, shared fairly among runners
 
 - [ ] TOOLSET-260-ae — Every worker on the host takes a slot from one shared worker pool, shared fairly among runners
