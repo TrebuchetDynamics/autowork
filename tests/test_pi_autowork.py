@@ -131,7 +131,7 @@ with open(os.environ['FAKE_PI_PLAN'], 'r+') as stream:
 note({'run': behavior, 'role': role, 'task': task, 'provider': opts.get('--provider'), 'model': opts.get('--model'),
       'session': opts.get('--session-id'), 'cwd': os.getcwd(), 'tools': opts.get('--tools'),
       'execution_common': os.environ.get('AUTOWORK_EXECUTION_COMMON'),
-      'no_approve': '--no-approve' in args, 'message': message})
+      'no_approve': '--no-approve' in args, 'message': message, 'prompt': prompt})
 def emit(record):
     print(json.dumps(record), flush=True)
 def finish(stop='stop', text='', error=None):
@@ -272,7 +272,14 @@ elif role == 'maintainer':
         git('add', 'A.txt'); git('commit', '-qm', 'not allowed')
     finish(text='PI_AUTOWORK_RESULT: completed A')
 elif role == 'triage':
-    if behavior == 'answer':
+    if behavior == 'answer_main':
+        evidence = os.environ.get('AUTOWORK_MAIN_EVIDENCE', '')
+        bundle = os.path.join(evidence, 'abc123')
+        if '$AUTOWORK_MAIN_EVIDENCE' in message and os.path.isfile(os.path.join(bundle, 'main-check.log')):
+            finish(text='PI_AUTOWORK_TRIAGE: answer\nRead the runner evidence at ' + bundle)
+        else:
+            finish(text='PI_AUTOWORK_TRIAGE: owner\nCannot find the main-check log.')
+    elif behavior == 'answer':
         finish(text='Read the report.\nPI_AUTOWORK_TRIAGE: answer\nYour ports are yours alone; no receipt exists. Proceed.')
     else:
         finish(text='PI_AUTOWORK_TRIAGE: owner\nA person must attach the device.')
@@ -369,6 +376,9 @@ elif behavior == 'push':
     pushed = git('push', 'origin', 'HEAD:refs/heads/pushed')
     open(os.environ['FAKE_PI_ROOT'] + '/push.rc', 'w').write(str(pushed.returncode))
     work(); finish(text='done')
+elif behavior == 'needs_main_log':
+    report(None, ['the full log of the red MAIN, including exit code and isolated rerun output'])
+    finish(text='blocked')
 elif behavior == 'blocked':
     report(None, ['needs a device'])
     finish(text='blocked')
@@ -1001,7 +1011,11 @@ class EngineTests(Fixture):
         self.assertIn('(test_other.OtherTests.test_broken)', log())
         self.assertIn('DOCS-MAINTAINER: repairing the task docs of MAIN', log())
         self.assertIn('Main is green again at', log())
-        self.assertEqual(len(self.runs("maintainer")), 1, log())  # one repair for one set of failures
+        maintenance = self.runs('maintainer')
+        self.assertEqual(sum(run['run'] == 'repair_main' for run in maintenance), 1, log())
+        bundles = [re.search(r'; evidence bundle: ([^\n]+)', run['message'])[1] for run in maintenance]
+        self.assertEqual(len(bundles), len(set(bundles)), log())  # at most one refresh per checked revision
+        self.assertEqual(self.git(self.repo, 'log', '--format=%s').count('docs(tasks): FIX repairs the red main'), 1)
 
     def test_a_long_review_runs_beside_the_loop_so_other_work_starts(self):
         """TOOLSET-183-d6: a 25-minute review idled a whole runner: no dispatch, no status."""
@@ -1657,13 +1671,19 @@ class EngineTests(Fixture):
 
     def test_a_blocker_the_runner_can_answer_resumes_the_attempt_without_a_question(self):
         """Most worker blockers asked the runner for what it already provides and waited for the owner."""
-        self.plan({'worker:A': ['blocked', 'complete'], 'triage:A': ['answer']})
+        bundle = self.repo / '.git/autowork-execution/main-evidence/abc123'
+        bundle.mkdir(parents=True)
+        (bundle / 'main-check.log').write_text('original main failure\n')
+        self.plan({'worker:A': ['needs_main_log', 'complete'], 'triage:A': ['answer_main']})
         result = self.run_runner('--until-empty')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('A: the runner answered its blocker; resuming its attempt', result.stdout)
         self.assertTrue(self.done('A', 'B', 'C'))
         resumed = [r for r in self.runs('worker') if r['task'] == 'A']
         self.assertEqual(len(resumed), 2)
+        self.assertIn(str(bundle), resumed[-1]['prompt'])
+        self.assertEqual(len(self.runs('triage')), 1)
+        self.assertNotIn('### Q-A ', (self.repo / 'BLOCKERS.md').read_text() if (self.repo / 'BLOCKERS.md').exists() else '')
         self.assertNotIn('autowork/A-r2', self.git(self.repo, 'branch', '--list', 'autowork/*'))  # same attempt
 
     def test_a_blocker_only_a_person_can_resolve_stays_a_question(self):

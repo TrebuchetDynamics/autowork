@@ -293,6 +293,12 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None,
         '  a missing fixture) is yours to repair, as a separate commit on this branch. A missing input',
         '  the task\'s sources say how to make, you make. If blocked, report commit null with',
         '  blockers and stop.',
+        '- For a task repairing red or flaky main, read $AUTOWORK_MAIN_EVIDENCE/<revision>/:',
+        '  the runner provides main_check.json (revision, last green, failures and commits),',
+        '  main-check.log, main-check.exit, main-check-reruns.log (isolated commands, exit codes',
+        '  and output), and flaky_history.json. The parent keeps the latest five revisions.',
+        '  Never ask a person for these logs, exit codes or rerun outputs. Read them in place;',
+        '  do not copy the evidence into worktrees or commits, or modify it.',
         '- "pending_live" lists checks you cannot run here: physical devices, production or live',
         '  services, hardware, or human review. They become a separate live task and do not hold',
         '  this one; never list them as blockers or as failed checks.',
@@ -617,7 +623,7 @@ def launch(argv, worktree, data, slot_index, stdin_path):
     cache.mkdir(exist_ok=True, mode=0o700)
     base, lease = port_lease(slot_index)
     env.update(TMPDIR=temporary, TMP=temporary, TEMP=temporary, AUTOWORK_CACHE=str(cache), AUTOWORK_SLOT=str(slot_index),
-               AUTOWORK_PORT_BASE=str(base))
+               AUTOWORK_PORT_BASE=str(base), AUTOWORK_MAIN_EVIDENCE=str(data.parents[2] / 'main-evidence'))
     env[state.WORKER_MARKER] = str(Path(worktree).resolve())
     try:
         with open(data / 'worker.log', 'ab') as log, open(stdin_path, 'rb') as stdin:

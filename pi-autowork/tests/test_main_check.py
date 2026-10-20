@@ -81,6 +81,65 @@ class MainCheckTests(unittest.TestCase):
                     self.assertEqual((tests / 'ran').exists(), bool(want))
                     self.assertFalse((root / 'ran').exists())
 
+    def test_red_main_publishes_read_only_evidence_and_keeps_the_last_five_revisions(self):
+        from pi_autowork.coordinator import Coordinator
+        from pi_autowork.common import git, git_ok
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo, state = root / 'repo', root / 'state'
+            repo.mkdir()
+            state.mkdir()
+            self.assertTrue(git_ok(repo, 'init', '-q'))
+            runner = Coordinator.__new__(Coordinator)
+            runner.repo, runner.state = repo, state
+            runner.maintain = lambda **_: None
+            (repo / 'test_sample.py').write_text(
+                'import unittest\nclass Sample(unittest.TestCase):\n'
+                '    def test_fail(self): self.fail("still broken")\n')
+            log = state / 'main-check.log'
+            log.write_text('FAIL: test_fail (test_sample.Sample.test_fail)\n'
+                           'Ran 1 test in 0.01s\n\nFAILED (failures=1)\n')
+            (state / 'main-check.exit').write_text('1\n')
+            common = Path(git(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir'))
+            evidence = common / 'autowork-execution/main-evidence'
+            try:
+                for index in range(7):
+                    rev = f'{index:040x}'
+                    main_check.rerun_failures(log, repo, state / 'main-check-reruns.json', rev)
+                    runner.finish_main_check(dict(rev=rev, green='last-green'))
+                    bundle = evidence / rev
+                    self.assertEqual(main_check.read(state)['evidence'], str(bundle))
+                    saved = json.loads((bundle / 'main_check.json').read_text())
+                    self.assertEqual((saved['rev'], saved['green'], saved['state']), (rev, 'last-green', 'red'))
+                    self.assertEqual((bundle / 'main-check.log').read_text(), log.read_text())
+                    self.assertEqual((bundle / 'main-check.exit').read_text(), '1\n')
+                    reruns = (bundle / 'main-check-reruns.log').read_text()
+                    self.assertIn('-m unittest test_sample.Sample.test_fail', reruns)
+                    self.assertIn('exit code: 1', reruns)
+                    self.assertIn('still broken', reruns)
+                    self.assertEqual(json.loads((bundle / 'flaky_history.json').read_text()), {})
+                    self.assertFalse(bundle.stat().st_mode & 0o222)
+                    self.assertTrue(all(not path.stat().st_mode & 0o222 for path in bundle.iterdir()))
+                self.assertEqual(sorted(path.name for path in evidence.iterdir()),
+                                 [f'{index:040x}' for index in range(2, 7)])
+                # A recheck of the same revision replaces its snapshot, not a sixth directory.
+                (state / 'main-check.exit').write_text('0\n')
+                runner.finish_main_check(dict(rev=rev))
+                self.assertEqual(json.loads((bundle / 'main_check.json').read_text())['state'], 'green')
+                self.assertEqual((bundle / 'main-check-reruns.log').read_text(), '')
+                log.write_text('Fatal error\n')
+                (state / 'main-check.exit').write_text('137\n')
+                (state / 'main-check-reruns.log').unlink()
+                runner.finish_main_check(dict(rev=rev))
+                crashed = json.loads((bundle / 'main_check.json').read_text())
+                self.assertEqual(crashed['state'], 'recheck')
+                self.assertEqual(crashed['checked_rev'], rev)
+            finally:
+                if evidence.exists():
+                    for path in evidence.iterdir():
+                        path.chmod(0o700)  # allow TemporaryDirectory to remove read-only snapshots
+
     def test_three_distinct_flaky_revisions_make_one_hardening_trigger(self):
         from pi_autowork import maintainer
         from pi_autowork.coordinator import Coordinator
@@ -349,7 +408,10 @@ class MainCheckTests(unittest.TestCase):
                 children.append(process)  # retain Popen while the coordinator adopts/reaps its persisted PID
                 return process
 
-            with patch('pi_autowork.coordinator.git', return_value='abc123'), \
+            def git_result(repo, *args):
+                return str(root / 'common') if '--git-common-dir' in args else 'abc123'
+
+            with patch('pi_autowork.coordinator.git', side_effect=git_result), \
                     patch('subprocess.Popen', side_effect=launch), patch('os.getloadavg', return_value=(0, 0, 0)):
                 try:
                     with main_check.check_slot(lambda _: None):

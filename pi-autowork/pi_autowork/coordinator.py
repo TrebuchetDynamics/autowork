@@ -84,7 +84,12 @@ TRIAGE_PROMPT = (
     '$AUTOWORK_PORT_BASE to +99 are leased to it alone on this host; its $TMPDIR is private and on disk; its '
     'baseline is the session\'s current HEAD; other tasks\' overlapping work merges at integration, in priority '
     'order; the runner verifies an idle in_progress claim before adopting it; the runner\'s review runs the full '
-    'check on the merged tree and tells new failures from old and flaky ones. No coordinator receipt, handoff, '
+    'check on the merged tree and tells new failures from old and flaky ones. The runner also provides '
+    '$AUTOWORK_MAIN_EVIDENCE/<revision>/ for main checks: main_check.json (revision, last green, failures '
+    'and commits), main-check.log, main-check.exit, main-check-reruns.log (isolated commands, exit codes '
+    'and output), and flaky_history.json, retaining the latest five revisions. Read these bundles in place '
+    'and answer a request for main-check logs or reruns with the relevant bundle path, not a question for '
+    'a person. Do not copy evidence into worktrees or commits. No coordinator receipt, handoff, '
     'source refresh, registry or verification exists beyond these: the worker proceeds without one. A defect '
     'already in the baseline that stops a required check (a broken or unparsable test, a missing fixture, a '
     'stale generated file) is the worker\'s to repair as a separate commit on its branch. A missing input whose '
@@ -517,7 +522,9 @@ class Coordinator:
         Do not replace TMPDIR or sanitize the marker in descendants: checks and fake
         agents they launch are runner work too, wherever their working directory is.
         """
-        return dict(os.environ, AUTOWORK_EXECUTION_COMMON=str(self.cfg['git_common']), **overrides)
+        return dict(os.environ, AUTOWORK_EXECUTION_COMMON=str(self.cfg['git_common']),
+                    AUTOWORK_MAIN_EVIDENCE=str(Path(self.cfg['git_common']) / 'autowork-execution/main-evidence'),
+                    **overrides)
 
     # --- Pi -------------------------------------------------------------------------
     def pi_job(self, role, task, directory, message, session, limit, extra=()):
@@ -1814,6 +1821,7 @@ class Coordinator:
         done, reruns = self.state / 'main-check.exit', self.state / 'main-check-reruns.json'
         done.unlink(missing_ok=True)
         reruns.unlink(missing_ok=True)
+        reruns.with_suffix('.log').unlink(missing_ok=True)
         retry = shlex.join([sys.executable, str(Path(main_check.__file__).resolve()),
                             str(self.state / 'main-check.log'), path, str(reruns), rev])
         # Finish retries before publishing the receipt: reloads can adopt the job,
@@ -1844,6 +1852,13 @@ class Coordinator:
         if tmp and Path(tmp).name.startswith('aw-main-'):
             shutil.rmtree(tmp, ignore_errors=True)
         rev, green = record.get('rev', ''), record.get('green')
+
+        def finished(value):
+            common = git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+            if common and rev and code is not None:
+                main_check.publish_evidence(self.state, common, rev, value)
+            return main_check.write(self.state, value)
+
         history = record.get('flaky_history') or {}
         # The receipt can precede bash's exit. Retain its identity until a later cycle reaps it.
         child = {k: record[k] for k in ('pid', 'start_time') if k in record}
@@ -1877,12 +1892,12 @@ class Coordinator:
             # a second crash is a broken check, not a red main.
             crash = main_check.crash_line(log_text)
             if record.get('crashed') != rev:
-                main_check.write(self.state, dict(state='recheck', rev='', crashed=rev, green=green,
+                finished(dict(state='recheck', rev='', crashed=rev, green=green,
                                                   failures=record.get('failures'), red_since=record.get('red_since'),
                                                   flaky_history=history, **child))
                 LOG.say(f'The main check at {rev[:7]} crashed before any test result ({crash}); checking it once more')
                 return
-            main_check.write(self.state, dict(state='broken', rev=rev, green=green, crash=crash, finished=time.time(),
+            finished(dict(state='broken', rev=rev, green=green, crash=crash, finished=time.time(),
                                               failures=record.get('failures'), red_since=record.get('red_since'),
                                               flaky_history=history, **child))
             LOG.say(f'The main check is broken at {rev[:7]}: it crashed twice before any test result ({crash})')
@@ -1892,14 +1907,14 @@ class Coordinator:
         if not failures and skipped and record.get('gated') != rev:
             # A busy host skipped some tests (TOOLSET-193-54): check this revision once more when
             # the load allows (check_main waits for it) before calling it green.
-            main_check.write(self.state, dict(state='recheck', rev='', gated=rev, green=green,
+            finished(dict(state='recheck', rev='', gated=rev, green=green,
                                               failures=record.get('failures'), red_since=record.get('red_since'),
                                               flaky=flaky, flaky_history=history, **child))
             LOG.say(f'Main at {rev[:7]} passed, but the busy host skipped {skipped} test(s); '
                     'checking it again when the load allows')
             return
         if not failures:
-            main_check.write(self.state, dict(state='green', rev=rev, green=rev, finished=time.time(),
+            finished(dict(state='green', rev=rev, green=rev, finished=time.time(),
                                               flaky=flaky, flaky_history=history, **child))
             if record.get('failures'):
                 LOG.say(f'Main is green again at {rev[:7]}')
@@ -1910,7 +1925,7 @@ class Coordinator:
             return
         commits = (git(self.repo, 'log', '--format=%h %s', '-20', f'{green}..{rev}' if green else rev) or '').splitlines()
         red_since = record.get('red_since') if record.get('failures') else rev
-        main_check.write(self.state, dict(state='red', rev=rev, green=green, failures=failures, commits=commits,
+        finished(dict(state='red', rev=rev, green=green, failures=failures, commits=commits,
                                           red_since=red_since or rev, finished=time.time(),
                                           flaky=flaky, flaky_history=history, **child))
         LOG.say(f'Main is red at {rev[:7]}: {len(failures)} failing ({", ".join(failures[:3])}'
@@ -1960,6 +1975,10 @@ class Coordinator:
             goals, dispatch = touches_inference.modules(self.toolset)
             before = maintainer.entries((Path(self.integ) / 'TODO.md').read_text(), goals)
         reasons = {r['task']: r.get('reason') or '' for r in rows if r.get('task')}
+        history = maintainer.last(self.state)
+        found = [item for item in found if not maintainer.own_main_refresh(
+            self.repo, item, history.get('items', {}).get(maintainer.item_key(item), {}),
+            main.get('rev'), history.get('main_edits', []))]
         found = maintainer.pending(self.state, found, entries=before, reasons=reasons)
         if not found:
             return False
@@ -2019,7 +2038,8 @@ class Coordinator:
                        or (task in ('MAIN', 'LEDGER') and task in changed)]
             self.snapshot = None  # waiting reasons must be reread against the repaired entries
         maintainer.remember(self.state, trigger_key=trigger_key, found=found, outcome=outcome, changed=changed,
-                            entries=after, before=before, reasons=reasons)
+                            entries=after, before=before, reasons=reasons,
+                            main_edit=(base, head) if outcome == 'merged' else ())
         LOG.say(f'{maintainer.ROLE}: {outcome}' + (f'; changed {", ".join(changed)}' if changed else ''))
         if self.ledger_errors:
             if outcome == 'merged':
