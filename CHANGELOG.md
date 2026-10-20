@@ -321,6 +321,12 @@ claim of a tagged release, completed installation or live workflow qualification
   (`target/`, `build/`, `.dart_tool/` that Git ignores): it is removed first. Kept for
   `.dart_tool/` alone, a session never rotated and said so every cycle; a session kept for
   other files now says so once.
+- A commit whose review a restart cut short (left integrating) joins the next batch like a
+  reported one. Only reported commits were batched, and batches go first, so three such
+  commits waited behind every later batch, one for 16 hours.
+- A held merge conflict that the runner's resolver is settling, or will take next, is not
+  posted as an owner question in BLOCKERS.md. It is asked once its resolution fails or its
+  three merges are spent. Seven were posted while three resolvers were clearing them.
 - Host check slots admit a review's suites before background main checks waiting with
   them; a main check that has waited 30 minutes takes its turn with reviews. Every
   runner's main check held the slots while reviews that land work waited behind them.
