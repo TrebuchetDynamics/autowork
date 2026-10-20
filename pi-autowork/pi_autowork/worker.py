@@ -707,7 +707,7 @@ def review(state, task, checkout, head_before, gate=''):
                             + (CACHE.format(path=cache) if cache else '') + (
                                 LIVE.format(items='; '.join(live)) if (live := pending_live(checkout, task)) else NO_LIVE),
                             f'pi-autowork-verify-{safe_name(task)}-{datetime.now():%Y%m%d%H%M%S}',
-                            f"{setting('PI_AUTOWORK_VERIFY_TIMEOUT', 1800, float):g}",
+                            f"{(limit := setting('PI_AUTOWORK_VERIFY_TIMEOUT', 1800, float)):g}",
                             ['--tools', 'read,bash,grep,find,ls'])
     if dirty(checkout) or git(checkout, 'rev-parse', 'HEAD') != head_before:
         # Checked first: its verdict is void, so it neither clears nor records findings or a marker.
@@ -739,6 +739,13 @@ def review(state, task, checkout, head_before, gate=''):
         findings_path(state, task).unlink(missing_ok=True)
     if result['ok'] and verdict == 'pass':
         return 0
+    if not verdict:
+        # Why there is no verdict, for the hold: a review that ran out of time is reviewed again with
+        # a longer limit (the engine's timeout cause), not reimplemented by a fresh worker.
+        why = result.get('why') or ('' if result['ok'] else 'failed')
+        print('AUTOWORK_HOLD_REASON: ' + (f'the review ran out of time after {limit:g} s' if why == 'timeout'
+                                          else f'the reviewer did not finish ({why})' if why
+                                          else 'the reviewer gave no verdict'), flush=True)
     print(f'pi-autowork: review of {task}: {verdict or "no verdict"} {line[:200]}', file=sys.stderr)
     return 1
 

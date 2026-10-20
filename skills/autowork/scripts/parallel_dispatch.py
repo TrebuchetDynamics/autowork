@@ -901,9 +901,12 @@ def merge_backlog(common, current, *, workers, now=None, env=os.environ):
     now = time.time() if now is None else now
     age = max(0, now - min(since.values())) if since else 0
     result.update(paused=paused or bool(since and age >= limits['MERGE_BACKLOG_AFTER']), oldest_seconds=age)
-    held = [s for s in queued.values() if s.get('writers_busy_reason')]
+    # Only a hold that is still open explains the backlog. Replaying a reason kept on a
+    # slot whose window closed long ago announced a writer that had already left.
+    held = [s for s in queued.values()
+            if s.get('writers_busy_reason') and state.writers_busy(s, now)]
     if held:
-        result['reason'] = max(held, key=lambda s: s.get('writers_busy_at', 0))['writers_busy_reason']
+        result['reason'] = max(held, key=lambda s: s.get('writers_busy_at') or 0)['writers_busy_reason']
     return result
 
 

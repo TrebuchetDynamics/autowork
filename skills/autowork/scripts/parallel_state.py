@@ -141,6 +141,20 @@ def release(repo, owner_pid):
     return {'outcome': 'RELEASED'}
 
 
+# A reported commit refused for a live writer steps aside in priority order for this long,
+# so one waiting candidate never holds back the rest (TOOLSET-223-8e).
+WRITERS_BUSY_SKIP = 600
+
+
+def writers_busy(slot, now=None):
+    """A reported task refused for a live writer is skipped for a bounded window."""
+    try:
+        stamp = float(slot.get('writers_busy_at'))
+    except (TypeError, ValueError):
+        return False
+    return (time.time() if now is None else now) - stamp < WRITERS_BUSY_SKIP
+
+
 def slot_path(common, task):
     if not isinstance(task, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', task):
         raise ValueError('invalid slot task identifier')

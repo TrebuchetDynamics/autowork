@@ -219,30 +219,54 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(module.reverify(self.repo, self.owner, 'A', 'r1.t3600')['outcome'], 'REVERIFY')
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
 
-    def test_fresh_unknown_session_blocks_integration_before_writes(self):
+    def test_a_session_in_the_checkout_does_not_block_a_merge_it_does_not_touch(self):
+        """A person's session in the canonical checkout is not a writer unless it holds or
+        has changed one of the files the merge writes (user sessions never gate the runner)."""
         self.worker()
         self.agent_process()
+        result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual((self.repo / 'A.txt').read_text(), 'worker\n')
+
+    def test_a_session_holding_a_written_file_still_waits(self):
+        self.worker()
+        self.holder(self.repo / 'A.txt')
         result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
         self.assertEqual(result['outcome'], 'BUSY', result)  # no verdict: the commit waits
         self.assertEqual(state.slot_path(self.common, 'A').exists() and state.slots(self.common)[0]['state'], 'reported')
         self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
         self.assertFalse((self.repo / '.worktrees/autowork-integration').exists())
 
-    def test_session_appearing_during_validation_blocks_landing(self):
+    def test_session_appearing_during_validation_holds_only_the_files_it_holds(self):
         self.worker()
         module = self.module()
         original = execution.bounded_command
         from unittest.mock import patch
         def validate(*args, **kwargs):
             result = original(*args, **kwargs)
-            self.agent_process()
+            self.agent_process()  # appears but holds none of A's files
+            return result
+        with patch.object(execution, 'bounded_command', side_effect=validate):
+            result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual((self.repo / 'A.txt').read_text(), 'worker\n')
+
+    def test_session_appearing_during_validation_holding_a_changed_file_blocks_landing(self):
+        self.worker()
+        module = self.module()
+        original = execution.bounded_command
+        holders = []
+        from unittest.mock import patch
+        def validate(*args, **kwargs):
+            result = original(*args, **kwargs)
+            holders.append(self.holder(self.repo / 'A.txt'))
             return result
         with patch.object(execution, 'bounded_command', side_effect=validate):
             result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
         self.assertEqual(result['outcome'], 'BUSY', result)
         self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
         self.assertEqual(state.slots(self.common)[0]['state'], 'integrating')  # kept for revalidation
-        for proc in self.sessions:
+        for proc in holders:
             proc.kill(); proc.wait()
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
 
@@ -372,16 +396,14 @@ class IntegrationTests(unittest.TestCase):
         held.wait()
         self.assertEqual(module.close(session, self.owner, 'A')['outcome'], 'CLOSED')
 
-    def test_fresh_session_blocks_close_without_task_writes(self):
+    def test_a_session_in_the_checkout_does_not_block_a_close_it_does_not_touch(self):
+        """A session that holds none of the close's files is not a writer for it."""
         self.worker()
         module = self.module()
         module.integrate(self.repo, self.owner, 'A', ['true'], 10)
-        before = (self.repo / 'TODO.md').read_bytes()
         self.agent_process()
-        with self.assertRaisesRegex(ValueError, 'writer|session'):
-            module.close(self.repo, self.owner, 'A')
-        self.assertEqual((self.repo / 'TODO.md').read_bytes(), before)
-        self.assertFalse((self.repo / 'TODO.archive.md').exists())
+        self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
+        self.assertTrue((self.repo / 'TODO.archive.md').exists())
 
     def test_a_close_that_fails_after_writing_leaves_no_writes(self):
         """bravo TASK-010: a close failed after archiving and its writes stayed in the
@@ -405,7 +427,7 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(state.slots(self.common)[0]['state'], 'integrated')  # retryable
         self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
 
-    def test_session_appearing_during_close_checks_blocks_first_task_write(self):
+    def test_session_appearing_holding_a_close_file_blocks_first_task_write(self):
         self.worker()
         module = self.module()
         module.integrate(self.repo, self.owner, 'A', ['true'], 10)
@@ -414,7 +436,7 @@ class IntegrationTests(unittest.TestCase):
         from unittest.mock import patch
         def checked(*args):
             result = original(*args)
-            self.agent_process()
+            self.holder(self.repo / 'TODO.md')
             return result
         with patch.object(module, 'validated_receipt', side_effect=checked):
             with self.assertRaisesRegex(ValueError, 'writer|session'):
@@ -450,6 +472,11 @@ class IntegrationTests(unittest.TestCase):
         self.assertFalse(module.touches_none_of(worker, ['A.txt'], main))
         worker['written'] = [main + '/TODO.md']  # held open for writing still blocks
         self.assertFalse(module.touches_none_of(worker, ['TODO.md'], main))
+        # Other checkouts the same session also has open do not widen the comparison.
+        worker['written'] = []
+        worker['workspaces'] = [main, str(self.repo / '.worktrees/elsewhere')]
+        self.assertTrue(module.touches_none_of(worker, ['B.txt'], main))
+        self.assertFalse(module.touches_none_of(worker, ['A.txt'], main))
 
     def test_a_refused_candidate_records_the_writer_window_on_its_slot(self):
         """TOOLSET-223-8e: a WritersBusy refusal is remembered on the slot, not only in memory."""
@@ -1376,6 +1403,14 @@ finally:
                     self.assertEqual(changes[-1], sorted([field, 'Touches']))
                 finally:
                     state.slot_path(self.common, task).unlink(missing_ok=True)
+
+    def test_a_reviewer_that_ran_out_of_time_is_a_timeout_hold(self):
+        """A fresh worker reimplemented a finished 90-minute task because its review ran out of time."""
+        self.worker()
+        argv = ['bash', '-c', 'echo "AUTOWORK_HOLD_REASON: the review ran out of time after 1800 s"; exit 1']
+        result = self.module().integrate(self.repo, self.owner, 'A', argv, 10)
+        self.assertEqual((result['outcome'], result.get('cause')), ('HELD', 'timeout'), result)
+        self.assertIn('the review ran out of time after 1800 s', state.slots(self.common)[0]['reason'])
 
     def test_a_validation_hold_is_reverified_once_per_reviewer_version(self):
         """A changed verdict earns another look; the same failure, apart from SHAs, does not."""
