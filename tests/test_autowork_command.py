@@ -188,6 +188,18 @@ class AutoworkCommandTests(unittest.TestCase):
         self.assertIn('ALPHA-1', one.stdout)
         self.assertNotIn('BETA-2', one.stdout)
 
+    def test_blockers_starts_the_agent_in_the_repository(self):
+        """From the TUI or the home directory, Claude Code asked to trust the whole home
+        directory: the agent ran where autowork was started, not in the repository."""
+        agent = self.base / 'agent'
+        agent.write_text('#!/usr/bin/env bash\npwd > "$0.cwd"; printf %s "$*" > "$0.args"\n')
+        agent.chmod(0o755)
+        result = subprocess.run([str(AUTOWORK), 'blockers', str(self.repo)], cwd=self.base,
+                                env={**self.env, 'AUTOWORK_AGENT': str(agent)}, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(Path(str(agent) + '.cwd').read_text().strip(), str(self.repo.resolve()))
+        self.assertEqual(Path(str(agent) + '.args').read_text(), f'/blockers {self.repo.resolve()}')
+
     def test_update_runs_the_configured_installer(self):
         installer = self.base / 'bin' / 'install.sh'
         installer.write_text('#!/usr/bin/env bash\necho "install.sh $*" >> "$FAKE_LOG"\n')

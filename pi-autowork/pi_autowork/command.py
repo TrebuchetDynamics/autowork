@@ -400,6 +400,9 @@ def cmd_blockers(args, paths):
     agent = fleet_view.blockers_agent()
     if not agent:
         raise Fail('no agent for /blockers: install claude or pi, or set AUTOWORK_AGENT')
+    # In the repository: started from the TUI or the home directory, Claude Code asked whether
+    # to trust the whole home directory, and the session was not the repository's.
+    os.chdir(repo)
     os.execvp(agent[0], [*agent, fleet_view.blockers_prompt(agent, repo)])
 
 
