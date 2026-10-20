@@ -237,6 +237,11 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None,
         'selection, start other Autowork workers, or pick other tasks. You may use your host\'s',
         'own subagents for this task.',
         '',
+        'No person is attached to this session, and nobody will answer a question. This task\'s',
+        'contract is its approved design: when a skill or process asks for approval, confirmation or',
+        'a choice, take the contract as that approval and continue. Stop only for a real blocker, and',
+        'write it in the report.',
+        '',
         'Rules:',
         f'- Work only inside {worktree}. Touches names the paths this task is expected to change: {touches}.',
         '  It guides scheduling, not a fence: change whatever else the task truly needs, keeping the',
@@ -291,6 +296,12 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None,
         '  blockers and stop.',
         '  When the ONLY missing input is another open task landing, write "Needs TASK-ID to land."',
         '  List any additional owner input as a separate blocker; never hide it in a task wait.',
+        '- For a task repairing red or flaky main, read $AUTOWORK_MAIN_EVIDENCE/<revision>/:',
+        '  the runner provides main_check.json (revision, last green, failures and commits),',
+        '  main-check.log, main-check.exit, main-check-reruns.log (isolated commands, exit codes',
+        '  and output), and flaky_history.json. The parent keeps the latest five revisions.',
+        '  Never ask a person for these logs, exit codes or rerun outputs. Read them in place;',
+        '  do not copy the evidence into worktrees or commits, or modify it.',
         '- "pending_live" lists checks you cannot run here: physical devices, production or live',
         '  services, hardware, or human review. They become a separate live task and do not hold',
         '  this one; never list them as blockers or as failed checks.',
@@ -623,7 +634,7 @@ def launch(argv, worktree, data, slot_index, stdin_path):
     cache.mkdir(exist_ok=True, mode=0o700)
     base, lease = port_lease(slot_index)
     env.update(TMPDIR=temporary, TMP=temporary, TEMP=temporary, AUTOWORK_CACHE=str(cache), AUTOWORK_SLOT=str(slot_index),
-               AUTOWORK_PORT_BASE=str(base))
+               AUTOWORK_PORT_BASE=str(base), AUTOWORK_MAIN_EVIDENCE=str(data.parents[2] / 'main-evidence'))
     env[state.WORKER_MARKER] = str(Path(worktree).resolve())
     try:
         with open(data / 'worker.log', 'ab') as log, open(stdin_path, 'rb') as stdin:
@@ -701,6 +712,29 @@ def timeout_activity(common, slot, now):
         return ''
 
 
+def reported_commit(common, slot):
+    """The commit this attempt's report.json names when it is the clean branch tip, or None.
+
+    A worker whose session did not exit after it committed and reported has finished: a
+    fleet task's worker passed every check and wrote its report, then hung for 70 minutes,
+    and the timeout discarded the commit twice and asked the owner to rescope the task."""
+    try:
+        report = execution.read(data_dir(common, slot) / 'report.json')
+        root = execution.safe_path(slot['worktree'])
+        head = execution.git(root, 'rev-parse', 'HEAD')
+        if (not isinstance(report, dict) or report.get('task') != slot['task_id'] or not head
+                or head == slot['baseline'] or report.get('blockers')
+                or execution.git(root, 'status', '--porcelain', '--untracked-files=no')
+                or execution.git(root, 'merge-base', slot['baseline'], head) != slot['baseline']):
+            return None
+        named = report.get('commit')
+        if not isinstance(named, str) or len(named) < 7 or not head.startswith(named):
+            return None
+        return head
+    except (ValueError, OSError):
+        return None
+
+
 def enforce_timeouts(repo, owner_pid, common, default_timeout):
     """Each worker keeps the timeout it was started with (saved in its meta.json)."""
     stopped = []
@@ -710,6 +744,12 @@ def enforce_timeouts(repo, owner_pid, common, default_timeout):
                 and time.time() - slot['started_at'] > limit):
             activity = timeout_activity(common, slot, time.time())
             stop(slot['worker'], slot['worktree'])
+            commit = reported_commit(common, slot)
+            if commit:
+                stopped.append(state.transition(
+                    repo, owner_pid, slot['task_id'], 'reported', commit=commit,
+                    reason=f'its worker kept running after reporting this commit; stopped at the {limit:g} s timeout'))
+                continue
             stopped.append(state.transition(repo, owner_pid, slot['task_id'], 'interrupted',
                                             reason=f'worker timeout after {limit:g} s' + activity))
     return stopped
@@ -912,9 +952,12 @@ def merge_backlog(common, current, *, workers, now=None, env=os.environ):
     now = time.time() if now is None else now
     age = max(0, now - min(since.values())) if since else 0
     result.update(paused=paused or bool(since and age >= limits['MERGE_BACKLOG_AFTER']), oldest_seconds=age)
-    held = [s for s in queued.values() if s.get('writers_busy_reason')]
+    # Only a hold that is still open explains the backlog. Replaying a reason kept on a
+    # slot whose window closed long ago announced a writer that had already left.
+    held = [s for s in queued.values()
+            if s.get('writers_busy_reason') and state.writers_busy(s, now)]
     if held:
-        result['reason'] = max(held, key=lambda s: s.get('writers_busy_at', 0))['writers_busy_reason']
+        result['reason'] = max(held, key=lambda s: s.get('writers_busy_at') or 0)['writers_busy_reason']
     return result
 
 

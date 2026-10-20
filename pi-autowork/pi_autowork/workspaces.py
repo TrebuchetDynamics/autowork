@@ -64,6 +64,38 @@ def link_ignored(canonical, worktree, paths):
     return results
 
 
+LOCKFILE_DEPENDENCIES = {'package-lock.json': 'node_modules', 'npm-shrinkwrap.json': 'node_modules',
+                         'pnpm-lock.yaml': 'node_modules', 'yarn.lock': 'node_modules',
+                         'uv.lock': '.venv', 'poetry.lock': '.venv'}
+
+
+def lockfile_dependencies(canonical, worktree):
+    """([paths], [(path, reason)]): installed dependency directories of tracked lockfiles to link
+    without a setting (TOOLSET-283-15), and those left out. A review tree without the main checkout's
+    node_modules held a task 45 hours for a package its lockfile declares. Only a lockfile identical
+    in both trees qualifies: a task that changes its dependencies installs its own."""
+    canonical, worktree = Path(canonical).resolve(), Path(worktree).resolve()
+    listed = subprocess.run(['git', '-C', str(worktree), 'ls-files', '-z'], capture_output=True, text=True, timeout=60)
+    paths, skipped = [], []
+    for name in sorted(listed.stdout.split('\0') if listed.returncode == 0 else []):
+        rel = PurePosixPath(name)
+        directory = LOCKFILE_DEPENDENCIES.get(rel.name)
+        if not directory:
+            continue
+        dependency = str(rel.parent / directory) if str(rel.parent) != '.' else directory
+        if not (canonical / dependency).is_dir() or (worktree / dependency).exists():
+            continue
+        try:
+            same = (canonical / rel).read_bytes() == (worktree / rel).read_bytes()
+        except OSError:
+            same = False
+        if same:
+            paths.append(dependency)
+        else:
+            skipped.append((dependency, f'not linked: {name} differs from the main checkout'))
+    return paths, skipped
+
+
 def _link(source, target):
     """Mirror source at target; return created paths, parents first.
 

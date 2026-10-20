@@ -70,6 +70,13 @@ class HealthTests(unittest.TestCase):
         health.update(self.state, dict(snapshot(), tasks=tasks, max_workers=8), now=0)
         self.assertEqual(self.status()['waiting_groups'], groups)
         self.assertEqual(self.status()['max_workers'], 8)
+        # Every task, for the Tasks window: a group keeps only 20.
+        many = [{'task': f'D{i}', 'state': 'waiting', 'reason': 'dependency: TASK-1'} for i in range(25)]
+        health.update(self.state, dict(snapshot(), tasks=many + [{'task': 'H', 'state': 'held', 'cause': 'conflict',
+                                                                   'reason': 'merge conflict'}]), now=0)
+        self.assertEqual(len(self.status()['waiting_groups'][0]['tasks']), 20)
+        self.assertEqual(len(self.status()['tasks']), 26)
+        self.assertEqual(self.status()['tasks'][-1], ['H', 'held', 'conflict', 'merge conflict'])
 
     def test_only_load_waits_are_host_waiting_not_blocked_or_stalled(self):
         from pi_autowork import fleet_view

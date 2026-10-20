@@ -712,15 +712,34 @@ def command(args, repo, state, common, task, lease, lock_fd):
                            pass_fds=(lock_fd,), run_id=run_id)
 
 
-def wait_check_command(child, timeout, fd):
+def reap_exited(keep):
+    """Reap the exited processes this subreaper adopted, except those in ``keep``.
+
+    A check's orphans are reparented here; unreaped, each stays a zombie that still
+    answers kill(0), so a test runner inside a review waited 120 s on every worker
+    that had already finished, and ~110 tests failed in each review."""
+    for pid in child_pids(os.getpid()):
+        if pid not in keep:
+            try:
+                os.waitpid(pid, os.WNOHANG)
+            except ChildProcessError:
+                pass
+
+
+def wait_check_command(child, timeout, fd, keep=()):
     """An integration's active budget excludes its full-suite slot waits, not test execution.
 
-    Only the validator supervisor inherits the notification fd. Timestamped transitions
-    account for polling delay and repeated merged/base waits; process exit wins over EOF.
+    Only the validator supervisor inherits the notification fd (None: no slot waits).
+    Timestamped transitions account for polling delay and repeated merged/base waits;
+    process exit wins over EOF. Adopted orphans are reaped while it waits.
     """
     started, paused, waiting, pending = time.monotonic(), 0, None, b''
+    keep, reaped = {*keep, child.pid}, started
     while True:
         now = time.monotonic()
+        if now - reaped >= .5:
+            reap_exited(keep)
+            reaped = now
         if fd is not None and select_fds([fd], [], [], 0)[0]:
             chunk = os.read(fd, 65536)
             if not chunk:
@@ -797,10 +816,7 @@ def bounded_command(argv, repo, common, task_id, timeout, before=None, *,
             try:
                 if on_start:
                     on_start(child)
-                if check_slot_wait:
-                    code, queued = wait_check_command(child, timeout, wait_read)
-                else:
-                    code = child.wait(timeout=timeout)
+                code, queued = wait_check_command(child, timeout, wait_read, existing_children)
             except subprocess.TimeoutExpired as error:
                 queued = getattr(error, 'check_slot_wait_seconds', 0)
                 timed_out = True

@@ -28,9 +28,10 @@ TRANSITIONS = {
 # reads a new release's STATE_SCHEMA_READS before updating to it (pi-autowork.sh).
 STATE_SCHEMA = 1
 STATE_SCHEMA_READS = (1,)
-FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_path', 'paused', 'cause',
+FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_path', 'paused', 'paused_claim', 'cause',
           'outside', 'requested', 'reviewed_by', 'check_failure_resumed', 'answered', 'merged_base',
-          'merged_count', 'conflict_files', 'closing', 'waits_for', 'wait_since', 'landed_tasks', 'landed_revisions'}
+          'merged_count', 'conflict_files', 'closing', 'tip', 'waits_for', 'wait_since',
+          'landed_tasks', 'landed_revisions'}
 # Hold causes no fresh attempt can fix: the worker itself reported what it needs
 # (scope_request: files outside Touches, listed in `requested`).
 # scope: a commit changed files outside Touches the runner could not widen; a fresh retry
@@ -123,10 +124,10 @@ def pause(repo, owner_pid):
     common = common_dir(repo)
     paused = []
     with execution.lock(common / 'writer.lock'):
-        require_owner(common, owner_pid)
+        current = require_owner(common, owner_pid)
         for slot in slots(common):
             if slot['state'] in ('dispatched', 'running') and worker_live(slot) and not slot.get('paused'):
-                write_slot(common, dict(slot, paused=True), slot)
+                write_slot(common, dict(slot, paused=True, paused_claim=current['started_at']), slot)
                 paused.append(slot['task_id'])
     return {'outcome': 'PAUSED', 'paused': paused}
 
@@ -139,6 +140,20 @@ def release(repo, owner_pid):
         event(common, 'coordinator_released', coordinator=current)
     # Slots and workers survive the coordinator; a later owner adopts them.
     return {'outcome': 'RELEASED'}
+
+
+# A reported commit refused for a live writer steps aside in priority order for this long,
+# so one waiting candidate never holds back the rest (TOOLSET-223-8e).
+WRITERS_BUSY_SKIP = 600
+
+
+def writers_busy(slot, now=None):
+    """A reported task refused for a live writer is skipped for a bounded window."""
+    try:
+        stamp = float(slot.get('writers_busy_at'))
+    except (TypeError, ValueError):
+        return False
+    return (time.time() if now is None else now) - stamp < WRITERS_BUSY_SKIP
 
 
 def slot_path(common, task):
@@ -448,7 +463,7 @@ def rescope(common, old, touches, *, contract=None):
     value = {k: v for k, v in old.items() if k not in ('reason', 'cause', 'outside')}
     value.update(state='reported', rescoped=True, touches=touches)
     if contract is not None:
-        # Consume this answer without overwriting the original admission evidence.
+        # Admission uses this answer for rescoped slots; keep the dispatch evidence intact.
         value['rescoped_contract'] = contract.strip()
     return write_slot(common, value, old)
 
@@ -622,7 +637,7 @@ def reconcile(repo, owner_pid):
     """
     common = common_dir(repo)
     with execution.lock(common / 'writer.lock'):
-        require_owner(common, owner_pid)
+        current = require_owner(common, owner_pid)
         result = []
         for slot in slots(common):
             # Also recover reports an older runner already held as a person's question.
@@ -639,6 +654,12 @@ def reconcile(repo, owner_pid):
             updates = {}
             if worker_live(slot):
                 target = 'running'
+                if (slot['state'] == 'running' and slot.get('paused')
+                        and slot.get('paused_claim') != current['started_at']):
+                    # A later coordinator adopted a worker that survived the stop that paused it:
+                    # its next death is a crash, not that stop.
+                    slot = write_slot(common, {k: v for k, v in slot.items()
+                                               if k not in ('paused', 'paused_claim')}, slot)
             else:
                 root = workspace(common, slot['worktree'], slot['branch'], slot['baseline'])
                 head = execution.git(root, 'rev-parse', 'HEAD')
@@ -648,8 +669,13 @@ def reconcile(repo, owner_pid):
                     continue  # only a dirty, uncommitted candidate can resume an old blocker
                 if head != slot['baseline']:
                     # merge-base equality proves descent without treating divergence as a result.
-                    if execution.git(root, 'merge-base', slot['baseline'], head) != slot['baseline']:
-                        target, updates = 'held', {'reason': 'worker HEAD does not descend from baseline'}
+                    try:
+                        descends = execution.git(root, 'merge-base', slot['baseline'], head) == slot['baseline']
+                    except ValueError:  # no common history: merge-base exits 1
+                        descends = False
+                    if not descends:
+                        target, updates = 'held', {'reason': 'worker HEAD does not descend from baseline',
+                                                   'cause': 'diverged'}
                     elif slot.get('paused') and slot.get('landed_tasks') and report_blockers(common, slot) is None:
                         # Resuming a task wait discards its old report, not its commit.
                         # A pause before the fresh report must continue reconciliation,

@@ -348,7 +348,10 @@ number with a two-hex-digit hash, such as `T-012-c4`, so parallel clones do not 
 5. Deduplicate ledger/tracker entries. Reread maximum ID immediately before allocation.
    Unchanged evidence must leave goals.json and TODO.md byte-identical on repeat.
 6. Use absolute repo paths. Run `goals.py fmt <repo>`, `goals.py validate <repo>`
-   (must print `ok`), then `goals.py render <repo>`. Render updates Goal coverage
+   (must print `ok`), then `goals.py render <repo>`. Before handing new or edited
+   tasks to a runner, run the read-only `goals.py plan-lint <repo> [--tasks ID,...]`:
+   fix every error (fields, Touches, dependencies, missing check targets) and weigh
+   its overlap/hot-file/size warnings. Render updates Goal coverage
    and archives explicitly closed, ledger-done task bodies under the
    [archive contract](references/todo-archive.md); it does not reconstruct task bodies.
    Verify open-body preservation, complete archived bodies, links and byte stability

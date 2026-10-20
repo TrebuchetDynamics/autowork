@@ -111,6 +111,61 @@ class IntegrationTests(unittest.TestCase):
                   f'-c user.name=Owner commit -qm "owner {path}"; fi')
         return ['bash', '-c', script], runs
 
+    def runner_merges(self, root, times):
+        """The session moves by an unrelated commit and is merged into the task branch, ``times`` times,
+        as a fleet resolver did 13 and 15 times while adoption was refused (TOOLSET-280-4f)."""
+        for n in range(times):
+            (self.repo / f'main-{n}.txt').write_text('main\n')
+            self.git('add', f'main-{n}.txt')
+            self.git('commit', '-qm', f'main {n}')
+            self.git('merge', '--no-edit', '-q', 'main', cwd=root)
+        return self.git('rev-parse', 'HEAD', cwd=root)
+
+    def test_a_branch_the_runner_merged_past_its_commit_is_adopted_within_the_limit(self):
+        root, commit = self.worker()
+        tip = self.runner_merges(root, 2)
+        result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 30)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual((self.repo / 'A.txt').read_text(), 'worker\n')
+        events = [json.loads(line) for line in (self.common / 'journal.jsonl').read_text().splitlines()]
+        adopted = [e for e in events if e['event'] == 'runner_merged_adopted']
+        self.assertEqual([(e['commit'], e['merged_count']) for e in adopted], [(tip, 1)])
+
+    def test_past_the_adoption_limit_it_is_rerun_from_the_kept_tip_not_asked(self):
+        root, commit = self.worker()
+        tip = self.runner_merges(root, 3)
+        slot = state.slots(self.common)[0]
+        state.write_slot(self.common, dict(slot, merged_count=3, merged_base=self.baseline), slot)
+        module = self.module()
+        result = module.integrate(self.repo, self.owner, 'A', ['true'], 30)
+        self.assertEqual((result['outcome'], result['cause']), ('HELD', 'runner_merged'), result)
+        sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'pi-autowork'))
+        from pi_autowork import questions
+        held = dict(state.slots(self.common)[0], task=slot['task_id'], attempt=2)
+        self.assertFalse(questions.exhausted(held))  # technical: never a question for the owner
+        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'REQUEUED')
+        kept = self.git('for-each-ref', '--format=%(refname:short) %(objectname)', 'refs/heads/autowork/A-set-aside-*')
+        self.assertIn(tip, kept)  # the next attempt's prompt lists this branch and tip
+
+    def test_an_unrecorded_commit_on_the_branch_still_holds_for_a_person(self):
+        root, commit = self.worker()
+        (root / 'A.txt').write_text('later\n')
+        self.git('commit', '-qam', 'unrecorded', cwd=root)
+        result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 30)
+        self.assertEqual((result['outcome'], result['reason']), ('HELD', 'reported commit/branch/lineage mismatch'))
+
+    def test_a_merge_left_uncommitted_in_the_task_worktree_is_aborted_first(self):
+        root, commit = self.worker()
+        (self.repo / 'main-x.txt').write_text('main\n')
+        self.git('add', 'main-x.txt')
+        self.git('commit', '-qm', 'main x')
+        self.git('merge', '--no-commit', '--no-ff', 'main', cwd=root)
+        result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 30)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertFalse(Path(self.git('rev-parse', '--path-format=absolute', '--git-path', 'MERGE_HEAD', cwd=root)).exists())
+        events = [json.loads(line)['event'] for line in (self.common / 'journal.jsonl').read_text().splitlines()]
+        self.assertIn('abandoned_merge_aborted', events)
+
     def test_a_session_moved_only_by_planning_commits_lands_the_validated_merge_without_revalidating(self):
         self.worker()
         module = self.module()
@@ -219,30 +274,54 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(module.reverify(self.repo, self.owner, 'A', 'r1.t3600')['outcome'], 'REVERIFY')
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
 
-    def test_fresh_unknown_session_blocks_integration_before_writes(self):
+    def test_a_session_in_the_checkout_does_not_block_a_merge_it_does_not_touch(self):
+        """A person's session in the canonical checkout is not a writer unless it holds or
+        has changed one of the files the merge writes (user sessions never gate the runner)."""
         self.worker()
         self.agent_process()
+        result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual((self.repo / 'A.txt').read_text(), 'worker\n')
+
+    def test_a_session_holding_a_written_file_still_waits(self):
+        self.worker()
+        self.holder(self.repo / 'A.txt')
         result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
         self.assertEqual(result['outcome'], 'BUSY', result)  # no verdict: the commit waits
         self.assertEqual(state.slot_path(self.common, 'A').exists() and state.slots(self.common)[0]['state'], 'reported')
         self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
         self.assertFalse((self.repo / '.worktrees/autowork-integration').exists())
 
-    def test_session_appearing_during_validation_blocks_landing(self):
+    def test_session_appearing_during_validation_holds_only_the_files_it_holds(self):
         self.worker()
         module = self.module()
         original = execution.bounded_command
         from unittest.mock import patch
         def validate(*args, **kwargs):
             result = original(*args, **kwargs)
-            self.agent_process()
+            self.agent_process()  # appears but holds none of A's files
+            return result
+        with patch.object(execution, 'bounded_command', side_effect=validate):
+            result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual((self.repo / 'A.txt').read_text(), 'worker\n')
+
+    def test_session_appearing_during_validation_holding_a_changed_file_blocks_landing(self):
+        self.worker()
+        module = self.module()
+        original = execution.bounded_command
+        holders = []
+        from unittest.mock import patch
+        def validate(*args, **kwargs):
+            result = original(*args, **kwargs)
+            holders.append(self.holder(self.repo / 'A.txt'))
             return result
         with patch.object(execution, 'bounded_command', side_effect=validate):
             result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
         self.assertEqual(result['outcome'], 'BUSY', result)
         self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
         self.assertEqual(state.slots(self.common)[0]['state'], 'integrating')  # kept for revalidation
-        for proc in self.sessions:
+        for proc in holders:
             proc.kill(); proc.wait()
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
 
@@ -372,16 +451,14 @@ class IntegrationTests(unittest.TestCase):
         held.wait()
         self.assertEqual(module.close(session, self.owner, 'A')['outcome'], 'CLOSED')
 
-    def test_fresh_session_blocks_close_without_task_writes(self):
+    def test_a_session_in_the_checkout_does_not_block_a_close_it_does_not_touch(self):
+        """A session that holds none of the close's files is not a writer for it."""
         self.worker()
         module = self.module()
         module.integrate(self.repo, self.owner, 'A', ['true'], 10)
-        before = (self.repo / 'TODO.md').read_bytes()
         self.agent_process()
-        with self.assertRaisesRegex(ValueError, 'writer|session'):
-            module.close(self.repo, self.owner, 'A')
-        self.assertEqual((self.repo / 'TODO.md').read_bytes(), before)
-        self.assertFalse((self.repo / 'TODO.archive.md').exists())
+        self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
+        self.assertTrue((self.repo / 'TODO.archive.md').exists())
 
     def test_a_close_that_fails_after_writing_leaves_no_writes(self):
         """bravo TASK-010: a close failed after archiving and its writes stayed in the
@@ -405,7 +482,7 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(state.slots(self.common)[0]['state'], 'integrated')  # retryable
         self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
 
-    def test_session_appearing_during_close_checks_blocks_first_task_write(self):
+    def test_session_appearing_holding_a_close_file_blocks_first_task_write(self):
         self.worker()
         module = self.module()
         module.integrate(self.repo, self.owner, 'A', ['true'], 10)
@@ -414,7 +491,7 @@ class IntegrationTests(unittest.TestCase):
         from unittest.mock import patch
         def checked(*args):
             result = original(*args)
-            self.agent_process()
+            self.holder(self.repo / 'TODO.md')
             return result
         with patch.object(module, 'validated_receipt', side_effect=checked):
             with self.assertRaisesRegex(ValueError, 'writer|session'):
@@ -450,6 +527,11 @@ class IntegrationTests(unittest.TestCase):
         self.assertFalse(module.touches_none_of(worker, ['A.txt'], main))
         worker['written'] = [main + '/TODO.md']  # held open for writing still blocks
         self.assertFalse(module.touches_none_of(worker, ['TODO.md'], main))
+        # Other checkouts the same session also has open do not widen the comparison.
+        worker['written'] = []
+        worker['workspaces'] = [main, str(self.repo / '.worktrees/elsewhere')]
+        self.assertTrue(module.touches_none_of(worker, ['B.txt'], main))
+        self.assertFalse(module.touches_none_of(worker, ['A.txt'], main))
 
     def test_a_refused_candidate_records_the_writer_window_on_its_slot(self):
         """TOOLSET-223-8e: a WritersBusy refusal is remembered on the slot, not only in memory."""
@@ -884,6 +966,32 @@ finally:
         with self.assertRaisesRegex(ValueError, 'close it instead'):
             module.set_aside(self.repo, self.owner, 'A')
         self.assertEqual(state.slots(self.common)[0]['state'], 'integrated')
+
+    def test_a_display_only_field_is_not_a_changed_entry(self):
+        """Adding `Short:` to every task set each held task's finished work aside as rewritten."""
+        self.worker()
+        module = self.module()
+        todo = self.repo / 'TODO.md'
+        slot = state.slots(self.common)[0]
+        contract = execution.goals_module().task_bodies(todo.read_text())['A'][0][0].strip()
+        (dispatch.data_dir(self.common, slot) / 'contract.txt').write_text(contract + '\n')
+        module.hold(self.common, slot, 'failure', cause='validation')
+        todo.write_text(todo.read_text().replace('Acceptance: offline fixture', 'Acceptance: offline fixture\n'
+                                                 '  Short: A short title\n  Priority reason: first', 1))
+        self.assertFalse(module.entry_changed(self.repo, self.common, state.slots(self.common)[0]))
+        todo.write_text(todo.read_text().replace('Acceptance: offline fixture', 'Acceptance: a rewritten scope', 1))
+        self.assertEqual(module.entry_changes(self.repo, self.common, state.slots(self.common)[0]), ['Acceptance'])
+
+    def test_a_display_only_line_added_after_integration_still_closes(self):
+        """Adding `Short:` to every entry left integrated tasks unable to close or recover."""
+        self.worker()
+        module = self.module()
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text().replace('Acceptance: offline fixture', 'Acceptance: offline fixture\n'
+                                                 '  Short: A short title', 1))
+        self.git('commit', '-qam', 'short titles')
+        self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
 
     def test_an_integrated_task_whose_entry_changed_is_set_aside_and_queued_again(self):
         self.worker()
@@ -1380,6 +1488,73 @@ finally:
         slot = state.slots(self.common)[0]
         self.assertEqual((slot['cause'], slot['outside']), ('scope', ['package-lock.json']))
 
+    def test_touches_answer_admits_a_protected_candidate_serially(self):
+        module = self.module()
+        self.worker(files={'package.json': '{}\n'})
+        self.worker('B')
+        slot = state.slots(self.common)[0]
+        todo = self.repo / 'TODO.md'
+        contract = execution.goals_module().task_bodies(todo.read_text())['A'][0][0].strip()
+        (dispatch.data_dir(self.common, slot) / 'contract.txt').write_text(contract + '\n')
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['cause'], 'scope')
+        todo.write_text(todo.read_text().replace('Touches: A.txt', 'Touches: A.txt, package.json'))
+        self.git('commit', '-qam', 'Touches-only answer')
+        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'RESCOPED')
+        # Validation must hold the integration mutex, with the sibling still reported.
+        check = (f'import fcntl, json; from pathlib import Path; p=Path({str(self.common)!r}); '
+                 's={x["task_id"]:x["state"] for x in (json.loads(f.read_text()) for f in (p/"slots").glob("*.json"))}; '
+                 'assert s == {"A":"integrating", "B":"reported"}; '
+                 'f=open(p/"integration.lock", "a"); '
+                 '\ntry: fcntl.flock(f, fcntl.LOCK_EX|fcntl.LOCK_NB)'
+                 '\nexcept BlockingIOError: pass'
+                 '\nelse: raise AssertionError("integration is not serialized")')
+        result = module.integrate(self.repo, self.owner, 'A', [sys.executable, '-c', check], 10)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual((self.repo / 'package.json').read_text(), '{}\n')
+        self.assertEqual((self.repo / 'B.txt').read_text(), 'base\n')
+        self.assertEqual(state.slots(self.common)[0]['attempt'], 1)
+
+    def test_a_rescope_reheld_by_old_admission_is_reoffered_once(self):
+        module = self.module()
+        self.worker(files={'package.json': '{}\n'})
+        slot = state.slots(self.common)[0]
+        todo = self.repo / 'TODO.md'
+        contract = execution.goals_module().task_bodies(todo.read_text())['A'][0][0].strip()
+        (dispatch.data_dir(self.common, slot) / 'contract.txt').write_text(contract + '\n')
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['cause'], 'scope')
+        todo.write_text(todo.read_text().replace('Touches: A.txt', 'Touches: A.txt, package.json'))
+        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'RESCOPED')
+        # An older runner checked contract.txt again, leaving this already-answered hold.
+        state.transition(self.repo, self.owner, 'A', 'held', cause='scope', outside=['package.json'],
+                         reason='protected files need serial admission in the original task contract')
+        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'REOFFERED')
+        # If it is held again, an unchanged answer must not create a retry loop.
+        state.transition(self.repo, self.owner, 'A', 'held', cause='scope', outside=['package.json'])
+        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'IDLE')
+
+    def test_a_rescope_missing_a_protected_path_gives_one_actionable_question(self):
+        import parallel_status
+        sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'pi-autowork'))
+        from pi_autowork import questions
+        module = self.module()
+        self.worker(files={'package.json': '{}\n', 'package-lock.json': '{}\n'})
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['cause'], 'scope')
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text().replace('Touches: A.txt', 'Touches: A.txt, package.json'))
+        contract = execution.goals_module().task_bodies(todo.read_text())['A'][0][0].strip()
+        # A legacy/manual rescope did not name every protected path in the candidate.
+        slot = state.slots(self.common)[0]
+        state.rescope(self.common, slot, 'A.txt, package.json', contract=contract)
+        result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual((result['outcome'], result.get('cause'), result.get('outside')),
+                         ('HELD', 'scope', ['package-lock.json']), result)
+        for _ in range(2):
+            self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'IDLE')
+            found = questions.build(parallel_status.snapshot(self.repo), todo.read_text(), execution.goals_module())
+            self.assertEqual([q['id'] for q in found], ['A'])
+            self.assertIn('package-lock.json', found[0]['needs'])
+            self.assertIn('rerun or a contract change', found[0]['needs'])
+
     def test_other_contract_answers_requeue_even_when_touches_cover_the_commit(self):
         module = self.module()
         for index, field in enumerate(('Scope', 'Acceptance', 'Checks', 'Dependencies')):
@@ -1410,6 +1585,14 @@ finally:
                     self.assertEqual(changes[-1], sorted([field, 'Touches']))
                 finally:
                     state.slot_path(self.common, task).unlink(missing_ok=True)
+
+    def test_a_reviewer_that_ran_out_of_time_is_a_timeout_hold(self):
+        """A fresh worker reimplemented a finished 90-minute task because its review ran out of time."""
+        self.worker()
+        argv = ['bash', '-c', 'echo "AUTOWORK_HOLD_REASON: the review ran out of time after 1800 s"; exit 1']
+        result = self.module().integrate(self.repo, self.owner, 'A', argv, 10)
+        self.assertEqual((result['outcome'], result.get('cause')), ('HELD', 'timeout'), result)
+        self.assertIn('the review ran out of time after 1800 s', state.slots(self.common)[0]['reason'])
 
     def test_a_validation_hold_is_reverified_once_per_reviewer_version(self):
         """A changed verdict earns another look; the same failure, apart from SHAs, does not."""
@@ -1566,6 +1749,20 @@ finally:
         self.worker('D')
         for task in ('A', 'D', 'B'):
             self.assertEqual(module.integrate(self.repo, self.owner, task, ['true'], 10)['outcome'], 'INTEGRATED')
+
+    def test_a_conflicting_candidate_is_held_out_of_priority_order(self):
+        self.worker('A')
+        self.worker('B')
+        (self.repo / 'B.txt').write_text('canonical\n')
+        self.git('add', 'B.txt')
+        self.git('commit', '-qm', 'canonical writes B.txt')
+        head = self.git('rev-parse', 'HEAD')
+        module = self.module()
+        held = module.integrate(self.repo, self.owner, 'B', ['true'], 10)
+        self.assertEqual((held['outcome'], held['cause']), ('HELD', 'conflict'), held)
+        self.assertEqual(module.slot_for(self.common, 'B')['conflict_files'], ['B.txt'])
+        self.assertEqual(self.git('rev-parse', 'HEAD'), head)
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
 
     def test_priority_order_is_enforced(self):
         self.worker('B')
@@ -1728,6 +1925,17 @@ finally:
         self.assertEqual(result['outcome'], 'INTEGRATED', result)
         self.assertEqual(self.git('rev-parse', 'HEAD^1'), head)
         self.assertEqual(state.slots(self.common)[0]['attempt'], 1)
+
+    def test_an_unlanded_candidate_whose_integration_tree_has_review_files_merges_again(self):
+        """A restart left the review's files in the integration tree: held as changed, the
+        finished task got a fresh worker. Never landed, the tree is kept as a patch instead."""
+        module, head = self.interrupted_while_main_moved()
+        root = Path(state.slots(self.common)[0]['integration']['worktree'])
+        (root / 'review-scratch.txt').write_text('left by the review\n')
+        result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual(state.slots(self.common)[0]['attempt'], 1)
+        self.assertTrue(list((self.common / 'integration-residue').glob('*.patch')))
 
     def test_a_held_review_whose_merge_never_landed_is_offered_again_once(self):
         module, head = self.interrupted_while_main_moved()
@@ -2073,6 +2281,21 @@ finally:
         self.addCleanup(dispatch.stop, slot['worker'])
         return slot
 
+    def test_a_conflict_hold_planned_first_does_not_stop_the_retry_of_another_hold(self):
+        """The retry plan covers every first-attempt hold; a conflict hold is not retried fresh,
+        and naming it first raised KeyError in every engine cycle."""
+        self.worker()
+        state.transition(self.repo, self.owner, 'A', 'held', reason='merge conflict', cause='conflict')
+        self.worker('B')
+        state.transition(self.repo, self.owner, 'B', 'held', reason='failure')
+        args = self.retry_args()
+        args.worker_command = json.dumps([sys.executable, '-c', 'import time; time.sleep(60)'])
+        from unittest.mock import patch
+        with patch.object(dispatch, 'resource_gate', return_value=''):
+            result = self.module().retry_held(args)
+        self.assertEqual((result['outcome'], result.get('task')), ('RETRIED', 'B'), result)
+        self.addCleanup(dispatch.stop, next(s for s in state.slots(self.common) if s['task_id'] == 'B')['worker'])
+
     def test_bounded_retry_runs_beside_independent_worker(self):
         root, commit = self.worker()
         state.transition(self.repo, self.owner, 'A', 'held', reason='failure')
@@ -2259,6 +2482,36 @@ finally:
             if worker.poll() is None:
                 worker.kill()
             worker.wait()
+
+    def test_a_checks_finished_orphan_is_reaped_while_the_check_runs(self):
+        """Reviews held ~110 runner tests: each waited 120 s on a worker that had exited but
+        stayed a zombie of the validator, which had adopted it and never reaped it."""
+        orphan = '''
+import os, sys, time
+r, w = os.pipe()
+if os.fork() == 0:
+    pid = os.fork()
+    if pid == 0:
+        os.setsid()
+        os._exit(0)
+    os.write(w, str(pid).encode())
+    os._exit(0)
+os.wait()
+pid = int(os.read(r, 32))
+deadline = time.monotonic() + 5
+while time.monotonic() < deadline:
+    try:
+        os.killpg(pid, 0)
+    except ProcessLookupError:
+        sys.exit(0)
+    time.sleep(.05)
+sys.exit(1)
+'''
+        for check_slot_wait in (False, True):
+            with self.subTest(check_slot_wait=check_slot_wait):
+                result = execution.bounded_command([sys.executable, '-c', orphan], self.repo, self.common, 'A', 30,
+                                                   check_slot_wait=check_slot_wait)
+                self.assertEqual(result['outcome'], 'EXECUTED', result)
 
 
 

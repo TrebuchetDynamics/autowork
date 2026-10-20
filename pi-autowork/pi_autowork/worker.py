@@ -8,6 +8,7 @@ The engine starts each in its own process group; a stop sent to the group reache
 Pi too. Exit 0 means a finished worker with a report, or a passing review.
 """
 from datetime import datetime
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -37,10 +38,12 @@ REVIEW = ('You are an independent reviewer verifying task {task} in {checkout}, 
           'PI_AUTOWORK_VERIFY: pass or '
           'PI_AUTOWORK_VERIFY: fail, then the reason.')
 # The runner's full check on the merged tree is the one trusted full run (TOOLSET-227-a8).
-GATE = (' The runner already ran the repository\'s full check (`{command}`) on this merged tree: {outcome}. '
-        'Its log is {log}. Do not run the full check again; read that log, and rerun only individual tests you '
-        'need to examine. Every Checks entry that runs tests the full check also runs (a test file, a test '
-        'directory or the full check itself) is satisfied by that run: do not run it again. Run only a check '
+GATE = (' The runner\'s recorded full-check gate (`{command}`) for tree `{tree}`: {outcome}. '
+        '{evidence}. Reuse identifies tree and command, not an environment-bound qualification. '
+        'Do not run the full check again; read the available producing evidence, and rerun only '
+        'individual tests you need to examine. Every Checks entry that runs tests the full check '
+        'also runs (a test file, a test directory or the full check itself) is satisfied by the '
+        'runner\'s accepted gate policy: do not run it again. Run only a check '
         'the full check does not cover, such as a lint, a build or a script, and single tests to settle a doubt. '
         'Rerunning whole test files took most of every review\'s 20 to 40 minutes.')
 # Offline completion is separate from live qualification (AGENTS.md): checks recorded as
@@ -90,10 +93,18 @@ def check_stop():
 
 
 def link_ignored(checkout):
-    """Gitignored dependencies the service names are linked from the canonical checkout first."""
-    paths, repo = os.environ.get('PI_AUTOWORK_LINK_PATHS'), os.environ.get('PI_AUTOWORK_REPO')
-    if paths and repo:
-        for path, outcome in workspaces.link_ignored(repo, checkout, paths):
+    """Gitignored dependencies are linked from the canonical checkout first: the paths the service
+    names, and the installed dependencies of tracked lockfiles both trees share (TOOLSET-283-15)."""
+    paths, repo = os.environ.get('PI_AUTOWORK_LINK_PATHS') or '', os.environ.get('PI_AUTOWORK_REPO')
+    if not repo:
+        return
+    named = [p.strip() for p in paths.split(',') if p.strip()]
+    found, skipped = workspaces.lockfile_dependencies(repo, checkout)
+    for path, reason in skipped:
+        print(f'pi-autowork: linked path {path}: {reason}', file=sys.stderr)
+    wanted = named + [p for p in found if p not in named]
+    if wanted:
+        for path, outcome in workspaces.link_ignored(repo, checkout, ','.join(wanted)):
             print(f'pi-autowork: linked path {path}: {outcome}', file=sys.stderr)
 
 
@@ -109,10 +120,42 @@ def worker(state, worktree, prompt_file, report, limit):
     # The engine captures unfinished tool calls before stopping a timed-out worker.
     Path(report).with_name('session.json').write_text(json.dumps({
         'directory': str(Path(state).resolve() / 'sessions'), 'id': session}))
-    result = pi_runtime.job(pi_runtime.Settings(state), 'worker', task, worktree,
+    settings = pi_runtime.Settings(state)
+    result = pi_runtime.job(settings, 'worker', task, worktree,
                             f'Follow the instructions in this file exactly: @{prompt_file}',
                             session, limit, [f'@{prompt_file}'])
+    question = unanswered(result, worktree, prompt, report)
+    if question:
+        # TOOLSET-282-43: a worker loaded an interactive skill, asked "Do you approve?" after 28 s
+        # and stopped; the runner called it dead and asked the owner to rescope the task.
+        print(f'pi-autowork: {task} asked instead of implementing ({question[:200]}); '
+              'resuming its session once with the contract as its approval', file=sys.stderr)
+        result = pi_runtime.job(settings, 'worker', task, worktree, APPROVAL.format(prompt=prompt_file),
+                                session, limit, [f'@{prompt_file}'])
+        question = unanswered(result, worktree, prompt, report)
+        if question:
+            Path(report).write_text(json.dumps({
+                'task': task, 'commit': None, 'changed_files': [], 'checks': [], 'changelog': '',
+                'blockers': [f'the worker asked twice instead of implementing: {question}']}))
+            return 1
     return 0 if result['ok'] and Path(report).is_file() else 1
+
+
+APPROVAL = ('No person is attached to this session, so nobody will answer your question. The task '
+            'contract in @{prompt} is your approval: implement it now, commit, and write the report. '
+            'Stop only for a real blocker, and write it in the report.')
+
+
+def unanswered(result, worktree, prompt, report):
+    """The question a worker ended its session with, having written no report and no commit; else ''."""
+    if not result.get('ok') or Path(report).is_file():
+        return ''
+    baseline = (re.search(r'^Baseline: (\S+)$', prompt, re.M) or [None, ''])[1]
+    if baseline and git(worktree, 'rev-parse', 'HEAD') != git(worktree, 'rev-parse', baseline):
+        return ''
+    lines = [line.strip().strip('*_ ').strip() for line in (result.get('text') or '').splitlines()]
+    last = next((line for line in reversed(lines) if line), '')
+    return last if last.endswith('?') else ''
 
 
 def execution_dir(checkout):
@@ -214,7 +257,16 @@ def run_suite(command, checkout, limit, log, progress=None):
         code, timed_out = main_check.run_command(command, checkout, limit, progress, output=out,
                                                  stop=lambda: pi_runtime.STOP)
     text = log.read_text(errors='replace')
-    return {'code': code, 'failures': main_check.failures(text, limit=None), 'timed_out': timed_out}
+    summaries = re.findall(r'^Ran \d+ tests? in [\d.]+s\n\n((?:OK|FAILED)\b[^\n]*)', text, re.M)
+    # Arbitrary declared commands may use an unsupported inventory format. A zero exit
+    # still admits them, but no parsed skips must not be advertised as no skipped tests.
+    unknown_skips = any(re.search(r'\bskip(?:ped|ping)?\b', line, re.I)
+                        for line in text.splitlines() if line not in summaries)
+    skips = (sum(int(n) for s in summaries for n in re.findall(r'\bskipped=(\d+)', s))
+             if summaries and not unknown_skips else None)
+    return {'code': code, 'failures': main_check.failures(text, limit=None), 'timed_out': timed_out,
+            'skips': skips,
+            'resource_skips': main_check.gate_skips(text)}
 
 
 def base_tree(checkout, rev):
@@ -289,17 +341,27 @@ def gate_log(state, task):
     return Path(state) / 'full-check' / f'{safe_name(task)}-merged.log'
 
 
-def replay_gate_log(state, task, cached):
-    """Put a cached run's evidence where this task's review note points.
+def producing_gate_log(state, cached):
+    """Only a readable, runner-owned log bound to this record is explanatory evidence."""
+    try:
+        source = Path(cached['log'])
+        if (source.is_symlink() or source.parent.resolve() != (Path(state) / 'full-check').resolve()
+                or not source.is_file() or source.stat().st_uid != os.getuid()):
+            return None
+        content = source.read_bytes()
+        if content and hashlib.sha256(content).hexdigest() == cached.get('log_sha256'):
+            return source
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return None
 
-    The verdict is cached per tree while the note, the engine and the reviewer all name this
-    task's log, and the task that ran the suite may be a different one: a reviewer told to read
-    a log that does not exist has no evidence for the pass it is asked to trust.
-    """
-    target, source = gate_log(state, task), Path(cached.get('log') or '')
+
+def replay_gate_log(state, task, cached):
+    """Keep the task-local log for existing consumers; reviewer text uses the producer record."""
+    target, source = gate_log(state, task), producing_gate_log(state, cached)
     try:
         # Replaced even when present: it may be this task's log of an earlier tree.
-        if source.is_file() and not (target.exists() and target.samefile(source)):
+        if source and not (target.exists() and target.samefile(source)):
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, target)
     except OSError:
@@ -323,7 +385,8 @@ def full_suite_gate(state, task, checkout, base=None):
             return cached['ok'], cached['reason']
     except (OSError, ValueError, KeyError, AttributeError, TypeError):
         pass
-    ok, reason = run_gate(state, task, checkout, command, base)
+    details = {}
+    ok, reason = run_gate(state, task, checkout, command, base, evidence=details)
     if tree and (ok or reason.startswith(('the full check has new failures', 'the full check exits'))):
         cache.parent.mkdir(parents=True, exist_ok=True)
         # The evidence is tree-keyed too: this cache outlives the task that ran it, and that
@@ -333,19 +396,78 @@ def full_suite_gate(state, task, checkout, base=None):
             shutil.copyfile(gate_log(state, task), evidence)
         except OSError:
             evidence = gate_log(state, task)
-        cache.write_text(json.dumps({'command': command, 'ok': ok, 'reason': reason, 'task': task,
-                                     'log': str(evidence)}))
+        try:
+            digest = hashlib.sha256(evidence.read_bytes()).hexdigest()
+        except OSError:
+            digest = None
+        cache.write_text(json.dumps({'command': command, 'tree': tree,
+                                     'commit': git(checkout, 'rev-parse', 'HEAD'),
+                                     'ok': ok, 'reason': reason, 'task': task,
+                                     'log': str(evidence), 'log_sha256': digest, **details}))
     return ok, reason
 
 
-def run_gate(state, task, checkout, command, base_rev=None):
+class QuietWindowMissed(Exception):
+    """No quiet window came within PI_AUTOWORK_QUIET_WAIT."""
+
+
+def quiet_reruns(state, task, log, checkout, rev, tests, limit):
+    """The ``tests`` that pass when rerun one at a time with a host check slot held, once this
+    repository's main check is done. Rerun four at a time beside main's full suite, the runner's
+    own engine tests ran out of their 120 s and held three candidates whose trees pass them.
+    The wait for that quiet window is bounded by PI_AUTOWORK_QUIET_WAIT (default 900 s): the
+    host's few check slots are shared by every runner's full suite, and a two-minute rerun queued
+    behind them held a review for three hours. Past the bound the tests rerun one at a time
+    without a slot."""
+    receipt = log.with_suffix('.quiet.json')
+    receipt.unlink(missing_ok=True)
+    wait = setting('PI_AUTOWORK_QUIET_WAIT', 900, float)
+    deadline = time.monotonic() + min(limit, wait)
+    while time.monotonic() < deadline:
+        record = main_check.read(state)
+        if record.get('state') != 'running' or not main_check.alive(record.get('pid'), record.get('start_time')):
+            break
+        check_stop()
+        time.sleep(5)
+
+    def waiting(_ahead):
+        check_stop()
+        if time.monotonic() >= deadline:
+            raise QuietWindowMissed
+
+    def rerun():
+        main_check.rerun_failures(str(log), checkout, str(receipt), rev, only=set(tests), workers=1)
+
+    try:
+        try:
+            with main_check.check_slot(waiting):
+                rerun()
+        except QuietWindowMissed:
+            print(f'pi-autowork: no quiet check slot for {task} within {wait:g} s; '
+                  'rerunning its failures one at a time without one', file=sys.stderr)
+            rerun()
+        quiet = json.loads(receipt.read_text())
+    except main_check.Stopped:
+        raise
+    except Exception as error:  # like the first reruns: without a receipt, none is excused
+        print(f'pi-autowork: rerunning the failures of {task} alone failed: {error}', file=sys.stderr)
+        return []
+    if not isinstance(quiet, dict) or quiet.get('rev') != rev or not isinstance(quiet.get('flaky'), list):
+        return []
+    return quiet['flaky']
+
+
+def run_gate(state, task, checkout, command, base_rev=None, *, evidence=None):
     """(ok, reason) of ``command`` on the merged tree (TOOLSET-180-72): a reviewer-approved commit
     landed while breaking 44 tests its own checks never ran. Only what the base does not already
     fail rejects a candidate; a test that passes when rerun alone is flaky, not new."""
     limit = setting('PI_AUTOWORK_VALIDATE_TIMEOUT', 3600, float)
     log = gate_log(state, task)
     progress = log.with_name(f'{safe_name(task)}.status.json')
+    evidence = evidence if evidence is not None else {}
+    evidence.update(isolated_rerun=[], baseline_equivalent=[])
     merged = run_suite(command, checkout, limit, log, progress)
+    evidence['result'] = merged
     if merged['code'] == 0:
         return True, ''
     if merged['timed_out']:
@@ -354,6 +476,7 @@ def run_gate(state, task, checkout, command, base_rev=None):
         # It crashed before naming a test (TOOLSET-237-35): once more, then never a pass for want
         # of evidence. A crash only this tree has is its own; one the base shares is the host's.
         merged = run_suite(command, checkout, limit, log, progress)
+        evidence['result'] = merged
         if merged['code'] == 0:
             return True, ''
         if merged['timed_out']:
@@ -375,6 +498,9 @@ def run_gate(state, task, checkout, command, base_rev=None):
         if not isinstance(reruns, dict) or reruns.get('rev') != rev or not isinstance(reruns.get('flaky'), list):
             reruns = {}
         failures = [f for f in failures if f not in (reruns.get('flaky') or [])]
+        if failures and reruns:
+            failures = [f for f in failures if f not in quiet_reruns(state, task, log, checkout, rev, failures, limit)]
+        evidence['isolated_rerun'] = [f for f in merged['failures'] if f not in failures]
         # The coordinator's rule for main: signals and shell errors are not ordinary unittest
         # failures, and the receipt says when the log has no complete summary.
         if not failures and (merged['code'] != 1 or reruns.get('incomplete')):
@@ -411,6 +537,8 @@ def run_gate(state, task, checkout, command, base_rev=None):
                                       'commit': git(checkout, 'rev-parse', 'HEAD')}))
         return False, f'the full check crashed before any test result, on the base too: {crash}'
     new = failures if base['code'] == 0 else [f for f in failures if f not in base['failures']]
+    evidence['baseline'] = base
+    evidence['baseline_equivalent'] = [f for f in failures if f not in new]
     if not new:
         return True, ''
     return False, 'the full check has new failures the base does not: ' + first_ten(new)
@@ -473,6 +601,7 @@ def verify(state, task):
     drop_dead_scratch(checkout, root)
     scratch = Path(tempfile.mkdtemp(prefix=f'aw-r-{os.getpid()}-', dir=root))
     os.environ['TMPDIR'] = str(scratch)
+    lease = review_port_lease()
     try:
         if batch_gate:  # a batch already passed the full check on a tree containing this one
             return batch_review(state, task, checkout, json.loads(batch_gate))
@@ -492,8 +621,23 @@ def verify(state, task):
         print(f'pi-autowork: verification of {task} stopped', file=sys.stderr)
         return 1
     finally:
+        if lease is not None:
+            os.close(lease)
         drop_scratch_worktrees(checkout, scratch)
         shutil.rmtree(scratch, ignore_errors=True)
+
+
+def review_port_lease():
+    """A 100-port block of its own for this review's checks and reviewer, as each worker gets: a
+    task whose checks bind $AUTOWORK_PORT_BASE failed its review for want of one. The block is the
+    process's while the returned descriptor stays open; None when none is free."""
+    try:
+        dispatch, _, _ = engine_modules()
+        base, lease = dispatch.port_lease(1)
+    except (ImportError, OSError, ValueError):
+        return None
+    os.environ['AUTOWORK_PORT_BASE'] = str(base)
+    return lease
 
 
 def review_root():
@@ -630,6 +774,7 @@ def verify_batch(state, session, script, tasks):
             print(json.dumps(dict(result, reason='fewer than two candidates merge together')))
             return 0
         os.environ['TMPDIR'] = str(root)
+        lease = review_port_lease()  # held until this process exits
         ok, reason = full_suite_gate(state, 'batch', str(chain), base)
         if not ok:
             # Which candidate broke it is not known yet: each goes through today's integration.
@@ -684,11 +829,55 @@ def gate_note(state, task, checkout):
     command = main_check.full_check(checkout)
     if not command:
         return ''
-    log = gate_log(state, task)
-    named = main_check.failures(log.read_text(errors='replace'), limit=None) if log.exists() else []
-    outcome = ('it passed' if not named else 'it passed apart from failures the base already has or that '
-               'passed when rerun alone: ' + first_ten(named))
-    return GATE.format(command=command, outcome=outcome, log=log)
+    tree = git(checkout, 'rev-parse', 'HEAD^{tree}')
+    cache = Path(state) / 'full-check' / f'tree-{tree}.json'
+    outcome, reference = 'result detail unavailable: no matching gate record', 'Producing evidence unavailable'
+    try:
+        record = json.loads(cache.read_text())
+        if record.get('command') != command or record.get('tree', tree) != tree:
+            raise ValueError('mismatched gate identity')
+        outcome = ('accepted result with unavailable detail' if record.get('ok') is True else
+                   'gate rejected the tree: ' + str(record.get('reason') or 'reason unavailable'))
+        reference = f'Gate record: {cache}; producer task: {record.get("task") or "unavailable"}'
+        result = record.get('result')
+        # Legacy aggregate caches remain admissible, but neither an old task log nor the
+        # absence of parsed failure names establishes an all-green inventory.
+        if (record.get('tree') != tree or not record.get('commit') or not isinstance(result, dict)
+                or not isinstance(result.get('failures'), list)
+                or any(not isinstance(f, str) for f in result['failures'])
+                or type(result.get('code')) is not int
+                or type(result.get('timed_out')) is not bool
+                or type(result.get('resource_skips')) is not int
+                or (result.get('skips') is not None and type(result['skips']) is not int)):
+            reference += '; original inventory and log detail unavailable (legacy or incomplete metadata)'
+        else:
+            reference += f'; producer commit: {record["commit"]}'
+            log = producing_gate_log(state, record)
+            reference += f'; producing log: {log}' if log else '; producing log unavailable (missing, unreadable or mismatched)'
+            named = result['failures']
+            baseline, isolated = record.get('baseline_equivalent'), record.get('isolated_rerun')
+            classified = (isinstance(baseline, list) and isinstance(isolated, list)
+                          and all(isinstance(f, str) for f in baseline + isolated)
+                          and set(named) == set(baseline + isolated))
+            if record.get('ok') is True and not result['timed_out']:
+                if result['code'] == 0 and not named and log and type(result.get('skips')) is int:
+                    outcome = ('accepted with skipped tests' if result['skips'] or result['resource_skips']
+                               else 'it passed (all-green recorded result)')
+                elif result['code'] != 0 and named and classified:
+                    outcome = 'accepted under exception policy'
+                    if baseline:
+                        outcome += '; baseline-equivalent failures: ' + first_ten(baseline)
+                    if isolated:
+                        outcome += '; isolated-rerun passes: ' + first_ten(isolated)
+                    if not log:
+                        outcome += '; log detail unavailable'
+            reference += (f'; original inventory: exit {result["code"]}; failures: '
+                          + (first_ten(named) if named else 'none recorded')
+                          + f'; unittest skips: {result.get("skips") if result.get("skips") is not None else "unavailable (unsupported inventory)"}'
+                          + f'; resource-gate skips: {result["resource_skips"]}')
+    except (OSError, ValueError, AttributeError, TypeError):
+        pass
+    return GATE.format(command=command, tree=tree, outcome=outcome, evidence=reference)
 
 
 def review(state, task, checkout, head_before, gate=''):
@@ -707,7 +896,7 @@ def review(state, task, checkout, head_before, gate=''):
                             + (CACHE.format(path=cache) if cache else '') + (
                                 LIVE.format(items='; '.join(live)) if (live := pending_live(checkout, task)) else NO_LIVE),
                             f'pi-autowork-verify-{safe_name(task)}-{datetime.now():%Y%m%d%H%M%S}',
-                            f"{setting('PI_AUTOWORK_VERIFY_TIMEOUT', 1800, float):g}",
+                            f"{(limit := setting('PI_AUTOWORK_VERIFY_TIMEOUT', 1800, float)):g}",
                             ['--tools', 'read,bash,grep,find,ls'])
     if dirty(checkout) or git(checkout, 'rev-parse', 'HEAD') != head_before:
         # Checked first: its verdict is void, so it neither clears nor records findings or a marker.
@@ -739,6 +928,13 @@ def review(state, task, checkout, head_before, gate=''):
         findings_path(state, task).unlink(missing_ok=True)
     if result['ok'] and verdict == 'pass':
         return 0
+    if not verdict:
+        # Why there is no verdict, for the hold: a review that ran out of time is reviewed again with
+        # a longer limit (the engine's timeout cause), not reimplemented by a fresh worker.
+        why = result.get('why') or ('' if result['ok'] else 'failed')
+        print('AUTOWORK_HOLD_REASON: ' + (f'the review ran out of time after {limit:g} s' if why == 'timeout'
+                                          else f'the reviewer did not finish ({why})' if why
+                                          else 'the reviewer gave no verdict'), flush=True)
     print(f'pi-autowork: review of {task}: {verdict or "no verdict"} {line[:200]}', file=sys.stderr)
     return 1
 

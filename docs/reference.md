@@ -81,6 +81,25 @@ relative to this repository.
 | [`skills/docs-sync/scripts/goals.py`](../skills/docs-sync/scripts/goals.py) | `init`, `validate`, `fmt`, `render`, `revision`, `archive`, `next`, `reorder`, `bootstrap-order`, `focus`, `task`, `supersede`, `section`, `new-id`, `add-task`, `redact`, `evidence`, `backlog-check` | `goals.py --help`; [document scaffold](../skills/docs-sync/references/document-scaffold.md#first-task-index-initialization) |
 | [`skills/docs-sync/scripts/docs.py`](../skills/docs-sync/scripts/docs.py) | `validate`, `check`, `stale`, `profiles` | `docs.py --help`; [role manifest](../skills/docs-sync/references/document-scaffold.md#optional-role-manifest) |
 
+## Main-checkout changes (Pi runner)
+
+Source: [`coordinator.py`](../pi-autowork/pi_autowork/coordinator.py)
+`commit_owner_changes`, `owner_planning_paths` and `fast_forward_main`.
+
+The runner never stages or commits non-planning changes from the main checkout,
+regardless of their age or quietness. If the session would change a dirty
+non-planning path, landing waits as **Merge pending** and names the paths, even
+when the edits could merge without a conflict. If the paths do not overlap,
+the session merges and pushes normally, leaving the owner's working-tree and
+staged changes uncommitted.
+
+The owner-planning sweep still commits `TODO.md`, `TODO.archive.md`, `goals.json`
+and `BLOCKERS.md` (including the repository's configured TODO archive) once their
+content has stayed unchanged for `PI_AUTOWORK_PLANNING_QUIET` seconds (default
+`600`) and no process holds them open for writing. Unfinished Git operations
+are left alone. This main-checkout boundary does not change recovery commits
+of uncommitted changes in the runner's own session worktree.
+
 ## Rolling planning tasks (Pi runner)
 
 Source: [`parallel_plan.py`](../skills/autowork/scripts/parallel_plan.py),
@@ -154,7 +173,8 @@ lists, except in opted-out profiles. Full setup additionally applies the `omh` b
 | `OMH_HOME` | [`install-omh.py`](../install-omh.py) | An exported or `.env` binding is preserved as the OMH store location; see [memory](memory.md). |
 | `PI_AUTOWORK_MERGE_BACKLOG` | [`parallel_dispatch.py`](../skills/autowork/scripts/parallel_dispatch.py) `merge_backlog`, `admit` | Finished commits waiting to merge before fresh dispatch can pause; default twice the worker count (16 for 8 workers), `0` disables. Counts slots with commits in `reported` or `integrating`, not held or already integrated work. |
 | `PI_AUTOWORK_MERGE_BACKLOG_AFTER` | [`parallel_dispatch.py`](../skills/autowork/scripts/parallel_dispatch.py) `merge_backlog` | Oldest finished commit's queue age in seconds before the count gate pauses fresh dispatch; default `1200`. Queue time starts at reporting, not worker launch. Nonnegative integers; invalid settings use their defaults. |
-| `PI_AUTOWORK_CHECK_SLOTS` | [`main_check.py`](../pi-autowork/pi_autowork/main_check.py), [`worker.py`](../pi-autowork/pi_autowork/worker.py) | Host-wide full-check concurrency per user: default CPU count divided by 8, rounded down, at least 1; `0` disables admission. Set consistently across runners. Main checks, merged-tree gates and base runs share flock slots; focused worker checks do not. Waiting reports `waiting for a check slot, N ahead` (running checks plus earlier waiters) in main/worker status. The check and integration timeout budgets exclude slot waiting; check execution keeps its full timeout (`PI_AUTOWORK_VALIDATE_TIMEOUT`, default 3600 s). Does not change `scripts/check.py`'s own job count or the dispatch resource gate. |
+| `PI_AUTOWORK_CHECK_SLOTS` | [`main_check.py`](../pi-autowork/pi_autowork/main_check.py), [`worker.py`](../pi-autowork/pi_autowork/worker.py) | Host-wide full-check concurrency per user: default CPU count divided by 8, rounded down, at least 1; `0` disables admission. Set consistently across runners. Main checks, merged-tree gates and base runs share flock slots; focused worker checks do not. A review's suites are admitted before background main checks waiting with them, each in arrival order; a main check that has waited 30 minutes is admitted in turn with reviews. Waiting reports `waiting for a check slot, N ahead` (running checks plus earlier waiters) in main/worker status. The check and integration timeout budgets exclude slot waiting; check execution keeps its full timeout (`PI_AUTOWORK_VALIDATE_TIMEOUT`, default 3600 s). Does not change `scripts/check.py`'s own job count or the dispatch resource gate. |
+| `PI_AUTOWORK_QUIET_WAIT` | [`worker.py`](../pi-autowork/pi_autowork/worker.py) | Seconds a review waits for a quiet window (this repository's main check done and a host check slot free) before rerunning a merged tree's failures one at a time; default 900. Past it, the failures rerun one at a time without a slot instead of queueing behind other runners' full suites. |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USERS`, `TELEGRAM_HOME_CHANNEL` | Update menu healing, from each profile's `.env` (not the process environment) | For each distinct bot token, the chats whose leftover command lists the updater checks; see [installation](installation.md#update-all-profiles). |
 
 Once both merge-backlog thresholds are met, fresh tasks show

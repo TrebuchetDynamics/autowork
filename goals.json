@@ -541,7 +541,7 @@
       "id": "PARALLEL",
       "priority": 89,
       "source": "docs/project.md#parallel-autowork-2026-10-15",
-      "status": "met",
+      "status": "partial",
       "tasks": [
         "TOOLSET-085-1a",
         "TOOLSET-086-9f",
@@ -549,7 +549,8 @@
         "TOOLSET-088-a7",
         "TOOLSET-089-72",
         "TOOLSET-090-2d",
-        "TOOLSET-091-00"
+        "TOOLSET-091-00",
+        "TOOLSET-279-eb"
       ],
       "title": "Run independent Autowork tasks in parallel workers with one coordinator"
     },
@@ -613,9 +614,18 @@
           "result": "pass"
         },
         {
-          "anchor": "toolset-268-7a",
+          "anchor": "toolset-275-c1",
           "archive": "TODO.archive.md",
           "coverage_current": true,
+          "kind": "executed",
+          "ref": "python3 scripts/check.py; final source snapshot 29b6d08459fbfb7dc016c6e20d43f9c139dc30c9; exit 0; PTY mouse modes and keyboard quit passed; source reviews deleg_d7ba23a9 and deleg_341185ee; prior failed runs retained",
+          "result": "pass",
+          "summary": "Terminal drag selection: offline gate, PTY and source review pass",
+          "task": "TOOLSET-275-c1"
+        },
+        {
+          "anchor": "toolset-268-7a",
+          "archive": "TODO.archive.md",
           "kind": "executed",
           "ref": "python3 scripts/check.py; source snapshot 3667c78722254a0082c69c10d6a09fd445c39035; full offline exit 0; independent source review deleg_915d468e; live gateway unqualified",
           "result": "pass",
@@ -783,7 +793,23 @@
         "TOOLSET-271-d6",
         "TOOLSET-272-1c",
         "TOOLSET-273-e0",
-        "TOOLSET-274-f0"
+        "TOOLSET-274-f0",
+        "TOOLSET-275-c1",
+        "TOOLSET-276-11",
+        "TOOLSET-276-2c",
+        "TOOLSET-276-3d",
+        "TOOLSET-276-3f",
+        "TOOLSET-276-a9",
+        "TOOLSET-277-52",
+        "TOOLSET-278-91",
+        "TOOLSET-280-4f",
+        "TOOLSET-281-0d",
+        "TOOLSET-282-43",
+        "TOOLSET-283-15",
+        "TOOLSET-284-e0",
+        "TOOLSET-285-29",
+        "TOOLSET-285-47",
+        "TOOLSET-286-32"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -791,18 +817,15 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-269-f2",
+      "TOOLSET-285-29",
+      "TOOLSET-277-52",
       "TOOLSET-270-a9",
       "TOOLSET-271-d6",
-      "TOOLSET-272-1c",
-      "TOOLSET-273-e0",
       "TOOLSET-274-f0",
       "TOOLSET-252-4c",
-      "TOOLSET-234-d4",
       "TOOLSET-230-bf",
       "TOOLSET-200-c1",
       "TOOLSET-242-d5",
-      "TOOLSET-138-62",
       "TOOLSET-139-62",
       "TOOLSET-179-cf",
       "TOOLSET-158-08",
@@ -826,15 +849,22 @@
       "TOOLSET-129-c4",
       "TOOLSET-130-15",
       "TOOLSET-235-0d",
+      "TOOLSET-278-91",
+      "TOOLSET-279-eb",
+      "TOOLSET-286-32",
+      "TOOLSET-285-47",
+      "TOOLSET-276-2c",
+      "TOOLSET-276-a9",
+      "TOOLSET-276-3f",
+      "TOOLSET-276-3d",
+      "TOOLSET-276-11",
       "TOOLSET-266-7a",
       "TOOLSET-267-a0",
-      "TOOLSET-259-ca",
       "TOOLSET-260-ae",
       "TOOLSET-261-15",
       "TOOLSET-262-13",
       "TOOLSET-263-94",
       "TOOLSET-264-39",
-      "TOOLSET-254-80",
       "TOOLSET-255-55",
       "TOOLSET-256-4b",
       "TOOLSET-257-bd",
@@ -952,14 +982,6 @@
       "section": "Now",
       "status": "open",
       "title": "Separate worker activity, delivery evidence and available capacity"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-138-62",
-      "section": "Now",
-      "status": "open",
-      "title": "Reconcile the fleet's unmerged parallel-admission branch into main"
     },
     {
       "depends_on": [],
@@ -1097,14 +1119,6 @@
       "title": "Integration and closeout move the runner's branch with a ref update, never through a working copy"
     },
     {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-234-d4",
-      "section": "Now",
-      "status": "open",
-      "title": "A main-repair worker gets the runner's main-check evidence: log, exit code, revisions and isolated reruns"
-    },
-    {
       "depends_on": [
         "TOOLSET-200-c1"
       ],
@@ -1143,14 +1157,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-269-f2",
-      "section": "Now",
-      "status": "open",
-      "title": "A runner never commits or publishes uncommitted changes it did not make (GitHub #3)"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-270-a9",
       "section": "Now",
       "status": "open",
@@ -1167,26 +1173,42 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-272-1c",
-      "section": "Now",
-      "status": "open",
-      "title": "A Touches-only rescope that adds a protected file integrates against the answered contract, or is refused plainly (GitHub #8)"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-273-e0",
-      "section": "Now",
-      "status": "open",
-      "title": "Planning merge drivers survive a toolset self-update (GitHub #5)"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-274-f0",
       "section": "Now",
       "status": "open",
       "title": "An unusable repository stops the service deliberately instead of a restart loop (GitHub #6)"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-277-52",
+      "section": "Now",
+      "status": "open",
+      "title": "Restore the offline gate for the picker-policy failures at 171b26b"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-278-91",
+      "section": "Now",
+      "status": "open",
+      "title": "A commit kept without its worker's report resumes that worker, not a batch or the merge resolver"
+    },
+    {
+      "depends_on": [],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-279-eb",
+      "section": "Now",
+      "status": "open",
+      "title": "A failed batch is split in halves to find the breaking candidate, not reviewed one candidate at a time"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-285-29",
+      "section": "Now",
+      "status": "open",
+      "title": "A task whose last attempt failed its review is reworked once with the findings, never left silently held"
     },
     {
       "depends_on": [],
@@ -1540,14 +1562,6 @@
       "title": "A waiting line is logged when the reasons change, not each minute a drain counter moves"
     },
     {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-254-80",
-      "section": "Next",
-      "status": "open",
-      "title": "Explain full-check results from their recorded evidence, never from an absent log"
-    },
-    {
       "depends_on": [
         "TOOLSET-254-80"
       ],
@@ -1578,14 +1592,6 @@
       "section": "Next",
       "status": "open",
       "title": "Consume claim evidence through bounded repair and exact-target closeout"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-259-ca",
-      "section": "Next",
-      "status": "open",
-      "title": "Plans prefer independent tasks; a long dependency chain needs a reason"
     },
     {
       "depends_on": [
@@ -1660,6 +1666,62 @@
       "section": "Next",
       "status": "open",
       "title": "Bound docs-maintainer repair loops and report actual changed task bodies"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-276-11",
+      "section": "Next",
+      "status": "open",
+      "title": "Split tests/test_pi_autowork.py into per-feature modules over one fixture module"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-276-2c",
+      "section": "Next",
+      "status": "open",
+      "title": "A failed git command is never read as a clean tree or an empty result"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-276-3d",
+      "section": "Next",
+      "status": "open",
+      "title": "Landing refuses a commit the tree guard rejects"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-276-3f",
+      "section": "Next",
+      "status": "open",
+      "title": "Tasks that share a hot file never run at the same time"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-276-a9",
+      "section": "Next",
+      "status": "open",
+      "title": "Every hold cause is a known value with its recovery rule in one table"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-285-47",
+      "section": "Next",
+      "status": "open",
+      "title": "Harden release-retention and pruning test isolation under concurrent checks"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-286-32",
+      "section": "Next",
+      "status": "open",
+      "title": "Harden conflicting-owner-plan journey against fixture races"
     },
     {
       "depends_on": [
@@ -2534,6 +2596,14 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
+      "id": "TOOLSET-138-62",
+      "section": "Done",
+      "status": "done",
+      "title": "Reconcile the fleet's unmerged parallel-admission branch into main"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
       "id": "TOOLSET-140-f4",
       "section": "Done",
       "status": "done",
@@ -3058,6 +3128,14 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
+      "id": "TOOLSET-234-d4",
+      "section": "Done",
+      "status": "done",
+      "title": "A main-repair worker gets the runner's main-check evidence: log, exit code, revisions and isolated reruns"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
       "id": "TOOLSET-236-4d",
       "section": "Done",
       "status": "done",
@@ -3154,6 +3232,14 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
+      "id": "TOOLSET-254-80",
+      "section": "Done",
+      "status": "done",
+      "title": "Explain full-check results from their recorded evidence, never from an absent log"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
       "id": "TOOLSET-258-07",
       "section": "Done",
       "status": "done",
@@ -3162,10 +3248,90 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
+      "id": "TOOLSET-259-ca",
+      "section": "Done",
+      "status": "done",
+      "title": "Plans prefer independent tasks; a long dependency chain needs a reason"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
       "id": "TOOLSET-268-7a",
       "section": "Done",
       "status": "done",
       "title": "Chat status shows repository runners separately from plugin setup"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-269-f2",
+      "section": "Done",
+      "status": "done",
+      "title": "A runner never commits or publishes uncommitted changes it did not make (GitHub #3)"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-272-1c",
+      "section": "Done",
+      "status": "done",
+      "title": "A Touches-only rescope that adds a protected file integrates against the answered contract, or is refused plainly (GitHub #8)"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-273-e0",
+      "section": "Done",
+      "status": "done",
+      "title": "Planning merge drivers survive a toolset self-update (GitHub #5)"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-275-c1",
+      "section": "Done",
+      "status": "done",
+      "title": "Select and copy terminal TUI text by mouse dragging"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-280-4f",
+      "section": "Done",
+      "status": "done",
+      "title": "A held commit whose branch the runner itself merged past is recovered by the runner, never asked of the owner as a rescope"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-281-0d",
+      "section": "Done",
+      "status": "done",
+      "title": "A candidate that passed its batch lands before the runner reloads, and after an interrupted landing it lands first"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-282-43",
+      "section": "Done",
+      "status": "done",
+      "title": "A headless worker never stops to ask for approval; an interactive skill's approval step counts as given by the task contract"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-283-15",
+      "section": "Done",
+      "status": "done",
+      "title": "Installed dependencies of a tracked lockfile are linked into worker and review trees without per-runner settings"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-284-e0",
+      "section": "Done",
+      "status": "done",
+      "title": "The autowork core SKILL.md has room again: detail moves to references/"
     },
     {
       "depends_on": [

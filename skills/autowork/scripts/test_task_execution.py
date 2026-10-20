@@ -279,10 +279,15 @@ class RecoveryTests(DirectExecutionTests):
                             if path == Path(f'/proc/{outsider.pid}/cgroup'):
                                 return '0::/user.slice/pi-autowork@other.service\n'
                             return real_read(path, *args, **kwargs)
+                        if cwd == self.repo:
+                            # A canonical session waits only for a file it changed there; the
+                            # attribution point is that a conflicting outsider is not exempt.
+                            (self.repo / 'fixture.py').write_text('owner edit\n')
                         with patch.object(Path, 'read_text', other_unit):
                             result = integrate.integrate(self.repo, owner, task, ['true'], 10)
                         self.assertEqual(result['outcome'], 'BUSY', result)
                         self.assertIn('(session:', result['reason'])
+                        (self.repo / 'fixture.py').unlink(missing_ok=True)
                         outsider.kill(); outsider.wait()
                 env = dict(os.environ)
                 env.pop('AUTOWORK_EXECUTION_COMMON', None)

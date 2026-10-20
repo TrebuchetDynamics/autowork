@@ -46,13 +46,35 @@ name, a repository path or `.`. Nothing here calls a model.
 | `autowork run [dir]` | Run the runner in the foreground here, for debugging |
 | `autowork web [--port N] [--host H] [--view-only]` | The TUI in a browser at `http://127.0.0.1:8765` (this machine only); `--view-only` disables control keys |
 | `autowork blockers [dir]` | `/autowork blockers` in an agent (`AUTOWORK_AGENT`, else `claude`, else `pi`) |
+| `autowork field TASK LABEL VALUE [target]` | Set one field of a task's TODO.md entry, as an owner answer (`"Owner decision"`, `Status`, `"Held by"`, `"Blocker resolution"`) |
+| `autowork place TASK SECTION [target] [--decision TEXT]` | Move a task to Now, Next or Needs decision in TODO.md and goals.json, optionally recording why |
+| `autowork add-task --title T --short S --goal G [--section S] [--scope ...] [target]` | Add a task to TODO.md and goals.json at the top of its section |
+| `autowork move TASK up\|down [target]` | Move an open task among its TODO.md group's open tasks; the runner records the order as its priority |
 | `autowork scorecard [--days N] [--json] [target...]` | Per runner over the last N days (default 7): tasks closed, share of integrations held, median dispatch-to-merge time, new owner questions; no model call |
 
-In the TUI: Enter opens a runner's full log; `d` browses directories (from `~/git`,
-`AUTOWORK_BROWSE_ROOT`) and marks each repository ready or what it needs, and `s` there
-starts its service; `a` start, `s` stop, `R` restart, `p` pause/resume, `m`/`M` model
-and fallback (from Pi's list, type to filter), `u` remove, `x` set aside a held task,
-`b` blockers. Stop, restart, pause, remove, set-aside and model changes ask first.
+In the TUI each key is the first letter of its word, highlighted in the detail pane:
+`l` (or Enter) **L**og, `p` **P**lay/**P**ause (starts a stopped service, resumes a
+paused one, pauses a running one), `s` **S**top, `r` **R**estart, `m` **M**odel and
+`f` **F**allback (from Pi's list, type to filter), `t` **T**asks, `u` **U**ninstall the
+service, `n` **N**ew: browse directories (from `~/git`, `AUTOWORK_BROWSE_ROOT`), see which
+repositories are ready or what they need, and `p` there plays one; `q` **Q**uit. The Tasks
+window lists every open task in TODO.md order with its `Short:` title, state and reason;
+`1`–`5` (or Tab) show All, Working, Held, Waiting or Questions; on the selected task `u`/`d`
+move it **U**p or **D**own (TODO.md order is the priority), `s` to another **S**ection (Now,
+Next, Needs decision), `c` **C**lears its hold, `a` sets it **A**side, `b` answers the
+owner's **B**lockers in an agent, and `n` adds a **N**ew task from a form. Enter opens the
+task: its question and the runner's suggested answer, its whole TODO.md entry and its
+worker's last actions. Answer it there, written to the task's entry where the runner reads
+it: `w` **W**rite a dated `Owner decision:`, `d` **D**efer it to Needs decision with your
+reason, and for a claim `o` **O**pen it (`Status: open`) or `h` mark it **H**eld by you for a
+week; a repeated quick hold takes `r` **R**esolve with the producer or decision. Stop,
+restart, pause, uninstall, clear, set-aside, model changes and claim answers ask first.
+Terminal text can be selected by dragging with the mouse, then copied with your
+terminal's copy shortcut (often Ctrl+Shift+C). Mouse capture is off by default;
+keyboard navigation and controls remain available. Use `autowork tui --mouse` to
+restore clickable rows/buttons instead; hold Shift while dragging if your terminal
+or tmux intercepts selection. The browser view retains mouse controls.
+
 The TUI and web view run Textual 8.2.8 (and textual-serve 1.1.3) through `uv`.
 
 Design: [coordinator redesign](../docs/plans/2026-10-16-pi-autowork-coordinator.md),

@@ -54,6 +54,42 @@ class MainCheckTests(unittest.TestCase):
             os.chmod(loose, 0o777)
             self.assertRaises(ValueError, main_check.slot_root)  # the pool stays private
 
+    def test_a_review_is_admitted_before_waiting_main_checks_until_one_has_waited_half_an_hour(self):
+        """Every runner's main check held the host's slots while a review that lands work
+        waited behind them."""
+        import fcntl
+
+        class Asked(Exception):
+            pass
+
+        def ahead(background):
+            seen = []
+            def waiting(count):
+                seen.append(count)
+                raise Asked
+            with self.assertRaises(Asked), main_check.check_slot(waiting, background):
+                pass
+            return seen[0]
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, PI_AUTOWORK_CHECK_ROOT=tmp,
+                                                               PI_AUTOWORK_CHECK_SLOTS='1'):
+            os.chmod(tmp, 0o700)
+            held = []
+            def hold(name):
+                f = open(Path(tmp) / name, 'a')
+                fcntl.flock(f, fcntl.LOCK_EX)
+                held.append(f)
+            try:
+                hold('slot-0')  # a running check
+                hold(f'wait-1-{time.monotonic_ns() - 10**9:020d}-1')  # a main check queued first
+                self.assertEqual(ahead(background=False), 1)  # only the running check
+                self.assertEqual(ahead(background=True), 2)
+                hold(f'wait-1-{time.monotonic_ns() - 1801 * 10**9:020d}-2')  # waited over half an hour
+                self.assertEqual(ahead(background=False), 2)
+            finally:
+                for f in held:
+                    f.close()
+
     def test_reruns_are_alone_in_their_directory_and_bounded(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -80,6 +116,65 @@ class MainCheckTests(unittest.TestCase):
                                      [f'test_sample.Sample.{name}' for name in want])
                     self.assertEqual((tests / 'ran').exists(), bool(want))
                     self.assertFalse((root / 'ran').exists())
+
+    def test_red_main_publishes_read_only_evidence_and_keeps_the_last_five_revisions(self):
+        from pi_autowork.coordinator import Coordinator
+        from pi_autowork.common import git, git_ok
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo, state = root / 'repo', root / 'state'
+            repo.mkdir()
+            state.mkdir()
+            self.assertTrue(git_ok(repo, 'init', '-q'))
+            runner = Coordinator.__new__(Coordinator)
+            runner.repo, runner.state = repo, state
+            runner.maintain = lambda **_: None
+            (repo / 'test_sample.py').write_text(
+                'import unittest\nclass Sample(unittest.TestCase):\n'
+                '    def test_fail(self): self.fail("still broken")\n')
+            log = state / 'main-check.log'
+            log.write_text('FAIL: test_fail (test_sample.Sample.test_fail)\n'
+                           'Ran 1 test in 0.01s\n\nFAILED (failures=1)\n')
+            (state / 'main-check.exit').write_text('1\n')
+            common = Path(git(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir'))
+            evidence = common / 'autowork-execution/main-evidence'
+            try:
+                for index in range(7):
+                    rev = f'{index:040x}'
+                    main_check.rerun_failures(log, repo, state / 'main-check-reruns.json', rev)
+                    runner.finish_main_check(dict(rev=rev, green='last-green'))
+                    bundle = evidence / rev
+                    self.assertEqual(main_check.read(state)['evidence'], str(bundle))
+                    saved = json.loads((bundle / 'main_check.json').read_text())
+                    self.assertEqual((saved['rev'], saved['green'], saved['state']), (rev, 'last-green', 'red'))
+                    self.assertEqual((bundle / 'main-check.log').read_text(), log.read_text())
+                    self.assertEqual((bundle / 'main-check.exit').read_text(), '1\n')
+                    reruns = (bundle / 'main-check-reruns.log').read_text()
+                    self.assertIn('-m unittest test_sample.Sample.test_fail', reruns)
+                    self.assertIn('exit code: 1', reruns)
+                    self.assertIn('still broken', reruns)
+                    self.assertEqual(json.loads((bundle / 'flaky_history.json').read_text()), {})
+                    self.assertFalse(bundle.stat().st_mode & 0o222)
+                    self.assertTrue(all(not path.stat().st_mode & 0o222 for path in bundle.iterdir()))
+                self.assertEqual(sorted(path.name for path in evidence.iterdir()),
+                                 [f'{index:040x}' for index in range(2, 7)])
+                # A recheck of the same revision replaces its snapshot, not a sixth directory.
+                (state / 'main-check.exit').write_text('0\n')
+                runner.finish_main_check(dict(rev=rev))
+                self.assertEqual(json.loads((bundle / 'main_check.json').read_text())['state'], 'green')
+                self.assertEqual((bundle / 'main-check-reruns.log').read_text(), '')
+                log.write_text('Fatal error\n')
+                (state / 'main-check.exit').write_text('137\n')
+                (state / 'main-check-reruns.log').unlink()
+                runner.finish_main_check(dict(rev=rev))
+                crashed = json.loads((bundle / 'main_check.json').read_text())
+                self.assertEqual(crashed['state'], 'recheck')
+                self.assertEqual(crashed['checked_rev'], rev)
+            finally:
+                if evidence.exists():
+                    for path in evidence.iterdir():
+                        path.chmod(0o700)  # allow TemporaryDirectory to remove read-only snapshots
 
     def test_three_distinct_flaky_revisions_make_one_hardening_trigger(self):
         from pi_autowork import maintainer
@@ -302,6 +397,34 @@ class MainCheckTests(unittest.TestCase):
                         runner.check_main()
                         self.assertEqual(bool(started), starts)
 
+    def test_a_green_result_carries_over_planning_only_commits_and_not_code(self):
+        """The runner's questions commits moved main 8 times in a day: each took a host check
+        slot from a waiting review to check the same code."""
+        from pi_autowork.coordinator import Coordinator
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, PI_AUTOWORK_MAIN_CHECK='true'):
+            runner = Coordinator.__new__(Coordinator)
+            runner.state, runner.repo, runner.base, runner.stop = Path(tmp), tmp, 'main', False
+            runner.tasks = lambda: []
+            started = []
+            runner.scratch_checkout = lambda *args: started.append(args) and None
+            for changed, carried in (('BLOCKERS.md\nTODO.md\ngoals.json', True), ('TODO.md\nREADME.md', False)):
+                with self.subTest(changed=changed):
+                    started.clear()
+                    main_check.write(runner.state, {'state': 'green', 'rev': 'old', 'green': 'old', 'finished': 0})
+                    git = lambda *args: changed if args[1] == 'diff' else 'new'
+                    with patch('pi_autowork.coordinator.git', side_effect=git):
+                        runner.check_main()
+                    record = main_check.read(runner.state)
+                    self.assertEqual((record['rev'], record['green']) == ('new', 'new'), carried)
+                    self.assertEqual(bool(started), not carried)
+            # A red main is checked again: its repair may be the planning change.
+            started.clear()
+            main_check.write(runner.state, {'state': 'red', 'rev': 'old', 'green': 'older', 'finished': 0})
+            with patch('pi_autowork.coordinator.git', side_effect=lambda *a: 'TODO.md' if a[1] == 'diff' else 'new'):
+                runner.check_main()
+            self.assertTrue(started)
+
     def test_main_check_waiting_is_visible_and_does_not_consume_its_timeout(self):
         from pi_autowork.coordinator import Coordinator
 
@@ -321,7 +444,10 @@ class MainCheckTests(unittest.TestCase):
                 children.append(process)  # retain Popen while the coordinator adopts/reaps its persisted PID
                 return process
 
-            with patch('pi_autowork.coordinator.git', return_value='abc123'), \
+            def git_result(repo, *args):
+                return str(root / 'common') if '--git-common-dir' in args else 'abc123'
+
+            with patch('pi_autowork.coordinator.git', side_effect=git_result), \
                     patch('subprocess.Popen', side_effect=launch), patch('os.getloadavg', return_value=(0, 0, 0)):
                 try:
                     with main_check.check_slot(lambda _: None):

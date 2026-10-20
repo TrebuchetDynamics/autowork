@@ -76,10 +76,10 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
      the worker branch stay untouched);
    - validation fails, or the task contract or canonical branch changes meanwhile;
    - (not a hold) another live agent session would be affected: the result is `BUSY`
-     and the commit stays reported until that session leaves. Integrating outside
-     the main checkout (a runner's session worktree), a session in the main checkout
-     counts only when the merge changes a file it holds open for writing or has left
-     uncommitted there.
+     and the commit stays reported until that session leaves. A session in the main
+     checkout counts only when the merge changes a file it holds open for writing or
+     has left uncommitted there, wherever the integration runs. A person's session
+     never waits a merge by existing, being busy or having another checkout open.
 
    Coordinator-owned edits are left out before validation, including ledger-only
    conflicts and edits introduced by the runner or resolver merging into the task
@@ -232,6 +232,37 @@ coordinator-owned: workers must never edit them. Integration leaves out any such
 edits and hands their patch to the docs maintainer; it grants no worker ledger
 write authority.
 
+### Shared admission path and history
+
+Fresh/resumed dispatch (`admit`) and held retries (`retry_plan`) in
+[`parallel_dispatch.py`](../scripts/parallel_dispatch.py#L778-L801) both use
+[`parallel_plan.plan`](../scripts/parallel_plan.py#L253). They supply the same
+tracked/nonignored-untracked protected-file inventory to the planner's directory
+classification; these are callers of one policy, not alternative admission rules.
+The [retry lifecycle guard](../scripts/parallel_state.py#L348-L355) also calls
+`retry_plan`. [Integration](../scripts/parallel_integrate.py#L220-L234) checks the
+original dispatched contract against the protected inventory at the slot baseline,
+so later files or contract edits cannot retroactively authorize serial work.
+Fresh, retry and integration worktrees all use
+[`worktree_path`](../scripts/worktree_paths.py#L38) under the canonical checkout.
+
+TOOLSET-138-62 provenance: current-history directory-admission commit
+`34d988b7962c7942c97dcf703ff8fc17b3741db2` landed through merge
+`3504855659952b9a42ea6b6f78310878d0733f42`. Its stable patch ID matches original
+`3848aaa5eb07aaec97005360a7827b6401f1dc38`:
+`c05c5b1c7932ab86d8d3555ec30202f6f4908aa0`. Patch equality does **not** establish
+original ancestry or qualify an installed runtime pin. Keep a retained old pin
+unchanged unless its actual commit passes `git merge-base --is-ancestor PIN main`;
+service pin handling belongs to TOOLSET-139-62, not admission verification.
+
+Requalify after admission-policy, worktree-placement or history changes: check both
+current-history commits against the actual target `main`, compare provenance with
+`git show COMMIT --format= | git patch-id --stable`, and run the existing
+`test_parallel_*.py` engine tests plus `test_worktree_paths.py`. These cover
+independent retries beside workers, protected directory inventory and undeclared
+new protected files, and canonical placement from linked checkouts. Offline engine
+tests do not qualify live services; the runner's merged-tree gate remains required.
+
 ## Hosts
 
 `--worker-host auto` (the default) uses the coordinator's own host, found from its
@@ -278,8 +309,9 @@ nothing parallel was claimed or started.
   retried task leaves the first attempt's worktree and branch for manual cleanup.
 - **Hold causes:** every held slot records a machine-readable `cause`: `scope` (with
   `outside`, the undeclared protected files), `report`, `conflict`,
-  `validation`, `contract_changed`, `moved`, `blocker`, `task_wait` (with `waits_for`), `crash` (died twice) or
-  `launch`. Integration's `HELD` result carries `cause` and `outside` too.
+  `validation`, `contract_changed`, `moved`, `blocker`, `task_wait` (with `waits_for`),
+  `crash` (died twice), `diverged` (the worker's HEAD does not descend from its baseline)
+  or `launch`. Integration's `HELD` result carries `cause` and `outside` too.
 - **Holds from before TOOLSET-161-17:** a commit held for `overlap`, or for `scope` on
   files that are not protected (including coordinator-owned files), is offered again once
   (`REOFFERED`) in priority order and integrates by merge; a worker held with

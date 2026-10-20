@@ -23,7 +23,7 @@ INPUT_CAUSES = ('blocker', 'scope_request', 'scope')
 # Holds the engine recovers without a person: it re-verifies the validation failure, or (on
 # request) clears the hold. A merge conflict is different — the engine resolves it during
 # integration, and one it cannot resolve stays the owner's question — so it is not listed here.
-TECHNICAL_CAUSES = ('validation',)
+TECHNICAL_CAUSES = ('validation', 'runner_merged')
 
 
 def _title(todo, task, goals):
@@ -260,7 +260,7 @@ def render(questions, since):
     for q in questions:
         lines += [f"### Q-{q['id']} — {q['type']} — effort {q['effort']} — unblocks {q['unblocks']}", '',
                   f"- Task: {q['task']}", f"- Needs: {q['needs']}", f"- Since: {since.get(q['id'])}",
-                  f"- Answer: {q['answer']}", '']
+                  f"- Answer: {q['answer']}", f"- Kind: {q.get('kind') or 'other'}", '']
     lines.append(END)
     return '\n'.join(lines)
 
