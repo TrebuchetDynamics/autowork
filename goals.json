@@ -799,7 +799,8 @@
         "TOOLSET-276-3d",
         "TOOLSET-276-3f",
         "TOOLSET-276-a9",
-        "TOOLSET-277-52"
+        "TOOLSET-277-52",
+        "TOOLSET-278-91"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -1722,6 +1723,14 @@
       "section": "Next",
       "status": "open",
       "title": "Every hold cause is a known value with its recovery rule in one table"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-278-91",
+      "section": "Next",
+      "status": "open",
+      "title": "A commit kept without its worker's report resumes that worker, not a batch or the merge resolver"
     },
     {
       "depends_on": [
