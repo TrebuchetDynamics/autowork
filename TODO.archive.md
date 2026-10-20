@@ -5116,3 +5116,29 @@ Source section: Now
 - Next action: Existing execution owner: continue from retained candidate 48070c51f0c65ba28d8ad7542670e69444c926bb, preserving its code and tests. Prepare the smallest descendant/reconciled candidate that excludes only attributable worker changes to protected TODO.md/goals.json; any necessary planning repair goes through the coordinator/Docs Sync, never a worker-file guard bypass or restoration of stale queue snapshots. Reverify the exact integrated code with original required checks and review; reuse only still-valid evidence. Keep the same task and cumulative accounting, preserve unrelated work and do not clear slots/leases manually. A saved answer is not verified delivery.
 - Planner's call (2026-10-19 audit; where this differs from the Scope above, this wins): The hold records `waits_for` before the blocker triage runs, and `triage_blocker` skips slots that have one. A blocker naming no task goes to the triage (4a82801), not to a question. Drop the acceptance clause "an exclusive B starts although that slot exists": 1fcf0a3 already lets a must-run-alone task start beside held slots whose worker has ended.
 - Planner's call (2026-10-19 builder check): A `waits_for` that has not resolved after 24 h becomes one question for the owner, not a triage: the task it waits for is stuck. Reuse the waits_for code of the retained candidate (now on `autowork/TOOLSET-252-4c-set-aside-1`) where it still fits, and drop its path that sends task-less blockers to the owner, since the triage handles those: that keeps the owner decision's intent of not reimplementing what exists. Depends on 229-d0.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-242-d5"></a>
+
+### TOOLSET-242-d5 — A task archived as done is done in the ledger too, and a not-runnable reason names what blocks it
+
+- [x] TOOLSET-242-d5 — A task archived as done is done in the ledger too, and a not-runnable reason names what blocks it
+- Short: Archived done means done in the ledger
+- Status: done
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [contract rules](skills/autowork/scripts/task_execution.py) (`contract_reason`, the `ledger dependency or disposition holds execution` reason, `dependency_done`, `archived_done`, `_queue_inputs`), [ledger commands](skills/docs-sync/scripts/goals.py) (`task`, `archive`), [docs maintainer](pi-autowork/pi_autowork/maintainer.py) (the `not runnable` trigger).
+- Evidence (2026-10-18, a fleet runner): three tasks and two behind them waited for hours as `not runnable: ledger dependency or disposition holds execution`; their dependencies were checked done in the TODO archive but still `open` in `goals.json` and unchecked in TODO.md. The reason named neither the dependency nor the disagreement, the maintainer made no change, and the runner asked the owner.
+- Touches: skills/autowork/scripts/task_execution.py, skills/autowork/scripts/test_parallel_plan.py, pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
+- Scope: (1) The reason names what holds the task and why: `ledger: <ID> is open in goals.json but archived as done` (or the ID missing from the ledger, or a ledger dependency outside Now/Next). (2) The runner repairs the archived-done case itself, without a model, through `goals.py` (the task `done` in the ledger, its open TODO entry archived), in one planning commit that names the IDs; it never marks a task done that the archive does not show as done. (3) Any other ledger disagreement goes to the maintainer with that exact reason, which it can act on.
+- Acceptance: In fixtures, a dependency archived done but open in the ledger is repaired in one planning commit and its dependents run; the reason for every other case names the ID and the disagreement; nothing that is not archived as done is ever marked done.
+- Checks: python3 scripts/check.py skills/autowork/scripts/test_parallel_plan.py tests/test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator. Runs after TOOLSET-197-4f, which edits coordinator.py.
+- Exclusions: No change to which tasks the engine runs once the files agree.
+- Planner's call: the archive records a close; a ledger that lags it is bookkeeping the runner can fix deterministically, so it needs neither a model nor the owner (owner, 2026-10-18: autowork "must be able to fix these issues easily").
+- Planner's call (2026-10-19 audit; where this differs from the Scope above, this wins): Scope (2) is a repair inside the docs maintainer's transaction (265-16) that calls no model, not a new coordinator planning commit.
