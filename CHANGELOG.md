@@ -255,6 +255,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A review whose reviewer ran out of time is reviewed again on the same commit with a longer
+  limit, not reimplemented. It ended with only "no verdict", was held as a failed review, and
+  a fresh worker redid a finished 90-minute task. A review without a verdict now says why
+  (out of time, no model, provider failure, or no verdict given), and the reviewer's own limit
+  follows the review's when it is doubled.
 - A runner whose engine keeps failing reads a finished review's answer, so it can reload onto a
   release that fixes the engine. The reload waited for that answer, which the failing engine
   never let it read: the runner stayed down until a person restarted it.

@@ -578,8 +578,10 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
                                           f"{receipt.get('elapsed_seconds') or 0:.0f}s (limit {timeout:g}s)")
                 if (not passed(check) or git(root, 'rev-parse', 'HEAD') != merge
                         or git(root, 'status', '--porcelain', '--untracked-files=all')):
-                    raise Hold('validation', 'integration validation failed or changed the integration tree'
-                               + validation_reason(check))
+                    why = validation_reason(check)
+                    # The reviewer ran out of its time: the same host-speed cause as the check's.
+                    raise Hold('timeout' if why.startswith(': the review ran out of time') else 'validation',
+                               'integration validation failed or changed the integration tree' + why)
                 with execution.lock(common / 'writer.lock', wait=LOCK_WAIT):
                     state.require_owner(common, owner_pid)
                     # Re-read report, refs, scopes and source contracts after arbitrary validation.
