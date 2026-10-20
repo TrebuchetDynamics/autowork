@@ -718,7 +718,8 @@ class EngineTests(Fixture):
         self.assertEqual(self.runs(), [])
 
     def test_failed_review_holds_the_task_and_keeps_main_clean(self):
-        self.plan({'verify:A': ['fail', 'fail']})
+        # The first attempt, its fresh retry and its one rework after review (TOOLSET-285-29) all fail.
+        self.plan({'verify:A': ['fail', 'fail', 'fail']})
         result = self.run_runner('--until-empty', '--workers', '1')
         self.assertIn('A: failed', result.stdout)
         held = json.loads((self.repo / '.git/autowork-execution/slots/A.json').read_text())
@@ -2265,21 +2266,21 @@ class EngineTests(Fixture):
 
     def test_a_changed_reviewer_reviews_held_commits_again_by_itself(self):
         """flutter: three commits sat held after an older reviewer failed them; nobody should have to ask."""
-        self.plan({'verify:A': ['fail', 'fail']})
+        self.plan({'verify:A': ['fail', 'fail', 'fail']})
         first = self.run_runner('--until-empty')
         self.assertIn('A: failed', first.stdout)
         reviews = lambda: len([r for r in self.runs('verify') if r['task'] == 'A'])
-        self.assertEqual(reviews(), 2)  # the first attempt and its fresh retry
+        self.assertEqual(reviews(), 3)  # the first attempt, its fresh retry and its one rework
         same = self.run_runner('--until-empty')  # the same reviewer: nothing reviewed again
         self.assertNotIn('verifying it again', same.stdout)
-        self.assertEqual(reviews(), 2)
+        self.assertEqual(reviews(), 3)
         self.env['PI_AUTOWORK_VALIDATE'] = 'true'  # validation changed: a new reviewer version
         self.plan({'verify:A': ['pass']})
         changed = self.run_runner('--until-empty')
         self.assertEqual(changed.returncode, 0, changed.stdout + changed.stderr)
         self.assertIn('A: the reviewer changed since this commit was held; verifying it again', changed.stdout)
         self.assertTrue(self.done('A', 'B', 'C'))
-        self.assertEqual(reviews(), 3)
+        self.assertEqual(reviews(), 4)  # and one look by the changed reviewer
 
     def test_editing_a_held_tasks_entry_answers_it_and_the_runner_reruns_it(self):
         """TOOLSET-120-fc: the owner only answers; no --set-aside, no restart."""
@@ -2560,12 +2561,12 @@ class EngineTests(Fixture):
         self.assertIn('the merge could not be resolved; it waits for the owner', result.stdout)
 
     def test_a_refused_adoption_asks_the_owner_without_running_the_resolver(self):
-        self.plan({'verify:A': ['fail', 'fail']})
+        self.plan({'verify:A': ['fail', 'fail', 'fail']})  # with its one rework after review
         first = self.run_runner('--until-empty')
         self.assertEqual(first.returncode, 1, first.stdout + first.stderr)
         slot_path = self.repo / '.git/autowork-execution/slots/A.json'
         original = json.loads(slot_path.read_text())
-        self.assertEqual(original['cause'], 'validation')
+        self.assertEqual(original['cause'], 'reviewed_twice')
         original.update(cause='conflict', reason='merge conflict', conflict_files=['A.txt'])
         (self.repo / 'A.txt').write_text('conflicting session change\n')
         self.git(self.repo, 'commit', '-qam', 'session conflict')

@@ -39,7 +39,7 @@ FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_
 # reviews the same commit again with a longer limit (TOOLSET-196-fb).
 # 'no_change': the worker reported, cleanly, that nothing needed changing; a fresh attempt would only
 # say so again, so the docs maintainer closes or restates the task.
-NEEDS_PERSON = ('blocker', 'scope_request', 'scope', 'timeout', 'no_change')
+NEEDS_PERSON = ('blocker', 'scope_request', 'scope', 'timeout', 'no_change', 'reviewed_twice')
 COORDINATOR_FILES = ('TODO.md', 'TODO.archive.md', 'goals.json', 'CHANGELOG.md')
 
 

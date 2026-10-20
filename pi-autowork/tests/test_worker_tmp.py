@@ -870,6 +870,17 @@ class HeadlessApprovalTests(unittest.TestCase):
         self.assertEqual(len(self.run_worker(['I could not finish.'])[1]), 1)
 
 
+class BatchableTests(unittest.TestCase):
+    def test_a_review_a_restart_cut_short_joins_the_next_batch(self):
+        """Left integrating by a restart, three commits waited behind every later batch, one
+        for 16 hours: only reported commits were ever batched."""
+        from pi_autowork.coordinator import batchable
+        rows = [{'task': 'A', 'state': 'reported', 'commit': 'a'}, {'task': 'B', 'state': 'integrating', 'commit': 'b'},
+                {'task': 'C', 'state': 'held', 'commit': 'c'}, {'task': 'D', 'state': 'running'}]
+        self.assertEqual(batchable(rows), [('A', 'a'), ('B', 'b')])
+        self.assertEqual(batchable(rows, {'A'}), [('B', 'b')])
+
+
 class BusyLineTests(unittest.TestCase):
     """The wait for a session in the main checkout is said once per session: its changing status
     ("running command", "terminal used 2 min ago") repeated the line every minute."""

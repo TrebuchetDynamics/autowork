@@ -279,6 +279,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A task whose last attempt failed its review is reworked once instead of sitting held with
+  neither a retry nor a question: the attempt is set aside and a fresh one restores its commit
+  and fixes the quoted finding; a rework that fails review too becomes one owner question
+  quoting both findings (`reviewed_twice`). Requeues now say why in the log (TOOLSET-285-29).
+
 - Worker and review trees get the main checkout's installed dependencies for tracked lockfiles
   (`node_modules` beside package-lock.json, pnpm-lock.yaml, yarn.lock or npm-shrinkwrap.json;
   `.venv` beside uv.lock or poetry.lock) without a setting, when the lockfile is identical in
@@ -316,6 +321,12 @@ claim of a tagged release, completed installation or live workflow qualification
   (`target/`, `build/`, `.dart_tool/` that Git ignores): it is removed first. Kept for
   `.dart_tool/` alone, a session never rotated and said so every cycle; a session kept for
   other files now says so once.
+- A commit whose review a restart cut short (left integrating) joins the next batch like a
+  reported one. Only reported commits were batched, and batches go first, so three such
+  commits waited behind every later batch, one for 16 hours.
+- A held merge conflict that the runner's resolver is settling, or will take next, is not
+  posted as an owner question in BLOCKERS.md. It is asked once its resolution fails or its
+  three merges are spent. Seven were posted while three resolvers were clearing them.
 - Host check slots admit a review's suites before background main checks waiting with
   them; a main check that has waited 30 minutes takes its turn with reviews. Every
   runner's main check held the slots while reviews that land work waited behind them.

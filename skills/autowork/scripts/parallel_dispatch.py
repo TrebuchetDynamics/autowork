@@ -220,7 +220,8 @@ def check_failure_resumed(slot):
     return any(s.get('check_failure_resumed') for s in [slot, *slot.get('previous_attempts', [])])
 
 
-def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None, commit_finished=False, answers=''):
+def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None, commit_finished=False, answers='',
+           rework=None):
     touches = task['fields'].get('Touches', '(none declared)')
     earlier = earlier_task_work(worktree, task['id'], branch, baseline)
     lines = [
@@ -330,11 +331,25 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None,
         lines += ['', 'Your host/check-only blocker is not a question for a person: commit the finished work',
                   'under the unrelated_failures/environment_failures rules above; preserve the existing changes.',
                   'Do not report host load, a quiet window, resource-gate skips or flaky/unrelated tests as blockers.']
+    if rework:
+        lines += ['', 'Rework after review: the last attempt at this task failed its review. Its commit',
+                  f'{rework.get("tip") or "(none recorded)"} is kept on a -set-aside branch listed above. Restore it',
+                  'instead of reimplementing, fix exactly what the review found, and rerun the task\'s Checks:',
+                  str(rework.get('finding') or '').strip()]
     if answers:
         lines += ['', 'You stopped on a blocker, and the runner answered it. Act on the answer and finish the',
                   'task; do not report the same blocker again. A blocker that remains after this answer must',
                   'name what only a person can provide.', answers.strip()]
     return '\n'.join(lines + ['', 'Task contract from TODO.md:', '', task['contract'], ''])
+
+
+def rework_record(common, task):
+    """The finding and kept commit of a review failure this attempt reworks (TOOLSET-285-29), or None."""
+    try:
+        record = execution.read(common / 'review-rework' / (re.sub(r'[^A-Za-z0-9._-]+', '-', task) + '.json'))
+    except (OSError, ValueError):
+        return None
+    return record if isinstance(record, dict) else None
 
 
 def answers_text(common, task):
@@ -1057,7 +1072,7 @@ def dispatch_locked(args, repo, common, count, template, host):
                                       adopted=idle.get(task['id']),
                                       commit_finished=bool(previous and check_failure_resumed(previous)),
                                       answers=answers_text(common, task['id']) if previous and previous.get('answered')
-                                      else ''))
+                                      else '', rework=rework_record(common, task['id'])))
         if task['id'] in idle:
             with execution.lock(common / 'writer.lock'):
                 state.event(common, 'claim_adopted', task_id=task['id'], evidence=idle[task['id']])

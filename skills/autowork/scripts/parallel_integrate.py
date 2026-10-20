@@ -1201,7 +1201,7 @@ def reverifiable(slot, version):
     """A changed validator gets one more look, unless it repeated the same commit's verdict.
     Timeouts are not verdicts: the coordinator may still retry them with a longer limit."""
     return (slot['state'] == 'held' and bool(slot.get('commit')) and not state.worker_live(slot)
-            and (slot.get('cause') in ('validation', 'timeout')
+            and (slot.get('cause') in ('validation', 'reviewed_twice', 'timeout')
                  or (not slot.get('cause') and str(slot.get('reason', '')).startswith(VALIDATION_HOLD)))
             and slot.get('reverified') != version and slot.get('reviewed_by') != version
             and (slot.get('cause') == 'timeout' or slot.get('reverify_verdict') != validation_verdict(slot)))
@@ -1340,6 +1340,41 @@ def cleanup_worker(repo, common, slot):
     return True
 
 
+def rework_path(common, task):
+    """The record of the one rework a task's review failure earned (TOOLSET-285-29)."""
+    return execution.safe_path(common / 'review-rework' / (re.sub(r'[^A-Za-z0-9._-]+', '-', task) + '.json'))
+
+
+def reviewer_finding(slot):
+    """The reviewer's finding a held slot failed on, or '': not an environment miss or a timeout."""
+    reason = str(slot.get('reason') or '')
+    found = re.search(r'PI_AUTOWORK_VERIFY: fail(?! environment)\b\s*(.*)', reason, re.S)
+    return ' '.join((found[1] if found else '').lstrip('—- ').split()) if slot.get('cause') == 'validation' else ''
+
+
+def review_rework(repo, common, current):
+    """A last attempt that failed its review was neither retried nor asked about: fresh retries are
+    for first attempts, and review failures are not questions. It now gets one rework attempt with
+    the finding and its kept commit; a rework that fails review too becomes a person's question
+    quoting both findings. Caller holds the dispatch, integration and writer locks."""
+    for slot in current:
+        finding = reviewer_finding(slot)
+        if slot['state'] != 'held' or not finding or state.worker_live(slot):
+            continue
+        marker = rework_path(common, slot['task_id'])
+        earlier = execution.read(marker) if marker.exists() else None
+        if isinstance(earlier, dict):
+            reason = (f'{slot.get("reason")}; this was its one rework after review, and the earlier '
+                      f'review found: {earlier.get("finding", "")}')
+            state.write_slot(common, dict(slot, cause='reviewed_twice', reason=reason), slot)
+            state.event(common, 'review_rework_failed', task_id=slot['task_id'])
+        elif slot['attempt'] >= 2:
+            execution.save(marker, {'finding': finding, 'tip': slot.get('commit') or '', 'at': time.time()})
+            state.event(common, 'review_rework', task_id=slot['task_id'], tip=slot.get('commit') or '')
+            return dict(_retire(repo, common, slot, True), outcome='REQUEUED', why='review_rework')
+    return None
+
+
 def retry_held(args):
     """Refill adapter for held slots; first attempts and their artifacts survive."""
     repo, common = context(args.consumer, args.owner_pid)
@@ -1466,15 +1501,22 @@ def retry_held(args):
             if merged_past is not None:
                 state.event(common, 'runner_merged_requeued', task_id=merged_past['task_id'],
                             tip=merged_past.get('tip', ''))
-                return dict(_retire(repo, common, merged_past, True), outcome='REQUEUED')
+                return dict(_retire(repo, common, merged_past, True), outcome='REQUEUED', why='runner_merged')
             changed_slot = next((s for s in current if s['state'] == 'held' and not state.worker_live(s)
                                  and entry_changed(repo, common, s)), None)
             if changed_slot is not None:
+                rework_path(common, changed_slot['task_id']).unlink(missing_ok=True)  # a person's answer resets it
                 present = bool(execution.goals_module().task_bodies((repo / 'TODO.md').read_text()).get(changed_slot['task_id']))
                 state.event(common, 'task_entry_changed', task_id=changed_slot['task_id'],
                             changed_fields=entry_changes(repo, common, changed_slot), action='requeue')
                 result = _retire(repo, common, changed_slot, present)
                 return dict(result, outcome='REQUEUED')
+            reworked = review_rework(repo, common, current)
+            if reworked:
+                return reworked
+            # A second review failure became a person's question: read its new cause.
+            fresh = {x['task_id']: x for x in state.slots(common)}
+            current = [fresh.get(x['task_id'], x) for x in current]
             # A hold the worker reported a blocker for gets no fresh attempt: it needs a person.
             live = [s for s in current if state.worker_live(s)]
             capacity = dispatch.capacity(args)
