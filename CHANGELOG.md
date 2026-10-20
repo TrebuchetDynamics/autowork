@@ -17,6 +17,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- A batch whose full check fails names its suspects: the candidates whose changes the
+  new failing tests import (transitively) or read by name. They integrate one at a time and
+  the rest batch again at once; when a failure points at no candidate, or at all of them,
+  the batch is halved as before. Halving cost a 20-minute full check per round.
 - Task status reads as one headline plus a detail (TOOLSET-289-71): the fleet table's
   Run, Land, Wait and Held columns are now Active, Mergeable, Waiting and Blocker; task
   rows and lanes show `Active · Verifying`, `Waiting · Implemented`, `Blocker · Conflict ·
@@ -286,6 +290,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- The fleet view no longer shows a task as `Active · Verifying` after its review died: a
+  live `--verify` process is required. A task a live batch is checking reads
+  `Waiting · Batch check`; any other, `Waiting · Merge turn` (its review is not running).
 - A task whose last attempt failed its review is reworked once instead of sitting held with
   neither a retry nor a question: the attempt is set aside and a fresh one restores its commit
   and fixes the quoted finding; a rework that fails review too becomes one owner question

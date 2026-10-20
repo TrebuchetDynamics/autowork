@@ -766,6 +766,59 @@ class BatchFailureTests(unittest.TestCase):
             self.assertIn('G@g', json.loads(Path(folder, 'batch-failed.json').read_text()))
 
 
+    def test_suspects_integrate_alone_and_the_rest_batch_again(self):
+        """Halving cost a full check per round; the failing tests usually name the candidate."""
+        reported = [(t, t.lower()) for t in 'ABCD']
+        with tempfile.TemporaryDirectory() as folder, patch('pi_autowork.coordinator.LOG'):
+            runner = self.coordinator(folder)
+            self.assertEqual(runner.batch_due(reported), list('ABCD'))
+            runner.batch_done({'outcome': 'BATCH_GATE_FAILED', 'tasks': list('ABCD'), 'suspects': ['B']})
+            self.assertFalse(Path(folder, 'batch-split.json').exists())
+            self.assertEqual(json.loads(Path(folder, 'batch-failed.json').read_text()), ['B@b'])
+            self.assertEqual(self.coordinator(folder).batch_due(reported), list('ACD'))
+            # Every candidate a suspect tells nothing: halves, as before.
+            runner = self.coordinator(folder)
+            self.assertEqual(runner.batch_due(reported), list('ACD'))
+            runner.batch_done({'outcome': 'BATCH_GATE_FAILED', 'tasks': list('ACD'), 'suspects': list('ACD')})
+            self.assertEqual(json.loads(Path(folder, 'batch-failed.json').read_text()), ['A@a', 'B@b', 'C@c', 'D@d'])
+
+    def test_the_failing_tests_point_at_the_candidates_whose_changes_they_import_or_read(self):
+        with tempfile.TemporaryDirectory() as folder:
+            repo, state = Path(folder, 'repo'), Path(folder, 'state')
+            git = lambda *a: subprocess.run(['git', '-C', str(repo), *a], check=True, capture_output=True,
+                                            text=True).stdout.strip()
+            files = {'pkg/__init__.py': '', 'pkg/a.py': 'from . import helper\n', 'pkg/helper.py': 'X = 1\n',
+                     'pkg/b.py': 'Y = 2\n', 'guide/GUIDE.md': 'text\n', 'tests/notes.md': 'n\n',
+                     'tests/test_near.py': "ROOT.joinpath('notes.md')\n",
+                     'tests/test_a.py': 'from pkg import a\n',
+                     'tests/test_doc.py': "TEXT = open('guide/GUIDE.md').read()\n"}
+            for name, text in files.items():
+                (repo / name).parent.mkdir(parents=True, exist_ok=True)
+                (repo / name).write_text(text)
+            subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+            git('add', '.')
+            git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'base')
+            base, steps = git('rev-parse', 'HEAD'), []
+            for task, name in (('A', 'pkg/helper.py'), ('B', 'pkg/b.py'), ('C', 'guide/GUIDE.md'), ('D', 'tests/notes.md')):
+                (repo / name).write_text(task + '\n')
+                git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qam', task)
+                steps.append((task, git('rev-parse', 'HEAD')))
+            record = state / 'full-check' / f"tree-{git('rev-parse', 'HEAD^{tree}')}.json"
+            record.parent.mkdir(parents=True)
+
+            def suspects(failures, excused=()):
+                record.write_text(json.dumps({'result': {'failures': failures}, 'baseline_equivalent': list(excused)}))
+                return worker.batch_suspects(str(state), str(repo), base, steps)
+
+            self.assertEqual(suspects(['test_a.ATests.test_x']), ['A'])  # through pkg.a, which imports helper
+            self.assertEqual(suspects(['test_doc.DocTests.test_y']), ['C'])  # it reads the file by name
+            self.assertEqual(suspects(['test_near.T.test']), ['D'])  # a bare name, beside the test
+            self.assertEqual(suspects(['test_a.ATests.test_x', 'test_doc.DocTests.test_y']), ['A', 'C'])
+            self.assertEqual(suspects(['test_a.ATests.test_x', 'test_gone.T.test']), [])  # one unexplained
+            self.assertEqual(suspects(['test_a.ATests.test_x'], excused=['test_a.ATests.test_x']), [])  # base fails it too
+            record.unlink()
+            self.assertEqual(worker.batch_suspects(str(state), str(repo), base, steps), [])  # no record
+
 class BatchLandingTests(unittest.TestCase):
     """TOOLSET-281-0d: a reload 4 s after `landing them now` sent one batch-passed candidate back to
     a queue of single reviews for 15 hours. Until the passed candidates land, the runner neither

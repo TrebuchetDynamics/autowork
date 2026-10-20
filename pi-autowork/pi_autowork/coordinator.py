@@ -327,6 +327,15 @@ class Coordinator:
             failure = f'Batch: the full check failed on the merged tree ({str(result.get("reason") or "")[:300]}); '
             revisions = {r.split('@')[0]: r for r in getattr(self, 'batch_revisions', [])}
             checked = [revisions[t] for t in result.get('tasks') or [] if t in revisions]
+            suspects = [revisions[t] for t in result.get('suspects') or [] if t in revisions]
+            if suspects and len(suspects) < len(checked):
+                # The failing tests import or name only these candidates' changes: they integrate
+                # one at a time, and the rest batch again at once instead of in halves.
+                failed = self.batch_failed() | set(suspects)
+                (self.state / 'batch-failed.json').write_text(json.dumps(sorted(failed)) + '\n')
+                LOG.say(failure + f'the failing tests point at {", ".join(r.split("@")[0] for r in suspects)}, '
+                        f'which integrate one at a time; the other {len(checked) - len(suspects)} batch again')
+                return
             if len(checked) >= 4:
                 middle = len(checked) // 2
                 path = self.state / 'batch-split.json'
