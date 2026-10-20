@@ -2462,9 +2462,9 @@ finally:
     def test_retry_respects_worker_capacity(self):
         self.retry_blocked_fixture('capacity')
 
-    def test_retry_runs_beside_an_overlapping_worker(self):
-        """TOOLSET-161-17: overlapping Touches never make a task wait."""
-        self.retry_blocked_fixture('overlap', 'RETRIED')
+    def test_a_retry_naming_a_running_workers_file_waits_for_it(self):
+        """A retry naming a file a running worker names would conflict with it at merge."""
+        self.retry_blocked_fixture('overlap')
 
     def test_exclusive_retry_waits_for_worker_pool(self):
         self.retry_blocked_fixture('exclusive')

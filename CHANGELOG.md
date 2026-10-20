@@ -328,6 +328,16 @@ claim of a tagged release, completed installation or live workflow qualification
   (`target/`, `build/`, `.dart_tool/` that Git ignores): it is removed first. Kept for
   `.dart_tool/` alone, a session never rotated and said so every cycle; a session kept for
   other files now says so once.
+- A task that names a file (not a directory or glob) that running work, a commit not
+  landed yet, or a waiting higher-priority task also names now waits until that task
+  lands, replacing TOOLSET-161-17's rule that overlap never holds a task. Started
+  together, such tasks conflicted at merge, and each conflict cost a resolver run and
+  a second review. Directory and glob overlap still only ranks, and an idle claim holds
+  nothing.
+- While worker slots idle and tasks wait on a shared file, the DOCS-MAINTAINER re-cuts
+  those tasks before they run (`overlap` trigger). It may merge, split, supersede and
+  reorder tasks that have not started, beside running workers, and never edits a
+  running task's entry.
 - A commit whose review a restart cut short (left integrating) joins the next batch like a
   reported one. Only reported commits were batched, and batches go first, so three such
   commits waited behind every later batch, one for 16 hours.
