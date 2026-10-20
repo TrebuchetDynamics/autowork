@@ -904,6 +904,18 @@ class BatchLandingTests(unittest.TestCase):
                                       'autowork/B-set-aside-1, and the task runs fresh on current main')
             self.assertIn('it waits for the owner', said[1])
 
+    def test_a_candidate_landing_behind_a_busy_checkout_is_said_once(self):
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator = self.runner(folder, {})
+            said = []
+            with patch.object(coordinator.LOG, 'say', side_effect=said.append):
+                for _ in range(3):
+                    runner.note_state('B', 'reported')
+                    runner.note_integrating('B', ['B'])
+                runner.note_state('B', 'held', 'merge conflict')
+            self.assertEqual(said, ['B: implemented', 'B: landing — passed in its batch; not reviewed again',
+                                    'B: failed — merge conflict'])
+
     def test_a_due_reload_starts_no_merge_resolver(self):
         """Each new resolver kept the reload pending, and a due reload starts no batch: commits
         were resolved again and again for hours while none landed."""
