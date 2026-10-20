@@ -497,7 +497,8 @@
       "status": "unmet",
       "tasks": [
         "TOOLSET-065",
-        "TOOLSET-066"
+        "TOOLSET-066",
+        "TOOLSET-290-12"
       ],
       "title": "Install the portable workflows in Claude Code"
     },
@@ -1709,6 +1710,14 @@
       "section": "Next",
       "status": "open",
       "title": "Two runner tests fail only under full-check load"
+    },
+    {
+      "depends_on": [],
+      "goal": "CLAUDE-CODE",
+      "id": "TOOLSET-290-12",
+      "section": "Next",
+      "status": "open",
+      "title": "One interactive session writes the main checkout at a time"
     },
     {
       "depends_on": [
