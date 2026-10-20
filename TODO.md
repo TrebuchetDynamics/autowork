@@ -217,27 +217,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Planner's call: the archive records a close; a ledger that lags it is bookkeeping the runner can fix deterministically, so it needs neither a model nor the owner (owner, 2026-10-18: autowork "must be able to fix these issues easily").
 - Planner's call (2026-10-19 audit; where this differs from the Scope above, this wins): Scope (2) is a repair inside the docs maintainer's transaction (265-16) that calls no model, not a new coordinator planning commit.
 
-### TOOLSET-138-62 — Reconcile the fleet's unmerged parallel-admission branch into main
-
-- [ ] TOOLSET-138-62 — Reconcile the fleet's unmerged parallel-admission branch into main
-- Short: Merge the parallel-admission branch
-- Status: open
-- Goal: PI-RUNNER
-- Payoff: Run Autowork continuously through Pi with a model fallback.
-- Sources: [monitor findings](docs/plans/2026-10-16-pi-autowork-coordinator.md#fleet-monitor-findings-delivery-environment-and-stall-repair), branch `fix/directory-parallel-admission` (commits 28d38eb, 3848aaa; checkout `.worktrees/autowork-directory-admission`), main's adedf58 "fill independent worker slots and keep task worktrees canonical", [engine](skills/autowork/references/parallel-workers.md).
-- Evidence (2026-10-16 23:40 monitor pass): four services (runner D, runner A, runner C, runner B) run from that checkout. `git cherry main fix/directory-parallel-admission` shows both commits unmerged, and main is 19 commits ahead of them.
-- Touches: skills/autowork/scripts/parallel_plan.py, skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_plan.py, skills/autowork/scripts/test_parallel_dispatch.py, skills/autowork/scripts/test_parallel_integrate.py, skills/autowork/references/parallel-workers.md
-- Scope: Verify the current-history directory-admission implementation represented by merge 3504855659952b9a42ea6b6f78310878d0733f42 and directory-admission commit 34d988b7962c7942c97dcf703ff8fc17b3741db2. Confirm the original 3848aaa patch equivalence as provenance, reconcile independent-retry and protected-inventory directory admission into one current implementation, and qualify the union of their tests. Do not merge old history merely to manufacture original ancestry, restore an old snapshot, rewrite history, or remove a retained branch/checkout. Runtime pin safety remains actual ancestry of each installed pin, owned by TOOLSET-139-62.
-- Acceptance: The current-history directory-admission commit 34d988b7962c7942c97dcf703ff8fc17b3741db2 and merge 3504855659952b9a42ea6b6f78310878d0733f42 are ancestors of the actual qualification target main. Establish patch provenance to 3848aaa without claiming original ancestry. The independent-retry, protected-inventory directory-scope admission and canonical-worktree tests pass together on current main, with no duplicated admission path. A patch-equivalent but nonancestor old pin remains unchanged and reported; only its actual ancestry can authorize automatic unpinning.
-- Checks: python3 -m unittest discover -s skills/autowork/scripts -p 'test_parallel_*.py'; python3 scripts/check.py; git diff --check
-- Dependencies: None.
-- Ownership: Toolset coordinator. It runs before the TOOLSET-099-87 continuation, which edits the same engine files and resumes on top of this merge.
-- Exclusions: No service restart, env edit or fleet repository edit. Runtime pin handling belongs to TOOLSET-139-62.
-- Planner's call: Apply the owner's current-history verification decision below; withdraw the former requirement to merge original history solely to make the old pin an ancestor. Preserve original commit identities as history, all functional checks, and the strict per-pin ancestry gate.
-- Owner decision: 2026-10-18 — Verify current-history equivalents; keep any old pin whose actual ancestry is unproven. This changes the 138-62 acceptance/history contract and corresponding 139-62 interpretation only; no service operation, reset, remote publication or history rewrite is authorized.
-- History evidence: Fresh read-only ancestry checks find original 3848aaa5eb07aaec97005360a7827b6401f1dc38, 28d38ebb09f2f73a4108a9216e201d250d800364 and de023264547f9f6e248a8bd28c4175174c307a43 outside both main and the observed origin/main ref, contrary to the former task status. Current 34d988b7962c7942c97dcf703ff8fc17b3741db2 and 3504855659952b9a42ea6b6f78310878d0733f42 are ancestors of both observed refs. Original 3848aaa and current 34d988b have stable patch ID c05c5b1c7932ab86d8d3555ec30202f6f4908aa0. Patch equality is not source qualification or runtime pin ancestry; no engine/full-suite tests were run by this planning pass.
-- Next action: Reuse the current implementation and the retained no-change worker report; verify the cited current-history commits against the actual qualification target, inspect one admission path and run the unchanged named engine/full offline checks. Close only from current executed evidence. Do not remerge retained original history, ask the same ancestry question or mark tests passed from patch identity.
-
 ### TOOLSET-139-62 — Heal toolset pin drift so every runner receives released fixes
 
 - [ ] TOOLSET-139-62 — Heal toolset pin drift so every runner receives released fixes

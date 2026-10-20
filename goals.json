@@ -991,14 +991,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-138-62",
-      "section": "Now",
-      "status": "open",
-      "title": "Reconcile the fleet's unmerged parallel-admission branch into main"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-139-62",
       "section": "Now",
       "status": "open",
@@ -2621,6 +2613,14 @@
       "section": "Done",
       "status": "done",
       "title": "Audit this repository's suite against the test budget"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-138-62",
+      "section": "Done",
+      "status": "done",
+      "title": "Reconcile the fleet's unmerged parallel-admission branch into main"
     },
     {
       "depends_on": [],
