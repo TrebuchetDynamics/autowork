@@ -8,14 +8,6 @@ no extra approval step or execution authority.
 
 <!-- pi-autowork:questions:start -->
 
-### Q-TOOLSET-230-bf — USER_DECISION — effort investigate — unblocks 3
-
-- Task: TOOLSET-230-bf — Integration and closeout move the runner's branch with a ref update, never through a working copy
-- Needs: merge conflict; worker and canonical checkout preserved; adopted 1 of 3; conflict in: pi-autowork/pi_autowork/coordinator.py
-- Since: 2026-10-20T17:20:20Z
-- Answer: Read the evidence (the worker's report and validation log under .git/autowork-execution/slot-data/TOOLSET-230-bf/), then rescope or split TOOLSET-230-bf in its TODO.md entry. The runner reruns it when the entry changes.
-- Kind: held
-
 <!-- pi-autowork:questions:end -->
 
 None.
