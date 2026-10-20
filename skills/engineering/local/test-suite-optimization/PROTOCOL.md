@@ -1,131 +1,228 @@
 # Test-suite optimization
 
-Toolset-owned engineering protocol. Use it when a test suite is slow, repetitive or
-low-signal and the task is to make it cheaper or clearer **without losing the ability
-to catch defects**. The goal is never a smaller test count: two tests that cover the
-same lines can still catch different defects.
+Toolset-owned engineering protocol for slow, repetitive or low-signal tests. Aim for
+**minimum sufficient protection against real regressions**, not a minimum count.
+Equal covered lines do not mean equal behavior, branches, assertions or contracts.
+For writing new tests test-first, use the pinned `test-driven-development` protocol;
+this method optimizes existing protection within the caller's authority.
 
-The technique is test-suite minimization and optimization: redundancy analysis,
-consolidation, execution and fixture cost, and assertion quality. It audits first and
-changes nothing; every change becomes its own task. For writing new tests test-first,
-use the pinned `test-driven-development` protocol instead.
+Default to audit of the named/current repository. Explicit read-only writes nothing,
+including plans and queues; return findings only. An explicit apply request or an
+existing authorized implementation task permits one bounded, supported batch with
+verification, without another planning or permission ceremony. Preserve repository
+instructions, active writers, required checks and no-commit/no-push/live limits.
+Never interpret “all my repos” as authority for an automatic filesystem-wide scan.
 
 ## When to run it
 
-Run it when a suite passes the [test budget](../../../shared/ENGINEERING-CYCLE.md#test-budget):
-the normal offline check takes over 10 minutes, test modules pass about 1,000 lines,
-or new work keeps adding near-identical tests. One audit task per repository is open
-at a time; its findings become ordinary tasks.
+Use for a concrete test-cost or detection-quality problem, or when the suite exceeds
+its repository-specific [test budget](../../../shared/ENGINEERING-CYCLE.md#test-budget).
+Absent local thresholds, over 10 minutes for the normal offline gate, roughly 1,000
+lines in a test module, or another near-duplicate case are audit signals, not quality
+verdicts or deletion targets. Reuse the existing audit and implementation task IDs;
+keep at most one open suite audit per repository, not a competing backlog.
 
 ## Quick pass first
 
-On a large suite, start cheap and stop when it already yields clear tasks:
+Build a compact behavior/risk matrix **before choosing removal candidates**:
 
-1. Time the normal check and list the slowest 30 tests and the largest test modules.
-2. Read those modules for the candidates below: duplicates, parametrizable
-   families, rebuilt fixtures, sleeps and repeated process or repository setup.
-3. Record the speed-ups that change no assertions as tasks right away.
+| Public contract / representative edge | Layer and existing test/case | Oracle / defect detected | Unique boundary or incident risk | Cost / evidence / unknowns |
+| --- | --- | --- | --- | --- |
+| Identify the owned obligation, not an internal method | Unit, integration or smoke/E2E; exact detector ID | Observable result, invariant, error or contractual interaction | Why another detector cannot replace it; bug/task ID if any | Available timing, history, coverage and missing evidence |
 
-Measure per-test coverage (below) only for the consolidation and removal candidates
-the quick pass finds, not for the whole suite.
+Keep pure logic, parsing and calculation at unit level; real DB/HTTP/queue/
+serialization contracts at integration level; a small set of critical journeys at
+smoke/E2E level. Choose the lowest reliable layer only if it preserves the same risk.
+A unit mock cannot prove a real handoff. Duplicate layers need a stated integration
+risk, not “more coverage.”
+
+Inspect the slowest/largest modules using existing reports first. Look for repeated
+setup, sleeps, duplicate executions and case families. Stop once evidence supports a
+bounded useful batch; do not require whole-suite experiments for every audit. Prefer
+fixture/execution improvements that preserve every oracle before riskier removals.
 
 ## Measure first
 
-Record a baseline on one named commit and machine before judging anything:
+Bind evidence to source/test revision, environment, command, selected and collected
+case counts, outcomes and sample window. Separate observed facts from hypotheses.
+Use proportional evidence; missing tools or history do not prevent a qualitative
+audit or unrelated safe improvements. They hold only changes that depend on them.
 
-- **Inventory and time:** the repository's normal check command, its test count and
-  wall time over 3 runs; time per test directory or module; the 30 slowest tests
-  (for example `pytest --durations=30` or the runner's equivalent).
-- **Coverage:** line and branch coverage of the project's own sources with per-test
-  contexts, so each covered line records which tests reach it (coverage.py:
-  `coverage run --branch --context=test` with `dynamic_context = test_function`, then
-  `coverage json --show-contexts`). Use the repository's existing coverage tool when
-  it has one. For subprocess-heavy suites, also measure children: put
-  `import coverage; coverage.process_startup()` in a scratch `sitecustomize.py`,
-  prepend that directory to `PYTHONPATH`, and set `COVERAGE_PROCESS_START` to an
-  absolute scratch config with `[run] branch = True`, `parallel = True` and an
-  absolute `data_file`. Restrict measurement to owned sources and omit tests and
-  vendored code. In the runner's `startTest`, call `Coverage.current().switch_context(test.id())`
-  and export that same ID in a dedicated environment variable; the startup hook
-  must switch the child's context to that inherited ID. Dynamic test-function
-  contexts alone do not identify a child process's calling test. Reset the context
-  between tests, retain per-test timings and outcomes, and run `coverage combine`
-  with the same config after all children exit, then `coverage json --show-contexts`.
-  Verify a child-only smoke test has its caller's context before the full run,
-  including a nested source file. Prefer `source = /absolute/repository` with
-  explicit omissions: a root-only include glob can silently omit nested modules.
-  Record blind spots explicitly: sanitized environments, isolated Python (`-I`),
-  other interpreters, hard-killed children and non-Python commands may not produce
-  records. Equal line sets do not imply equal branches, assertions or contracts.
-  Keep the data/output directory off `sys.path` (separate it from the startup-hook
-  directory); coverage shard creation can otherwise invalidate metadata caches
-  during the very tests being measured. Retain instrumentation-induced failures
-  and rerun the exact affected test after repairing the harness, separately from
-  an ordinary uninstrumented run.
-  Keep instrumentation and raw data outside the repository; do not alter tests or
-  add a coverage dependency merely to audit them.
-- **Mutation score (optional):** only when a mutation tool is available, run from a
-  disposable environment outside the repository, and only on the modules with
-  candidates. Record "not measured" otherwise; never add the tool as a dependency.
+- **Timing:** use available per-test/file/directory timings and slowest-test reports
+  (for example the runner's equivalent of `pytest --durations=30`). Measure candidate
+  scope before/after on the same environment, command and workload for quantitative
+  claims. Use bounded repeats when variance matters; report runs and spread. No
+  unconditional three-run whole-suite baseline. An exact-duplicate/clarity audit
+  may proceed without timing; report cost or speedup as unmeasured, never inferred
+  from fewer methods, cases or lines. Full-suite speedup needs comparable passing
+  full-suite measurements, not focused timings or a failed instrumented attempt.
+- **History and flakes:** inspect available CI failure history and bounded repeated
+  runs of suspect cases; record failures/runs and window. Missing history is unknown,
+  not zero failures; one passing run is not a zero-flake rate. Stable, never-failed
+  regressions can be valuable guards. Separate product races from test instability.
+- **Coverage:** inspect diff line/branch coverage at touched behavior and per-test
+  contexts where they distinguish candidates. Total coverage is context, not the
+  target. Preserve required line/branch obligations of touched modules; inspect
+  assertions and the behavior matrix even when percentages or covered sets match.
+  Record unavailable tools and subprocess/native blind spots explicitly; never
+  install a coverage dependency merely to audit or treat missing records as dead tests.
+- **Mutation (optional):** when tooling is available, inspect critical modules and
+  candidate scope in a disposable environment outside the repository. Do not require
+  a new dependency, network or paid service; record “not measured” when unavailable.
+  Use the distinctions below instead of ranking tests by an aggregate score.
 
-Keep raw output in a scratch directory; record the numbers, method and commit in the
-repository's plan or task, not the raw files.
+### Contextual coverage when needed
+
+Use the repository's existing tool. For coverage.py, enable branch measurement and
+per-test contexts, then export `coverage json --show-contexts`. Instrument only the
+candidate scope needed to resolve uncertainty, not the whole suite by default.
+For subprocess-heavy suites, a scratch `sitecustomize.py` may call
+`coverage.process_startup()` with an absolute `COVERAGE_PROCESS_START` config,
+`parallel = True` and an absolute data path. Restrict measurement to owned sources
+and omit tests/vendored code. In the runner's `startTest`, switch the current context
+to `test.id()` and export that ID in a dedicated environment variable; the startup
+hook switches the child's context to the inherited ID. Reset between tests and
+retain timings/outcomes. Dynamic test-function contexts alone do not identify the
+child's caller. Combine only after all children exit, using the same config.
+
+Verify a child-only smoke case, including a nested source file, retains its caller
+context before widening measurement. Prefer an absolute repository source path
+with explicit omissions: root-only include globs can omit nested modules. Sanitized
+environments, isolated Python (`-I`), other interpreters, killed children and
+non-Python commands may remain blind. Keep data/output off `sys.path`, separate
+from the startup hook: shard creation can invalidate metadata caches during tests.
+Retain instrumentation failures and rerun exact affected cases after harness repair,
+separately from ordinary uninstrumented checks. Keep instrumentation/raw data in
+scratch outside Git; do not alter tests just to obtain an audit measurement.
+
+### Mutation evidence and uncertainty
+
+Mutants survive, not tests. Compare the same source and mutation operators before/
+after; record mutant-to-test detection maps where available, not just scores.
+Preserve uniquely detected non-equivalent faults and critical-module detection.
+Identical killed-mutant sets are only redundancy leads alongside the behavior matrix.
+
+Distinguish killed, surviving, uncovered/no-coverage, equivalent, invalid, ignored,
+pending and timed-out mutants. A survivor may expose an assertion gap or equivalent
+behavior; neither a survivor nor a low score makes a test disposable. Explain any
+equivalence judgment. A timeout counted as detected by a tool is not proof of a
+meaningful oracle. Invalid/ignored/pending outcomes and unknown detection mappings
+are uncertainty, not evidence of redundant protection. Tool-specific totals must
+not conceal these distinctions or justify weakened thresholds.
 
 ## Find candidates
 
-Group tests by evidence, then read them before calling anything redundant:
+Read each candidate's body, helpers, setup and oracle against the matrix:
 
-- **Exact duplicates:** the same setup, action and assertions under different names.
-- **Subsumed tests:** the same public seam, with covered lines and assertions that are
-  a subset of another test's. Identical coverage alone is a lead, not proof.
-- **Parametrizable families:** near-identical tests that differ only in inputs and
-  expected values; merge into one table-driven test that keeps every case and names
-  each case in its failure message.
-- **Expensive setup:** slow fixtures, repeated repository or process creation,
-  sleeps and polling, setup rebuilt per test when it could be shared read-only.
-- **Execution overhead:** suites run serially when they are independent, or the same
-  tests run more than once per check.
-- **Low-value tests:** no assertion; tautological expected values, where the test
-  recomputes the answer the way the code does, so it can never disagree with it;
-  implementation-coupled tests that mock internal collaborators or assert through a
-  side channel instead of the public seam. The tautology and seam criteria are
-  adapted from Matt Pocock's MIT-licensed `tdd` skill.
+- **Exact duplicates/subsumption:** same seam, preconditions, behavior and oracle;
+  subset coverage alone is not proof. Check branches and unique interactions.
+- **Case families:** consolidate equivalent setup/action into labeled table cases;
+  retain every distinct behavior and an identifiable failure per case. Fewer declared
+  methods or moving tests between files is not itself pruning or a speedup.
+- **Expensive setup/execution:** share immutable fixtures and small data builders,
+  not mutable databases/processes whose isolation matters. Replace fixed sleeps
+  with events or bounded polling. Remove duplicate execution or parallelize only
+  when independence and resource limits are established.
+- **Weak oracles:** tautologies recomputing the implementation's answer, internal
+  mock-call assertions, side channels and framework-only checks are candidates only
+  when they protect no owned contract. The tautology/public-seam ideas adapt Matt
+  Pocock's MIT-licensed `tdd` skill. A no-exception startup smoke, contractual log,
+  externally visible interaction or protocol call ordering may be a valid oracle
+  without an explicit assertion. “Assertless” or “mocked” alone is not a verdict.
+- **Fidelity:** replace mock-heavy internals with fakes or real contract checks when
+  they improve detection. Combine assertions only for one coherent behavior. Use
+  property tests when existing generators/invariants and reproducible counterexamples
+  improve on a handwritten matrix; preserve critical named examples. Golden/snapshot
+  tests need intentional stable output contracts and reviewable diffs, not bulk approval.
 
 ## Keep
 
-Never remove or weaken, even when coverage looks redundant:
+Never lose or weaken a still-required obligation:
 
-- a regression test named for a bug, incident or task;
-- a test that alone covers a branch or alone kills a mutant;
-- composed, cross-seam or end-to-end tests that prove a handoff the unit tests do not;
-- tests for safety, security, data loss or authorization boundaries;
-- tests the repository marks as required, live or qualification evidence.
+- named bug/incident/task regressions, including those that have never failed;
+- unique branches or non-equivalent mutant detection;
+- composed handoffs or real boundary risks not established by unit mocks;
+- safety, security, authorization and data-loss protection;
+- repository-required live, qualification and compatibility evidence.
 
-## Record tasks, do not edit
+These are protected risks, not immutable test-file layouts. A named regression may
+move into an equivalent labeled case, but its bug ID and traceable oracle must
+survive. Every deletion maps to a retained test/case **and its oracle**, or documents
+why the product obligation was retired. Delete obsolete tests with deleted behavior,
+not surviving compatibility guarantees. If equivalence cannot be established, keep
+or investigate; green checks, equal coverage and no recorded failures do not prove it.
 
-The audit edits no tests or sources. Record findings in the repository's existing plan
-owner, then one task per change in its work queue (TODO.md with goals.json here):
-the exact tests or fixtures involved, the measured before values, the change, and the
-acceptance below. Keep candidates without evidence as unverified findings, not tasks.
-Order tasks by measured payoff and risk; prefer execution and fixture speed-ups that
-change no assertions before consolidations.
+## Record tasks, do not edit (audit default)
+
+An audit changes no tests or product sources. Unless read-only, record a compact
+keep/consolidate/remove/repair/quarantine/investigate map in the existing plan owner,
+with exact test/fixture IDs, risk-to-oracle mapping, evidence, unknowns, budgets and
+bounded next tasks. Reuse existing audit/suite-thinning IDs and ownership. Unsupported
+candidates remain investigate findings, not executable removal tasks. Order supported
+work by payoff and risk, preferring oracle-preserving fixture improvements.
+
+In authorized apply mode, reuse the implementation task and execute one supported
+batch; do not insist on another audit task or approval. Save the same mapping and
+actual before/after checks in its existing receipt. No implicit commit, publication,
+schedule, new framework or execution of live suites is authorized by this method.
+Keep raw/private CI history, credentials and scratch output out of Git.
+
+## Budgets, flakes and selection
+
+Apply the shared [test budget](../../../shared/ENGINEERING-CYCLE.md#test-budget).
+Record repository-specific per-suite CI wall-time limits and a justified new-case
+budget per change/PR, with environment/baseline and a review rule for exceptions.
+Missing measurements stay unknown; propose limits explicitly rather than pretending
+an existing threshold or measurement. Each case names its behavior/risk in a useful
+name or matrix, without mandatory boilerplate. Start a bug fix with one discriminating
+regression at the right public seam, extending an existing case where sufficient.
+Additional cases/layers must protect distinct risks. Behavioral config/parser/
+migration coverage is not banned as “configuration.” No tests per function/line or
+implementation-mirroring TDD loops. Review slowest/noisiest suites quarterly through
+existing maintenance; this is not permission to create a timed job.
+
+Diagnose flakes first. Quarantine needs an owner, reason, expiry, tracking issue and
+explicit lost protection/risk, plus visible reporting and any required replacement
+protection. Never silently skip a critical regression or manufacture a passing gate.
+At expiry repair it, retire only with documented risk review supporting deletion,
+or escalate visibly; do not silently extend or leave it permanently disabled.
+
+Impact-based selection is optional only with sound dependency mapping, including
+fixtures, config, generated inputs and cross-module boundaries. Unknown impact falls
+back to the normal gate. Retain the existing full gate or an explicitly agreed
+periodic full run; do not weaken CI, blanket-skip tests or lower thresholds to save time.
+Focused selection during work is not a replacement for required repository acceptance.
 
 ## Acceptance for each change
 
-A consolidation, removal or speed-up task is done only when:
+Before claiming an applied batch complete:
 
-- the changed tests and the full normal check pass;
-- line and branch coverage of the touched modules do not drop, and the mutation score
-  does not drop when it was measured;
-- each removed test is listed with the remaining test that covers its behavior;
-- every merged case still runs and still names itself on failure;
-- wall time is measured before and after on the same machine, and reported even when
-  the change is for clarity rather than speed.
+- focused changed behaviors and the normal repository gate pass under its execution
+  contract; a delegated final gate stays pending until its actual result, not waived;
+- required diff/line/branch obligations remain, and measured critical mutant detection
+  does not drop on comparable source/operators; document blind spots and uncertainty;
+- every removed test maps to a retained detector/oracle or a documented retired risk;
+  all merged cases still run, identify failures, and preserve named bug traceability;
+- source-bound before/after evidence covers the actual scope, outcomes and costs;
+  quantitative saved-time claims have comparable passing measurements. Unmeasured
+  clarity improvements say so. Never claim full-suite equivalence from focused checks.
+
+Independent review checks the matrix, actual test/helper diff, retained oracles,
+missing evidence, budget exceptions and quarantine/selection safety. For method
+qualification use a compact disposable fixture: equivalent table cases; equal-coverage
+but distinct authorization behaviors; a valuable never-failed regression; an assertless
+smoke oracle; a real handoff absent from mocks; a flaky critical check; equivalent/
+surviving mutants; missing CI/mutation evidence; read-only versus authorized apply;
+and an extra case for a unique boundary risk. Review decisions and artifacts, not
+heading/phrase compliance. Failures call for narrow corrections to decisions or
+oracles, not another layer of prose-assertion tests. Offline fixture review is not
+live qualification, actual repository pruning or a measured performance result.
 
 ## Never
 
-- delete or skip a test to make a run pass or to reach a count;
-- weaken an assertion to keep a merged test green;
-- replace a public-seam test with one that reaches into internals;
-- add a network, paid or required mutation tool;
-- treat a green run, coverage percentage or test count alone as proof of quality.
+- delete, skip or weaken a detector to make a run green or reach a count;
+- discard a safety obligation, bug trace or unique risk during consolidation;
+- replace a public/real-boundary oracle with internal-detail assertions;
+- add a required network, paid, coverage or mutation dependency just for an audit;
+- manufacture history, timings, equivalence, tool results or approval;
+- treat a green run, coverage percentage, mutation score or test count alone as quality.
