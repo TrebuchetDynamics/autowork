@@ -807,6 +807,7 @@
         "TOOLSET-282-43",
         "TOOLSET-283-15",
         "TOOLSET-284-e0",
+        "TOOLSET-285-29",
         "TOOLSET-285-47",
         "TOOLSET-286-32"
       ],
@@ -816,6 +817,7 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
+      "TOOLSET-285-29",
       "TOOLSET-277-52",
       "TOOLSET-270-a9",
       "TOOLSET-271-d6",
@@ -1228,6 +1230,14 @@
       "section": "Now",
       "status": "open",
       "title": "A failed batch is split in halves to find the breaking candidate, not reviewed one candidate at a time"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-285-29",
+      "section": "Now",
+      "status": "open",
+      "title": "A task whose last attempt failed its review is reworked once with the findings, never left silently held"
     },
     {
       "depends_on": [],
