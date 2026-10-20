@@ -109,10 +109,42 @@ def worker(state, worktree, prompt_file, report, limit):
     # The engine captures unfinished tool calls before stopping a timed-out worker.
     Path(report).with_name('session.json').write_text(json.dumps({
         'directory': str(Path(state).resolve() / 'sessions'), 'id': session}))
-    result = pi_runtime.job(pi_runtime.Settings(state), 'worker', task, worktree,
+    settings = pi_runtime.Settings(state)
+    result = pi_runtime.job(settings, 'worker', task, worktree,
                             f'Follow the instructions in this file exactly: @{prompt_file}',
                             session, limit, [f'@{prompt_file}'])
+    question = unanswered(result, worktree, prompt, report)
+    if question:
+        # TOOLSET-282-43: a worker loaded an interactive skill, asked "Do you approve?" after 28 s
+        # and stopped; the runner called it dead and asked the owner to rescope the task.
+        print(f'pi-autowork: {task} asked instead of implementing ({question[:200]}); '
+              'resuming its session once with the contract as its approval', file=sys.stderr)
+        result = pi_runtime.job(settings, 'worker', task, worktree, APPROVAL.format(prompt=prompt_file),
+                                session, limit, [f'@{prompt_file}'])
+        question = unanswered(result, worktree, prompt, report)
+        if question:
+            Path(report).write_text(json.dumps({
+                'task': task, 'commit': None, 'changed_files': [], 'checks': [], 'changelog': '',
+                'blockers': [f'the worker asked twice instead of implementing: {question}']}))
+            return 1
     return 0 if result['ok'] and Path(report).is_file() else 1
+
+
+APPROVAL = ('No person is attached to this session, so nobody will answer your question. The task '
+            'contract in @{prompt} is your approval: implement it now, commit, and write the report. '
+            'Stop only for a real blocker, and write it in the report.')
+
+
+def unanswered(result, worktree, prompt, report):
+    """The question a worker ended its session with, having written no report and no commit; else ''."""
+    if not result.get('ok') or Path(report).is_file():
+        return ''
+    baseline = (re.search(r'^Baseline: (\S+)$', prompt, re.M) or [None, ''])[1]
+    if baseline and git(worktree, 'rev-parse', 'HEAD') != git(worktree, 'rev-parse', baseline):
+        return ''
+    lines = [line.strip().strip('*_ ').strip() for line in (result.get('text') or '').splitlines()]
+    last = next((line for line in reversed(lines) if line), '')
+    return last if last.endswith('?') else ''
 
 
 def execution_dir(checkout):

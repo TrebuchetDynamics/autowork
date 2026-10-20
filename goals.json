@@ -1239,14 +1239,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-282-43",
-      "section": "Now",
-      "status": "open",
-      "title": "A headless worker never stops to ask for approval; an interactive skill's approval step counts as given by the task contract"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-283-15",
       "section": "Now",
       "status": "open",
@@ -3302,6 +3294,14 @@
       "section": "Done",
       "status": "done",
       "title": "A candidate that passed its batch lands before the runner reloads, and after an interrupted landing it lands first"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-282-43",
+      "section": "Done",
+      "status": "done",
+      "title": "A headless worker never stops to ask for approval; an interactive skill's approval step counts as given by the task contract"
     },
     {
       "depends_on": [

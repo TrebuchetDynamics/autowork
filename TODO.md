@@ -69,9 +69,9 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ### TOOLSET-282-43 — A headless worker never stops to ask for approval; an interactive skill's approval step counts as given by the task contract
 
-- [ ] TOOLSET-282-43 — A headless worker never stops to ask for approval; an interactive skill's approval step counts as given by the task contract
+- [x] TOOLSET-282-43 — A headless worker never stops to ask for approval; an interactive skill's approval step counts as given by the task contract
 - Short: Headless worker never waits for approval
-- Status: open
+- Status: done 2026-10-20 (interactive session): approval rule in the worker prompt; one same-session resume after a question; a second question holds the task quoting it; worker and prompt tests.
 - Goal: PI-RUNNER
 - Evidence: (2026-10-20, one fleet runner): a task's second attempt loaded an interactive design skill, wrote its plan and ended with 'The brainstorming skill requires explicit approval of this design before implementation. Do you approve?' after 28 s. The runner recorded 'dead worker without a commit or changes', held the task on its last attempt and asked the owner to rescope it.
 - Touches: pi-autowork/pi_autowork/worker.py, pi-autowork/pi_autowork/coordinator.py, skills/autowork/scripts/parallel_dispatch.py, tests/test_pi_autowork.py, pi-autowork/tests/test_worker_tmp.py

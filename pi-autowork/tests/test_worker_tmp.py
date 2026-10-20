@@ -713,6 +713,59 @@ class BatchLandingTests(unittest.TestCase):
             runner.commit_session_leftovers, runner.ahead = (lambda: None), (lambda: 0)
             with patch.object(coordinator, 'git', return_value='TODO.md\ndocs/plan.md\n'):
                 self.assertTrue(runner.merge_main())  # planning and docs leave the verdicts valid
+class HeadlessApprovalTests(unittest.TestCase):
+    """TOOLSET-282-43: a worker loaded an interactive design skill, ended its session with "Do you
+    approve?" after 28 s, and the runner held the task as a dead worker for the owner to rescope."""
+
+    def run_worker(self, replies):
+        from pi_autowork import worker
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        root = Path(folder.name)
+        tree = root / 'tree'
+        subprocess.run(['git', 'init', '-q', str(tree)], check=True)
+        git = lambda *a: subprocess.run(['git', '-C', str(tree), '-c', 'user.email=t@example.invalid',
+                                         '-c', 'user.name=T', *a], check=True, capture_output=True, text=True)
+        git('commit', '-q', '--allow-empty', '-m', 'base')
+        baseline = git('rev-parse', 'HEAD').stdout.strip()
+        prompt, report = root / 'prompt.md', root / 'attempt-1' / 'report.json'
+        report.parent.mkdir()
+        prompt.write_text(f'Task: T-1\nBaseline: {baseline}\nReport file: {report}\n')
+        calls = []
+
+        def job(settings, role, task, directory, message, session, limit, extra):
+            calls.append((message, session))
+            reply = replies[len(calls) - 1]
+            if reply == 'work':
+                (tree / 'done.txt').write_text('done\n')
+                git('add', 'done.txt')
+                git('commit', '-qm', 'work')
+                report.write_text(json.dumps({'task': 'T-1', 'commit': git('rev-parse', 'HEAD').stdout.strip()}))
+                return {'ok': True, 'text': 'Committed.'}
+            return {'ok': True, 'text': reply}
+
+        with patch.object(worker.pi_runtime, 'job', side_effect=job), \
+                patch.object(worker.pi_runtime, 'Settings', return_value=None):
+            code = worker.worker(str(root / 'state'), str(tree), str(prompt), str(report), 60)
+        return code, calls, report
+
+    def test_a_worker_that_asks_for_approval_is_resumed_once_in_its_session(self):
+        code, calls, report = self.run_worker(['Here is my design.\n\n**Do you approve?**', 'work'])
+        self.assertEqual(code, 0)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0][1], calls[1][1])  # the same session, the same attempt
+        self.assertIn('No person is attached', calls[1][0])
+        self.assertIsNotNone(json.loads(report.read_text())['commit'])
+
+    def test_a_worker_that_asks_twice_is_held_with_its_question(self):
+        code, calls, report = self.run_worker(['Do you approve?', 'Which option do you prefer?'])
+        self.assertEqual((code, len(calls)), (1, 2))
+        self.assertEqual(json.loads(report.read_text())['blockers'],
+                         ['the worker asked twice instead of implementing: Which option do you prefer?'])
+
+    def test_a_finished_worker_or_a_plain_ending_is_not_resumed(self):
+        self.assertEqual(len(self.run_worker(['work'])[1]), 1)
+        self.assertEqual(len(self.run_worker(['I could not finish.'])[1]), 1)
 
 
 class BusyLineTests(unittest.TestCase):

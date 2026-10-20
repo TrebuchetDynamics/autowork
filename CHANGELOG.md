@@ -274,6 +274,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A worker never waits for a person's approval: its prompt says the task contract is the
+  approved design, and a worker that ends its session on a question without a commit or
+  report is resumed once in the same session; asking twice holds the task quoting the
+  question, not as a dead worker (TOOLSET-282-43).
+
 - Candidates that passed a batch land on their batch verdicts: until they have landed, the
   runner defers a reload and takes no code from main into the session (planning and docs
   still come through), and the log and TUI say `landing`, not `verifying`. A reload four
