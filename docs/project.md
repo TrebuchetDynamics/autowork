@@ -1910,3 +1910,15 @@ Rules:
   (working, paused, stopped, unavailable) are a separate axis and keep their labels.
 
 Implementation: TOOLSET-289-71.
+
+## Interactive checkout writer (2026-10-20)
+
+Status: Accepted
+
+Decision: one interactive session writes a checkout at a time. The first session to
+edit a file in the main checkout holds it until its edits are committed or reverted,
+or it ends; a second session works read-only or in `.worktrees/<task>/` through
+`EnterWorktree` meanwhile. This narrows the earlier rule that interactive sessions
+always work in the main checkout: two sessions there at once swept and reset each
+other's uncommitted files (2026-10-20), the root cause the reliability research ranks
+first. Implementation: TOOLSET-290-12.

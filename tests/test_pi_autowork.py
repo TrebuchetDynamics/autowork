@@ -1590,6 +1590,38 @@ class EngineTests(Fixture):
         self.assertEqual([r['task'] for r in self.runs('worker')].count('A'), 1)  # adopted, not restarted
         self.assertTrue(self.done('A', 'B', 'C'))
 
+    def test_a_one_shot_run_waits_a_bounded_time_for_a_held_execution_lock(self):
+        """TOOLSET-288-cf: a killed runner's engine helper still held the lock, and the restart
+        that should adopt its workers exited 4 at once under load."""
+        common = Path(self.git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir'))
+        lock = common / 'autowork-execution' / 'dispatch.lock'
+        lock.parent.mkdir(parents=True, exist_ok=True)
+
+        def hold(seconds):
+            holder = subprocess.Popen([sys.executable, '-c', (
+                'import fcntl, os, sys, time\n'
+                f'fd = os.open({str(lock)!r}, os.O_RDWR | os.O_CREAT, 0o600)\n'
+                'fcntl.flock(fd, fcntl.LOCK_EX)\n'
+                'print("held", flush=True)\n'
+                f'time.sleep({seconds})\n')], stdout=subprocess.PIPE, text=True)
+            self.addCleanup(holder.stdout.close)
+            self.addCleanup(holder.wait)
+            self.addCleanup(holder.kill)
+            self.assertEqual(holder.stdout.readline().strip(), 'held')
+            return holder
+
+        first = hold(60)
+        result = self.run_runner('--until-empty', env={**self.env, 'PI_AUTOWORK_BUSY_WAIT': '2'})
+        self.assertEqual(result.returncode, 4, result.stdout + result.stderr)  # past the bound: busy, as before
+        self.assertIn('Repository busy', result.stdout + result.stderr)
+        first.kill()
+        first.wait()
+        hold(4)
+        result = self.run_runner('--until-empty', env={**self.env, 'PI_AUTOWORK_BUSY_WAIT': '60'})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('waiting for it to finish', result.stdout)
+        self.assertTrue(self.done('A', 'B', 'C'))
+
     def test_a_reload_keeps_the_runner_and_its_worker_and_applies_new_settings(self):
         """TOOLSET-174-1d: `autowork restart` paused every worker; one cost a 10-minute run."""
         self.plan({'worker:A': ['slow']})
@@ -2320,7 +2352,7 @@ class EngineTests(Fixture):
                     ("verdict == 'fail'", "verdict != 'fail'", True),
                     ('command = main_check.full_check(checkout)', 'command = None', True),
                     ("'PI_AUTOWORK_VALIDATE_TIMEOUT', 3600", "'PI_AUTOWORK_VALIDATE_TIMEOUT', 3601", True),
-                    ('only=set(tests), workers=1', 'only=set(tests), workers=4', True)):
+                    ('only=set(only), workers=1', 'only=set(only), workers=4', True)):
                 with self.subTest(edit=before):
                     self.assertIn(before, source)
                     path.write_text(source.replace(before, after, 1))
@@ -2637,22 +2669,26 @@ class EngineTests(Fixture):
         (self.repo / 'A.txt').write_text('conflicting session change\n')
         self.git(self.repo, 'commit', '-qam', 'session conflict')
         before = len(self.runs('merge'))
-        for count, moved in [(1, False), (3, True)]:
-            with self.subTest(count=count, moved=moved):
-                base = self.git(self.repo, 'rev-parse', 'HEAD')
-                slot = dict(original, attempt=1, merged_base=base, merged_count=count)
-                slot_path.write_text(json.dumps(slot))
-                if moved:
-                    (self.repo / 'A.txt').write_text('session advanced again\n')
-                    self.git(self.repo, 'commit', '-qam', 'another session move')
-                result = self.run_runner('--once')
-                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-                self.assertEqual(len(self.runs('merge')), before, result.stdout)
-                self.assertEqual(json.loads(slot_path.read_text())['state'], 'held')
-                question = (self.repo / 'BLOCKERS.md').read_text()
-                self.assertIn('Q-A', question)
-                self.assertIn('A.txt', question)
-                self.assertIn(f'{count} of 3', question)
+        base = self.git(self.repo, 'rev-parse', 'HEAD')
+        slot_path.write_text(json.dumps(dict(original, attempt=1, merged_base=base, merged_count=1)))
+        result = self.run_runner('--once')  # main has not moved past the adopted revision
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual(len(self.runs('merge')), before, result.stdout)
+        self.assertEqual(json.loads(slot_path.read_text())['state'], 'held')
+        question = (self.repo / 'BLOCKERS.md').read_text()
+        self.assertIn('Q-A', question)
+        self.assertIn('A.txt', question)
+        self.assertIn('1 of 3', question)
+        # At the limit, after other work moved main again, the commit is set aside and the task
+        # runs fresh instead of asking the owner.
+        slot_path.write_text(json.dumps(dict(original, attempt=1, merged_base=base, merged_count=3)))
+        (self.repo / 'A.txt').write_text('session advanced again\n')
+        self.git(self.repo, 'commit', '-qam', 'another session move')
+        result = self.run_runner('--once')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(len(self.runs('merge')), before, result.stdout)
+        self.assertIn('A: its commit conflicted with main after 3 merges; set aside as autowork/A-set-aside-', result.stdout)
+        self.assertIn('A: integrated', result.stdout)
 
     def test_a_waiting_runner_commits_the_owners_quiet_planning_without_a_merge(self):
         """TOOLSET-157-cd (5): answers to held tasks stayed uncommitted while nothing merged."""

@@ -263,6 +263,10 @@ class Coordinator:
                  and f'{t}@{commit}' not in failed]
         if size < 2 or len(fresh) < 2 or self.reexec_due() or self.batch_pending():
             return []  # land the last batch first: a new one would be built on another tree
+        if self.seen.pop('batched', None) and any(f'{t}@{commit}' in failed for t, commit in reported):
+            # One review alone between two batches: while resolutions kept the batch fresh, nine
+            # commits whose batch had failed never got a review of their own, one for 15 hours.
+            return []
         half = self.batch_half({f'{t}@{commit}' for t, commit in fresh})
         if half:
             fresh = [(t, commit) for t, commit in fresh if f'{t}@{commit}' in half]
@@ -270,6 +274,7 @@ class Coordinator:
         if self.seen.get('batch-tried') == key:
             return []
         self.seen['batch-tried'] = key
+        self.seen['batched'] = True
         self.batch_revisions = [f'{t}@{commit}' for t, commit in fresh]
         return [t for t, _ in fresh]
 
@@ -1465,7 +1470,9 @@ class Coordinator:
         one `No task can start now` line covers them), and states already reached when the
         runner started are not replayed (quiet)."""
         word = lifecycle(state, paused=paused)
-        if self.seen.get(task) == word:
+        if self.seen.get(task) == word or (self.seen.get(task) == 'landing' and word == 'implemented'):
+            # A batch-passed candidate waiting out a busy checkout is still landing: the two lines
+            # alternated every 30 s, 66 times for one task.
             return
         self.seen[task] = word
         if quiet or word == 'pending':
@@ -1531,6 +1538,8 @@ class Coordinator:
         self.finish_resolvers()
         snapshot = self.status()
         rows = self.tasks(snapshot)
+        if self.set_aside_stale(rows):
+            rows = self.tasks(self.status())
         for row in rows:
             task, state, reason = row.get('task'), row.get('state') or '', row.get('reason') or ''
             before = self.seen.get(task)
@@ -1644,6 +1653,35 @@ class Coordinator:
             self.note_state(task, 'landing', 'passed in its batch; not reviewed again')
         else:
             self.note_state(task, 'integrating')
+
+    def set_aside_stale(self, rows):
+        """Finished commits older than PI_AUTOWORK_STALE_HOURS (24; 0: never) are set aside and their
+        tasks run fresh on current main, the new worker shown the earlier work. Twenty commits a day
+        old, written against code main had since redesigned, conflicted with each other at every
+        landing and held back every task that shared their files. Never beside a review or a batch,
+        whose verdicts hold for the trees they were reached on."""
+        hours = float(os.environ.get('PI_AUTOWORK_STALE_HOURS') or 24)
+        if hours <= 0 or self.stop or self.integration or self.batch_landing():
+            return False
+        changed = False
+        for row in rows:
+            task = row.get('task')
+            if (row.get('state') not in ('reported', 'integrating') or task in self.resolvers
+                    or float(row.get('elapsed_seconds') or 0) < hours * 3600):
+                continue
+            result = self.engine('--parallel-set-aside', task)
+            if result.get('outcome') != 'SET_ASIDE':
+                reason = result.get('reason') or result.get('outcome')
+                if self.seen.get('stale-' + task) != reason:
+                    LOG.say(f'{task}: could not set aside its day-old commit: {reason}')
+                self.seen['stale-' + task] = reason
+                continue
+            kept = ', '.join(r['branch_now'] for r in result.get('renamed') or [] if r.get('branch_now'))
+            LOG.say(f'{task}: its commit waited {float(row["elapsed_seconds"]) / 3600:.0f} h to merge; set aside as '
+                    f'{kept}, and the task runs fresh on current main')
+            self.seen[task] = 'pending'
+            self.settled = changed = True
+        return changed
 
     def resolve_deferred(self, deferred):
         """Resolve the conflicts this pass held back, then batch their merged revisions so they
@@ -2229,13 +2267,31 @@ class Coordinator:
         worktree, Pi resolving the conflict beside the loop, and the engine judges the merge from
         there (TOOLSET-157-cd): once per session revision, instead of reimplementing the task.
         Up to PI_AUTOWORK_RESOLVERS (3) run at once; one at a time inside the loop, nine held
-        conflicts took about twenty minutes each while nothing else moved."""
+        conflicts took about twenty minutes each while nothing else moved. At the engine's limit of
+        three merges the commit is set aside and the task runs fresh on current main, the new worker
+        shown the earlier work: other tasks landing in the same files had used up the merges, and
+        the owner question it became had no answer."""
         task, root = row.get('task'), row.get('worktree')
         if self.stop or row.get('worker_live') or not root or not Path(root).is_dir() or task in self.resolvers:
+            return False
+        if self.reexec_due():
+            # The reload waits for running resolvers and a due reload starts no batch: new ones
+            # each kept it pending, so for hours nothing landed while conflicts were resolved.
             return False
         adoption = row.get('merge_adoption') or {}
         if not adoption.get('allowed'):
             reason = adoption.get('reason') or 'the engine did not authorize merge adoption'
+            if reason.startswith('merge adoption limit reached'):
+                result = self.engine('--parallel-set-aside', task)
+                if result.get('outcome') == 'BUSY':
+                    return False  # a review holds the integration lock: the next cycle sets it aside
+                if result.get('outcome') == 'SET_ASIDE':
+                    kept = ', '.join(r['branch_now'] for r in result.get('renamed') or [] if r.get('branch_now'))
+                    LOG.say(f'{task}: its commit conflicted with main after {adoption.get("merged_count")} merges; '
+                            f'set aside as {kept}, and the task runs fresh on current main')
+                    self.seen[task] = 'pending'
+                    return True
+                reason += f'; could not set it aside: {result.get("reason") or result.get("outcome")}'
             if self.seen.get('merge-refused-' + task) != reason:
                 LOG.say(f'{task}: not running the merge resolver: {reason}; it waits for the owner')
                 self.seen['merge-refused-' + task] = reason
@@ -2755,6 +2811,8 @@ class Coordinator:
                                  '--min-free-mem-mb', self.min_free_mb, '--adopt-idle-claims', str(self.claim_idle),
                                  '--base-ref', self.base, *(['--tasks', ','.join(resumes)] if resumes else []))
             outcome = result.get('outcome') or 'ACTION_REQUIRED'
+            if outcome != 'BUSY':
+                self.seen.pop('busy-since', None)
             for task in result.get('closed_on_base') or []:
                 self.note_state(task, 'closed', f'closed on {self.base}; its worker is stopped and its work set aside')
             for task in result.get('closing') or []:
@@ -2830,7 +2888,17 @@ class Coordinator:
         elif outcome == 'BUSY':
             reason = result.get('reason') or 'busy'
             if self.mode in ('once', 'until-empty'):
-                self.finish(4, f'Repository busy: {reason}')
+                # A killed runner's engine helper holds the execution lock until it finishes: under
+                # load the restart that adopts its workers exited 4 at once (TOOLSET-288-cf). A held
+                # lock gets a bounded wait; another owner (a live sequential runner) does not.
+                since = self.seen.setdefault('busy-since', time.monotonic())
+                held = reason.startswith(('Repository execution lock', 'Repository or helper publication lock'))
+                if not held or time.monotonic() - since >= worker.setting('PI_AUTOWORK_BUSY_WAIT', 60, float):
+                    self.finish(4, f'Repository busy: {reason}')
+                if self.seen.get('busy-said') != reason:
+                    self.seen['busy-said'] = reason
+                    LOG.say(f'Repository busy ({reason}); waiting for it to finish')
+                return self.pause(2)
             LOG.say(f'Repository busy ({reason}); checking again in {self.interval}s')
             return self.blocked_pause(f'repository busy: {reason}')
         elif outcome == 'PRIORITY_DRIFT':

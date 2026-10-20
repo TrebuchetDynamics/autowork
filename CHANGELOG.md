@@ -7,6 +7,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `skills/autowork/scripts/checkout_lock.py`, a Claude Code hook: one interactive session
+  writes a checkout at a time (TOOLSET-290-12). The first session to edit a file in a
+  canonical checkout holds it until its files are committed or reverted, or it ends;
+  another session's edit is denied with the holder and its files named, and continues in
+  a worktree. `status|release` show and free it. Install steps: docs/worktree-placement.md.
 - `goals.py plan-lint REPO [--tasks ID,...] [--json] [--strict]` lints TODO.md task
   contracts before dispatch with the runner's own parsers. Errors (exit 1): missing or
   duplicate required fields, missing or unparseable Touches, coordinator files in
@@ -17,8 +22,22 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
-- A batch whose full check fails names its suspects: the candidates whose changes the
-  new failing tests import (transitively) or read by name. They integrate one at a time and
+- A waiting task no longer holds the files it names against lower-priority tasks: waits
+  chained on one old unlanded commit left every worker idle. A free file still goes to
+  the higher-priority task first.
+- A finished commit still waiting to merge a day after dispatch (`PI_AUTOWORK_STALE_HOURS`,
+  default 24) is set aside and its task runs fresh on current main, the new worker shown
+  the earlier branch: day-old commits conflicted with each other at every landing and held
+  back every task that shared their files.
+- `--parallel-set-aside` accepts a finished commit whose review a restart interrupted
+  (left `integrating`, no review running), unless that integration's merge already
+  landed in main.
+- A finished commit that reaches the merge adoption limit (three merges with main, each
+  after other tasks landed in its files) is set aside and its task runs fresh on current
+  main, the new worker shown the earlier branch, instead of becoming an owner question.
+- A batch whose full check fails names its suspects: the candidates that wrote a line a
+  new failure's traceback ran through (`git blame`), else those whose changes the failing
+  tests import (transitively) or read by name. They integrate one at a time and
   the rest batch again at once; when a failure points at no candidate, or at all of them,
   the batch is halved as before. Halving cost a 20-minute full check per round.
 - Task status reads as one headline plus a detail (TOOLSET-289-71): the fleet table's
@@ -290,6 +309,14 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A `--once` or `--until-empty` run that finds the execution lock held (a killed runner's
+  engine helper still finishing) waits up to `PI_AUTOWORK_BUSY_WAIT` seconds (default 60)
+  for it instead of exiting 4 at once; a live sequential owner still exits 4 immediately.
+- A review no longer runs out of time rerunning a hundred failures one by one: the quiet
+  rerun tries a sample of five (`PI_AUTOWORK_QUIET_SAMPLE`) first, and when none passes alone
+  the rest are not rerun; the base comparison decides. Three reviews on 2026-10-20 spent
+  three hours each rerunning about 108 failures at 120 s apiece, and their reviewers never
+  started.
 - The fleet view no longer shows a task as `Active · Verifying` after its review died: a
   live `--verify` process is required. A task a live batch is checking reads
   `Waiting · Batch check`; any other, `Waiting · Merge turn` (its review is not running).

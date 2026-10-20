@@ -280,8 +280,8 @@ test that passes when rerun alone counts as flaky. The rejection names the new f
 retry's prompt quotes them. The same command is main's check when `PI_AUTOWORK_MAIN_CHECK` is
 unset; a repository with neither gets one `FULL-CHECK` question in BLOCKERS.md.
 
-`Touches:` schedules work: a task naming a file that running work, an unlanded commit or
-a waiting higher-priority task also names waits until that one lands; directory and glob
+`Touches:` schedules work: a task naming a file that running work or an unlanded commit
+also names waits until that one lands (a waiting task holds no files); directory and glob
 overlap only ranks it after independent work (TOOLSET-161-17). While slots idle on such
 waits, the DOCS-MAINTAINER re-cuts the waiting tasks. A worker may change whatever its task
 needs. Finished work integrates one task at a time in priority order; the merge settles

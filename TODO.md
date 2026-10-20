@@ -52,6 +52,64 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Now
 
+### TOOLSET-291-ae — Split coordinator.py into mixin modules along its section markers
+
+- [ ] TOOLSET-291-ae — Split coordinator.py into mixin modules along its section markers
+- Short: Split coordinator.py into mixins
+- Status: open
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [coordinator](pi-autowork/pi_autowork/coordinator.py) (one `Coordinator` class, 101 methods, sections `# --- Engine`, `Pi`, `Signals and pauses`, `Session`, `Coordinator`, `Touches proposals`, `Priority, requests, health, self-update`, `Main loop`); [fix hotspots](scripts/fix_hotspots.py); [reliability research](docs/research/orchestrator-reliability.md) (hot files).
+- Evidence: 2,935 lines; 78 of its 110 commits in 14 days were fixes, the longest fix-on-fix chain in the repository (66); 38 open tasks name it in `Touches:`, so nearly every pair of runner tasks conflicts on it.
+- Touches: pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/coordinator_session.py, pi-autowork/pi_autowork/coordinator_integration.py, pi-autowork/pi_autowork/coordinator_upkeep.py, pi-autowork/tests/test_coordinator_layout.py, tests/test_pi_autowork.py, pi-autowork/tests/test_worker_tmp.py, pi-autowork/tests/test_maintainer.py, pi-autowork/tests/test_release.py
+- Produces: `coordinator_session.SessionMixin`, `coordinator_integration.IntegrationMixin`, `coordinator_upkeep.UpkeepMixin`; `class Coordinator(SessionMixin, IntegrationMixin, UpkeepMixin)` stays in coordinator.py.
+- Scope: (1) Move the `Session` section to `coordinator_session.py`, the `Coordinator` and `Touches proposals` sections to `coordinator_integration.py`, and `Signals and pauses` with `Priority, requests, health, self-update` to `coordinator_upkeep.py`, each as a mixin class; coordinator.py keeps the module helpers, `__init__`, `Engine`, `Pi` and `Main loop`. Methods move verbatim: same names, bodies and comments. (2) Module-level names a moved method uses are imported where it now lives; tests that patch such a name (`pi_autowork.coordinator.LOG`, …) patch the module that uses it; no other test changes. (3) The commit message lists, for every open task whose `Touches:` names coordinator.py, the module(s) defining the methods its Scope names; the planner applies them to TODO.md (the coordinator's file) after this lands. Touches only rank, so nothing waits on that meanwhile.
+- Acceptance: Given the split, the set of attribute names on `Coordinator` (methods and class attributes, from `dir()`) is unchanged and each is defined in exactly one module (`pi-autowork/tests/test_coordinator_layout.py::test_the_split_keeps_every_method_once`); no module exceeds 950 lines (`test_no_coordinator_module_exceeds_950_lines`); the same test IDs pass as before, compared in the commit message.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p 'test_*.py'; python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py
+- Dependencies: None.
+- Resources: exclusive (moves the file 38 open tasks edit; with the shared-file rule it starts once the unlanded commits naming coordinator.py have landed).
+- Ownership: Toolset coordinator.
+- Exclusions: No behaviour change, renaming, reordering inside a section or new abstraction; no edits to methods beyond import lines. Tasks already running or holding an unlanded commit are not rewritten.
+- Planner's call: mixins along the existing section markers, not a redesign, so every pending task's mental model and method names still hold; the layout test keeps the move honest.
+
+### TOOLSET-292-6a — Split parallel_integrate.py and its tests into integrate, close and retry modules
+
+- [ ] TOOLSET-292-6a — Split parallel_integrate.py and its tests into integrate, close and retry modules
+- Short: Split parallel_integrate.py three ways
+- Status: open
+- Goal: PARALLEL
+- Payoff: Run independent Autowork tasks in parallel workers with one coordinator.
+- Sources: [integration](skills/autowork/scripts/parallel_integrate.py) (verify/merge 22–600, `integrate`/`recover_integration` 619–848, `goals_command`…`_close_writes` 848–1033, `dispatched_contract`…`dispatch_with_retries` 1033–1722); [integration tests](skills/autowork/scripts/test_parallel_integrate.py) (`IntegrationTests`, one 2,630-line class); [check](scripts/check.py) (`SPLIT` runs it in 4 processes); callers in [task_execution](skills/autowork/scripts/task_execution.py), [parallel_dispatch](skills/autowork/scripts/parallel_dispatch.py) and [worker](pi-autowork/pi_autowork/worker.py).
+- Evidence: 1,722 and 2,683 lines; 64 and 61 fix commits in 14 days with fix-on-fix chains of 43 and 40; 14 open tasks name the module.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/parallel_close.py, skills/autowork/scripts/parallel_retry.py, skills/autowork/scripts/test_parallel_integrate.py, skills/autowork/scripts/test_parallel_close.py, skills/autowork/scripts/test_parallel_retry.py, skills/autowork/scripts/integration_fixture.py, skills/autowork/scripts/task_execution.py, skills/autowork/scripts/parallel_dispatch.py, pi-autowork/pi_autowork/worker.py, scripts/check.py
+- Scope: (1) Move `goals_command` through `_close_writes` and `retire_closed` to `parallel_close.py`; `dispatched_contract` through `dispatch_with_retries` (set-aside, clear-held, reverify, answers, review rework, `retry_held`) to `parallel_retry.py`; the rest stays. Functions move verbatim. (2) Callers import from the module that now defines a function; no re-exports or aliases (a clean cut). (3) `IntegrationTests` splits by the module its tests exercise into `test_parallel_close.py` and `test_parallel_retry.py` over a shared base in `integration_fixture.py`; test bodies unchanged. (4) The `SPLIT` entry follows the new test modules. (5) The commit message lists the new paths each open task naming parallel_integrate.py or its test needs; the planner applies them to TODO.md after this lands.
+- Acceptance: Given the split, each function is defined in exactly one of the three modules and every caller resolves (`test_parallel_close.py::test_layout_defines_each_function_once`, which imports all three and the callers); no module exceeds 900 lines and no test module 1,200; the same test IDs pass as before, compared in the commit message.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p 'test_parallel_*.py'; python3 -m unittest discover -s skills/autowork/scripts -p test_task_execution*.py; python3 scripts/check.py
+- Dependencies: None.
+- Resources: exclusive (moves a module 14 open tasks edit).
+- Ownership: Toolset coordinator.
+- Exclusions: No behaviour change or renamed functions; tests that need more than an import or patch-target change are reported, not changed.
+- Planner's call: independent of TOOLSET-291-ae (no shared file), so the two can land in either order.
+
+### TOOLSET-276-11 — Split tests/test_pi_autowork.py into per-feature modules over one fixture module
+
+- [ ] TOOLSET-276-11 — Split tests/test_pi_autowork.py into per-feature modules over one fixture module
+- Short: Split test_pi_autowork.py by feature
+- Status: open
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [reliability research](docs/research/orchestrator-reliability.md) (hot files); [check](scripts/check.py) (`SPLIT` runs the module in 12 processes); [planning craft](skills/shared/PLANNING-CRAFT.md#disjoint-write-sets).
+- Evidence: the module is 2,980 lines, has had 47 fix commits, appears in about 38 open tasks' `Touches:`, and took 764 s of a 1,324 s full check as one process.
+- Touches: tests/test_pi_autowork.py, tests/pi_autowork_fixtures.py, tests/test_pi_autowork_*.py, scripts/check.py
+- Scope: (1) Move the shared runner fixtures (toolset clone, fake Pi CLI, repository builders) into `tests/pi_autowork_fixtures.py`. (2) Move the test classes into modules by feature (landing, integration, status, questions, lifecycle, maintainer…), unchanged. (3) Replace the `SPLIT` entry with the new modules. Run this alone: no other task touching `tests/test_pi_autowork.py` may run beside it.
+- Acceptance: Given the split, the same test IDs (by class and method name) pass as before, counted by a one-off comparison recorded in the commit message; no new module exceeds 800 lines (`tests/test_check.py::test_the_pi_autowork_suite_is_split_under_800_lines`); `python3 scripts/check.py --list` shows the new modules.
+- Checks: python3 scripts/check.py tests/
+- Dependencies: TOOLSET-291-ae, TOOLSET-270-a9, TOOLSET-271-d6.
+- Resources: exclusive (moves a file most open tasks edit; it must not run beside them).
+- Ownership: Toolset coordinator.
+- Exclusions: No test rewrites, deletions or new assertions; tests that need changing are reported, not changed.
+- Planner's call: after TOOLSET-291-ae, which changes this module's patch targets, and the Now tasks still editing it (2026-10-20: 269-f2 and 273-e0 have landed); the shared-file rule also holds it until unlanded commits naming the module land. Plan lint: the `tests/test_pi_autowork_*.py` glob is a serial path on purpose, and Acceptance is test-ID parity rather than a new test.
+
 ### TOOLSET-287-44 — A merge conflict the resolver may still adopt is never an owner question
 
 - [ ] TOOLSET-287-44 — A merge conflict the resolver may still adopt is never an owner question
@@ -61,7 +119,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Evidence: (2026-10-20, this repository's runner): five merge-conflict holds were listed in BLOCKERS.md as owner questions ('rescope or split') while the engine allowed another adoption for four of them and the runner was already resolving them; the fifth had been resolved and reported again within a minute.
 - Touches: pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_questions.py, tests/test_pi_autowork.py
 - Scope: (1) questions.exhausted no longer treats a conflict hold as exhausted merely because an earlier merge was adopted (merged_count > 0) or the attempt is the second: a conflict hold is an owner question only when the engine refuses the next adoption (merge_adoption.allowed is False for a reason other than the commit being in integration or a resolver running) or the resolver could not resolve it. (2) The question for a refused adoption keeps naming the conflicting files and the adoption count.
-- Acceptance: In fixtures: a conflict-held row with merged_count 1 and merge_adoption.allowed True yields no question; the same row with allowed False and 'merge adoption limit reached' yields one question naming the files and '3 of 3'; a second-attempt conflict hold the resolver may adopt yields no question.
+- Acceptance: In fixtures: a conflict-held row with merged_count 1 and merge_adoption.allowed True yields no question; the same row with allowed False because canonical HEAD has not advanced yields one question naming the files and '1 of 3' (at 'merge adoption limit reached' the runner sets the commit aside and reruns the task, so no question); a second-attempt conflict hold the resolver may adopt yields no question.
 - Checks: python3 -m unittest discover -s pi-autowork/tests -p test_questions.py; python3 scripts/check.py tests/test_pi_autowork.py tests/test_blockers.py
 - Dependencies: None.
 - Ownership: Toolset coordinator.
@@ -651,23 +709,23 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Next
 
-### TOOLSET-288-cf — Two runner tests fail only under full-check load
+### TOOLSET-293-25 — Split goals.py once its private copies and the runner's parse cache allow it
 
-- [ ] TOOLSET-288-cf — Two runner tests fail only under full-check load
-- Short: Two runner tests fail under load
+- [ ] TOOLSET-293-25 — Split goals.py once its private copies and the runner's parse cache allow it
+- Short: Split goals.py after its loaders change
 - Status: open
-- Goal: PI-RUNNER
-- Payoff: Run Autowork continuously through Pi with a model fallback.
-- Sources: [check](scripts/check.py); [runner tests](tests/test_pi_autowork.py) (`test_a_killed_coordinator_restarts_at_once_and_adopts_live_workers`); [integration tests](skills/autowork/scripts/test_parallel_integrate.py) (`test_retry_runs_beside_an_overlapping_worker`); [coordinator](pi-autowork/pi_autowork/coordinator.py) (the `BUSY` outcome); [retry](skills/autowork/scripts/parallel_integrate.py) (`retry_held`).
-- Evidence: a full `python3 scripts/check.py` on 2147c130, run while a live runner worked the same host, failed both tests: the restart after `kill` exited 4 with "Repository busy: Repository execution lock is held by a live operation." (the killed runner's engine helper still held the execution lock), and `retry_held` returned `IDLE` instead of `RETRIED`. Each passed alone twice; the retry test passed 12 times in parallel and inside its whole module (146 tests).
-- Touches: pi-autowork/pi_autowork/coordinator.py, skills/autowork/scripts/parallel_integrate.py, tests/test_pi_autowork.py, skills/autowork/scripts/test_parallel_integrate.py
-- Scope: (1) Find why each fails under load: for the restart, whether `until-empty` treats `BUSY` from a dead runner's helper as final before the helper exits; for the retry, which `IDLE` branch of `retry_held` is taken (capacity, an empty held set, or the plan) and why. (2) Fix the product race if there is one (a restart waits for a dead runner's helper within a bound instead of exiting 4); otherwise make the fixture wait on the state it needs instead of on timing. (3) Record the `IDLE` branch taken in the result so the next such failure names it.
-- Acceptance: Given a killed runner whose engine helper still holds the execution lock, when the runner restarts with `--until-empty`, then it waits for the helper and exits 0 (`test_a_killed_coordinator_restarts_at_once_and_adopts_live_workers`, also with the helper delayed on purpose). `retry_held` results for `IDLE` name their branch (`test_retry_runs_beside_an_overlapping_worker` asserts it). Both tests pass in three consecutive full checks.
-- Checks: python3 -m unittest discover -s tests -p test_pi_autowork.py -k killed_coordinator; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py -k retry; python3 scripts/check.py
+- Goal: DOCS-COMPLETENESS
+- Payoff: Make core-document completeness and drift machine-checkable.
+- Sources: [goals](skills/docs-sync/scripts/goals.py) (1,939 lines; `TRANSACTION`, `coordination`, `atomic_write`; `redact` calls `render_text`/`render`; `backlog_receipt` calls `queue`); [task execution](skills/autowork/scripts/task_execution.py) (`goals_module()` loads a private copy and wraps its `task_bodies` in an `lru_cache` so `queue()` reuses one parse); private loads as `retry_goals`, `todo_goals`, `pass_goals`; [owner unblock](skills/autowork/scripts/owner_unblock.py) (mixes a private copy with the plain `goals` module in one process).
+- Evidence: a pure-move split attempted on 2026-10-20 stopped before editing: (1) the backlog and redaction code calls render and queue code, so three modules cycle; (2) moving `queue`/`priority_status` out of goals.py silently drops the runner's `task_bodies` cache, because it is patched on the private copy's namespace; (3) moving the stale-write guard into a shared module makes one private copy's `coordination()` arm stale-write checks for another copy's writes, a new failure. 11 fixes in 14 days.
+- Touches: skills/docs-sync/scripts/goals.py, skills/docs-sync/scripts/goals_ledger.py, skills/docs-sync/scripts/goals_todo.py, skills/docs-sync/scripts/goals_queue.py, skills/docs-sync/scripts/goals_backlog.py, skills/autowork/scripts/task_execution.py
+- Scope: (1) First make the loaders independent of goals.py's internal layout: the runner's parse cache wraps the `task_bodies` that `queue` calls wherever it lives, and per-copy write state either becomes per-call (passed in) or the private copies are replaced by one shared module; say which, with the reason. (2) Then split by concern into ledger, TODO.md text (with render), queue/priority and backlog modules, goals.py keeping redaction, the two error checks and the CLI; each module at most 750 lines; functions move verbatim. (3) Callers keep `import goals`; goals.py imports, in one commented block, only the moved names callers use as `goals.<name>`.
+- Acceptance: Given two private copies of goals.py in one process, a write through one copy after the other's `coordination()` behaves as before (`skills/docs-sync/scripts/test_goal_concurrency.py::test_private_copies_keep_separate_stale_write_guards`); a selection parses TODO.md once per cycle (`skills/autowork/scripts/test_task_execution.py::test_one_selection_parses_todo_once`); no module exceeds 750 lines and every former top-level name is defined once.
+- Checks: cd skills/docs-sync/scripts && python3 -m unittest discover -p 'test_*.py'; python3 -m unittest discover -s skills/autowork/scripts -p 'test_task_execution*.py'; python3 scripts/check.py
 - Dependencies: None.
 - Ownership: Toolset coordinator.
-- Exclusions: No retries or longer sleeps added to the tests to hide the failure.
-- Planner's call: queued rather than fixed by hand because live runner workers own all four files.
+- Exclusions: No CLI or file-format change.
+- Planner's call: write the two acceptance tests against today's goals.py first, so step (1) is proven behaviour-neutral before anything moves; task_execution.py has open tasks, so the shared-file rule holds this until they land.
 
 ### TOOLSET-286-32 — Harden conflicting-owner-plan journey against fixture races
 
@@ -780,25 +838,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Ownership: Toolset coordinator.
 - Exclusions: The guard's own rules do not change here.
 - Planner's call: after 230-bf, so the guard runs on the ref-update landing path rather than one about to be replaced. Plan lint flags the hot `coordinator.py`/`parallel_integrate.py` overlap; TOOLSET-276-3f is the runtime answer, and the change here is a few lines at the landing seam.
-
-### TOOLSET-276-11 — Split tests/test_pi_autowork.py into per-feature modules over one fixture module
-
-- [ ] TOOLSET-276-11 — Split tests/test_pi_autowork.py into per-feature modules over one fixture module
-- Short: Split test_pi_autowork.py by feature
-- Status: open
-- Goal: PI-RUNNER
-- Payoff: Run Autowork continuously through Pi with a model fallback.
-- Sources: [reliability research](docs/research/orchestrator-reliability.md) (hot files); [check](scripts/check.py) (`SPLIT` runs the module in 12 processes); [planning craft](skills/shared/PLANNING-CRAFT.md#disjoint-write-sets).
-- Evidence: the module is 2,980 lines, has had 47 fix commits, appears in about 38 open tasks' `Touches:`, and took 764 s of a 1,324 s full check as one process.
-- Touches: tests/test_pi_autowork.py, tests/pi_autowork_fixtures.py, tests/test_pi_autowork_*.py, scripts/check.py
-- Scope: (1) Move the shared runner fixtures (toolset clone, fake Pi CLI, repository builders) into `tests/pi_autowork_fixtures.py`. (2) Move the test classes into modules by feature (landing, integration, status, questions, lifecycle, maintainer…), unchanged. (3) Replace the `SPLIT` entry with the new modules. Run this alone: no other task touching `tests/test_pi_autowork.py` may run beside it.
-- Acceptance: Given the split, the same test IDs (by class and method name) pass as before, counted by a one-off comparison recorded in the commit message; no new module exceeds 800 lines; `python3 scripts/check.py --list` shows the new modules.
-- Checks: python3 scripts/check.py tests/
-- Dependencies: TOOLSET-269-f2, TOOLSET-270-a9, TOOLSET-271-d6, TOOLSET-273-e0.
-- Resources: exclusive (moves a file most open tasks edit; it must not run beside them).
-- Ownership: Toolset coordinator.
-- Exclusions: No test rewrites, deletions or new assertions; tests that need changing are reported, not changed.
-- Planner's call: after the current Now tasks that edit this module, so their candidates do not all conflict with the move. Plan lint: the `tests/test_pi_autowork_*.py` glob is a serial path on purpose, and Acceptance is test-ID parity rather than a new test.
 
 ### TOOLSET-266-7a — Batch remaining docs-maintainer triggers and ask only unresolved owner questions
 
@@ -1713,14 +1752,14 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | CONTINUATION: Resolve and align continuation authority | met | executed <code>TOOLSET-007 historical check-reuse implementation verified in 9d1c7dc offline gate: check_receipt/retry_selection/reconcile regression modules passed; full 288/451/139/8, two skips and eight excluded native/model modules. Historical task archived; TOOLSET-008 independently reviewed and integrated.</code> → pass; executed <code>TOOLSET-008: independently reviewed and integrated 9d1c7dc; Python 3.12 scripts/check.py passed 288/451/139/8 tests, 2 skipped and 8 native/model modules excluded; exact correction review reran 26 checks. Native behavior not qualified.</code> → pass | — |
 | CRON-REPORTING: Make Telegram scheduling reports reliable across invocation surfaces | partial | executed <code>Offline source guidance: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s tests (246 run, 2 skipped; no live delivery qualification)</code> → pass | TOOLSET-011 |
 | STARTUP: Start useful implementation sooner with less preparation | unmet | executed <code>Reviewed fef4241; integration e2a0838: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py (252/448/135/8 offline tests; 2 skipped; 8 live/integration modules excluded); native timing remains TOOLSET-013</code> → pass | — |
-| DOCS-COMPLETENESS: Make core-document completeness and drift machine-checkable | partial | executed <code>TOOLSET-107-93: 22 focused CLI tests; independent re-review approved after literal-marker rework; Python 3.12 scripts/check.py passed 563/713/215/8 tests, one skip/eight exclusions; docs.py check passed; offline only</code> → pass; executed <code>TOOLSET-109-f1: 23 focused CLI tests; exact-source independent review approved; Python 3.12 scripts/check.py passed 563/715/216/8 tests, one skip/eight excluded; docs.py check and git diff --check passed; offline only</code> → pass; executed <code>TOOLSET-113-04: 12 CLI container-status subcases failed then passed; 24 manifest CLI tests passed; independent exact-source review approved; Python 3.12 scripts/check.py passed 568/715/217/8 tests, one skip/eight excluded modules; offline only</code> → pass; executed <code>python3 scripts/check.py (403/571/197/8 offline tests passed, 1 skipped, 8 modules excluded; includes test_docs_manifest, test_docs_stale, test_docs_profiles; offline only)</code> → pass | TOOLSET-146-bc-LIVE |
+| DOCS-COMPLETENESS: Make core-document completeness and drift machine-checkable | partial | executed <code>TOOLSET-107-93: 22 focused CLI tests; independent re-review approved after literal-marker rework; Python 3.12 scripts/check.py passed 563/713/215/8 tests, one skip/eight exclusions; docs.py check passed; offline only</code> → pass; executed <code>TOOLSET-109-f1: 23 focused CLI tests; exact-source independent review approved; Python 3.12 scripts/check.py passed 563/715/216/8 tests, one skip/eight excluded; docs.py check and git diff --check passed; offline only</code> → pass; executed <code>TOOLSET-113-04: 12 CLI container-status subcases failed then passed; 24 manifest CLI tests passed; independent exact-source review approved; Python 3.12 scripts/check.py passed 568/715/217/8 tests, one skip/eight excluded modules; offline only</code> → pass; executed <code>python3 scripts/check.py (403/571/197/8 offline tests passed, 1 skipped, 8 modules excluded; includes test_docs_manifest, test_docs_stale, test_docs_profiles; offline only)</code> → pass | TOOLSET-146-bc-LIVE, TOOLSET-293-25 |
 | UI-TASTE: Ship Uizze's UI Taste as a vendored bundled skill | met | executed <code>python3 scripts/check.py (440/575/209/8 offline tests, includes test_ui_taste_bundle and portable package tests) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | — |
 | SKILL-REVIEW: Fix review findings in the newly vendored UI skills | met | executed <code>Integrated 9f84355: python3 scripts/check.py passed 558/698/212/8 tests, one skip and eight excluded modules; retained description regression and original zero-warning linter evidence; offline only</code> → pass | — |
 | CLAUDE-CODE: Install the portable workflows in Claude Code | unmet | — | TOOLSET-066 |
 | GENTLE-UPDATE: Roll out updates without forcing gateway restarts | met | executed <code>TOOLSET-075..079 offline: python3 scripts/check.py (506/576/209/8 passed, 1 skipped) and node --test tests/portable_pi.test.mjs (3 passed); read-only pin dry run against the live home refused an unreleased revision as designed; live rollout not qualified (TOOLSET-084)</code> → pass; executed <code>TOOLSET-084 live 2026-10-15: hermes toolset update at afe1482 requested the restart with no chat turn in flight; /toolset update status showed gateway_restart completed, new PID 553964, menus resent 9/9; concurrent --check returned busy (exit 3) without touching the first receipt; earlier deferred restart waited for a chat turn that ended on its own (no forced chat drain); 7 linked profiles pinned to clean clones that only updates advance</code> → pass | — |
-| PARALLEL: Run independent Autowork tasks in parallel workers with one coordinator | partial | executed <code>TOOLSET-091-00 live 2026-10-15: Pi 1.2.0 workers (gpt-6.1-sol) via pi-autowork.sh on a disposable repo: 2 overlapping workers, sequential integration, C after A, combined check pass, no push, 158 s vs 240 s sequential; SIGKILLed coordinator restart adopted live workers without duplicates. Codex 0.162.1 workers cannot commit in the workspace-write sandbox (sequential fallback). Hermes workers not run by owner decision.</code> → pass | TOOLSET-279-eb |
+| PARALLEL: Run independent Autowork tasks in parallel workers with one coordinator | partial | executed <code>TOOLSET-091-00 live 2026-10-15: Pi 1.2.0 workers (gpt-6.1-sol) via pi-autowork.sh on a disposable repo: 2 overlapping workers, sequential integration, C after A, combined check pass, no push, 158 s vs 240 s sequential; SIGKILLed coordinator restart adopted live workers without duplicates. Codex 0.162.1 workers cannot commit in the workspace-write sandbox (sequential fallback). Hermes workers not run by owner decision.</code> → pass | TOOLSET-279-eb, TOOLSET-292-6a |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
-| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | Terminal drag selection: offline gate, PTY and source review pass ([TOOLSET-275-c1](TODO.archive.md#toolset-275-c1)) | TOOLSET-096-7e, TOOLSET-099-87, TOOLSET-117-cb-LIVE, TOOLSET-118-68, TOOLSET-119-2b, TOOLSET-120-fc, TOOLSET-122-27, TOOLSET-125-3c, TOOLSET-126-02, TOOLSET-127-8f, TOOLSET-129-6c, TOOLSET-129-c4, TOOLSET-130-15, TOOLSET-131-ac, TOOLSET-132-af, TOOLSET-139-62, TOOLSET-144-c0, TOOLSET-145-6d, TOOLSET-147-54, TOOLSET-153-64, TOOLSET-154-d3, TOOLSET-155-e2, TOOLSET-156-75, TOOLSET-158-08, TOOLSET-163-f7, TOOLSET-164-f1, TOOLSET-173-94, TOOLSET-178-47, TOOLSET-179-cf, TOOLSET-182-ce, TOOLSET-184-1d, TOOLSET-192-71, TOOLSET-200-c1, TOOLSET-225-75, TOOLSET-230-bf, TOOLSET-231-49, TOOLSET-234-51, TOOLSET-235-0d, TOOLSET-245-6a, TOOLSET-248-60, TOOLSET-249-5b, TOOLSET-255-55, TOOLSET-256-4b, TOOLSET-257-bd, TOOLSET-260-ae, TOOLSET-261-15, TOOLSET-262-13, TOOLSET-263-94, TOOLSET-264-39, TOOLSET-265-16, TOOLSET-266-7a, TOOLSET-267-a0, TOOLSET-270-a9, TOOLSET-271-d6, TOOLSET-274-f0, TOOLSET-276-11, TOOLSET-276-2c, TOOLSET-276-3d, TOOLSET-276-3f, TOOLSET-276-a9, TOOLSET-277-52, TOOLSET-285-47, TOOLSET-286-32, TOOLSET-287-44, TOOLSET-288-cf |
+| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | Terminal drag selection: offline gate, PTY and source review pass ([TOOLSET-275-c1](TODO.archive.md#toolset-275-c1)) | TOOLSET-096-7e, TOOLSET-099-87, TOOLSET-117-cb-LIVE, TOOLSET-118-68, TOOLSET-119-2b, TOOLSET-120-fc, TOOLSET-122-27, TOOLSET-125-3c, TOOLSET-126-02, TOOLSET-127-8f, TOOLSET-129-6c, TOOLSET-129-c4, TOOLSET-130-15, TOOLSET-131-ac, TOOLSET-132-af, TOOLSET-139-62, TOOLSET-144-c0, TOOLSET-145-6d, TOOLSET-147-54, TOOLSET-153-64, TOOLSET-154-d3, TOOLSET-155-e2, TOOLSET-156-75, TOOLSET-158-08, TOOLSET-163-f7, TOOLSET-164-f1, TOOLSET-173-94, TOOLSET-178-47, TOOLSET-179-cf, TOOLSET-182-ce, TOOLSET-184-1d, TOOLSET-192-71, TOOLSET-200-c1, TOOLSET-225-75, TOOLSET-230-bf, TOOLSET-231-49, TOOLSET-234-51, TOOLSET-235-0d, TOOLSET-245-6a, TOOLSET-248-60, TOOLSET-249-5b, TOOLSET-255-55, TOOLSET-256-4b, TOOLSET-257-bd, TOOLSET-260-ae, TOOLSET-261-15, TOOLSET-262-13, TOOLSET-263-94, TOOLSET-264-39, TOOLSET-265-16, TOOLSET-266-7a, TOOLSET-267-a0, TOOLSET-270-a9, TOOLSET-271-d6, TOOLSET-274-f0, TOOLSET-276-11, TOOLSET-276-2c, TOOLSET-276-3d, TOOLSET-276-3f, TOOLSET-276-a9, TOOLSET-277-52, TOOLSET-285-47, TOOLSET-286-32, TOOLSET-287-44, TOOLSET-291-ae |
 
 <!-- goals:coverage:end -->

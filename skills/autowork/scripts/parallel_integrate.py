@@ -1183,7 +1183,8 @@ def _retire(repo, common, slot, requeued):
 def set_aside(repo, owner_pid, task):
     """Retire a slot that can never finish, so its task can dispatch fresh.
 
-    Only for a finished commit waiting to merge (on request), a held slot no attempt can finish, or an integrated one whose TODO
+    Only for a finished commit waiting to merge (on request; also one whose review was interrupted,
+    unless that merge landed), a held slot no attempt can finish, or an integrated one whose TODO
     entry was rewritten after validation (its merge stays in main; the new entry
     is new work) or was archived or removed by someone else (``requeued`` false). Every attempt's worktree and branch is kept, renamed with a
     ``-set-aside-N`` suffix, and the slot record and its data move to
@@ -1211,6 +1212,11 @@ def set_aside(repo, owner_pid, task):
                         raise
                 else:
                     raise ValueError('integrated task still matches its contract; close it instead')
+        elif slot['state'] == 'integrating':
+            # A finished commit whose review a restart cut short (integration.lock is held, so
+            # no review runs): refused, one waited 15 hours. Unless its merge already landed.
+            if landed(repo, (slot.get('integration') or {}).get('commit')):
+                raise ValueError('its interrupted integration already landed; the next integration records it')
         elif slot['state'] != 'reported' and not state.exhausted(slot):
             # A finished commit too, on a person's request: stale ones written against code main had
             # since redesigned only conflicted, and the request was refused.

@@ -816,6 +816,18 @@ class BatchFailureTests(unittest.TestCase):
             self.assertEqual(suspects(['test_a.ATests.test_x', 'test_doc.DocTests.test_y']), ['A', 'C'])
             self.assertEqual(suspects(['test_a.ATests.test_x', 'test_gone.T.test']), [])  # one unexplained
             self.assertEqual(suspects(['test_a.ATests.test_x'], excused=['test_a.ATests.test_x']), [])  # base fails it too
+            # The traceback names the line: B wrote it, though the test imports only A's module.
+            log = Path(folder, 'gate.log')
+            log.write_text('ERROR: test_x (test_a.ATests.test_x)\n' + '-' * 70 + '\nTraceback (most recent call last):\n'
+                           '  File "/var/tmp/aw-b-1-x/chain/tests/test_a.py", line 1, in test_x\n'
+                           '  File "/var/tmp/aw-b-1-x/chain/pkg/b.py", line 1, in <module>\n'
+                           '  File "/usr/lib/python3.12/unittest/case.py", line 58, in testPartExecutor\n'
+                           "AttributeError: 'Coordinator' object has no attribute 'base'\n\n" + '-' * 70 + '\nRan 1 test\n')
+            record.write_text(json.dumps({'result': {'failures': ['test_a.ATests.test_x']}, 'log': str(log)}))
+            self.assertEqual(worker.batch_suspects(str(state), str(repo), base, steps), ['B'])
+            # Only base lines in the traceback: the imports decide.
+            log.write_text(log.read_text().replace('/pkg/b.py', '/pkg/a.py'))
+            self.assertEqual(worker.batch_suspects(str(state), str(repo), base, steps), ['A'])
             record.unlink()
             self.assertEqual(worker.batch_suspects(str(state), str(repo), base, steps), [])  # no record
 
@@ -868,6 +880,83 @@ class BatchLandingTests(unittest.TestCase):
             runner.commit_session_leftovers, runner.ahead = (lambda: None), (lambda: 0)
             with patch.object(coordinator, 'git', return_value='TODO.md\ndocs/plan.md\n'):
                 self.assertTrue(runner.merge_main())  # planning and docs leave the verdicts valid
+
+    def test_a_commit_at_the_merge_limit_runs_fresh_instead_of_asking_the_owner(self):
+        """Peers landing in coordinator.py used up three merges, and the commit became an owner
+        question with nothing to answer."""
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator = self.runner(folder, {})
+            runner.stop, runner.reload = False, False
+            runner.reexec_due = lambda: ''
+            calls, said = [], []
+            outcomes = iter([{'outcome': 'BUSY'}, {'outcome': 'SET_ASIDE', 'renamed': [{'branch_now': 'autowork/B-set-aside-1'}]}])
+            runner.engine = lambda *args: calls.append(args) or next(outcomes)
+            limit = {'allowed': False, 'merged_count': 3,
+                     'reason': 'merge adoption limit reached; adopted 3 of 3; conflict in: a.py'}
+            row = {'task': 'B', 'state': 'held', 'cause': 'conflict', 'worktree': folder, 'merge_adoption': limit}
+            with patch.object(coordinator.LOG, 'say', side_effect=said.append):
+                self.assertFalse(runner.resolve_task_conflict(row))  # a review holds the lock: next cycle
+                self.assertTrue(runner.resolve_task_conflict(row))
+                other = dict(row, merge_adoption={'allowed': False, 'reason': 'merged is only for an idle conflict-held commit'})
+                self.assertFalse(runner.resolve_task_conflict(other))
+            self.assertEqual(calls, [('--parallel-set-aside', 'B')] * 2)
+            self.assertEqual(said[0], 'B: its commit conflicted with main after 3 merges; set aside as '
+                                      'autowork/B-set-aside-1, and the task runs fresh on current main')
+            self.assertIn('it waits for the owner', said[1])
+
+    def test_a_candidate_landing_behind_a_busy_checkout_is_said_once(self):
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator = self.runner(folder, {})
+            said = []
+            with patch.object(coordinator.LOG, 'say', side_effect=said.append):
+                for _ in range(3):
+                    runner.note_state('B', 'reported')
+                    runner.note_integrating('B', ['B'])
+                runner.note_state('B', 'held', 'merge conflict')
+            self.assertEqual(said, ['B: implemented', 'B: landing — passed in its batch; not reviewed again',
+                                    'B: failed — merge conflict'])
+
+    def test_a_day_old_commit_is_set_aside_and_its_task_runs_fresh(self):
+        """Twenty day-old commits conflicted with each other at every landing and held back every
+        task that shared their files."""
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator = self.runner(folder, {})
+            runner.stop = False
+            calls, said = [], []
+            runner.engine = lambda *args: calls.append(args) or (
+                {'outcome': 'SET_ASIDE', 'renamed': [{'branch_now': f'autowork/{args[1]}-set-aside-1'}]}
+                if args[1] != 'D' else {'outcome': 'REFUSED', 'reason': 'its interrupted integration already landed'})
+            day = 25 * 3600
+            rows = [{'task': 'A', 'state': 'reported', 'elapsed_seconds': day},
+                    {'task': 'B', 'state': 'reported', 'elapsed_seconds': 3600},  # young: it batches
+                    {'task': 'C', 'state': 'held', 'elapsed_seconds': day},  # held: the merge limit decides
+                    {'task': 'D', 'state': 'integrating', 'elapsed_seconds': day},
+                    {'task': 'E', 'state': 'running', 'elapsed_seconds': day}]
+            with patch.object(coordinator.LOG, 'say', side_effect=said.append):
+                self.assertTrue(runner.set_aside_stale(rows))
+                self.assertFalse(runner.set_aside_stale(rows[3:4]))  # the refusal is said once
+                runner.integration = {'task': 'X'}
+                self.assertFalse(runner.set_aside_stale(rows))  # never beside a review or a batch
+                runner.integration = None
+                with patch.dict(os.environ, {'PI_AUTOWORK_STALE_HOURS': '0'}):
+                    self.assertFalse(runner.set_aside_stale(rows))
+            self.assertEqual(calls, [('--parallel-set-aside', 'A'), ('--parallel-set-aside', 'D'),
+                                     ('--parallel-set-aside', 'D')])
+            self.assertEqual(said, ['A: its commit waited 25 h to merge; set aside as autowork/A-set-aside-1, '
+                                    'and the task runs fresh on current main',
+                                    'D: could not set aside its day-old commit: its interrupted integration already landed'])
+
+    def test_a_due_reload_starts_no_merge_resolver(self):
+        """Each new resolver kept the reload pending, and a due reload starts no batch: commits
+        were resolved again and again for hours while none landed."""
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator = self.runner(folder, {})
+            runner.stop, runner.reload = False, True
+            row = {'task': 'B', 'state': 'held', 'cause': 'conflict', 'worktree': folder,
+                   'merge_adoption': {'allowed': True, 'baseline': 'abc'}}
+            with patch.object(coordinator, 'git', side_effect=AssertionError('resolution started')):
+                self.assertFalse(runner.resolve_task_conflict(row))
+            self.assertEqual(runner.resolvers, {})
 class HeadlessApprovalTests(unittest.TestCase):
     """TOOLSET-282-43: a worker loaded an interactive design skill, ended its session with "Do you
     approve?" after 28 s, and the runner held the task as a dead worker for the owner to rescope."""
@@ -932,6 +1021,22 @@ class BatchableTests(unittest.TestCase):
                 {'task': 'C', 'state': 'held', 'commit': 'c'}, {'task': 'D', 'state': 'running'}]
         self.assertEqual(batchable(rows), [('A', 'a'), ('B', 'b')])
         self.assertEqual(batchable(rows, {'A'}), [('B', 'b')])
+
+    def test_a_commit_whose_batch_failed_gets_a_review_between_two_batches(self):
+        """While resolutions kept producing fresh revisions a batch was always due first, and nine
+        commits whose batch had failed waited for a review of their own, one for 15 hours."""
+        from pi_autowork import coordinator
+        with tempfile.TemporaryDirectory() as folder:
+            runner = coordinator.Coordinator.__new__(coordinator.Coordinator)
+            runner.state, runner.seen = Path(folder), {}
+            runner.reexec_due, runner.batch_pending = (lambda: ''), (lambda: False)
+            (runner.state / 'batch-failed.json').write_text(json.dumps(['F@f']))
+            reported = [('A', 'a'), ('B', 'b'), ('F', 'f')]
+            self.assertEqual(runner.batch_due(reported), ['A', 'B'])
+            self.assertEqual(runner.batch_due(reported + [('C', 'c')]), [])  # F's turn, alone
+            self.assertEqual(runner.batch_due(reported + [('C', 'c')]), ['A', 'B', 'C'])
+            (runner.state / 'batch-failed.json').write_text('[]')
+            self.assertEqual(runner.batch_due([('D', 'd'), ('E', 'e')]), ['D', 'E'])  # none failed: batches go on
 
 
 class BusyLineTests(unittest.TestCase):
