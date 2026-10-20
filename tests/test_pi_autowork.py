@@ -2097,7 +2097,8 @@ class EngineTests(Fixture):
                     ('The runner already ran', 'The runner executed', True),
                     ("verdict == 'fail'", "verdict != 'fail'", True),
                     ('command = main_check.full_check(checkout)', 'command = None', True),
-                    ("'PI_AUTOWORK_VALIDATE_TIMEOUT', 3600", "'PI_AUTOWORK_VALIDATE_TIMEOUT', 3601", True)):
+                    ("'PI_AUTOWORK_VALIDATE_TIMEOUT', 3600", "'PI_AUTOWORK_VALIDATE_TIMEOUT', 3601", True),
+                    ('only=set(tests), workers=1', 'only=set(tests), workers=4', True)):
                 with self.subTest(edit=before):
                     self.assertIn(before, source)
                     path.write_text(source.replace(before, after, 1))
