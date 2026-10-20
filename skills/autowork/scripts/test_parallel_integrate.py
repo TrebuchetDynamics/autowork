@@ -1373,6 +1373,73 @@ finally:
         slot = state.slots(self.common)[0]
         self.assertEqual((slot['cause'], slot['outside']), ('scope', ['package-lock.json']))
 
+    def test_touches_answer_admits_a_protected_candidate_serially(self):
+        module = self.module()
+        self.worker(files={'package.json': '{}\n'})
+        self.worker('B')
+        slot = state.slots(self.common)[0]
+        todo = self.repo / 'TODO.md'
+        contract = execution.goals_module().task_bodies(todo.read_text())['A'][0][0].strip()
+        (dispatch.data_dir(self.common, slot) / 'contract.txt').write_text(contract + '\n')
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['cause'], 'scope')
+        todo.write_text(todo.read_text().replace('Touches: A.txt', 'Touches: A.txt, package.json'))
+        self.git('commit', '-qam', 'Touches-only answer')
+        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'RESCOPED')
+        # Validation must hold the integration mutex, with the sibling still reported.
+        check = (f'import fcntl, json; from pathlib import Path; p=Path({str(self.common)!r}); '
+                 's={x["task_id"]:x["state"] for x in (json.loads(f.read_text()) for f in (p/"slots").glob("*.json"))}; '
+                 'assert s == {"A":"integrating", "B":"reported"}; '
+                 'f=open(p/"integration.lock", "a"); '
+                 '\ntry: fcntl.flock(f, fcntl.LOCK_EX|fcntl.LOCK_NB)'
+                 '\nexcept BlockingIOError: pass'
+                 '\nelse: raise AssertionError("integration is not serialized")')
+        result = module.integrate(self.repo, self.owner, 'A', [sys.executable, '-c', check], 10)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual((self.repo / 'package.json').read_text(), '{}\n')
+        self.assertEqual((self.repo / 'B.txt').read_text(), 'base\n')
+        self.assertEqual(state.slots(self.common)[0]['attempt'], 1)
+
+    def test_a_rescope_reheld_by_old_admission_is_reoffered_once(self):
+        module = self.module()
+        self.worker(files={'package.json': '{}\n'})
+        slot = state.slots(self.common)[0]
+        todo = self.repo / 'TODO.md'
+        contract = execution.goals_module().task_bodies(todo.read_text())['A'][0][0].strip()
+        (dispatch.data_dir(self.common, slot) / 'contract.txt').write_text(contract + '\n')
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['cause'], 'scope')
+        todo.write_text(todo.read_text().replace('Touches: A.txt', 'Touches: A.txt, package.json'))
+        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'RESCOPED')
+        # An older runner checked contract.txt again, leaving this already-answered hold.
+        state.transition(self.repo, self.owner, 'A', 'held', cause='scope', outside=['package.json'],
+                         reason='protected files need serial admission in the original task contract')
+        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'REOFFERED')
+        # If it is held again, an unchanged answer must not create a retry loop.
+        state.transition(self.repo, self.owner, 'A', 'held', cause='scope', outside=['package.json'])
+        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'IDLE')
+
+    def test_a_rescope_missing_a_protected_path_gives_one_actionable_question(self):
+        import parallel_status
+        sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'pi-autowork'))
+        from pi_autowork import questions
+        module = self.module()
+        self.worker(files={'package.json': '{}\n', 'package-lock.json': '{}\n'})
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['cause'], 'scope')
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text().replace('Touches: A.txt', 'Touches: A.txt, package.json'))
+        contract = execution.goals_module().task_bodies(todo.read_text())['A'][0][0].strip()
+        # A legacy/manual rescope did not name every protected path in the candidate.
+        slot = state.slots(self.common)[0]
+        state.rescope(self.common, slot, 'A.txt, package.json', contract=contract)
+        result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual((result['outcome'], result.get('cause'), result.get('outside')),
+                         ('HELD', 'scope', ['package-lock.json']), result)
+        for _ in range(2):
+            self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'IDLE')
+            found = questions.build(parallel_status.snapshot(self.repo), todo.read_text(), execution.goals_module())
+            self.assertEqual([q['id'] for q in found], ['A'])
+            self.assertIn('package-lock.json', found[0]['needs'])
+            self.assertIn('rerun or a contract change', found[0]['needs'])
+
     def test_other_contract_answers_requeue_even_when_touches_cover_the_commit(self):
         module = self.module()
         for index, field in enumerate(('Scope', 'Acceptance', 'Checks', 'Dependencies')):

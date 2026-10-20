@@ -226,9 +226,24 @@ def verify_scope(repo, common, slot, contracts, files):
     # build/schema/CI state, even if other workers have already finished.
     protected = [p for p in files if plan.protected_path(p)]
     if protected:
-        original = dispatched_contract(common, slot)
-        admitted = {'fields': execution.goals_module().task_fields(original)} if original else None
-        if not admitted or not plan._solo(admitted, dispatch.protected_files(repo, slot['baseline'])):
+        rescoped = slot.get('rescoped_contract') if slot.get('rescoped') else None
+        contract = rescoped or dispatched_contract(common, slot)
+        admitted = {'fields': execution.goals_module().task_fields(contract)} if contract else None
+        inventory = dispatch.protected_files(repo, slot['baseline'])
+        if rescoped:
+            # An answered rescope admits only the protected paths it actually reserves.
+            # A different manifest, or an ordinary directory naming a new one, is not enough.
+            declared = plan.paths(admitted['fields'].get('Touches', ''))
+            outside = []
+            for path in protected:
+                matching = [p for p in declared if not plan.overlap([path], [p], [])['outside']]
+                if not plan._solo({'fields': {'Touches': ', '.join(matching)}},
+                                  [path] if path in inventory else []):
+                    outside.append(path)
+            if outside:
+                raise Hold('scope', 'rescoped contract does not reserve protected files: ' + str(outside)
+                           + '; a rerun or a contract change is needed', outside=outside)
+        elif not admitted or not plan._solo(admitted, inventory):
             raise Hold('scope', 'protected files need serial admission in the original task contract: '
                        + str(protected), outside=protected)
 
@@ -1285,6 +1300,17 @@ def retry_held(args):
                         name == 'Touches' or name.startswith('Touches widened ') for name in changes)
                     if changes and not touches_only:
                         continue
+                    # Repair an older runner's re-hold against the dispatch contract, once.
+                    # The saved answer must now admit the actual commit; never loop on a refusal.
+                    if (not changes and candidate.get('rescoped') and candidate.get('rescoped_contract')
+                            and 'scope' not in state.reoffered(candidate) and not state.worker_live(candidate)):
+                        try:
+                            verify_scope(repo, common, candidate, contracts,
+                                         changed(repo, candidate['baseline'], candidate['commit']))
+                        except Hold:
+                            continue
+                        slot = state.reoffer(common, candidate)
+                        return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
                     touches = task['fields'].get('Touches', '')
                     if not state.rescopable(candidate, touches, touches_only=touches_only):
                         continue
@@ -1352,13 +1378,13 @@ def retry_held(args):
             # held task whose TODO entry changed since its attempt was dispatched runs fresh,
             # its earlier work kept on -set-aside-N names; an entry that disappeared was
             # closed or removed by a person, so nothing is queued again.
-            changed = next((s for s in current if s['state'] == 'held' and not state.worker_live(s)
-                            and entry_changed(repo, common, s)), None)
-            if changed is not None:
-                present = bool(execution.goals_module().task_bodies((repo / 'TODO.md').read_text()).get(changed['task_id']))
-                state.event(common, 'task_entry_changed', task_id=changed['task_id'],
-                            changed_fields=entry_changes(repo, common, changed), action='requeue')
-                result = _retire(repo, common, changed, present)
+            changed_slot = next((s for s in current if s['state'] == 'held' and not state.worker_live(s)
+                                 and entry_changed(repo, common, s)), None)
+            if changed_slot is not None:
+                present = bool(execution.goals_module().task_bodies((repo / 'TODO.md').read_text()).get(changed_slot['task_id']))
+                state.event(common, 'task_entry_changed', task_id=changed_slot['task_id'],
+                            changed_fields=entry_changes(repo, common, changed_slot), action='requeue')
+                result = _retire(repo, common, changed_slot, present)
                 return dict(result, outcome='REQUEUED')
             # A hold the worker reported a blocker for gets no fresh attempt: it needs a person.
             live = [s for s in current if state.worker_live(s)]
