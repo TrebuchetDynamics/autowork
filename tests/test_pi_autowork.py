@@ -1253,6 +1253,24 @@ class EngineTests(Fixture):
         self.assertGreaterEqual(len(asked), 2, result.stdout)
         self.assertLess(asked[1], result.stdout.index('merged the session into its commit'), result.stdout)
 
+    def test_a_running_merge_resolution_keeps_its_hold_and_the_session_still(self):
+        """A clear-held request and the docs maintainer's MAIN repair both landed beside a running
+        resolution: one cleared the hold it resolves, the other moved the session it merged, and
+        neither merge could then be adopted."""
+        sys.path.insert(0, str(ROOT / 'pi-autowork'))
+        from pi_autowork import coordinator
+        runner = object.__new__(coordinator.Coordinator)
+        runner.state, runner.stop, runner.integ, runner.integration = self.root / 'state', False, str(self.root), None
+        (runner.state / 'requests').mkdir(parents=True)
+        request = runner.state / 'requests' / 'clear-held-T'
+        request.write_text('')
+        runner.resolvers['T'] = {'proc': None}
+        runner.engine = lambda *argv: self.fail(f'the engine was asked {argv}')
+        runner.handle_requests()
+        self.assertTrue(request.exists())  # kept for a later cycle
+        runner.validate_ledger = lambda *a: []
+        self.assertFalse(runner.maintain(main_only=True))
+
     def test_a_worktree_left_mid_merge_or_with_loose_files_is_made_ready_for_the_resolver(self):
         """A restart killed a resolution mid-merge, and workers left files beside their commit:
         both kept the resolver away without a word, and the conflicts stayed held for hours."""

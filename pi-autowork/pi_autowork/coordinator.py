@@ -1845,8 +1845,9 @@ class Coordinator:
         self.ledger_errors = self.validate_ledger() if ledger_errors is None else ledger_errors
         # Like MAIN repair, LEDGER repair may coexist with task workers/reported slots:
         # those slots cannot settle until the ledger is valid. Never move the session
-        # under an active review or another writer.
-        if (dirty(self.integ) or self.session_busy()
+        # under an active review, a merge resolution (its merge is adopted only onto the
+        # revision it merged) or another writer.
+        if (dirty(self.integ) or self.session_busy() or self.resolvers
                 or (self.in_flight() and not main_only and not self.ledger_errors)):
             return False
         rows = [] if main_only or self.ledger_errors else self.tasks()
@@ -2218,6 +2219,8 @@ class Coordinator:
         # recovery. The commit and worktrees are kept; no person has to decide anything.
         for request in sorted((self.state / 'requests').glob('clear-held-*')):
             task = request.name.removeprefix('clear-held-')
+            if task in self.resolvers:
+                continue  # cleared now, its resolved merge could not be adopted: keep the request
             result = self.engine('--parallel-clear-held', task)
             if 'live parallel coordinator owner' in json.dumps(result):
                 continue  # before this runner's first dispatch it holds no lease: keep it
