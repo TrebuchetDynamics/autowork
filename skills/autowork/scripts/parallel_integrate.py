@@ -233,6 +233,16 @@ def verify_scope(repo, common, slot, contracts, files):
                        + str(protected), outside=protected)
 
 
+def head_conflicts(repo, commit):
+    """The files ``commit`` conflicts in with canonical HEAD when merge_candidate would hold it
+    for them; [] when it merges, or its conflicts are only ledgers merge_candidate resolves."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
+    result = subprocess.run(['git', '-C', str(repo), 'merge-tree', '--write-tree', '--name-only', '--no-messages',
+                             'HEAD', commit], env=env, capture_output=True, text=True, timeout=60)
+    files = [p for p in result.stdout.splitlines()[1:] if p] if result.returncode == 1 else []
+    return files if set(files) - set(dispatch.COORDINATOR_FILES) else []
+
+
 def merge_candidate(root, slot, baseline):
     """Merge every candidate, including adopted resolver merges, without its ledger edits.
 
@@ -509,6 +519,12 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
             ordered = chain + [t for t in ordered if t not in chain]
             first = next(iter(ordered), None)
             if first != task:  # it names the one, so the runner starts it next (TOOLSET-238-11)
+                # Holding a conflict lands nothing, so it needs no turn: behind one long review
+                # nine conflicting candidates waited hours for the resolver that only a hold starts.
+                conflicts = head_conflicts(repo, slot['commit'])
+                if conflicts:
+                    return hold(common, slot, 'merge conflict; worker and canonical checkout preserved',
+                                cause='conflict', conflict_files=conflicts)
                 raise ValueError(f'integrate the highest-priority reported task first: {first}')
             try:
                 files, report = verify(repo, common, slot, contracts)

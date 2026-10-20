@@ -338,6 +338,33 @@ def full_suite_gate(state, task, checkout, base=None):
     return ok, reason
 
 
+def quiet_reruns(state, task, log, checkout, rev, tests):
+    """The ``tests`` that pass when rerun one at a time with a host check slot held, once this
+    repository's main check is done. Rerun four at a time beside main's full suite, the runner's
+    own engine tests ran out of their 120 s and held three candidates whose trees pass them."""
+    receipt = log.with_suffix('.quiet.json')
+    receipt.unlink(missing_ok=True)
+    deadline = time.monotonic() + setting('PI_AUTOWORK_VALIDATE_TIMEOUT', 3600, float)
+    while time.monotonic() < deadline:
+        record = main_check.read(state)
+        if record.get('state') != 'running' or not main_check.alive(record.get('pid'), record.get('start_time')):
+            break
+        check_stop()
+        time.sleep(5)
+    try:
+        with main_check.check_slot(lambda ahead: check_stop()):
+            main_check.rerun_failures(str(log), checkout, str(receipt), rev, only=set(tests), workers=1)
+        quiet = json.loads(receipt.read_text())
+    except main_check.Stopped:
+        raise
+    except Exception as error:  # like the first reruns: without a receipt, none is excused
+        print(f'pi-autowork: rerunning the failures of {task} alone failed: {error}', file=sys.stderr)
+        return []
+    if not isinstance(quiet, dict) or quiet.get('rev') != rev or not isinstance(quiet.get('flaky'), list):
+        return []
+    return quiet['flaky']
+
+
 def run_gate(state, task, checkout, command, base_rev=None):
     """(ok, reason) of ``command`` on the merged tree (TOOLSET-180-72): a reviewer-approved commit
     landed while breaking 44 tests its own checks never ran. Only what the base does not already
@@ -375,6 +402,8 @@ def run_gate(state, task, checkout, command, base_rev=None):
         if not isinstance(reruns, dict) or reruns.get('rev') != rev or not isinstance(reruns.get('flaky'), list):
             reruns = {}
         failures = [f for f in failures if f not in (reruns.get('flaky') or [])]
+        if failures and reruns:
+            failures = [f for f in failures if f not in quiet_reruns(state, task, log, checkout, rev, failures)]
         # The coordinator's rule for main: signals and shell errors are not ordinary unittest
         # failures, and the receipt says when the log has no complete summary.
         if not failures and (merged['code'] != 1 or reruns.get('incomplete')):

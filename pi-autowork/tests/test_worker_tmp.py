@@ -6,12 +6,13 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pi_autowork import fleet_view, worker  # noqa: E402
+from pi_autowork import fleet_view, main_check, worker  # noqa: E402
 
 
 def setUpModule():
@@ -309,6 +310,39 @@ class WorkerTmpTests(unittest.TestCase):
         os.environ['PI_AUTOWORK_VALIDATE'] = f'echo ran >> {runs}; echo "CHECK . (1 modules)"; echo "FAIL: test_red (test_mod.T.test_red)"; printf "Ran 2 tests in 0.1s\\n\\nFAILED (failures=1)\\n"; exit 1'
         self.assertEqual(worker.run_gate(state, 'T-1', str(self.repo), os.environ['PI_AUTOWORK_VALIDATE']), (True, ''))
         self.assertEqual(runs.read_text().count('ran'), 3)  # red alone too: the base, red as well, decides
+
+    def test_a_failure_from_a_loaded_host_is_rerun_alone_once_main_check_is_done(self):
+        """Rerun side by side beside main's full suite, the engine tests timed out and held candidates
+        whose trees pass them: what stays red is rerun one at a time once main's check has ended."""
+        git = lambda *a: subprocess.run(['git', '-C', str(self.repo), '-c', 'user.email=t@example.invalid',
+                                         '-c', 'user.name=T', *a], check=True, capture_output=True, text=True)
+        busy = Path(self.temp.name) / 'busy'
+        busy.write_text('main check running\n')
+        (self.repo / 'test_mod.py').write_text('import unittest\nfrom pathlib import Path\n'
+                                               'class T(unittest.TestCase):\n'
+                                               f'    def test_loaded(self): self.assertFalse(Path({str(busy)!r}).exists())\n')
+        git('add', '-A')
+        git('commit', '-qm', 'merged')
+        runs = Path(self.temp.name) / 'runs'
+        command = (f'echo ran >> {runs}; echo "CHECK . (1 modules)"; echo "FAIL: test_loaded (test_mod.T.test_loaded)"; '
+                   'printf "Ran 1 test in 0.1s\\n\\nFAILED (failures=1)\\n"; exit 1')
+        state = Path(self.temp.name) / 'loaded'
+        state.mkdir()
+        main = subprocess.Popen(['sleep', '60'])
+        self.addCleanup(lambda: (main.kill(), main.wait()))
+        main_check.write(state, {'state': 'running', 'pid': main.pid, 'start_time': main_check.start_time(main.pid)})
+
+        def main_check_ends():
+            time.sleep(3)  # after the side-by-side reruns, which still see the load
+            busy.unlink()
+            main.kill()
+            main.wait()
+        ender = threading.Thread(target=main_check_ends)
+        ender.start()
+        self.addCleanup(ender.join)
+        self.assertEqual(worker.run_gate(state, 'T-1', str(self.repo), command), (True, ''))
+        self.assertEqual(runs.read_text().count('ran'), 1)  # no base suite was needed
+        self.assertEqual(json.loads(worker.gate_log(state, 'T-1').with_suffix('.reruns.json').read_text())['flaky'], [])
 
     def test_the_gate_runs_the_full_check_with_a_private_tmpdir(self):
         """The runner has no $TMPDIR: a check that requires one crashed on every candidate and its base."""
