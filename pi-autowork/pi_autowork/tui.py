@@ -305,17 +305,19 @@ class FleetApp(App):
     BINDINGS = [
         # One key per action, the first letter of its word, shown highlighted in the detail
         # pane (the footer repeated them, cut short). Enter on a runner opens its log too.
-        Binding('l', 'run("l")', 'Log'),
-        Binding('p', 'run("p")', 'Play/Pause'),
-        Binding('s', 'run("s")', 'Stop'),
-        Binding('r', 'run("r")', 'Restart'),
-        Binding('m', 'pick_model("model")', 'Model'),
-        Binding('f', 'pick_model("fallback")', 'Fallback'),
-        Binding('b', 'run("b")', 'Blockers'),
-        Binding('a', 'set_aside', 'Aside'),
-        Binding('u', 'run("u")', 'Uninstall'),
-        Binding('n', 'browse', 'New'),
-        Binding('q', 'quit', 'Quit'),
+        # show=False: the log, worker and browse screens' footers list their own keys, not
+        # these (the log's footer offered Play/Pause and Stop, cut off at 'Fallba').
+        Binding('l', 'run("l")', 'Log', show=False),
+        Binding('p', 'run("p")', 'Play/Pause', show=False),
+        Binding('s', 'run("s")', 'Stop', show=False),
+        Binding('r', 'run("r")', 'Restart', show=False),
+        Binding('m', 'pick_model("model")', 'Model', show=False),
+        Binding('f', 'pick_model("fallback")', 'Fallback', show=False),
+        Binding('b', 'run("b")', 'Blockers', show=False),
+        Binding('a', 'set_aside', 'Aside', show=False),
+        Binding('u', 'run("u")', 'Uninstall', show=False),
+        Binding('n', 'browse', 'New', show=False),
+        Binding('q', 'quit', 'Quit', show=False),
     ]
     CONTROL = {'run', 'set_aside', 'browse', 'pick_model'}
 
@@ -338,6 +340,10 @@ class FleetApp(App):
     def check_action(self, action, parameters):
         """View-only (for example served to a browser on a shared network): no control keys."""
         if self.view_only and action in self.CONTROL and parameters != ('l',):  # the log is read-only
+            return False
+        # Over the log, worker or browse screen, the runner keys are off: s while reading a log
+        # asked to stop the runner, and p on the browse screen is its own Play.
+        if len(self.screen_stack) > 1 and action in self.CONTROL:
             return False
         return True
 

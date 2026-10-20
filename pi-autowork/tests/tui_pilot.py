@@ -115,6 +115,12 @@ async def main():
             await pilot.press('enter')                  # Enter: the full-screen log
             await pilot.pause()
             assert isinstance(app.screen, LogScreen), app.screen
+            # Its footer lists its own keys only, and the runner keys are off under it.
+            shown = {b.binding.key for b in app.active_bindings.values() if b.binding.show}
+            assert shown <= {'escape', 'q', 'ctrl+p'}, shown  # back (esc or q) only
+            await pilot.press('s')
+            await pilot.pause()
+            assert isinstance(app.screen, LogScreen), app.screen  # no stop dialog over the log
             await pilot.press('escape')
             await pilot.pause()
             app.push_screen(WorkerScreen(app.current(), 'TASK-036'))  # a worker row's screen opens
