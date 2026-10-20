@@ -541,7 +541,7 @@
       "id": "PARALLEL",
       "priority": 89,
       "source": "docs/project.md#parallel-autowork-2026-10-15",
-      "status": "met",
+      "status": "partial",
       "tasks": [
         "TOOLSET-085-1a",
         "TOOLSET-086-9f",
@@ -549,7 +549,8 @@
         "TOOLSET-088-a7",
         "TOOLSET-089-72",
         "TOOLSET-090-2d",
-        "TOOLSET-091-00"
+        "TOOLSET-091-00",
+        "TOOLSET-279-eb"
       ],
       "title": "Run independent Autowork tasks in parallel workers with one coordinator"
     },
@@ -1209,6 +1210,14 @@
       "section": "Now",
       "status": "open",
       "title": "A commit kept without its worker's report resumes that worker, not a batch or the merge resolver"
+    },
+    {
+      "depends_on": [],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-279-eb",
+      "section": "Now",
+      "status": "open",
+      "title": "A failed batch is split in halves to find the breaking candidate, not reviewed one candidate at a time"
     },
     {
       "depends_on": [],

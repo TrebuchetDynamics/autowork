@@ -752,6 +752,21 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Ownership: Toolset coordinator.
 - Next action: Reproduce with a stopped worker that committed without a report, then route it to a same-attempt resume before batching.
 
+### TOOLSET-279-eb — A failed batch is split in halves to find the breaking candidate, not reviewed one candidate at a time
+
+- [ ] TOOLSET-279-eb — A failed batch is split in halves to find the breaking candidate, not reviewed one candidate at a time
+- Short: Split a failed batch to find the break
+- Status: open
+- Goal: PARALLEL
+- Evidence (2026-10-19 monitor pass): with eight workers, 20 finished commits waited to merge and fresh dispatch stayed paused for hours. Each review runs one full check (about 30 to 40 minutes on this host), and batches of 6 to 22 candidates failed repeatedly, each time because one or two candidates broke a test they added; every member then waited for its own serial review.
+- Touches: pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/worker.py, pi-autowork/tests/, tests/test_pi_autowork.py
+- Scope: When a batch's full check fails, split the checked candidates into halves (in batch order) and check each half as its own batch, recursing until the failing candidates stand alone; candidates in a passing half land from that half's verdict as batch members do today. Keep the failed-revision record so a split never re-batches a revision already proven failing alone.
+- Acceptance: A focused test with one failing candidate among eight lands the other seven from batch verdicts in at most four full checks and reviews only the failing one alone. Two failing candidates are each isolated. A passing batch is unchanged. No candidate lands without a full check of a tree that contains it.
+- Checks: `python3 scripts/check.py pi-autowork/tests tests/test_pi_autowork.py`; `python3 scripts/check.py`.
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Next action: Reproduce with a batch fixture where one candidate breaks a test, then split on BATCH_GATE_FAILED.
+
 ## Next
 
 ### TOOLSET-276-2c — A failed git command is never read as a clean tree or an empty result
