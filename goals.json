@@ -842,6 +842,7 @@
       "TOOLSET-129-c4",
       "TOOLSET-130-15",
       "TOOLSET-235-0d",
+      "TOOLSET-278-91",
       "TOOLSET-276-2c",
       "TOOLSET-276-a9",
       "TOOLSET-276-3f",
@@ -897,7 +898,6 @@
       "TOOLSET-149-df",
       "TOOLSET-150-71",
       "TOOLSET-151-01",
-      "TOOLSET-278-91",
       "TOOLSET-123-a0",
       "TOOLSET-129-6c",
       "TOOLSET-101-f6",
@@ -1201,6 +1201,14 @@
       "section": "Now",
       "status": "open",
       "title": "Restore the offline gate for the picker-policy failures at 171b26b"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-278-91",
+      "section": "Now",
+      "status": "open",
+      "title": "A commit kept without its worker's report resumes that worker, not a batch or the merge resolver"
     },
     {
       "depends_on": [],
@@ -1714,14 +1722,6 @@
       "section": "Next",
       "status": "open",
       "title": "Every hold cause is a known value with its recovery rule in one table"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-278-91",
-      "section": "Next",
-      "status": "open",
-      "title": "A commit kept without its worker's report resumes that worker, not a batch or the merge resolver"
     },
     {
       "depends_on": [
