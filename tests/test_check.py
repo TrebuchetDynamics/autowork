@@ -2,6 +2,7 @@
 import importlib.util
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -126,7 +127,11 @@ class Check(unittest.TestCase):
         """Conflict markers twice reached main in Python modules; the tree guard runs first."""
         guard = ROOT / 'scripts/tree_guard.py'
         self.assertTrue(guard.is_file(), 'missing tree guard')
-        shutil.copy2(guard, self.root / 'scripts/tree_guard.py')
+        # Every helper check.py runs before the tests, not only the guard: a new one it named
+        # (scripts/private_terms.py) failed this fixture in every batch that carried it.
+        for name in set(re.findall(r'scripts/(\w+\.py)', SCRIPT.read_text())) | {'tree_guard.py'}:
+            if (ROOT / 'scripts' / name).is_file():
+                shutil.copy2(ROOT / 'scripts' / name, self.root / 'scripts' / name)
         self.write('tests/test_ran.py', 'import unittest\nfrom pathlib import Path\nclass Ran(unittest.TestCase):\n'
                    "    def test_ran(self): Path('ran').write_text('yes')\n")
         git = lambda *a: subprocess.run(['git', '-c', 'user.email=t@example.invalid', '-c', 'user.name=T', *a],
