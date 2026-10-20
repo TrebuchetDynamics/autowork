@@ -8,6 +8,14 @@ no extra approval step or execution authority.
 
 <!-- pi-autowork:questions:start -->
 
+### Q-TOOLSET-099-87 — USER_DECISION — effort investigate — unblocks 28
+
+- Task: TOOLSET-099-87 — Run as many independent tasks at once as possible
+- Needs: merge adoption limit reached; adopted 3 of 3; conflict in: pi-autowork/pi_autowork/touches_inference.py, skills/autowork/references/parallel-workers.md
+- Since: 2026-10-20T21:52:46Z
+- Answer: Read the evidence (the worker's report and validation log under .git/autowork-execution/slot-data/TOOLSET-099-87/), then rescope or split TOOLSET-099-87 in its TODO.md entry. The runner reruns it when the entry changes.
+- Kind: held
+
 ### Q-TOOLSET-200-c1 — USER_DECISION — effort investigate — unblocks 1
 
 - Task: TOOLSET-200-c1 — A status read waits for the writer lock, and a failed read never means nothing is running
