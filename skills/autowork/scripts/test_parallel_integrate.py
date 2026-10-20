@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import patch
@@ -2611,6 +2612,31 @@ sys.exit(1)
                                                    check_slot_wait=check_slot_wait)
                 self.assertEqual(result['outcome'], 'EXECUTED', result)
 
+    def test_an_orphan_adopted_after_the_cleanup_walk_is_killed_before_it_is_waited_on(self):
+        """A review waited 4 h in cleanup: a test's live orphan was adopted after the walk that
+        signals descendants, so the wait for it to exit never returned."""
+        keep = set(execution.child_pids(os.getpid()))
+        late = subprocess.Popen(['sleep', '60'])
+        opened = os.pidfd_open
+        missed = []
+
+        def pidfd_open(pid, *args):
+            if pid == late.pid and not missed:
+                missed.append(pid)
+                raise ProcessLookupError(pid)  # the walk missed it
+            return opened(pid, *args)
+
+        done = threading.Event()
+        with patch.object(execution.os, 'pidfd_open', pidfd_open):
+            thread = threading.Thread(target=lambda: (execution.reap_children(exclude=keep), done.set()), daemon=True)
+            thread.start()
+            finished = done.wait(10)
+        if not finished:
+            late.kill()
+            thread.join(5)
+        self.assertTrue(finished)
+        self.assertEqual(missed, [late.pid])
+        late.returncode = -9  # reaped by the cleanup, not by Popen
 
 
 class ExpectedBranchTests(unittest.TestCase):

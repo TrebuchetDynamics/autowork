@@ -510,6 +510,9 @@ def reap_children(exclude=()):
         remaining = [pid for pid in child_pids(os.getpid()) if pid not in exclude]
         if not remaining:
             break
+        # One adopted after the walk was never signalled: a review waited 4 h on a test's
+        # live orphan here.
+        reap(os.getpid())
         for pid in remaining:
             try:
                 os.waitpid(pid, 0)
