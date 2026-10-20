@@ -927,6 +927,17 @@ finally:
         todo.write_text(todo.read_text().replace('Acceptance: offline fixture', 'Acceptance: a rewritten scope', 1))
         self.assertEqual(module.entry_changes(self.repo, self.common, state.slots(self.common)[0]), ['Acceptance'])
 
+    def test_a_display_only_line_added_after_integration_still_closes(self):
+        """Adding `Short:` to every entry left integrated tasks unable to close or recover."""
+        self.worker()
+        module = self.module()
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text().replace('Acceptance: offline fixture', 'Acceptance: offline fixture\n'
+                                                 '  Short: A short title', 1))
+        self.git('commit', '-qam', 'short titles')
+        self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
+
     def test_an_integrated_task_whose_entry_changed_is_set_aside_and_queued_again(self):
         self.worker()
         module = self.module()

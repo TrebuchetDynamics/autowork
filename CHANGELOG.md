@@ -274,6 +274,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Integration, recovery and close compare a task's contract without its display-only lines
+  (`Short:`, `Priority reason`). Adding `Short:` to every entry left tasks integrated before
+  it unable to close, and an interrupted one held for "lacks exact contract evidence".
 - Adding a display-only field to a task (`Short:`, `Priority reason:`) no longer reads as a
   changed entry. Adding `Short:` to every task set each held task's finished work aside and
   ran it fresh, as if its contract had been rewritten.
