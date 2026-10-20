@@ -80,6 +80,11 @@ async def main():
             assert [str(c) for c in runners.get_row_at(0)[2:7]] == ['0', '0', '23', '1', '24']
             assert '19 wait for TASK-036 (overlapping files)' in str(runners.get_row_at(0)[7])
             assert '24 open: 0 working · 0 to land · 23 waiting · 1 held' in detail, detail
+            # The keys, each word's first letter highlighted in it; one key per action.
+            hints = app.query_one('#detail').render()
+            assert str(hints).rstrip().endswith('Log  Pause  Stop  Restart  Model  Fallback  Aside  New  Quit'), str(hints)
+            marked = {str(hints)[span.start:span.end] for span in hints.spans if 'underline' in str(span.style)}
+            assert marked == set('LPSRMFANQ'), marked
             log = '\n'.join(line.text for line in app.query_one('#log').lines)
             assert 'TASK-036: waiting' in log and 'pending —' not in log, log
             await pilot.press('s')                      # stop asks first; n declines
@@ -117,7 +122,7 @@ async def main():
             assert isinstance(app.screen, WorkerScreen) and app.screen.title == 'india: TASK-036', app.screen
             await pilot.press('escape')
             await pilot.pause()
-            await pilot.press('d')                      # browse: half is not ready, ready starts after a yes
+            await pilot.press('n')                      # new: browse; half is not ready, ready plays after a yes
             await pilot.pause()
             assert isinstance(app.screen, BrowseScreen), app.screen
             screen = app.screen
@@ -125,13 +130,13 @@ async def main():
             await pilot.pause()
             path = screen.chosen.path if screen.chosen else ''
             if path.endswith('half'):
-                await pilot.press('s')
+                await pilot.press('p')
                 await pilot.pause()
                 assert len(calls) == 2, calls          # not ready: nothing runs
                 await pilot.press('down')
                 await pilot.pause()
             assert screen.chosen and screen.chosen.ready and screen.chosen.path.endswith('ready'), screen.chosen
-            await pilot.press('s')
+            await pilot.press('p')
             await pilot.pause()
             await pilot.press('y')
             await pilot.pause()
@@ -154,11 +159,11 @@ async def main():
         async with viewer.run_test(size=(140, 40)) as pilot:
             await pilot.pause()
             assert 'view only' in str(viewer.query_one('#detail').render())
-            for key in ('s', 'p', 'm', 'x', 'b', 'd'):
+            for key in ('s', 'p', 'm', 'f', 'r', 'a', 'b', 'u', 'n'):
                 await pilot.press(key)
                 await pilot.pause()
             assert len(calls) == before, calls          # view-only: no key runs anything
-            await pilot.press('enter')
+            await pilot.press('l')
             await pilot.pause()
             assert isinstance(viewer.screen, LogScreen)  # but the log can be read
         # A TUI left open restarts itself on new code, but never over an open dialog.

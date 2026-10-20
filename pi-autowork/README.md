@@ -48,11 +48,14 @@ name, a repository path or `.`. Nothing here calls a model.
 | `autowork blockers [dir]` | `/autowork blockers` in an agent (`AUTOWORK_AGENT`, else `claude`, else `pi`) |
 | `autowork scorecard [--days N] [--json] [target...]` | Per runner over the last N days (default 7): tasks closed, share of integrations held, median dispatch-to-merge time, new owner questions; no model call |
 
-In the TUI: Enter opens a runner's full log; `d` browses directories (from `~/git`,
-`AUTOWORK_BROWSE_ROOT`) and marks each repository ready or what it needs, and `s` there
-starts its service; `a` start, `s` stop, `R` restart, `p` pause/resume, `m`/`M` model
-and fallback (from Pi's list, type to filter), `u` remove, `x` set aside a held task,
-`b` blockers. Stop, restart, pause, remove, set-aside and model changes ask first.
+In the TUI each key is the first letter of its word, highlighted in the detail pane:
+`l` (or Enter) **L**og, `p` **P**lay/**P**ause (starts a stopped service, resumes a
+paused one, pauses a running one), `s` **S**top, `r` **R**estart, `m` **M**odel and
+`f` **F**allback (from Pi's list, type to filter), `b` **B**lockers, `a` set **A**side a
+held task, `u` **U**ninstall the service, `n` **N**ew: browse directories (from `~/git`,
+`AUTOWORK_BROWSE_ROOT`), see which repositories are ready or what they need, and `p` there
+plays one; `q` **Q**uit. Stop, restart, pause, uninstall, set-aside and model changes ask
+first.
 Terminal text can be selected by dragging with the mouse, then copied with your
 terminal's copy shortcut (often Ctrl+Shift+C). Mouse capture is off by default;
 keyboard navigation and controls remain available. Use `autowork tui --mouse` to

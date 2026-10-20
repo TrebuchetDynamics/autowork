@@ -87,21 +87,26 @@ class FleetViewTests(unittest.TestCase):
             return {a.key: a for a in fleet_view.actions(runner, command='aw', script='pa.sh', **kw)}
         running = keys(fleet_view.Runner(name='india', repo='/git/india', mode='service', service='running'),
                        agent=['claude'], task='T-9')
-        self.assertTrue(running['enter'].interactive and running['enter'].argv == [])  # the TUI's own log view
+        self.assertTrue(running['l'].interactive and running['l'].argv == [])  # the TUI's own log view
         self.assertEqual(running['s'].argv, ['aw', 'stop', 'india'])
-        self.assertEqual(running['R'].argv, ['aw', 'restart', 'india'])
-        self.assertEqual(running['p'].argv, ['aw', 'pause', 'india'])
+        self.assertEqual(running['r'].argv, ['aw', 'restart', 'india'])
+        self.assertEqual((running['p'].label, running['p'].argv), ('Pause', ['aw', 'pause', 'india']))
         self.assertEqual(running['m'].argv, ['aw', 'model', 'india'])
-        self.assertEqual(running['x'].argv, ['pa.sh', '--repo', '/git/india', '--set-aside', 'T-9'])
+        self.assertEqual(running['a'].argv, ['pa.sh', '--repo', '/git/india', '--set-aside', 'T-9'])
         self.assertEqual(running['b'].argv, ['aw', 'blockers', '/git/india'])
         self.assertNotIn('u', running)  # remove only a stopped service
-        for key in ('s', 'R', 'p', 'x'):
+        for key in ('s', 'r', 'p', 'a'):
             self.assertTrue(running[key].confirm, key)
+        # One key per action, the first letter of its one-word label.
+        for action in running.values():
+            self.assertEqual((action.label.lower()[0], ' ' in action.label), (action.key, False), action)
         paused = keys(fleet_view.Runner(name='india', repo='/git/india', mode='service', service='dead', state='paused'))
-        self.assertEqual(paused['p'].argv, ['aw', 'resume', 'india'])
-        self.assertEqual(paused['a'].argv, ['aw', 'start', '/git/india'])
+        self.assertEqual((paused['p'].label, paused['p'].argv), ('Play', ['aw', 'resume', 'india']))
         self.assertEqual(paused['u'].argv, ['aw', 'remove', 'india'])
         self.assertNotIn('b', paused)  # no agent available
+        stopped = keys(fleet_view.Runner(name='india', repo='/git/india'))
+        self.assertEqual((stopped['p'].label, stopped['p'].argv), ('Play', ['aw', 'start', '/git/india']))
+        self.assertNotIn('s', stopped)
 
     def test_readiness_needs_todo_goals_and_main(self):
         repo = self.base / 'repo'

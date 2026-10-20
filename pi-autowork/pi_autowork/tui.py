@@ -40,9 +40,21 @@ def code_stamp():
     except (OSError, ValueError):
         return 0
 QUESTIONS_SHOWN = 3
-# The detail pane's key hints, short enough for one line on 80 columns.
-SHORT_LABELS = {'fallback model': 'fallback', 'answer blockers': 'blockers', 'start service': 'start',
-                'remove service': 'remove'}
+
+
+def hotkeys(text, keys):
+    """Append 'Log  Pause  Stop', each word's key letter highlighted in it (the first letter
+    by convention; a key the word lacks is shown before it)."""
+    for number, (key, label) in enumerate(keys):
+        text.append('  ' if number else '')
+        at = label.lower().find(key.lower())
+        if at < 0:
+            text.append(key, style='bold underline cyan')
+            text.append(' ' + label)
+        else:
+            text.append(label[:at])
+            text.append(label[at], style='bold underline cyan')
+            text.append(label[at + 1:])
 
 
 def tilde(path):
@@ -234,7 +246,7 @@ class RepoTree(DirectoryTree):
 
 class BrowseScreen(Screen):
     """Pick a repository and start its service."""
-    BINDINGS = [Binding('s', 'start', 'start service'), Binding('escape,q', 'app.pop_screen', 'back')]
+    BINDINGS = [Binding('p', 'start', 'Play'), Binding('escape,q', 'app.pop_screen', 'back')]
     CSS = '''
     #tree { width: 1fr; }
     #info { width: 1fr; padding: 0 1; }
@@ -264,7 +276,7 @@ class BrowseScreen(Screen):
         info.append(str(node.data.path) + '\n', style='bold')
         if self.chosen.ready:
             info.append('ready', style='bold green')
-            info.append(f' on {self.chosen.branch}. Press s to start its service.\n')
+            info.append(f' on {self.chosen.branch}. Press p to play (start) its service.\n')
         elif not self.chosen.repo:
             info.append('not a Git repository\n', style='dim')
         else:
@@ -291,19 +303,19 @@ class FleetApp(App):
     #log { height: 1fr; min-height: 4; border-top: solid $panel; }
     '''
     BINDINGS = [
-        Binding('enter', 'run("enter")', 'log'),
-        Binding('d', 'browse', 'start a repository'),
-        Binding('a', 'run("a")', 'start'),
-        Binding('s', 'run("s")', 'stop'),
-        Binding('R', 'run("R")', 'restart'),
-        Binding('p', 'run("p")', 'pause/resume'),
-        Binding('m', 'pick_model("model")', 'model'),
-        Binding('M', 'pick_model("fallback")', 'fallback'),
-        Binding('u', 'run("u")', 'remove service'),
-        Binding('x', 'set_aside', 'set aside'),
-        Binding('b', 'run("b")', 'blockers'),
-        Binding('r', 'refresh', 'refresh'),
-        Binding('q', 'quit', 'quit'),
+        # One key per action, the first letter of its word, shown highlighted in the detail
+        # pane (the footer repeated them, cut short). Enter on a runner opens its log too.
+        Binding('l', 'run("l")', 'Log'),
+        Binding('p', 'run("p")', 'Play/Pause'),
+        Binding('s', 'run("s")', 'Stop'),
+        Binding('r', 'run("r")', 'Restart'),
+        Binding('m', 'pick_model("model")', 'Model'),
+        Binding('f', 'pick_model("fallback")', 'Fallback'),
+        Binding('b', 'run("b")', 'Blockers'),
+        Binding('a', 'set_aside', 'Aside'),
+        Binding('u', 'run("u")', 'Uninstall'),
+        Binding('n', 'browse', 'New'),
+        Binding('q', 'quit', 'Quit'),
     ]
     CONTROL = {'run', 'set_aside', 'browse', 'pick_model'}
 
@@ -325,10 +337,8 @@ class FleetApp(App):
 
     def check_action(self, action, parameters):
         """View-only (for example served to a browser on a shared network): no control keys."""
-        if self.view_only and action in self.CONTROL:
+        if self.view_only and action in self.CONTROL and parameters != ('l',):  # the log is read-only
             return False
-        if action == 'run' and parameters and parameters[0] == 'enter':
-            return True
         return True
 
     # -- layout -----------------------------------------------------------------
@@ -338,7 +348,6 @@ class FleetApp(App):
         yield Static(id='detail')
         yield DataTable(id='lanes', cursor_type='row', zebra_stripes=True)
         yield RichLog(id='log', wrap=True, highlight=False, markup=False)
-        yield Footer()
 
     # The counts come right after the name, as narrow columns that always show: after a
     # 44-column Needs they scrolled off an 80-column terminal. Needs and Now share the rest.
@@ -447,7 +456,7 @@ class FleetApp(App):
         """Enter on a runner (the table takes the key itself): its full-screen log; on a
         worker: its last actions."""
         if event.data_table.id == 'runners':
-            self.action_run('enter')
+            self.action_run('l')
         elif event.data_table.id == 'lanes' and event.row_key is not None and self.current() is not None:
             self.push_screen(WorkerScreen(self.current(), event.row_key.value))
 
@@ -455,7 +464,7 @@ class FleetApp(App):
         detail = self.query_one('#detail', Static)
         runner = self.current()
         if runner is None:
-            detail.update('No pi-autowork runners yet. Press d to choose a repository and start its service.')
+            detail.update('No pi-autowork runners yet. Press n for a new one: choose a repository and play its service.')
             self.query_one('#lanes', DataTable).display = False
             return
         text = Text()
@@ -497,12 +506,13 @@ class FleetApp(App):
         if runner.toolset:  # a development checkout instead of the Pi package: say so
             text.append(f'toolset {runner.toolset} (PI_AUTOWORK_TOOLSET, not the Pi package)\n', style='yellow')
         if self.view_only:
-            text.append('view only', style='dim')
+            text.append('view only  ', style='dim')
+            hotkeys(text, [('l', 'Log'), ('q', 'Quit')])
         else:
-            # This runner's keys; d (add a repository) is not about it and is in the footer.
-            for number, action in enumerate(self.available(runner)):
-                text.append(('  ' if number else '') + action.key, style='bold')
-                text.append(' ' + SHORT_LABELS.get(action.label, action.label), style='dim')
+            keys = [(a.key, a.label) for a in self.available(runner)]
+            if runner.held:
+                keys.append(('a', 'Aside'))  # it asks which held task
+            hotkeys(text, keys + [('n', 'New'), ('q', 'Quit')])
         if text.plain != getattr(self, '_detail', None):
             self._detail = text.plain
             detail.update(text)
@@ -546,10 +556,10 @@ class FleetApp(App):
     def action_run(self, key, task=None):
         runner = self.current()
         if runner is None:
-            if key == 'a':
+            if key == 'p':
                 self.action_browse()
             return
-        if key == 'enter':
+        if key == 'l':
             self.push_screen(LogScreen(runner, self.logs))
             return
         if self.view_only:
@@ -566,7 +576,7 @@ class FleetApp(App):
     def action_pick_model(self, which):
         runner = self.current()
         if runner is None or not runner.has_service:
-            self.notify('Models are set per service; start one first (a, or d to browse).', severity='warning')
+            self.notify('Models are set per service; play one first (p, or n for a new one).', severity='warning')
             return
         if self.model_cache is None:
             self.model_cache = self.list_models()
@@ -592,7 +602,7 @@ class FleetApp(App):
         if runner is None or not runner.held:
             self.notify('No held task to set aside here.', severity='warning')
             return
-        self.push_screen(PickTask(runner.held), lambda task: task and self.action_run('x', task))
+        self.push_screen(PickTask(runner.held), lambda task: task and self.action_run('a', task))
 
     def action_browse(self):
         root = self.browse_root or (Path.home() / 'git' if (Path.home() / 'git').is_dir() else Path.home())
