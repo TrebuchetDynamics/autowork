@@ -255,6 +255,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- An interrupted review whose merge never landed merges again even when the restart left
+  files in its integration tree. Recovery checked that tree before asking whether the merge had
+  landed, held the task as "integration tree changed", and a fresh worker redid finished work;
+  the next integration keeps those files as a patch.
 - A review whose reviewer ran out of time is reviewed again on the same commit with a longer
   limit, not reimplemented. It ended with only "no verdict", was held as a failed review, and
   a fresh worker redid a finished 90-minute task. A review without a verdict now says why
