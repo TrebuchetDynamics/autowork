@@ -811,11 +811,16 @@ class Coordinator:
         old, new = git(self.repo, 'rev-parse', self.base), git(self.repo, 'rev-parse', self.integ_branch)
         if not old or not new or not git_ok(self.repo, 'merge-base', '--is-ancestor', old, new):
             return f'{self.integ_branch} is not a fast-forward of {self.base}'
-        # Use Git's normal checkout when possible; the off-tree path is only for dirty
-        # overlapping files. Do not parse the localized "would be overwritten" message.
+        # Non-planning work belongs to its writer: even a cleanly mergeable edit waits
+        # when the session touches that path. Only planning edits use the off-tree fallback.
+        # Do not parse Git's localized "would be overwritten" message.
         changed = (git(self.repo, 'diff', '--no-renames', '--name-only', '-z', old, new) or '').split('\0')
         overlap = [p for p in changed if p and git(self.repo, 'status', '--porcelain', '--', p)]
         if overlap:
+            planning = self.owner_planning_paths()
+            owned = [p for p in overlap if p not in planning]
+            if owned:
+                return 'uncommitted changes overlap the landing: ' + ', '.join(owned)
             return self.land_around_edits(old, new)
         held = open_for_writing([Path(self.repo) / p for p in changed if p])
         if held:
@@ -1080,17 +1085,22 @@ class Coordinator:
         self.waiting_merge = seen
         self.merge_main()
 
-    SECRET = re.compile(r'(^|/)(\.env(\..*)?|.*\.(pem|key|p12|pfx)|id_(rsa|ed25519|ecdsa)(\.pub)?|'
-                        r'.*credentials.*|.*secret.*|.*\.token)$', re.I)
+    def owner_planning_paths(self):
+        """The only main-checkout paths the quiet owner-planning sweep may commit."""
+        _, dispatch = touches_inference.modules(self.toolset)
+        try:
+            archive = dispatch.execution.archive_file(Path(self.repo)).relative_to(self.repo).as_posix()
+        except (ValueError, OSError):
+            archive = None
+        return {'TODO.md', 'goals.json', 'BLOCKERS.md', 'TODO.archive.md'} | ({archive} if archive else set())
 
-    def commit_owner_changes(self, planning_only=False):
-        """Auto work: uncommitted changes never keep finished work from merging. When the
-        main checkout's changes have been quiet for PI_AUTOWORK_PLANNING_QUIET seconds and
-        no process holds them open for writing, commit them all before merging (planning
-        files alone keep their planning message). Untracked files that look like secrets
-        stay untracked; a merge, rebase or cherry-pick in progress is left alone.
-        With ``planning_only``, only the planning files are committed; other uncommitted
-        changes stay for the next merge. Returns '' when committed or nothing was uncommitted, else why it waited."""
+    def commit_owner_changes(self):
+        """Commit only quiet owner-planning files that no process holds open for writing.
+
+        Other main-checkout work belongs to its writer, regardless of age or quietness.
+        An unfinished Git operation is left alone. Returns '' when committed or no planning
+        files were uncommitted, else why planning waited.
+        """
         if git(self.repo, 'symbolic-ref', '--short', '-q', 'HEAD') != self.base:
             return f'the main checkout is not on {self.base}'
         reason = self.checkout_operation()
@@ -1098,54 +1108,34 @@ class Coordinator:
             return reason
         entries = iter([e for e in (git(self.repo, 'status', '--porcelain', '-z', '--untracked-files=all') or '')
                         .split('\0') if e])
-        paths, kept = [], []
+        paths = []
         for entry in entries:
             status, path = entry[:2], entry[3:]
             if 'U' in status or status in ('AA', 'DD'):
                 return f'{path} has an unresolved conflict'
-            if status == '??' and self.SECRET.search(path):
-                kept.append(path)
-                continue
             paths.append(path)
             if status[0] in 'RC':
                 paths.append(next(entries, ''))  # the rename's source, so the commit records it
-        paths = self.publishable([p for p in paths if p])
+        planning = self.owner_planning_paths()
+        paths = self.publishable([p for p in paths if p in planning])
         quiet = float(os.environ.get('PI_AUTOWORK_PLANNING_QUIET', '600'))
         recent = self.recent_owner_paths(paths, quiet)
-        observed_paths = paths
         if not paths:
             return ''
-        _, dispatch = touches_inference.modules(self.toolset)
-        try:
-            archive = dispatch.execution.archive_file(Path(self.repo)).relative_to(self.repo).as_posix()
-        except (ValueError, OSError):
-            archive = None
-        planning = {'TODO.md', 'goals.json', 'BLOCKERS.md', 'TODO.archive.md'} | ({archive} if archive else set())
-        if planning_only:
-            # The planning files alone: the plan must reach the session while other work in the
-            # main checkout waits. One repository's TODO.md sat untracked beside edited docs, so
-            # its runner never had a plan, never a merge, and never committed either.
-            paths = [p for p in paths if p in planning]
-            if not paths:
-                return 'other uncommitted changes wait for a merge'
         files = [Path(self.repo) / p for p in paths]
-        recent = [p for p in paths if p in recent]
         if recent:
             return f'{", ".join(recent[:4])} changed in the last {int(quiet // 60)} min'
         held = open_for_writing([f for f in files if f.exists()])
         if held:
             return f'{", ".join(sorted(os.path.relpath(h, self.repo) for h in held))} is open for writing'
-        subject = ('docs(tasks): owner planning (pi-autowork)' if set(paths) <= planning
-                   else 'chore: uncommitted work in the main checkout (pi-autowork)')
         git(self.repo, 'add', '-A', '--', *paths)
-        if not git_ok(self.repo, 'commit', '-q', '-m', subject,
-                      '-m', 'Uncommitted changes in the main checkout, quiet and open nowhere, committed so '
-                            'finished work can merge (auto work).', '--', *paths):
+        if not git_ok(self.repo, 'commit', '-q', '-m', 'docs(tasks): owner planning (pi-autowork)',
+                      '-m', 'Uncommitted planning changes in the main checkout, quiet and open nowhere, '
+                            'committed so finished work can merge (auto work).', '--', *paths):
             return 'the commit of uncommitted changes failed'
-        self.recent_owner_paths([p for p in observed_paths if p not in paths], quiet)
+        self.recent_owner_paths([], quiet)
         shown = ', '.join(paths[:6]) + (f' (+{len(paths) - 6} more)' if len(paths) > 6 else '')
-        LOG.say(f'Committed uncommitted changes in {self.repo} ({shown}) so the session can merge'
-                + (f'; left untracked as possible secrets: {", ".join(kept)}' if kept else ''))
+        LOG.say(f'Committed uncommitted changes in {self.repo} ({shown}) so the session can merge')
         return ''
 
     def recent_owner_paths(self, paths, quiet):
@@ -1256,7 +1246,7 @@ class Coordinator:
         if self.integ and (not self.in_flight() or self.ledger_errors):
             # The owner's quiet planning edits (answers to held tasks) are committed even when
             # there is nothing to merge, or a stalled runner never sees them (TOOLSET-157-cd).
-            self.commit_owner_changes(planning_only=True)
+            self.commit_owner_changes()
         behind = git(self.repo, 'rev-list', f'{self.integ_branch}..{self.base}') if self.integ else ''
         if not behind or dirty(self.integ) or (self.batch_pending() and not self.session_busy()):
             return  # batch verdicts wait to land on the trees they were reached on (TOOLSET-258-07)
