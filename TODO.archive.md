@@ -5168,3 +5168,29 @@ Source section: Next
 - Ownership: Toolset coordinator.
 - Exclusions: Bash commands that write files are not detected (a workflow guard, like the existing Bash worktree guard, not a sandbox). Pi, Codex and Hermes sessions are out of scope. The user's private `~/.claude/CLAUDE.md` and `~/.claude/settings.json` are the owner's to update by hand from docs/worktree-placement.md. No change to how runners write main.
 - Planner's call: a separate hook file beside `worktree_paths.py`, not more branches in it, so the worktree policy stays as small as it is; the lock lives under the Git common directory so every linked checkout of one repository sees one lock.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-288-cf"></a>
+
+### TOOLSET-288-cf — Two runner tests fail only under full-check load
+
+- [x] TOOLSET-288-cf — Two runner tests fail only under full-check load
+- Short: Two runner tests fail under load
+- Status: done
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [check](scripts/check.py); [runner tests](tests/test_pi_autowork.py) (`test_a_killed_coordinator_restarts_at_once_and_adopts_live_workers`); [integration tests](skills/autowork/scripts/test_parallel_integrate.py) (`test_retry_runs_beside_an_overlapping_worker`); [coordinator](pi-autowork/pi_autowork/coordinator.py) (the `BUSY` outcome); [retry](skills/autowork/scripts/parallel_integrate.py) (`retry_held`).
+- Evidence: a full `python3 scripts/check.py` on 2147c130, run while a live runner worked the same host, failed both tests: the restart after `kill` exited 4 with "Repository busy: Repository execution lock is held by a live operation." (the killed runner's engine helper still held the execution lock), and `retry_held` returned `IDLE` instead of `RETRIED`. Each passed alone twice; the retry test passed 12 times in parallel and inside its whole module (146 tests).
+- Touches: pi-autowork/pi_autowork/coordinator.py, skills/autowork/scripts/parallel_integrate.py, tests/test_pi_autowork.py, skills/autowork/scripts/test_parallel_integrate.py
+- Scope: (1) Find why each fails under load: for the restart, whether `until-empty` treats `BUSY` from a dead runner's helper as final before the helper exits; for the retry, which `IDLE` branch of `retry_held` is taken (capacity, an empty held set, or the plan) and why. (2) Fix the product race if there is one (a restart waits for a dead runner's helper within a bound instead of exiting 4); otherwise make the fixture wait on the state it needs instead of on timing. (3) Record the `IDLE` branch taken in the result so the next such failure names it.
+- Acceptance: Given a killed runner whose engine helper still holds the execution lock, when the runner restarts with `--until-empty`, then it waits for the helper and exits 0 (`test_a_killed_coordinator_restarts_at_once_and_adopts_live_workers`, also with the helper delayed on purpose). `retry_held` results for `IDLE` name their branch (`test_retry_runs_beside_an_overlapping_worker` asserts it). Both tests pass in three consecutive full checks.
+- Checks: python3 -m unittest discover -s tests -p test_pi_autowork.py -k killed_coordinator; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py -k retry; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No retries or longer sleeps added to the tests to hide the failure.
+- Planner's call: queued rather than fixed by hand because live runner workers own all four files.
+- Outcome (2026-10-20): the restart flake was the one-shot run treating the killed runner's helper's execution lock as final; it now waits up to `PI_AUTOWORK_BUSY_WAIT` (429eb87a, a test that holds the lock fails on the old code). The retry test was superseded the same day by 5ca0bc35, under which an overlapping retry waits by design (the test now expects IDLE); the failing run predated it.

@@ -1722,14 +1722,6 @@
       "title": "Harden conflicting-owner-plan journey against fixture races"
     },
     {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-288-cf",
-      "section": "Next",
-      "status": "open",
-      "title": "Two runner tests fail only under full-check load"
-    },
-    {
       "depends_on": [
         "AUDIT-QUOTED-SECRET",
         "TOOLSET-092-18",
@@ -3382,6 +3374,14 @@
       "section": "Done",
       "status": "done",
       "title": "A task whose last attempt failed its review is reworked once with the findings, never left silently held"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-288-cf",
+      "section": "Done",
+      "status": "done",
+      "title": "Two runner tests fail only under full-check load"
     },
     {
       "depends_on": [
