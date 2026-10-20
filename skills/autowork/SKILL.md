@@ -79,25 +79,8 @@ review step. Keep Hermes Agent unchanged.
    independent review where required and source freshness still apply. Reuse checks
    only for matching inputs when policy allows; rerun changed-input and mandatory
    gates. A missing required review holds completion, not unrelated authorized work.
-   Before another partial delivery, compare it with the exact acceptance criterion
-   still preventing closure: name the positive capability it delivers or the required
-   gate it removes. Do not keep selecting adjacent parser, cancellation or refusal
-   controls while the same missing trust input or runtime capability stays untouched;
-   growing commit/test counts can conceal an unchanged critical path. Repair genuine
-   security or data-loss defects, but do not use incidental hardening as a substitute
-   for finishing the selected outcome. If the remaining capability is unavailable,
-   make the existing fix-or-skip disposition and advance dependency-ready independent
-   work within scope; never imply that refusal-only tests supply the positive path.
-   Recover independently useful fixes from an idle candidate only after verifying
-   provenance and current writer inactivity; compare adopted bytes, rerun affected
-   checks and obtain required review. Prefer one coherent final candidate and the
-   union of mandatory affected checks over a full rebuild/review for each tiny guard.
-   Reuse a sanitized cache/target and check receipts only when their bound inputs
-   match; retain required mutations, independent review and integration checks.
-   Integrate a partial slice only when repository policy permits it; record its
-   commit and exact remaining gates under the original TODO ID. Never call focused
-   passes a full-suite pass, waive a gate, close the parent, or infer dependency,
-   publication or upstream authority from partial delivery.
+   Follow
+   [partial delivery and the critical path](references/iteration-and-decisions.md#partial-delivery-and-the-critical-path).
 5. **Close out.** Commit attributable verified paths locally unless forbidden.
    Use ordinary Git, repository review and integration policy. Inspect fresh target
    state and serialize canonical writes; preserve unrelated dirty work. Never push,
@@ -127,28 +110,8 @@ not freeze priority: apply an owner's reorder to the next selection through Docs
 Sync, without interrupting current work or faking a dependency, and report it only
 after `goals.py next` agrees.
 
-Work in the canonical checkout by default; it needs no merge step. The task helper
-separates two kinds of live process. An Autowork command for the repository blocks
-every worktree. Any other agent session (`pi`, `claude`, `codex`, `hermes`) blocks
-only the checkout it touches, and only while active: recent terminal use, running
-commands or an open writable repository file. A session idle past 30 minutes is
-reported under `idle_sessions` and does not block; never kill or message it. An
-active (or unknown-activity) session in another checkout is reported under
-`other_checkout_sessions`: it does not block this one, but it is not idle. When the
-helper returns `BUSY` with `isolate`, create that worktree and branch (reuse it if it
-already exists), rerun the helper with that worktree as the consumer, and do the
-task there. Integrate the verified branch into the canonical checkout only when
-`owner_cycle.py CANONICAL --writers` returns `CLEAR` and the merge touches no file the session
-has changed or holds open; otherwise keep the committed branch, report it as
-awaiting integration and continue with independent work next occurrence. Shared-tooling fixes follow
-[cross-profile recovery](references/owner-cycle.md#cross-profile-recovery-and-deployment).
-
-Distinguish a `BUSY` response from an existing live Autowork execution lease: a
-`--writers` result of `CLEAR` does not release or override that lease. Compare the
-recorded owner with this session's verified dedicated runtime identity before
-calling it another worker; inspect actual activity without taking over, removing
-the lease or opening a competing worktree to bypass it. Report a preserved live
-owner separately from verified implementation progress.
+Work in the canonical checkout by default; for live sessions, `BUSY`/`isolate`, integration
+and execution leases follow [canonical checkout and leases](references/owner-cycle.md#canonical-checkout-sessions-and-leases).
 
 Caller scope and saved stop/batch limits control continuation. Default: one useful
 slice including recovery and closeout. Explicit stops win. Apply
@@ -214,13 +177,8 @@ next task and precise blocker. A selected contract, completed session or checkbo
 not product acceptance. Never claim live qualification or Telegram delivery from
 offline fixtures. Honor every-occurrence reporting; otherwise exactly `[SILENT]`
 is allowed only after reconciliation and required work search find no reportable delta.
-For interactive updates, lead with the concrete artifact or result and say plainly
-whether work is executing, waiting or idle; keep unchanged implementation details out
-of repeated messages. After a user asks to continue tool work, return a visible result
-or precise remaining blocker, never an empty response. Coalesce delayed completion
-notices into the current task report: a late failure from an already-repaired attempt
-is not a fresh regression, and an already-reported pass is not another completed task.
-Keep run/source bindings in receipts, not in user-facing narration.
+Interactive updates follow
+[dispatch and reporting](references/dispatch-and-reporting.md#interactive-updates).
 
 ## Reference map
 

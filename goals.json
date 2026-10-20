@@ -1239,14 +1239,6 @@
     },
     {
       "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-284-e0",
-      "section": "Now",
-      "status": "open",
-      "title": "The autowork core SKILL.md has room again: detail moves to references/"
-    },
-    {
-      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -3311,6 +3303,14 @@
       "section": "Done",
       "status": "done",
       "title": "A headless worker never stops to ask for approval; an interactive skill's approval step counts as given by the task contract"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-284-e0",
+      "section": "Done",
+      "status": "done",
+      "title": "The autowork core SKILL.md has room again: detail moves to references/"
     },
     {
       "depends_on": [

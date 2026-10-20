@@ -147,3 +147,28 @@ Those requirements are superseded by the direct execution contract above.
 The [historical evidence contract](historical-owner-cycle.md#reviewed-local-delivery-evidence)
 retains earlier receipts and qualification limits; it creates no card prerequisite
 for present-day checks, review or authorized integration.
+
+## Canonical checkout, sessions and leases
+
+Work in the canonical checkout by default; it needs no merge step. The task helper
+separates two kinds of live process. An Autowork command for the repository blocks
+every worktree. Any other agent session (`pi`, `claude`, `codex`, `hermes`) blocks
+only the checkout it touches, and only while active: recent terminal use, running
+commands or an open writable repository file. A session idle past 30 minutes is
+reported under `idle_sessions` and does not block; never kill or message it. An
+active (or unknown-activity) session in another checkout is reported under
+`other_checkout_sessions`: it does not block this one, but it is not idle. When the
+helper returns `BUSY` with `isolate`, create that worktree and branch (reuse it if it
+already exists), rerun the helper with that worktree as the consumer, and do the
+task there. Integrate the verified branch into the canonical checkout only when
+`owner_cycle.py CANONICAL --writers` returns `CLEAR` and the merge touches no file the session
+has changed or holds open; otherwise keep the committed branch, report it as
+awaiting integration and continue with independent work next occurrence. Shared-tooling fixes follow
+[cross-profile recovery](#cross-profile-recovery-and-deployment).
+
+Distinguish a `BUSY` response from an existing live Autowork execution lease: a
+`--writers` result of `CLEAR` does not release or override that lease. Compare the
+recorded owner with this session's verified dedicated runtime identity before
+calling it another worker; inspect actual activity without taking over, removing
+the lease or opening a competing worktree to bypass it. Report a preserved live
+owner separately from verified implementation progress.

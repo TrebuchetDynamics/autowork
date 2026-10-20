@@ -54,10 +54,10 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ### TOOLSET-284-e0 — The autowork core SKILL.md has room again: detail moves to references/
 
-- [ ] TOOLSET-284-e0 — The autowork core SKILL.md has room again: detail moves to references/
+- [x] TOOLSET-284-e0 — The autowork core SKILL.md has room again: detail moves to references/
 - Touches: skills/autowork/SKILL.md, skills/autowork/references/
 - Short: Core SKILL.md back under budget
-- Status: open
+- Status: done 2026-10-20 (interactive session): core 15994 -> 12595 bytes; three sections moved verbatim to existing references with one-line pointers; picker-policy and text-asserting tests pass.
 - Goal: PI-RUNNER
 - Scope: skills/autowork/SKILL.md is 15994 of the 16000 bytes test_picker_policy allows, so any task that adds a line to it fails its review (TOOLSET-230-bf: 16421 bytes). Move detailed procedure out of the core into existing or new files under skills/autowork/references/, leaving in the core a one-line pointer per moved section and every phrase other tests assert in it. No behavior or policy change; wording moves, it is not rewritten.
 - Acceptance: skills/autowork/SKILL.md is at most 13000 bytes, leaving room for later tasks (test_picker_policy.PickerPolicyTests.test_core_stays_lean_and_points_to_every_reference); every reference file is still linked from the core (same test); every test that asserts core or reference text still passes (python3 scripts/check.py skills/autowork/scripts tests).

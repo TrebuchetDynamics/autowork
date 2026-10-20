@@ -17,6 +17,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- The autowork core SKILL.md is back to 12.6 KB of its 16 KB budget: partial-delivery
+  discipline, the canonical-checkout/session/lease rules and interactive-update reporting moved
+  word for word into `references/iteration-and-decisions.md`, `references/owner-cycle.md` and
+  `references/dispatch-and-reporting.md`, each linked from the core (TOOLSET-284-e0).
+
 - Planning skills now plan for parallel work: `Touches:` is described everywhere as
   the expected write set that only orders parallel work (never a hold), and the
   planning craft adds task sizing, disjoint write sets (hot-file extraction,
