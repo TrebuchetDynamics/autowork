@@ -255,6 +255,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- "Waiting to integrate until another session leaves the main checkout" is said once per
+  session again. The line carried the session's changing status ("running command", "terminal
+  used 2 min ago"), so it repeated every minute.
 - An interrupted review whose merge never landed merges again even when the restart left
   files in its integration tree. Recovery checked that tree before asking whether the merge had
   landed, held the task as "integration tree changed", and a fresh worker redid finished work;

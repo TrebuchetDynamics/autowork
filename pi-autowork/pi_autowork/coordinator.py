@@ -1571,13 +1571,16 @@ class Coordinator:
         elif outcome == 'SET_ASIDE':  # closed on the base meanwhile (TOOLSET-218-d0)
             self.note_state(task, 'closed', reason)
         elif outcome == 'BUSY':  # a live session in the main checkout: wait, said once
-            if self.seen.get('busy-' + task) != reason:
+            # Once per session, not per status: "running command" and "terminal used 2 min ago"
+            # of the same session repeated the line every minute.
+            said = re.sub(r'\s*\(session: [^)]*\)', '', reason)
+            if self.seen.get('busy-' + task) != said:
                 if reason.startswith(('the repository writer lock', 'Repository execution lock')):
                     # This runner's own engine steps held it (TOOLSET-194-46): not another session.
                     LOG.say(f'{task}: integrating again shortly; {reason}')
                 else:
                     LOG.say(f'{task}: waiting to integrate until another session leaves the main checkout ({reason})')
-            self.seen['busy-' + task] = reason
+            self.seen['busy-' + task] = said
         elif outcome == 'PRIORITY_DRIFT' and self.draining and self.reconcile_priority():
             # A ledger repair can add a task while --once is draining. No refill
             # will reconcile its order, so do that before retrying this integration.
