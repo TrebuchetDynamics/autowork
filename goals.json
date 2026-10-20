@@ -804,7 +804,8 @@
         "TOOLSET-278-91",
         "TOOLSET-280-4f",
         "TOOLSET-281-0d",
-        "TOOLSET-282-43"
+        "TOOLSET-282-43",
+        "TOOLSET-283-15"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -1247,6 +1248,14 @@
       "section": "Now",
       "status": "open",
       "title": "A headless worker never stops to ask for approval; an interactive skill's approval step counts as given by the task contract"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-283-15",
+      "section": "Now",
+      "status": "open",
+      "title": "Installed dependencies of a tracked lockfile are linked into worker and review trees without per-runner settings"
     },
     {
       "depends_on": [],

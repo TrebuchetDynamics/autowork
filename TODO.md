@@ -52,6 +52,21 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Now
 
+### TOOLSET-283-15 — Installed dependencies of a tracked lockfile are linked into worker and review trees without per-runner settings
+
+- [ ] TOOLSET-283-15 — Installed dependencies of a tracked lockfile are linked into worker and review trees without per-runner settings
+- Short: Lockfile dependencies link into trees
+- Status: open
+- Goal: PI-RUNNER
+- Evidence: (2026-10-20, one fleet runner): a task was held 45 h after its review failed with 'missing server dependency' for a package that the repository's package.json and package-lock.json declare and its main checkout has installed. The runner's link list named only one unrelated directory, so the review tree had no node_modules and the hold became an owner question.
+- Touches: pi-autowork/pi_autowork/workspaces.py, pi-autowork/pi_autowork/worker.py, pi-autowork/tests/test_worker_tmp.py, tests/test_pi_autowork.py, docs/reference.md
+- Scope: (1) Besides PI_AUTOWORK_LINK_PATHS, link_ignored links, from the canonical checkout, each gitignored dependency directory that sits beside a tracked lockfile and exists there: node_modules beside package-lock.json, pnpm-lock.yaml or yarn.lock; .venv beside uv.lock or poetry.lock. (2) A directory is linked only when the lockfile in the tree is byte-identical to the canonical one; otherwise it is left out and the log says why, so a task that changes dependencies installs its own. (3) A review that fails only because such a dependency is missing is an environment hold the runner retries once after linking, never an owner question.
+- Acceptance: In fixtures: a repository with a tracked package-lock.json and an installed, gitignored node_modules gives worker and review trees a link to it with no setting; a tree whose lockfile differs gets none and logs the reason; a review failing for 'missing dependency' with the link now available is retried once and passes. PI_AUTOWORK_LINK_PATHS keeps working unchanged.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_worker_tmp.py; python3 scripts/check.py tests/test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No package installs or network access by the runner; no link when lockfiles differ; no change to PI_AUTOWORK_LINK_PATHS semantics.
+
 ### TOOLSET-282-43 — A headless worker never stops to ask for approval; an interactive skill's approval step counts as given by the task contract
 
 - [ ] TOOLSET-282-43 — A headless worker never stops to ask for approval; an interactive skill's approval step counts as given by the task contract
