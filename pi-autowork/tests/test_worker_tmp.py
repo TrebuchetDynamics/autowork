@@ -625,6 +625,23 @@ class BatchFailureTests(unittest.TestCase):
             self.assertEqual(self.coordinator(folder).batch_due([('A', 'a2'), ('E', 'e1')]), ['A', 'E'])
 
 
+class BusyLineTests(unittest.TestCase):
+    """The wait for a session in the main checkout is said once per session: its changing status
+    ("running command", "terminal used 2 min ago") repeated the line every minute."""
+
+    def test_the_same_session_is_named_once_and_another_one_again(self):
+        from pi_autowork import coordinator
+        runner = coordinator.Coordinator.__new__(coordinator.Coordinator)
+        runner.seen = {}
+        said = []
+        reason = 'live or unknown external writer/session; preserve canonical checkout: pid {} pi in /repo (session: {})'
+        with patch.object(coordinator.LOG, 'say', side_effect=said.append):
+            for pid, status in ((7, 'running command'), (7, 'terminal used 2 min ago'), (8, 'running command')):
+                runner.integrated('A', {'outcome': 'BUSY', 'reason': reason.format(pid, status)})
+        self.assertEqual(len(said), 2, said)
+        self.assertIn('pid 8', said[1])
+
+
 class EnvironmentMarkerTests(unittest.TestCase):
     """TOOLSET-173-94: 'could not check' is recorded apart from 'checked and wrong'."""
 
