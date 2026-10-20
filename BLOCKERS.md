@@ -8,12 +8,12 @@ no extra approval step or execution authority.
 
 <!-- pi-autowork:questions:start -->
 
-### Q-TOOLSET-234-d4 — USER_DECISION — effort investigate — unblocks 0
+### Q-TOOLSET-230-bf — USER_DECISION — effort investigate — unblocks 3
 
-- Task: TOOLSET-234-d4 — A main-repair worker gets the runner's main-check evidence: log, exit code, revisions and isolated reruns
-- Needs: abandoned integration lacks exact candidate/contract/branch evidence
-- Since: 2026-10-20T06:38:05Z
-- Answer: Read the evidence (the worker's report and validation log under .git/autowork-execution/slot-data/TOOLSET-234-d4/), then rescope or split TOOLSET-234-d4 in its TODO.md entry. The runner reruns it when the entry changes.
+- Task: TOOLSET-230-bf — Integration and closeout move the runner's branch with a ref update, never through a working copy
+- Needs: merge conflict; worker and canonical checkout preserved
+- Since: 2026-10-20T08:48:20Z
+- Answer: Read the evidence (the worker's report and validation log under .git/autowork-execution/slot-data/TOOLSET-230-bf/), then rescope or split TOOLSET-230-bf in its TODO.md entry. The runner reruns it when the entry changes.
 
 <!-- pi-autowork:questions:end -->
 
