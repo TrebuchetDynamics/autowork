@@ -2153,27 +2153,47 @@ class EngineTests(Fixture):
     def test_uncommitted_owner_planning_is_committed_so_work_merges(self):
         """TOOLSET-120-fc (4): every fleet main checkout held uncommitted TODO.md edits."""
         self.owner_note()
+        with (self.repo / 'TODO.md').open('a') as out:
+            out.write('\nOwner planning note.\n')
         self.env['PI_AUTOWORK_PLANNING_QUIET'] = '0'
         result = self.run_runner('--until-empty')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('Committed uncommitted changes in', result.stdout)
-        self.assertIn('docs(tasks): owner planning (pi-autowork)', self.git(self.repo, 'log', '--format=%s'))
+        planning = self.git(self.repo, 'log', '--format=%H', '--grep', '^docs(tasks): owner planning (pi-autowork)')
+        self.assertTrue(planning)
+        self.assertIn('Owner planning note.', self.git(self.repo, 'show', f'{planning.split()[-1]}:TODO.md'))
         self.assertIn('add the export task', (self.repo / 'BLOCKERS.md').read_text())
         self.assertTrue(self.done('A', 'B', 'C'))
         self.assertEqual(self.git(self.repo, 'status', '--porcelain'), '')
 
-    def test_other_quiet_uncommitted_work_is_committed_too_but_not_possible_secrets(self):
-        """Owner direction (2026-10-16): auto work commits and merges all work, not only planning."""
-        self.owner_note()
-        (self.repo / 'scratch.py').write_text('print(1)\n')  # someone's quiet work
+    def test_other_quiet_uncommitted_work_stays_uncommitted_while_the_session_merges_and_pushes(self):
+        """GitHub #3: quietness does not transfer ownership of main-checkout work."""
+        for name in ('notes.txt', 'staged.txt', 'deleted.txt'):
+            (self.repo / name).write_text('original\n')
+        self.git(self.repo, 'add', '.')
+        self.git(self.repo, 'commit', '-qm', 'owner files')
+        bare = self.origin()
+        (self.repo / 'notes.txt').write_text('unfinished\n')
+        (self.repo / 'staged.txt').write_text('staged work\n')
+        self.git(self.repo, 'add', 'staged.txt')
+        (self.repo / 'deleted.txt').unlink()
+        (self.repo / 'scratch.py').write_text('print(1)\n')
         (self.repo / '.env').write_text('TOKEN=x\n')
+        before = self.git(self.repo, 'status', '--porcelain')
         self.env['PI_AUTOWORK_PLANNING_QUIET'] = '0'
         result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue(self.done('A', 'B', 'C'), result.stdout)
-        self.assertIn('chore: uncommitted work in the main checkout (pi-autowork)',
-                      self.git(self.repo, 'log', '--format=%s'))
-        self.assertIn('left untracked as possible secrets: .env', result.stdout)
-        self.assertEqual(self.git(self.repo, 'status', '--porcelain'), '?? .env')
+        self.assertEqual(self.git(self.repo, 'status', '--porcelain'), before)
+        self.assertEqual((self.repo / 'notes.txt').read_text(), 'unfinished\n')
+        self.assertEqual(self.git(self.repo, 'show', ':staged.txt'), 'staged work')
+        self.assertFalse((self.repo / 'deleted.txt').exists())
+        self.assertIn('Pushed main to origin/main', result.stdout)
+        self.assertEqual(self.git(self.repo, 'rev-parse', 'main'), self.git(bare, 'rev-parse', 'main'))
+        self.assertEqual(self.git(bare, 'show', 'main:notes.txt'), 'original')
+        self.assertEqual(self.git(bare, 'show', 'main:staged.txt'), 'original')
+        self.assertEqual(self.git(bare, 'show', 'main:deleted.txt'), 'original')
+        self.assertNotIn('scratch.py', self.git(bare, 'ls-tree', '-r', '--name-only', 'main'))
 
     def test_planning_held_open_for_writing_is_left_alone(self):
         self.owner_note()
@@ -2639,10 +2659,14 @@ class EngineTests(Fixture):
                     self.assertEqual((Path(session['path']) / saved).read_text(), 'keep this work\n')
 
     def test_user_changes_in_main_block_only_the_final_merge(self):
+        before = self.git(self.repo, 'rev-parse', 'HEAD')
         (self.repo / 'A.txt').write_text('my note\n')  # uncommitted; the merge would overwrite it
+        self.env['PI_AUTOWORK_PLANNING_QUIET'] = '0'
         result = self.run_runner('--once')
         self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
-        self.assertIn('Merge pending', result.stdout)
+        self.assertRegex(result.stdout, r'Merge pending: .*A\.txt')
+        self.assertEqual(self.git(self.repo, 'rev-parse', 'HEAD'), before)
+        self.assertEqual(self.git(self.repo, 'status', '--porcelain', '--', 'A.txt'), 'M A.txt')
         self.assertEqual((self.repo / 'A.txt').read_text(), 'my note\n')
         self.git(self.repo, 'checkout', '--', 'A.txt')
         result = self.run_runner('--until-empty')
