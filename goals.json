@@ -802,7 +802,9 @@
         "TOOLSET-276-a9",
         "TOOLSET-277-52",
         "TOOLSET-278-91",
-        "TOOLSET-280-4f"
+        "TOOLSET-280-4f",
+        "TOOLSET-281-0d",
+        "TOOLSET-282-43"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -1229,6 +1231,22 @@
       "section": "Now",
       "status": "open",
       "title": "A held commit whose branch the runner itself merged past is recovered by the runner, never asked of the owner as a rescope"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-281-0d",
+      "section": "Now",
+      "status": "open",
+      "title": "A candidate that passed its batch lands before the runner reloads, and after an interrupted landing it lands first"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-282-43",
+      "section": "Now",
+      "status": "open",
+      "title": "A headless worker never stops to ask for approval; an interactive skill's approval step counts as given by the task contract"
     },
     {
       "depends_on": [],

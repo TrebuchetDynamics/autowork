@@ -52,6 +52,36 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Now
 
+### TOOLSET-282-43 — A headless worker never stops to ask for approval; an interactive skill's approval step counts as given by the task contract
+
+- [ ] TOOLSET-282-43 — A headless worker never stops to ask for approval; an interactive skill's approval step counts as given by the task contract
+- Short: Headless worker never waits for approval
+- Status: open
+- Goal: PI-RUNNER
+- Evidence: (2026-10-20, one fleet runner): a task's second attempt loaded an interactive design skill, wrote its plan and ended with 'The brainstorming skill requires explicit approval of this design before implementation. Do you approve?' after 28 s. The runner recorded 'dead worker without a commit or changes', held the task on its last attempt and asked the owner to rescope it.
+- Touches: pi-autowork/pi_autowork/worker.py, pi-autowork/pi_autowork/coordinator.py, skills/autowork/scripts/parallel_dispatch.py, tests/test_pi_autowork.py, pi-autowork/tests/test_worker_tmp.py
+- Scope: (1) The worker prompt states that the task contract is the approved design: no person is attached, so a skill step that asks for approval (brainstorming, plan review) is treated as approved by the contract, and the worker proceeds to implement. (2) A worker that ends its session with a question to the user and no commit is not 'dead': the runner resumes the same session once with a fixed message ('No person is attached; the task contract is your approval. Implement it now.'), within the same attempt and budget. (3) Only a second ending without a commit holds the task, with the worker's question quoted as the reason.
+- Acceptance: In fixtures with a fake Pi: a worker whose first reply ends 'Do you approve?' with no commit is resumed once in the same session and attempt and then commits; one that asks twice is held quoting its question, never as 'dead worker without a commit or changes'; the prompt fixture contains the approval sentence.
+- Checks: python3 scripts/check.py tests/test_pi_autowork.py pi-autowork/tests/test_worker_tmp.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to which skills a worker may load, to attempt limits or to the task contract; a worker's genuine blocker still holds the task.
+
+### TOOLSET-281-0d — A candidate that passed its batch lands before the runner reloads, and after an interrupted landing it lands first
+
+- [ ] TOOLSET-281-0d — A candidate that passed its batch lands before the runner reloads, and after an interrupted landing it lands first
+- Short: Batch pass lands before reload
+- Status: open
+- Goal: PI-RUNNER
+- Evidence: (2026-10-20, this repository's runner): at 20:56 a batch passed three candidates and logged 'landing them now'; 4 s later the runner reloaded onto a new toolset. Two landed; the third has sat in 'integrating' for over 15 h behind about 20 queued candidates, each reviewed one at a time.
+- Touches: pi-autowork/pi_autowork/coordinator.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, tests/test_pi_autowork.py, pi-autowork/pi_autowork/fleet_view.py
+- Scope: (1) The runner's toolset reload waits while any batch-passed candidate is still landing, as it already waits for a running review or merge resolution. (2) A batch pass is recorded per candidate (tree and verdict) so that, after any restart, a slot still 'integrating' with a recorded pass for its current tree goes to the front of the integration queue and lands from that verdict, without a fresh review and without waiting behind priority order. (3) Status and the TUI say 'landing after restart' for such a slot instead of 'verifying'.
+- Acceptance: In fixtures: a batch of three passes, the runner is told to reload between the pass and the landings, and all three land before the reload; a restart forced mid-landing leaves one slot integrating, and the next cycle lands it first with no review run; a slot whose tree changed after its pass is reviewed again as today.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 scripts/check.py tests/test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to batch formation, gates or review content; a pass is never reused for a different tree.
+
 ### TOOLSET-280-4f — A held commit whose branch the runner itself merged past is recovered by the runner, never asked of the owner as a rescope
 
 - [ ] TOOLSET-280-4f — A held commit whose branch the runner itself merged past is recovered by the runner, never asked of the owner as a rescope
