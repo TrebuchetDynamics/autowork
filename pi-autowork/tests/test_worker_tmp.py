@@ -916,6 +916,36 @@ class BatchLandingTests(unittest.TestCase):
             self.assertEqual(said, ['B: implemented', 'B: landing — passed in its batch; not reviewed again',
                                     'B: failed — merge conflict'])
 
+    def test_a_day_old_commit_is_set_aside_and_its_task_runs_fresh(self):
+        """Twenty day-old commits conflicted with each other at every landing and held back every
+        task that shared their files."""
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator = self.runner(folder, {})
+            runner.stop = False
+            calls, said = [], []
+            runner.engine = lambda *args: calls.append(args) or (
+                {'outcome': 'SET_ASIDE', 'renamed': [{'branch_now': f'autowork/{args[1]}-set-aside-1'}]}
+                if args[1] != 'D' else {'outcome': 'REFUSED', 'reason': 'its interrupted integration already landed'})
+            day = 25 * 3600
+            rows = [{'task': 'A', 'state': 'reported', 'elapsed_seconds': day},
+                    {'task': 'B', 'state': 'reported', 'elapsed_seconds': 3600},  # young: it batches
+                    {'task': 'C', 'state': 'held', 'elapsed_seconds': day},  # held: the merge limit decides
+                    {'task': 'D', 'state': 'integrating', 'elapsed_seconds': day},
+                    {'task': 'E', 'state': 'running', 'elapsed_seconds': day}]
+            with patch.object(coordinator.LOG, 'say', side_effect=said.append):
+                self.assertTrue(runner.set_aside_stale(rows))
+                self.assertFalse(runner.set_aside_stale(rows[3:4]))  # the refusal is said once
+                runner.integration = {'task': 'X'}
+                self.assertFalse(runner.set_aside_stale(rows))  # never beside a review or a batch
+                runner.integration = None
+                with patch.dict(os.environ, {'PI_AUTOWORK_STALE_HOURS': '0'}):
+                    self.assertFalse(runner.set_aside_stale(rows))
+            self.assertEqual(calls, [('--parallel-set-aside', 'A'), ('--parallel-set-aside', 'D'),
+                                     ('--parallel-set-aside', 'D')])
+            self.assertEqual(said, ['A: its commit waited 25 h to merge; set aside as autowork/A-set-aside-1, '
+                                    'and the task runs fresh on current main',
+                                    'D: could not set aside its day-old commit: its interrupted integration already landed'])
+
     def test_a_due_reload_starts_no_merge_resolver(self):
         """Each new resolver kept the reload pending, and a due reload starts no batch: commits
         were resolved again and again for hours while none landed."""

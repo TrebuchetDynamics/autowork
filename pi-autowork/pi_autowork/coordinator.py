@@ -1538,6 +1538,8 @@ class Coordinator:
         self.finish_resolvers()
         snapshot = self.status()
         rows = self.tasks(snapshot)
+        if self.set_aside_stale(rows):
+            rows = self.tasks(self.status())
         for row in rows:
             task, state, reason = row.get('task'), row.get('state') or '', row.get('reason') or ''
             before = self.seen.get(task)
@@ -1646,6 +1648,35 @@ class Coordinator:
             self.note_state(task, 'landing', 'passed in its batch; not reviewed again')
         else:
             self.note_state(task, 'integrating')
+
+    def set_aside_stale(self, rows):
+        """Finished commits older than PI_AUTOWORK_STALE_HOURS (24; 0: never) are set aside and their
+        tasks run fresh on current main, the new worker shown the earlier work. Twenty commits a day
+        old, written against code main had since redesigned, conflicted with each other at every
+        landing and held back every task that shared their files. Never beside a review or a batch,
+        whose verdicts hold for the trees they were reached on."""
+        hours = float(os.environ.get('PI_AUTOWORK_STALE_HOURS') or 24)
+        if hours <= 0 or self.stop or self.integration or self.batch_landing():
+            return False
+        changed = False
+        for row in rows:
+            task = row.get('task')
+            if (row.get('state') not in ('reported', 'integrating') or task in self.resolvers
+                    or float(row.get('elapsed_seconds') or 0) < hours * 3600):
+                continue
+            result = self.engine('--parallel-set-aside', task)
+            if result.get('outcome') != 'SET_ASIDE':
+                reason = result.get('reason') or result.get('outcome')
+                if self.seen.get('stale-' + task) != reason:
+                    LOG.say(f'{task}: could not set aside its day-old commit: {reason}')
+                self.seen['stale-' + task] = reason
+                continue
+            kept = ', '.join(r['branch_now'] for r in result.get('renamed') or [] if r.get('branch_now'))
+            LOG.say(f'{task}: its commit waited {float(row["elapsed_seconds"]) / 3600:.0f} h to merge; set aside as '
+                    f'{kept}, and the task runs fresh on current main')
+            self.seen[task] = 'pending'
+            self.settled = changed = True
+        return changed
 
     def resolve_deferred(self, deferred):
         """Resolve the conflicts this pass held back, then batch their merged revisions so they
