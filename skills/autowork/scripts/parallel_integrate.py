@@ -131,6 +131,8 @@ def verify(repo, common, slot, contracts):
     state.workspace(common, slot['worktree'], slot['branch'], slot['baseline'])
     if slot['branch'] != expected_branch(slot):
         raise ValueError(BRANCH_HOLD)
+    if missing := state.missing_commit_report(common, slot):
+        raise Hold('report', missing)
     abort_abandoned_merge(common, slot)
     tip = runner_merged_tip(repo, slot)
     if tip and not adopt_runner_merged(repo, common, slot, tip):
@@ -584,8 +586,11 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
                     aside = _retire(repo, common, dict(slot, cause='closed_on_base'), False)
                 state.event(common, 'closed_on_base', task_id=task, base=base or '')
                 return dict(aside, reason=f'{task} is closed on {base or "this branch"}; its commit is set aside')
+            if missing := state.missing_commit_report(common, slot):
+                return hold(common, slot, missing, cause='report')
             contracts = {t['id']: t for t in dispatch.contracts(repo)}
-            slots = {s['task_id']: s for s in state.slots(common) if s['state'] in ('reported', 'integrating')}
+            slots = {s['task_id']: s for s in state.slots(common) if s['state'] in ('reported', 'integrating')
+                     and not state.missing_commit_report(common, s)}
             # A candidate refused for a live writer steps aside for a bounded window, so one
             # waiting commit never stops the rest from integrating (TOOLSET-223-8e).
             available = {tid for tid, held in slots.items() if not writers_busy(held)} or set(slots)
@@ -1220,6 +1225,13 @@ def reverify(repo, owner_pid, task, version):
     with execution.lock(common / 'integration.lock'), execution.lock(common / 'writer.lock'):
         state.require_owner(common, owner_pid)
         slot = slot_for(common, task)
+        if (slot and (slot['state'] == 'reported' or
+                      (slot['state'] == 'held' and slot.get('cause') in ('report', 'conflict')))
+                and slot.get('commit') and not state.worker_live(slot) and state.missing_commit_report(common, slot)):
+            recovered = state.recover_reports(common, [slot])[0]
+            if recovered['state'] == 'interrupted':
+                return {'outcome': 'REVERIFY', 'task': task, 'version': version,
+                        'resume_worker': True, 'report_only': True}
         if (slot and slot['state'] == 'held' and slot.get('cause') == 'timeout'
                 and not slot.get('commit') and dispatch.check_failure_resumed(slot)
                 and not state.worker_live(slot) and slot.get('reverified') != version):
@@ -1349,7 +1361,7 @@ def retry_held(args):
         dispatch.enforce_timeouts(repo, args.owner_pid, common, args.worker_timeout)
         with execution.lock(common / 'writer.lock'):
             state.require_owner(common, args.owner_pid)
-            current = state.slots(common)
+            current = state.recover_reports(common, state.slots(common))
             # No rescope, reoffer or fresh retry may bypass a repeated missing input.
             current = [s for s in current if not (hold := state.quick_hold(common, s))
                        or blocker_resolved(repo, common, s, hold)]

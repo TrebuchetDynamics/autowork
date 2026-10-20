@@ -220,7 +220,8 @@ def check_failure_resumed(slot):
     return any(s.get('check_failure_resumed') for s in [slot, *slot.get('previous_attempts', [])])
 
 
-def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None, commit_finished=False, answers=''):
+def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None, commit_finished=False, answers='',
+           retained_commit=None):
     touches = task['fields'].get('Touches', '(none declared)')
     earlier = earlier_task_work(worktree, task['id'], branch, baseline)
     lines = [
@@ -323,7 +324,13 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None,
                   for w in adopted['prior_work']] or ['- none found']
         lines += ['Inspect it and reuse attributable in-scope work in your own worktree; never modify',
                   'those branches or worktrees.']
-    if resume:
+    if retained_commit:
+        lines += ['', f'Your commit {retained_commit} is retained on this branch, but this attempt has no matching report.',
+                  'Resume this same attempt only to write report.json for the commit already made.',
+                  'Do not reimplement the task or make another commit. Inspect the retained commit and existing',
+                  'check evidence, run only missing focused checks, and write your own matching report at Report file.',
+                  'Preserve any uncommitted work; it is not permission to start over.']
+    elif resume:
         lines += ['', 'A previous attempt was interrupted. Its uncommitted changes are still in the',
                   'worktree: inspect git status and continue from them rather than starting over.']
     if commit_finished:
@@ -739,8 +746,20 @@ def enforce_timeouts(repo, owner_pid, common, default_timeout):
                     repo, owner_pid, slot['task_id'], 'reported', commit=commit,
                     reason=f'its worker kept running after reporting this commit; stopped at the {limit:g} s timeout'))
                 continue
-            stopped.append(state.transition(repo, owner_pid, slot['task_id'], 'interrupted',
-                                            reason=f'worker timeout after {limit:g} s' + activity))
+            # A timeout can stop the worker between commit and report too. Preserve that
+            # HEAD for report-only recovery, rather than treating it as unfinished implementation.
+            root = Path(slot['worktree'])
+            head = execution.git(root, 'rev-parse', 'HEAD')
+            try:
+                descends = head != slot['baseline'] and execution.git(root, 'merge-base', slot['baseline'], head) == slot['baseline']
+            except ValueError:  # unrelated history has no merge-base; still record the stopped worker
+                descends = False
+            if slot.get('report_resume_attempt') != slot['attempt'] and descends:
+                stopped.append(state.transition(repo, owner_pid, slot['task_id'], 'reported', commit=head,
+                                                reason=f'worker timeout after committing, before its report ({limit:g} s)'))
+            else:
+                stopped.append(state.transition(repo, owner_pid, slot['task_id'], 'interrupted',
+                                                reason=f'worker timeout after {limit:g} s' + activity))
     return stopped
 
 
@@ -991,6 +1010,9 @@ def dispatch(args):
 def dispatch_locked(args, repo, common, count, template, host):
     timeouts = enforce_timeouts(repo, args.owner_pid, common, args.worker_timeout)
     current = state.reconcile(repo, args.owner_pid)
+    with execution.lock(common / 'writer.lock'):
+        state.require_owner(common, args.owner_pid)
+        current = state.recover_reports(common, current)
     sweep_retired_tmp(common, current)
     everything = contracts(repo)
     by_id = {t['id']: t for t in everything}
@@ -1055,6 +1077,7 @@ def dispatch_locked(args, repo, common, count, template, host):
         (data / 'contract.txt').write_text(task['contract'].strip() + '\n')  # what an answer is compared with
         prompt_file.write_text(prompt(task, worktree, branch, base, report, resume=bool(previous),
                                       adopted=idle.get(task['id']),
+                                      retained_commit=previous.get('commit') if previous else None,
                                       commit_finished=bool(previous and check_failure_resumed(previous)),
                                       answers=answers_text(common, task['id']) if previous and previous.get('answered')
                                       else ''))

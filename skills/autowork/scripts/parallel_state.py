@@ -383,6 +383,13 @@ def change(common, old, target, updates):
             for key in ('reverified', 'reverify_verdict', 'runtime_seconds', 'runtime_started_at', 'held_at', 'held_seconds'):
                 value.pop(key, None)
         value.update(attempt=old['attempt'] if resume else 2, worker=None, started_at=time.time())
+        if resume and old.get('report_resume_attempt') == old['attempt'] and old.get('commit'):
+            value['commit'] = old['commit']  # report-only identity survives launch failure and timeout
+    if (target in ('held', 'interrupted', 'released') and old.get('report_resume_attempt') == old['attempt']
+            and old.get('commit') and (missing := missing_commit_report(common, old))):
+        target = 'held'
+        updates.update(cause='report', paused=False,
+                       reason=missing + '; report-only resume stopped: ' + str(updates.get('reason') or target))
     if updates.get('worker') is not None:
         execution.active_owner({'owner': updates['worker']})
     if target in ('interrupted', 'released') and old['attempt'] == 2 and not updates.get('paused', old.get('paused')):
@@ -479,6 +486,8 @@ def merge_adoption(repo, slot):
     if (slot['state'] != 'held' or slot.get('cause') != 'conflict' or not slot.get('commit')
             or worker_live(slot)):
         reason = 'merged is only for an idle conflict-held commit'
+    elif missing := missing_commit_report(common_dir(repo), slot):
+        reason = missing
     elif count >= 3:
         reason = 'merge adoption limit reached'
     elif previous and (previous == base or execution.git(repo, 'merge-base', previous, base) != previous):
@@ -495,8 +504,51 @@ def merge_adoption(repo, slot):
 def exhausted(slot):
     """A held slot no fresh attempt should replace; a resolver can still adopt its commit."""
     return (slot['state'] == 'held' and (slot['attempt'] >= 2 or slot.get('cause') in NEEDS_PERSON
+            or (slot.get('cause') == 'report' and slot.get('report_resume_attempt') == slot['attempt'])
             or (slot.get('cause') == 'conflict' and bool(slot.get('merged_base'))))
             and not readoptable(slot))
+
+
+def missing_commit_report(common, slot):
+    """Report provenance only; integration still validates files, checks and blockers."""
+    data = common / 'slot-data' / slot['task_id'] / f'attempt-{slot.get("data_attempt", slot["attempt"])}'
+    path = data / 'report.json'
+    try:
+        report = execution.read(execution.safe_path(path))
+    except (ValueError, OSError):
+        report = None
+    named = report.get('commit') if isinstance(report, dict) else None
+    if (isinstance(report, dict) and report.get('task') == slot['task_id']
+            and isinstance(named, str) and re.fullmatch(r'[0-9a-fA-F]{7,40}', named)
+            and (slot.get('commit') or '').startswith(named.lower())):
+        return ''
+    if not isinstance(report, dict):
+        return f'the worker wrote no report.json: {path}'
+    return (f'the worker wrote no matching report.json (task is {report.get("task")!r}; '
+            f'commit is {named!r}, the branch is at {(slot.get("commit") or "")[:12]}): {path}')
+
+
+def recover_reports(common, current):
+    """Prepare one report-only, same-attempt resume; never manufacture a worker report.
+
+    Caller holds writer.lock. Also repairs pre-upgrade conflict holds before any
+    resolver or fresh retry can take ownership of the retained work.
+    """
+    result = []
+    for slot in current:
+        eligible = (slot['state'] == 'reported' or
+                    (slot['state'] == 'held' and slot.get('cause') in ('report', 'conflict')))
+        if eligible and slot.get('commit') and not worker_live(slot) and (missing := missing_commit_report(common, slot)):
+            repeated = slot.get('report_resume_attempt') == slot['attempt']
+            value = {k: v for k, v in slot.items() if k not in ('cause', 'reason', 'data_attempt')}
+            value.update(state='held' if repeated else 'interrupted', paused=not repeated,
+                         report_resume_attempt=slot['attempt'], reason=missing)
+            if repeated:
+                value.update(cause='report', reason=missing + '; report-only resume already used')
+            if value != slot:
+                slot = write_slot(common, value, slot)
+        result.append(slot)
+    return result
 
 
 def report_blockers(common, slot):
