@@ -1782,6 +1782,13 @@ class Coordinator:
         rev = git(self.repo, 'rev-parse', self.base)
         if not rev or rev == record.get('rev'):
             return
+        if record.get('state') == 'green' and record.get('rev'):
+            # The runner's own questions and planning commits moved main: a full check for each
+            # (8 of 39 in a day) took a host check slot that a waiting review needed.
+            changed = (git(self.repo, 'diff', '--name-only', record['rev'], rev) or '').split()
+            if changed and all(p in PLANNING_FILES for p in changed):
+                main_check.write(self.state, dict(record, rev=rev, green=rev))
+                return
         # It waits for room at most MAIN_CHECK_WAIT: with eight workers and batches a review or a
         # loaded host was nearly always there, and main went unchecked for hours while it was red.
         if time.time() - float(record.get('finished') or 0) < self.MAIN_CHECK_WAIT:
