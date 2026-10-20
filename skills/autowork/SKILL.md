@@ -180,15 +180,15 @@ This policy is not a runtime guarantee of progress. No fabricated busywork.
 
 ## Parallel workers (opt-in)
 
-Only when the caller asks for parallel work, run `owner_cycle.py REPO --apply
---parallel [N] --owner-pid PID`: it starts headless host workers, one task each in
-its own worktree; `Touches:` only orders tasks so likely-independent work runs first
-and never holds one, while `Resources:` and dependencies still keep tasks apart.
-Then loop `--wait --timeout S`, review each `report.json`, `--integrate TASK
+Only when the caller asks for it, run `owner_cycle.py REPO --apply
+--parallel [N] --owner-pid PID`: it starts headless workers, one task each in
+its own worktree. `Touches:` only orders tasks, never holding one; `Resources:` and
+dependencies keep tasks apart.
+Loop `--wait --timeout S`, review each `report.json`, `--integrate TASK
 --timeout S --run CHECK...` (`--run` last), `--parallel-close TASK`, commit the
 coordinator files, and refill with `--apply --parallel`; release only after no slot
-is left to integrate or close. Workers never select, merge, close or push. `SEQUENTIAL_FALLBACK` means run the returned contract the
-ordinary way. Follow [parallel workers](references/parallel-workers.md).
+is left to integrate or close. Workers never select, merge, close or push. On
+`SEQUENTIAL_FALLBACK`, run the returned contract normally. Follow [parallel workers](references/parallel-workers.md).
 
 ## Owner blockers
 
