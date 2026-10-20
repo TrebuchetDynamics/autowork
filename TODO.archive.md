@@ -4909,3 +4909,29 @@ Source section: Now
 - Ownership: Toolset coordinator.
 - Exclusions: No portable `.gitattributes` change; only the local Git config command moves.
 - Planner's call (2026-10-19): Now. Small, and it removes a way for an update to break merges done outside the runner.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-234-d4"></a>
+
+### TOOLSET-234-d4 — A main-repair worker gets the runner's main-check evidence: log, exit code, revisions and isolated reruns
+
+- [x] TOOLSET-234-d4 — A main-repair worker gets the runner's main-check evidence: log, exit code, revisions and isolated reruns
+- Short: Main repair gets the main-check evidence
+- Status: done
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [maintainer prompt](pi-autowork/pi_autowork/maintainer.py) (`PROMPT`: for `MAIN (main red)` and `MAIN (flaky test)` it adds a repair or hardening task with the failing tests and commits as Evidence); [main check](pi-autowork/pi_autowork/main_check.py) (the runner state's `main-check.log`, `main-check.exit`, `main-check-reruns.log`, `main_check.json`: revision, last green, failures, flaky history); [worker launch and prompt](skills/autowork/scripts/parallel_dispatch.py) (`launch` env, `prompt`).
+- Evidence (2026-10-18 15:57, one fleet runner): its two maintainer-made main-repair tasks both ended as owner questions. One asked for "the full log of the red MAIN, including exit code, failing phase/test and attempt/retry classification", which it could not find locally (its own full reproduction exited 0). The other asked for "the original MAIN run report, with the exact test, the three revisions, and the outputs and return codes of the full and isolated runs". The runner had all of it in its state directory, but no worker can see that directory or knows it exists, and the owner cannot answer either question better than the runner's files.
+- Touches: pi-autowork/pi_autowork/main_check.py, pi-autowork/pi_autowork/maintainer.py, pi-autowork/tests/test_main_check.py, pi-autowork/tests/test_maintainer.py, skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, pi-autowork/pi_autowork/coordinator.py
+- Scope: (1) After every main check, the runner writes a read-only evidence bundle at `<git common dir>/autowork-execution/main-evidence/<rev>/`. It holds `main_check.json`, the full `main-check.log`, `main-check.exit`, `main-check-reruns.log` (each isolated rerun's command, exit code and output) and `flaky_history.json`. It keeps the last five revisions. (2) Workers get `AUTOWORK_MAIN_EVIDENCE` (that directory's parent), and the prompt says that a task repairing a red or flaky main finds the runner's main-check runs there, by revision, and never asks a person for them. (3) The maintainer's MAIN prompt has the task entry name the bundle's revision directory in its Evidence. (4) A worker blocker that asks only for main-check logs, exit codes or rerun output, when a bundle exists, is resumed once with the bundle's path instead of becoming a question (the resume path of TOOLSET-232-01; whichever lands second reuses it).
+- Acceptance: In fixtures: a red main check writes the bundle with the log, exit code and rerun output, and old revisions beyond five are pruned; a worker's environment has `AUTOWORK_MAIN_EVIDENCE` and its prompt carries the rule; the maintainer's MAIN items name the bundle directory; a blocker asking for "the full log of the red MAIN" with a bundle present resumes the attempt with the path and raises no question.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_main_check.py; python3 -m unittest discover -s pi-autowork/tests -p test_maintainer.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No copying of the bundle into worktrees or commits. It is runner evidence, not repository content.
+- Planner's call: Now, after TOOLSET-232-01. Each maintainer-made repair task ends as an owner question today, so red mains never repair themselves. Handing workers the runner's own receipts closes the loop the maintainer opens.
+- Planner's call (2026-10-19 audit; where this differs from the Scope above, this wins): It also takes over the superseded 240-f8: update the existing evidence when main changes, never add a second task. Scope (4) becomes: `TRIAGE_PROMPT` lists `$AUTOWORK_MAIN_EVIDENCE` among what the runner provides; no separate resume path, the blocker triage covers it.
+- Planner's call (2026-10-19 builder check): "Never a second task" means the docs maintainer updates the Evidence of the existing repair task for the same failing tests; drop 240-f8's per-task evidence copy under slot-data.

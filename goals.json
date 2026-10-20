@@ -1132,14 +1132,6 @@
       "title": "Integration and closeout move the runner's branch with a ref update, never through a working copy"
     },
     {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-234-d4",
-      "section": "Now",
-      "status": "open",
-      "title": "A main-repair worker gets the runner's main-check evidence: log, exit code, revisions and isolated reruns"
-    },
-    {
       "depends_on": [
         "TOOLSET-200-c1"
       ],
@@ -3153,6 +3145,14 @@
       "section": "Done",
       "status": "done",
       "title": "The session takes main between reviews, so planning and fixes on main reach dispatch and validation within one review"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-234-d4",
+      "section": "Done",
+      "status": "done",
+      "title": "A main-repair worker gets the runner's main-check evidence: log, exit code, revisions and isolated reruns"
     },
     {
       "depends_on": [],
