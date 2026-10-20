@@ -302,6 +302,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A `--once` or `--until-empty` run that finds the execution lock held (a killed runner's
+  engine helper still finishing) waits up to `PI_AUTOWORK_BUSY_WAIT` seconds (default 60)
+  for it instead of exiting 4 at once; a live sequential owner still exits 4 immediately.
 - A review no longer runs out of time rerunning a hundred failures one by one: the quiet
   rerun tries a sample of five (`PI_AUTOWORK_QUIET_SAMPLE`) first, and when none passes alone
   the rest are not rerun; the base comparison decides. Three reviews on 2026-10-20 spent

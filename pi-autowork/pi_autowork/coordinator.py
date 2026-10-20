@@ -2757,6 +2757,8 @@ class Coordinator:
                                  '--min-free-mem-mb', self.min_free_mb, '--adopt-idle-claims', str(self.claim_idle),
                                  '--base-ref', self.base, *(['--tasks', ','.join(resumes)] if resumes else []))
             outcome = result.get('outcome') or 'ACTION_REQUIRED'
+            if outcome != 'BUSY':
+                self.seen.pop('busy-since', None)
             for task in result.get('closed_on_base') or []:
                 self.note_state(task, 'closed', f'closed on {self.base}; its worker is stopped and its work set aside')
             for task in result.get('closing') or []:
@@ -2832,7 +2834,17 @@ class Coordinator:
         elif outcome == 'BUSY':
             reason = result.get('reason') or 'busy'
             if self.mode in ('once', 'until-empty'):
-                self.finish(4, f'Repository busy: {reason}')
+                # A killed runner's engine helper holds the execution lock until it finishes: under
+                # load the restart that adopts its workers exited 4 at once (TOOLSET-288-cf). A held
+                # lock gets a bounded wait; another owner (a live sequential runner) does not.
+                since = self.seen.setdefault('busy-since', time.monotonic())
+                held = reason.startswith(('Repository execution lock', 'Repository or helper publication lock'))
+                if not held or time.monotonic() - since >= worker.setting('PI_AUTOWORK_BUSY_WAIT', 60, float):
+                    self.finish(4, f'Repository busy: {reason}')
+                if self.seen.get('busy-said') != reason:
+                    self.seen['busy-said'] = reason
+                    LOG.say(f'Repository busy ({reason}); waiting for it to finish')
+                return self.pause(2)
             LOG.say(f'Repository busy ({reason}); checking again in {self.interval}s')
             return self.blocked_pause(f'repository busy: {reason}')
         elif outcome == 'PRIORITY_DRIFT':
