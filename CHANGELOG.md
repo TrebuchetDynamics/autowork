@@ -22,6 +22,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- A finished commit that reaches the merge adoption limit (three merges with main, each
+  after other tasks landed in its files) is set aside and its task runs fresh on current
+  main, the new worker shown the earlier branch, instead of becoming an owner question.
 - A batch whose full check fails names its suspects: the candidates that wrote a line a
   new failure's traceback ran through (`git blame`), else those whose changes the failing
   tests import (transitively) or read by name. They integrate one at a time and

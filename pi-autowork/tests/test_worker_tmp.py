@@ -881,6 +881,29 @@ class BatchLandingTests(unittest.TestCase):
             with patch.object(coordinator, 'git', return_value='TODO.md\ndocs/plan.md\n'):
                 self.assertTrue(runner.merge_main())  # planning and docs leave the verdicts valid
 
+    def test_a_commit_at_the_merge_limit_runs_fresh_instead_of_asking_the_owner(self):
+        """Peers landing in coordinator.py used up three merges, and the commit became an owner
+        question with nothing to answer."""
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator = self.runner(folder, {})
+            runner.stop, runner.reload = False, False
+            runner.reexec_due = lambda: ''
+            calls, said = [], []
+            outcomes = iter([{'outcome': 'BUSY'}, {'outcome': 'SET_ASIDE', 'renamed': [{'branch_now': 'autowork/B-set-aside-1'}]}])
+            runner.engine = lambda *args: calls.append(args) or next(outcomes)
+            limit = {'allowed': False, 'merged_count': 3,
+                     'reason': 'merge adoption limit reached; adopted 3 of 3; conflict in: a.py'}
+            row = {'task': 'B', 'state': 'held', 'cause': 'conflict', 'worktree': folder, 'merge_adoption': limit}
+            with patch.object(coordinator.LOG, 'say', side_effect=said.append):
+                self.assertFalse(runner.resolve_task_conflict(row))  # a review holds the lock: next cycle
+                self.assertTrue(runner.resolve_task_conflict(row))
+                other = dict(row, merge_adoption={'allowed': False, 'reason': 'merged is only for an idle conflict-held commit'})
+                self.assertFalse(runner.resolve_task_conflict(other))
+            self.assertEqual(calls, [('--parallel-set-aside', 'B')] * 2)
+            self.assertEqual(said[0], 'B: its commit conflicted with main after 3 merges; set aside as '
+                                      'autowork/B-set-aside-1, and the task runs fresh on current main')
+            self.assertIn('it waits for the owner', said[1])
+
     def test_a_due_reload_starts_no_merge_resolver(self):
         """Each new resolver kept the reload pending, and a due reload starts no batch: commits
         were resolved again and again for hours while none landed."""

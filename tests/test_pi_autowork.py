@@ -2637,22 +2637,26 @@ class EngineTests(Fixture):
         (self.repo / 'A.txt').write_text('conflicting session change\n')
         self.git(self.repo, 'commit', '-qam', 'session conflict')
         before = len(self.runs('merge'))
-        for count, moved in [(1, False), (3, True)]:
-            with self.subTest(count=count, moved=moved):
-                base = self.git(self.repo, 'rev-parse', 'HEAD')
-                slot = dict(original, attempt=1, merged_base=base, merged_count=count)
-                slot_path.write_text(json.dumps(slot))
-                if moved:
-                    (self.repo / 'A.txt').write_text('session advanced again\n')
-                    self.git(self.repo, 'commit', '-qam', 'another session move')
-                result = self.run_runner('--once')
-                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-                self.assertEqual(len(self.runs('merge')), before, result.stdout)
-                self.assertEqual(json.loads(slot_path.read_text())['state'], 'held')
-                question = (self.repo / 'BLOCKERS.md').read_text()
-                self.assertIn('Q-A', question)
-                self.assertIn('A.txt', question)
-                self.assertIn(f'{count} of 3', question)
+        base = self.git(self.repo, 'rev-parse', 'HEAD')
+        slot_path.write_text(json.dumps(dict(original, attempt=1, merged_base=base, merged_count=1)))
+        result = self.run_runner('--once')  # main has not moved past the adopted revision
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual(len(self.runs('merge')), before, result.stdout)
+        self.assertEqual(json.loads(slot_path.read_text())['state'], 'held')
+        question = (self.repo / 'BLOCKERS.md').read_text()
+        self.assertIn('Q-A', question)
+        self.assertIn('A.txt', question)
+        self.assertIn('1 of 3', question)
+        # At the limit, after other work moved main again, the commit is set aside and the task
+        # runs fresh instead of asking the owner.
+        slot_path.write_text(json.dumps(dict(original, attempt=1, merged_base=base, merged_count=3)))
+        (self.repo / 'A.txt').write_text('session advanced again\n')
+        self.git(self.repo, 'commit', '-qam', 'another session move')
+        result = self.run_runner('--once')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(len(self.runs('merge')), before, result.stdout)
+        self.assertIn('A: its commit conflicted with main after 3 merges; set aside as autowork/A-set-aside-', result.stdout)
+        self.assertIn('A: integrated', result.stdout)
 
     def test_a_waiting_runner_commits_the_owners_quiet_planning_without_a_merge(self):
         """TOOLSET-157-cd (5): answers to held tasks stayed uncommitted while nothing merged."""

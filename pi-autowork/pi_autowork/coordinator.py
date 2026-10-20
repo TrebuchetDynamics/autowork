@@ -2211,7 +2211,10 @@ class Coordinator:
         worktree, Pi resolving the conflict beside the loop, and the engine judges the merge from
         there (TOOLSET-157-cd): once per session revision, instead of reimplementing the task.
         Up to PI_AUTOWORK_RESOLVERS (3) run at once; one at a time inside the loop, nine held
-        conflicts took about twenty minutes each while nothing else moved."""
+        conflicts took about twenty minutes each while nothing else moved. At the engine's limit of
+        three merges the commit is set aside and the task runs fresh on current main, the new worker
+        shown the earlier work: other tasks landing in the same files had used up the merges, and
+        the owner question it became had no answer."""
         task, root = row.get('task'), row.get('worktree')
         if self.stop or row.get('worker_live') or not root or not Path(root).is_dir() or task in self.resolvers:
             return False
@@ -2222,6 +2225,17 @@ class Coordinator:
         adoption = row.get('merge_adoption') or {}
         if not adoption.get('allowed'):
             reason = adoption.get('reason') or 'the engine did not authorize merge adoption'
+            if reason.startswith('merge adoption limit reached'):
+                result = self.engine('--parallel-set-aside', task)
+                if result.get('outcome') == 'BUSY':
+                    return False  # a review holds the integration lock: the next cycle sets it aside
+                if result.get('outcome') == 'SET_ASIDE':
+                    kept = ', '.join(r['branch_now'] for r in result.get('renamed') or [] if r.get('branch_now'))
+                    LOG.say(f'{task}: its commit conflicted with main after {adoption.get("merged_count")} merges; '
+                            f'set aside as {kept}, and the task runs fresh on current main')
+                    self.seen[task] = 'pending'
+                    return True
+                reason += f'; could not set it aside: {result.get("reason") or result.get("outcome")}'
             if self.seen.get('merge-refused-' + task) != reason:
                 LOG.say(f'{task}: not running the merge resolver: {reason}; it waits for the owner')
                 self.seen['merge-refused-' + task] = reason
