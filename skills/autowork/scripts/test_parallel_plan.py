@@ -263,19 +263,31 @@ class PlanTests(unittest.TestCase):
                 self.assertEqual([w['id'] for w in result['waiting']], ['B', 'C'] if alone else ['B'])
                 self.assertIn(reason, result['waiting'][0]['reason'])
 
-    def test_overlapping_touches_never_hold_a_task_and_independent_work_ranks_first(self):
-        """TOOLSET-161-17: Touches schedule work but never hold it; integration settles overlap."""
+    def test_a_shared_file_waits_for_its_owner_while_shared_directories_only_rank(self):
+        """Tasks naming the same file collided at merge: each conflict cost a resolver run and a
+        second review. A shared file now waits; a directory or glob still only ranks
+        (TOOLSET-161-17: wide Touches once held 34 tasks), and an idle claim holds nothing."""
         from parallel_plan import plan
-        claim = task('CL', 'shared/', status='in_progress')
-        tasks = [task('T1', 'shared/x.py'), task('T2', 'shared/x.py'), task('T3', 'free.py'),
-                 task('T4', 'other.py', resources='db'), task('T5', 'more.py', resources='db')]
+        claim = task('CL', 'shared/x.py', status='in_progress')
+        tasks = [task('T1', 'shared/x.py'), task('T2', 'shared/x.py, t2.py'), task('T3', 'free.py'),
+                 task('T4', 'other.py', resources='db'), task('T5', 'more.py', resources='db'),
+                 task('T6', 'shared/')]
         result = plan(tasks, all_tasks=[claim, *tasks])
-        # T2 shares T1's file: it still runs, after the independent work; T5 shares a resource.
-        self.assertEqual([t['id'] for t in result['dispatch']], ['T1', 'T3', 'T4', 'T2'])
-        self.assertEqual([w['id'] for w in result['waiting']], ['T5'])
-        self.assertIn('shared resource', result['waiting'][0]['reason'])
-        result = plan([task('B', 'run.py'), task('C', 'c.py')], [task('RUN', 'run.py')])
-        self.assertEqual([t['id'] for t in result['dispatch']], ['C', 'B'])  # B overlaps running work: last
+        # T6 shares only a directory with T1: it runs, after the independent work.
+        self.assertEqual([t['id'] for t in result['dispatch']], ['T1', 'T3', 'T4', 'T6'])
+        reasons = {w['id']: w['reason'] for w in result['waiting']}
+        self.assertEqual(reasons['T2'], 'shares shared/x.py with T1; starts after it lands')
+        self.assertIn('shared resource', reasons['T5'])
+        # Running work (a worker, or a commit not landed yet) holds its files the same way.
+        result = plan([task('B', 'run.py'), task('C', 'c.py')], [task('RUN', 'run.py, lib/')])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['C'])
+        self.assertEqual(result['waiting'][0]['blocked_by'], ['RUN'])
+        result = plan([task('D', 'lib/d.py'), task('E', 'lib/*.py')], [task('RUN', 'lib/')], protected_files=[])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['D', 'E'])  # a directory only ranks
+        # A lower task naming a file that a waiting higher-priority one names waits behind it.
+        result = plan([task('H', 'run.py, h.py'), task('L', 'h.py')], [task('RUN', 'run.py')])
+        self.assertEqual(result['dispatch'], [])
+        self.assertEqual({w['id']: w['reason'] for w in result['waiting']}['L'], 'shares h.py with H, which goes first')
         # A serial S is not exclusive (TOOLSET-160-df): independent T3 runs beside it.
         tasks = [task('T1', 'shared/x.py'), task('S', 'package.json'), task('T3', 'free.py')]
         result = plan(tasks, all_tasks=[claim, *tasks], protected_files=[])  # shared/ holds no manifest
@@ -314,7 +326,7 @@ class PlanTests(unittest.TestCase):
         """TOOLSET-171-35: 28 independent tasks idled behind one exclusive task."""
         from parallel_plan import plan
         exclusive = task('X', 'x.py', resources='exclusive')
-        tasks = [exclusive, task('B', 'b.py'), task('C', 'x.py')]
+        tasks = [exclusive, task('B', 'b.py'), task('C', 'c.py')]
         running = [task('RUN', 'run.py')]
         early = plan(tasks, running, drain_after=1800, waited={'X': 60})
         self.assertEqual([t['id'] for t in early['dispatch']], ['B', 'C'])  # other work backfills

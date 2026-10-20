@@ -108,10 +108,10 @@ to the one before it and leaves none testable alone.
 
 ## Disjoint write sets
 
-`Touches:` is the task's expected write set. Parallel Autowork uses it only to run
-likely-independent work first and never holds a task for it; overlapping work is
-merged in priority order, and a real conflict costs a resolver run. The plan is what
-keeps write sets apart:
+`Touches:` is the task's expected write set. Parallel Autowork runs likely-independent
+work first, and a task naming a file that unlanded work also names waits until it lands
+(a directory or glob only ranks). The plan is what keeps write sets apart, so tasks can
+run together:
 
 - Tasks that can run together share no file unless one depends on the other. Add the
   `Dependencies:` edge, or re-cut so each file has one owner per batch.

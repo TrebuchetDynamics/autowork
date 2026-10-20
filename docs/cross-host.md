@@ -280,8 +280,10 @@ test that passes when rerun alone counts as flaky. The rejection names the new f
 retry's prompt quotes them. The same command is main's check when `PI_AUTOWORK_MAIN_CHECK` is
 unset; a repository with neither gets one `FULL-CHECK` question in BLOCKERS.md.
 
-`Touches:` only schedules work (TOOLSET-161-17): tasks whose declared files overlap are
-dispatched after independent ones, never held, and a worker may change whatever its task
+`Touches:` schedules work: a task naming a file that running work, an unlanded commit or
+a waiting higher-priority task also names waits until that one lands; directory and glob
+overlap only ranks it after independent work (TOOLSET-161-17). While slots idle on such
+waits, the DOCS-MAINTAINER re-cuts the waiting tasks. A worker may change whatever its task
 needs. Finished work integrates one task at a time in priority order; the merge settles
 overlap, and a real conflict goes to the merge resolver. Only coordinator-owned files and
 undeclared protected files (manifests, lock files, schema, migration and CI files) hold a
