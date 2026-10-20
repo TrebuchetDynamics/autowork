@@ -274,6 +274,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A review whose merged tree had a failing test no longer waits hours for a quiet
+  rerun: it waits at most `PI_AUTOWORK_QUIET_WAIT` (default 900 s) for this repository's
+  main check and a host check slot, then reruns the failures one at a time without one.
+  Queued behind other runners' full suites, a two-minute rerun had held a review for
+  three hours.
+
 - A day-old session rotates even when its worktree holds regenerable build output
   (`target/`, `build/`, `.dart_tool/` that Git ignores): it is removed first. Kept for
   `.dart_tool/` alone, a session never rotated and said so every cycle; a session kept for
