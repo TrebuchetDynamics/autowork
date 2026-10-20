@@ -8,12 +8,13 @@ no extra approval step or execution authority.
 
 <!-- pi-autowork:questions:start -->
 
-### Q-TOOLSET-230-bf — USER_DECISION — effort investigate — unblocks 3
+### Q-TOOLSET-200-c1 — USER_DECISION — effort investigate — unblocks 1
 
-- Task: TOOLSET-230-bf — Integration and closeout move the runner's branch with a ref update, never through a working copy
-- Needs: merge conflict; worker and canonical checkout preserved
-- Since: 2026-10-20T08:48:20Z
-- Answer: Read the evidence (the worker's report and validation log under .git/autowork-execution/slot-data/TOOLSET-230-bf/), then rescope or split TOOLSET-230-bf in its TODO.md entry. The runner reruns it when the entry changes.
+- Task: TOOLSET-200-c1 — A status read waits for the writer lock, and a failed read never means nothing is running
+- Needs: merge conflict; worker and canonical checkout preserved; adopted 1 of 3; conflict in: pi-autowork/pi_autowork/coordinator.py
+- Since: 2026-10-20T13:17:02Z
+- Answer: Read the evidence (the worker's report and validation log under .git/autowork-execution/slot-data/TOOLSET-200-c1/), then rescope or split TOOLSET-200-c1 in its TODO.md entry. The runner reruns it when the entry changes.
+- Kind: held
 
 <!-- pi-autowork:questions:end -->
 
