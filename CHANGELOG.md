@@ -288,6 +288,10 @@ claim of a tagged release, completed installation or live workflow qualification
   (`target/`, `build/`, `.dart_tool/` that Git ignores): it is removed first. Kept for
   `.dart_tool/` alone, a session never rotated and said so every cycle; a session kept for
   other files now says so once.
+- A batch of four or more candidates whose full check fails is checked again as two halves
+  (`batch-split.json`), and only a failing batch of two or three sends its candidates one
+  at a time. One broken test sent all six members of each failed batch to an hour-long
+  review of their own, and 23 finished commits waited about a day.
 - A bounded check reaps the processes it adopts as a subreaper once they exit. Unreaped,
   a test fixture's finished worker stayed a zombie that still looked alive, so inside
   every review about 110 runner tests waited out their 120 s limit and failed. Reviews ran

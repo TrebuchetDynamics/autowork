@@ -663,6 +663,24 @@ class BatchFailureTests(unittest.TestCase):
             self.assertEqual(self.coordinator(folder).batch_due([('A', 'a2'), ('B', 'b1')]), [])
             self.assertEqual(self.coordinator(folder).batch_due([('A', 'a2'), ('E', 'e1')]), ['A', 'E'])
 
+    def test_a_failed_batch_of_four_or_more_is_split_in_halves_until_the_failing_one_is_alone(self):
+        """23 commits waited: each failed batch of six sent all six to a review of their own."""
+        reported = [(t, t.lower()) for t in 'ABCDEFG']
+        with tempfile.TemporaryDirectory() as folder, patch('pi_autowork.coordinator.LOG'):
+            runner = self.coordinator(folder)
+            self.assertEqual(runner.batch_due(reported), list('ABCDEFG'))
+            runner.batch_done({'outcome': 'BATCH_GATE_FAILED', 'tasks': list('ABCDEF')})  # G was past the size
+            self.assertEqual(self.coordinator(folder).batch_due(reported), list('ABC'))
+            runner = self.coordinator(folder)
+            self.assertEqual(runner.batch_due(reported), list('DEF'))  # restarted between the halves
+            runner.batch_done({'outcome': 'BATCH_GATE_FAILED', 'tasks': list('DEF')})  # three: one at a time
+            landed = [r for r in reported if r[0] not in 'ABC']
+            self.assertEqual(self.coordinator(folder).batch_due(landed), [])  # D, E and F alone; G waits for a pair
+            # A half that shrinks to one candidate (the others landed) sends it alone too.
+            Path(folder, 'batch-split.json').write_text(json.dumps([['G@g', 'H@h'], ['I@i', 'J@j']]))
+            self.assertEqual(self.coordinator(folder).batch_due([('G', 'g'), ('I', 'i'), ('J', 'j')]), ['I', 'J'])
+            self.assertIn('G@g', json.loads(Path(folder, 'batch-failed.json').read_text()))
+
 
 class BusyLineTests(unittest.TestCase):
     """The wait for a session in the main checkout is said once per session: its changing status

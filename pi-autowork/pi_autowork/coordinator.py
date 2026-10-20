@@ -248,9 +248,13 @@ class Coordinator:
         failed = self.batch_failed()
         fresh = [(t, commit) for t, commit in reported if not worker.batch_record(self.state, t).exists()
                  and f'{t}@{commit}' not in failed]
+        if size < 2 or len(fresh) < 2 or self.reexec_due() or self.batch_pending():
+            return []  # land the last batch first: a new one would be built on another tree
+        half = self.batch_half({f'{t}@{commit}' for t, commit in fresh})
+        if half:
+            fresh = [(t, commit) for t, commit in fresh if f'{t}@{commit}' in half]
         key = ','.join(f'{t}@{commit}' for t, commit in sorted(fresh))
-        if (size < 2 or len(fresh) < 2 or self.seen.get('batch-tried') == key or self.reexec_due()
-                or self.batch_pending()):  # land the last batch first: a new one would be built on another tree
+        if self.seen.get('batch-tried') == key:
             return []
         self.seen['batch-tried'] = key
         self.batch_revisions = [f'{t}@{commit}' for t, commit in fresh]
@@ -263,6 +267,31 @@ class Coordinator:
             return set(json.loads((self.state / 'batch-failed.json').read_text()))
         except (OSError, ValueError, TypeError):
             return set()
+
+    def batch_half(self, fresh):
+        """The next half of a failed batch still to be checked, or None. A failed batch was split in
+        two rather than sent one at a time: six candidates each waited out a review of their own,
+        about an hour each, because one of them broke a test. A half no longer fresh (landed, or a
+        new revision) shrinks; one left with a single candidate integrates it alone."""
+        path = self.state / 'batch-split.json'
+        try:
+            halves = [h for h in json.loads(path.read_text()) if isinstance(h, list)]
+        except (OSError, ValueError, TypeError):
+            return None
+        found, alone = None, []
+        while halves and found is None:
+            half = [r for r in halves.pop(0) if r in fresh]
+            if len(half) >= 2:
+                found = half
+            else:
+                alone += half
+        if alone:
+            (self.state / 'batch-failed.json').write_text(json.dumps(sorted(self.batch_failed() | set(alone))) + '\n')
+        if halves:
+            path.write_text(json.dumps(halves) + '\n')
+        else:
+            path.unlink(missing_ok=True)
+        return found
 
     def start_batch(self, tasks):
         """TOOLSET-258-07: one full check on the candidates' merged tree and their reviews side
@@ -282,11 +311,22 @@ class Coordinator:
 
     def batch_done(self, result):
         if result.get('outcome') == 'BATCH_GATE_FAILED':
-            LOG.say(f'Batch: the full check failed on the merged tree ({str(result.get("reason") or "")[:300]}); '
-                    'its candidates integrate one at a time')
-            checked = set(result.get('tasks') or [])
-            failed = self.batch_failed() | {r for r in getattr(self, 'batch_revisions', [])
-                                             if r.split('@')[0] in checked}
+            failure = f'Batch: the full check failed on the merged tree ({str(result.get("reason") or "")[:300]}); '
+            revisions = {r.split('@')[0]: r for r in getattr(self, 'batch_revisions', [])}
+            checked = [revisions[t] for t in result.get('tasks') or [] if t in revisions]
+            if len(checked) >= 4:
+                middle = len(checked) // 2
+                path = self.state / 'batch-split.json'
+                try:
+                    halves = json.loads(path.read_text())
+                except (OSError, ValueError):
+                    halves = []
+                path.write_text(json.dumps([checked[:middle], checked[middle:], *halves]) + '\n')
+                LOG.say(failure + f'checking its halves ({len(checked[:middle])} and {len(checked[middle:])} '
+                        'candidates) to find the one that fails')
+                return
+            LOG.say(failure + 'its candidates integrate one at a time')
+            failed = self.batch_failed() | set(checked)
             (self.state / 'batch-failed.json').write_text(json.dumps(sorted(failed)) + '\n')
             return
         parts = [f'{len(result.get("passed") or [])} passed ({", ".join(result.get("passed") or []) or "none"})']
