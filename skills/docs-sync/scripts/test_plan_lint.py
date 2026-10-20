@@ -205,6 +205,14 @@ class WarningTests(unittest.TestCase):
         self.assertEqual(len(found), 1)
         self.assertIn('hot file src/a.py (named by 3 open tasks)', found[0]['message'])
 
+    def test_new_file_overlaps_only_an_exact_name(self):
+        # A file that does not exist yet is created by whoever names it; a directory
+        # another task declares does not make it shared.
+        result = self.lint(now=task('T-1', touches='src/new_test.py') + task('T-2', touches='src/'))
+        self.assertEqual([f for f in findings(result, 'touches-overlap', 'warnings') if f['task'] == 'T-1'], [])
+        result = self.lint(now=task('T-1', touches='src/new_test.py') + task('T-2', touches='src/new_test.py'))
+        self.assertTrue([f for f in findings(result, 'touches-overlap', 'warnings') if f['task'] == 'T-1'])
+
     def test_overlap_with_transitive_dependency_is_fine(self):
         result = self.lint(now=task('T-1') + task('T-2', touches='src/b.py', deps='T-1.')
                            + task('T-3', touches='src/a.py', deps='T-2.'))

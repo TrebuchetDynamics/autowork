@@ -549,8 +549,11 @@ class Linter:
         independent = [other for other in context if other != tid
                        and other not in self.closure(tid) and tid not in self.closure(other)]
         for path in self.info[tid]['touches']:
+            # A file that does not exist yet is shared only with a task naming it exactly.
+            new = not any(ch in path for ch in '*?[') and not path.endswith('/') and not (self.repo / path).exists()
             others = [other for other in independent
-                      if any(self.parsers.intersects(path, q) for q in self.info[other]['touches'])]
+                      if any(q == path if new else self.parsers.intersects(path, q)
+                             for q in self.info[other]['touches'])]
             if not others:
                 continue
             reported.add(path)
