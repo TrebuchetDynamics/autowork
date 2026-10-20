@@ -5,6 +5,16 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ## [Unreleased]
 
+### Added
+
+- `goals.py plan-lint REPO [--tasks ID,...] [--json] [--strict]` lints TODO.md task
+  contracts before dispatch with the runner's own parsers. Errors (exit 1): missing or
+  duplicate required fields, missing or unparseable Touches, coordinator files in
+  Touches, unknown or cyclic dependencies, and Checks commands naming a test file or
+  module that neither exists nor is created by the task's Touches. Warnings: Touches
+  overlapping another open task with no dependency path, hot files, directories,
+  serial paths, oversized tasks and Acceptance that names no test.
+
 ### Changed
 
 - The terminal TUI leaves mouse dragging to terminal text selection by default.
