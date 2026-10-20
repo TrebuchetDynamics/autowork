@@ -54,6 +54,42 @@ class MainCheckTests(unittest.TestCase):
             os.chmod(loose, 0o777)
             self.assertRaises(ValueError, main_check.slot_root)  # the pool stays private
 
+    def test_a_review_is_admitted_before_waiting_main_checks_until_one_has_waited_half_an_hour(self):
+        """Every runner's main check held the host's slots while a review that lands work
+        waited behind them."""
+        import fcntl
+
+        class Asked(Exception):
+            pass
+
+        def ahead(background):
+            seen = []
+            def waiting(count):
+                seen.append(count)
+                raise Asked
+            with self.assertRaises(Asked), main_check.check_slot(waiting, background):
+                pass
+            return seen[0]
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, PI_AUTOWORK_CHECK_ROOT=tmp,
+                                                               PI_AUTOWORK_CHECK_SLOTS='1'):
+            os.chmod(tmp, 0o700)
+            held = []
+            def hold(name):
+                f = open(Path(tmp) / name, 'a')
+                fcntl.flock(f, fcntl.LOCK_EX)
+                held.append(f)
+            try:
+                hold('slot-0')  # a running check
+                hold(f'wait-1-{time.monotonic_ns() - 10**9:020d}-1')  # a main check queued first
+                self.assertEqual(ahead(background=False), 1)  # only the running check
+                self.assertEqual(ahead(background=True), 2)
+                hold(f'wait-1-{time.monotonic_ns() - 1801 * 10**9:020d}-2')  # waited over half an hour
+                self.assertEqual(ahead(background=False), 2)
+            finally:
+                for f in held:
+                    f.close()
+
     def test_reruns_are_alone_in_their_directory_and_bounded(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

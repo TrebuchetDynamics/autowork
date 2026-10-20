@@ -73,9 +73,29 @@ def slot_root():
     return root
 
 
+# A background main check waiting this long is admitted in turn with reviews, so a busy fleet
+# never leaves main unchecked.
+BACKGROUND_WAIT = 1800
+
+
+def ticket_rank(name, now=None):
+    """(class, enqueued) of a `wait-<class>-<monotonic ns>-<pid>` ticket; lower is admitted first.
+
+    Class 0 is a review's suite, class 1 a background main check: main checks of every runner
+    held the host's slots while a review that lands work waited behind them."""
+    try:
+        _, kind, stamp, _ = name.split('-')
+        kind, stamp = int(kind), int(stamp)
+    except ValueError:
+        return (0, 0)
+    now = time.monotonic_ns() if now is None else now
+    return (0 if now - stamp >= BACKGROUND_WAIT * 10**9 else kind, stamp)
+
+
 @contextmanager
-def check_slot(waiting):
-    """FIFO admission to host-wide flock slots; dead tickets are cleaned on the next poll.
+def check_slot(waiting, background=False):
+    """Admission to host-wide flock slots: reviews before background main checks, each in
+    arrival order; dead tickets are cleaned on the next poll.
 
     Only tickets are unlinked. Slot/mutex inodes must stay put, including across restarts.
     The command inherits the lease: killing its supervisor does not release a still-live check.
@@ -95,9 +115,10 @@ def check_slot(waiting):
                 fcntl.flock(mutex, fcntl.LOCK_EX)
                 try:
                     if ticket is None:
-                        ticket = (root / f'wait-{time.monotonic_ns():020d}-{os.getpid()}').open('x')
+                        ticket = (root / f'wait-{int(background)}-{time.monotonic_ns():020d}-{os.getpid()}').open('x')
                         fcntl.flock(ticket, fcntl.LOCK_EX)
-                    ahead = 0
+                    ahead, now = 0, time.monotonic_ns()
+                    mine = ticket_rank(Path(ticket.name).name, now)
                     for path in sorted(root.glob('wait-*')):
                         if path == Path(ticket.name):
                             continue
@@ -105,7 +126,7 @@ def check_slot(waiting):
                             try:
                                 fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
                             except BlockingIOError:
-                                ahead += path.name < Path(ticket.name).name
+                                ahead += ticket_rank(path.name, now) < mine
                             else:
                                 path.unlink()  # dead waiter, including SIGKILL
                     busy = 0
@@ -144,8 +165,9 @@ class Stopped(Exception):
     """The caller was told to stop while its suite waited or ran; the suite is killed."""
 
 
-def run_command(cmd, checkout, limit, progress, output=None, stop=None):
+def run_command(cmd, checkout, limit, progress, output=None, stop=None, background=False):
     """Run a full suite with its complete timeout after admission; report queue progress.
+    A background main check is admitted after the reviews waiting with it.
 
     The suite runs in its own session, which a stop sent to the caller's group never reaches:
     with ``stop`` (a callable), a true answer kills it and raises Stopped instead.
@@ -177,7 +199,7 @@ def run_command(cmd, checkout, limit, progress, output=None, stop=None):
         notify('waiting', ahead=ahead)
 
     try:
-        with check_slot(wait) as lease:
+        with check_slot(wait, background) as lease:
             if queued:
                 transition(False)
             notify('running', started=time.time())
@@ -463,7 +485,7 @@ def line(record, now=None):
 
 if __name__ == '__main__':
     if sys.argv[1] == '--run':
-        code, _ = run_command(sys.argv[2], os.getcwd(), float(sys.argv[3]), sys.argv[4])
+        code, _ = run_command(sys.argv[2], os.getcwd(), float(sys.argv[3]), sys.argv[4], background=True)
         sys.exit(code if code >= 0 else 128 - code)
     # Main's check may differ from the repository's gate check: name it here, not by env order.
     rerun_failures(*sys.argv[1:], cmd=command(repo=sys.argv[2]))
