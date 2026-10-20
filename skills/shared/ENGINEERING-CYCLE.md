@@ -38,7 +38,7 @@ Installation makes skills available, not mandatory to load or invoke.
 | Affected docs, accepted decisions or task metadata | Narrow docs-sync Maintain; no repository bootstrap. |
 | User requirements that evidence cannot answer | plan-with-me; Grill Me only for requested/advisable adversarial questioning. |
 | Specific engineering method gap | Engineering reference adapter and the relevant protocol only. |
-| Slow, redundant or low-signal tests, or a suite past the [test budget](#test-budget) | Engineering `--protocol test-suite-optimization`: audit, then one task per change. |
+| Slow, redundant or low-signal tests, or a suite past the [test budget](#test-budget) | Engineering `--protocol test-suite-optimization`: audit by default; authorized apply verifies one bounded batch. |
 | Material implementation or simplification choice | [Ponytail](../autowork/references/ponytail.md): smallest complete change, with concrete reuse and verification evidence. |
 | Review of that implementation | Ponytail review criteria in the existing required review lane; resolve separate versus integrated guidance from the installed version. |
 | UI/design work | Impeccable when relevant; no design pass for unrelated changes. |
@@ -55,22 +55,47 @@ changes a decision or artifact; never manufacture receipts for unused skills.
 
 ## Test budget
 
-Tests are evidence for a change, not a deliverable. Keep them few and thin:
+Tests are evidence, not a count target. Aim for **minimum sufficient regression
+protection**: the smallest set of reliable oracles covering the change's distinct
+behavior and risks. Use the canonical
+[test-suite optimization method](../engineering/local/test-suite-optimization/PROTOCOL.md)
+for its matrix, evidence, retained-risk mapping and review rules.
 
-- One behavior change adds or extends at most one test, at its public seam,
-  preferably as a new case in an existing test or table. A bug fix gets one
-  regression test that fails without the fix.
-- No new test for documentation, prose, configuration or a pure rename, and none
-  that restates the implementation, only asserts a mock's calls or repeats a case.
-- Each test uses the smallest fixture, one action and the assertions that would
-  catch the defect. Share read-only setup; wait on an event or a bounded poll, not
-  a fixed sleep.
-- Run the focused tests for the changed code and the task's `Checks:` while working;
-  run the repository's normal check once before the commit, not after every edit.
-- A large suite is optimized, not grown: when the normal offline check takes over
-  10 minutes, a test module passes about 1,000 lines, or a change would add a
-  near-duplicate test, record one `test-suite-optimization` audit task (one open
-  per repository) and keep the change's own tests within this budget.
+- Start a bug fix with one discriminating regression that fails without the fix at
+  the right public seam; extend an existing case/table when sufficient. This is a
+  default, not a blanket one-test cap. Extra cases/layers need a distinct risk and
+  review rationale (for example a real boundary a unit mock cannot establish).
+  Do not generate a test per function/line or repeat an implementation-mirroring
+  TDD loop. Each case should identify its behavior/risk by useful name or matrix.
+- Prose-only documentation and pure renames usually need no new runtime test;
+  validate their relevant references/contracts. Config, parser or migration
+  **behavior** can need regression coverage. Equal coverage or a never-failed CI
+  history does not make a case redundant. An assertless no-exception smoke or a
+  contractual interaction can be a valid oracle; internal mock calls with no owned
+  contract, tautologies and duplicated cases are not protection by themselves.
+- Use the smallest fixture and one coherent behavior per case. Share immutable
+  setup; preserve mutable-state isolation. Prefer events or bounded polls to sleeps.
+  Consolidation must preserve named bug traceability, unique risks and identifiable
+  failures, not merely reduce methods or test lines.
+- Record repository-specific per-suite CI wall-time limits and a justified new-case
+  budget per change/PR, environment/baseline and the review rule for unique-risk
+  exceptions. Unknown costs/history stay unknown. Budget exceptions never waive
+  safety, security, authorization, data-loss or required qualification obligations.
+- Run focused tests and the task's `Checks:` while working, not a full suite after
+  each edit. Run the required normal gate once for final acceptance under the
+  repository's execution contract; if the coordinator owns that gate, retain its
+  pending result rather than claim it passed. Optional impact selection needs sound
+  dependency mapping, unknown-impact fallback and the existing full gate or an
+  explicitly agreed periodic full run; it must not weaken CI.
+- Repository thresholds govern audit triggers; absent those, over 10 minutes for
+  the normal offline check, roughly 1,000 lines in a test module, or a near-duplicate
+  addition are signals to reuse/record one `test-suite-optimization` audit task
+  (at most one open per repository), not reasons to delete tests. Review the slowest/
+  noisiest suites quarterly in existing maintenance, without creating a scheduled job.
+  Default to audit; explicit apply or existing implementation authority permits
+  bounded verified edits. Quarantine requires owner, reason, expiry, issue and lost
+  protection/risk, visible reporting and repair/justified retirement/escalation at
+  expiry; never silently hide a critical regression.
 
 ## Autoresearch evidence enters the same cycle
 
@@ -138,7 +163,7 @@ namespace or assume another profile's home. Existing imports are left intact.
 | Accepted work needs bounded tasks | `planning-and-task-breakdown` | Add dependencies, scope and checks to canonical `goals.json` and root `TODO.md`. |
 | A consequential planning assumption needs scrutiny | `doubt-driven-development` | Test the artifact/contract; record corrections and unresolved risks. |
 | Implement an eligible slice | `incremental-implementation` | Keep one observable result, owned files and task ID. |
-| Changed logic or a bug | `test-driven-development` | One discriminating red/green test within the [test budget](#test-budget). |
+| Changed logic or a bug | `test-driven-development` | Minimum sufficient red/green protection at the right seams within the [test budget](#test-budget). |
 | Review an implemented slice | `code-review-and-quality` | Use its review criteria within the required project review workflow. |
 | Ambiguous new product direction | `idea-refine` | Refine the existing outcome and alternatives; do not reopen accepted scope. |
 | Missing or overloaded task context | `context-engineering` | Give the worker only relevant constraints, source, decisions and checks. |

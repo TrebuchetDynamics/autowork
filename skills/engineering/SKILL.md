@@ -31,10 +31,15 @@ Read the returned protocol and relevant supporting references.
 
 The adapter also carries toolset-written protocols under `local/`, versioned with this
 repository rather than pinned, selected only with `--protocol` and never in a phase
-bundle: `test-suite-optimization` audits slow, redundant or low-signal tests and turns
-each consolidation or speed-up into its own task without losing defect detection; use it
-when a suite passes the [test budget](../shared/ENGINEERING-CYCLE.md#test-budget). If the method is
-unclear, consult the menu in [engineering cycle](../shared/ENGINEERING-CYCLE.md).
+bundle: [test-suite-optimization](local/test-suite-optimization/PROTOCOL.md) defines
+minimum sufficient regression protection for slow, redundant or low-signal tests.
+Default to audit of the named/current repository; read-only saves nothing. Explicit
+apply or existing implementation authority permits a bounded verified batch without
+another approval ceremony. Preserve risk-to-oracle mappings, named bug traceability
+and required gates; use proportional evidence and disclose unknowns, not count targets.
+Apply the [test budget](../shared/ENGINEERING-CYCLE.md#test-budget), including justified
+unique-risk exceptions. If the method is unclear, consult the menu in
+[engineering cycle](../shared/ENGINEERING-CYCLE.md).
 Stop when the gap is resolved; do not load every protocol or invent a skill quota.
 
 ### Optional phase bundles
@@ -58,8 +63,9 @@ python3 "<engineering-skill-dir>/scripts/route.py" implement --domain frontend-u
 ```
 
 Omit an inapplicable technique (for example TDD for a prose-only correction). Test-first
-work stays within the [test budget](../shared/ENGINEERING-CYCLE.md#test-budget): the
-upstream protocols' advice to add tests does not raise it.
+work uses the [test budget](../shared/ENGINEERING-CYCLE.md#test-budget): start with
+one discriminating regression where sufficient; review extra cases for distinct risks.
+Upstream advice to add tests does not justify duplicates or waive safety obligations.
 
 This vendored pack is the default source for Addy methods, including when a profile
 has no external imports. Existing native imports are preserved but do not take
