@@ -22,6 +22,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- A waiting task no longer holds the files it names against lower-priority tasks: waits
+  chained on one old unlanded commit left every worker idle. A free file still goes to
+  the higher-priority task first.
 - A finished commit still waiting to merge a day after dispatch (`PI_AUTOWORK_STALE_HOURS`,
   default 24) is set aside and its task runs fresh on current main, the new worker shown
   the earlier branch: day-old commits conflicted with each other at every landing and held

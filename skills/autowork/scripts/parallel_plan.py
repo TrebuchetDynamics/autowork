@@ -351,16 +351,16 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
             return 'dependency: held ' + b['id'] if depends(a, b) else ''
         if depends(a, b) or depends(b, a):
             return 'dependency conflict with ' + b['id']
-        # A file both name waits for the other to land, and for a higher-priority task waiting on
-        # it. Directory and glob overlap only rank (TOOLSET-161-17), and an idle claim holds nothing.
+        # A file both name waits for the other to land. Directory and glob overlap only rank
+        # (TOOLSET-161-17), and an idle claim holds nothing. A waiting task holds no files: it has
+        # no code to conflict with, and its own wait on an old commit held every lower task that
+        # shared a file with it, until no worker ran. Once a file is free it goes first anyway.
         if claim or reserved:  # idle claim or waiting task
             other = ('in_progress ' if claim else '') + b['id']
             if resources(a) & resources(b):
                 return 'shared resource with ' + other
             if serial(a) and serial(b):
                 return 'serial path shared with ' + other
-            if reserved and (file := shared_file(a, b)):
-                return f'shares {file} with {other}, which goes first'
             return ''
         alone = '' if b['id'] in finished else exclusive(a) or exclusive(b)
         if alone:

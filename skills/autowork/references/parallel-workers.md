@@ -222,9 +222,9 @@ SDKs and package caches remain in `AUTOWORK_CACHE`, independently of temp cleanu
 
 - `Touches:` is a comma-separated list of repository-relative paths or globs the
   task is expected to change; `*` also matches across `/`, and a trailing `/` covers a
-  directory. A task that names a file (not a directory or glob) that running work, a
-  commit not landed yet, or a waiting higher-priority task also names waits until that
-  task lands: started together, they conflict at merge, and each conflict costs a
+  directory. A task that names a file (not a directory or glob) that running work or a
+  commit not landed yet also names waits until that task lands (a waiting task holds no
+  files; a free file goes to the higher-priority task first): started together, they conflict at merge, and each conflict costs a
   resolver run and a second review. Directory and glob overlap only ranks a task after
   independent ones (TOOLSET-161-17), and an idle claim holds nothing. A worker may change
   whatever else its task needs; the merge into the base, in priority order, settles the

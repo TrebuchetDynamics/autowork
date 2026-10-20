@@ -356,10 +356,13 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(result['waiting'][0]['blocked_by'], ['RUN'])
         result = plan([task('D', 'lib/d.py'), task('E', 'lib/*.py')], [task('RUN', 'lib/')], protected_files=[])
         self.assertEqual([t['id'] for t in result['dispatch']], ['D', 'E'])  # a directory only ranks
-        # A lower task naming a file that a waiting higher-priority one names waits behind it.
+        # A waiting higher-priority task holds no files: chained waits on one old commit once left
+        # every worker idle. The free file goes to the higher task first when both can start.
         result = plan([task('H', 'run.py, h.py'), task('L', 'h.py')], [task('RUN', 'run.py')])
-        self.assertEqual(result['dispatch'], [])
-        self.assertEqual({w['id']: w['reason'] for w in result['waiting']}['L'], 'shares h.py with H, which goes first')
+        self.assertEqual([t['id'] for t in result['dispatch']], ['L'])
+        result = plan([task('H', 'h.py'), task('L', 'h.py')])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['H'])
+        self.assertEqual(result['waiting'][0]['reason'], 'shares h.py with H; starts after it lands')
         # A serial S is not exclusive (TOOLSET-160-df): independent T3 runs beside it.
         tasks = [task('T1', 'shared/x.py'), task('S', 'package.json'), task('T3', 'free.py')]
         result = plan(tasks, all_tasks=[claim, *tasks], protected_files=[])  # shared/ holds no manifest
