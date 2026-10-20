@@ -1736,16 +1736,6 @@
     },
     {
       "depends_on": [
-        "TOOLSET-129-c4"
-      ],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-289-71",
-      "section": "Next",
-      "status": "open",
-      "title": "Task status shows Active, Mergeable, Waiting or Blocker with a detail"
-    },
-    {
-      "depends_on": [
         "AUDIT-QUOTED-SECRET",
         "TOOLSET-092-18",
         "TOOLSET-100-78"
@@ -3361,6 +3351,16 @@
       "section": "Done",
       "status": "done",
       "title": "A task whose last attempt failed its review is reworked once with the findings, never left silently held"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-129-c4"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-289-71",
+      "section": "Done",
+      "status": "done",
+      "title": "Task status shows Active, Mergeable, Waiting or Blocker with a detail"
     },
     {
       "depends_on": [

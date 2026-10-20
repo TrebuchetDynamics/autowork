@@ -847,7 +847,7 @@ example-repo    Verifying        None
 another-repo    Working          1 decision
 
 example-repo
-2 executing | 1 verifying | 4 to land
+2 active | 1 verifying | 4 mergeable
 Next: finish current review
 Evidence: current snapshot, observed age
 

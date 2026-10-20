@@ -17,6 +17,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Task status reads as one headline plus a detail (TOOLSET-289-71): the fleet table's
+  Run, Land, Wait and Held columns are now Active, Mergeable, Waiting and Blocker; task
+  rows and lanes show `Active · Verifying`, `Waiting · Implemented`, `Blocker · Conflict ·
+  Agent repair`. An implemented commit no longer counts as ready to land: only an
+  integrated one (checks and review passed) is Mergeable. A Blocker says Needs you only
+  when the task has an open question; an overlap hold, which the engine lifts itself, is
+  Waiting.
 - The autowork core SKILL.md is back to 12.6 KB of its 16 KB budget: partial-delivery
   discipline, the canonical-checkout/session/lease rules and interactive-update reporting moved
   word for word into `references/iteration-and-decisions.md`, `references/owner-cycle.md` and

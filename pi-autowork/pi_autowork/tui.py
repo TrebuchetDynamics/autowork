@@ -300,7 +300,7 @@ class WorkerScreen(Screen):
 class TasksScreen(Screen):
     """One runner's open tasks in priority (TODO.md) order: filter them, re-sort them, clear or
     set aside a hold, answer the owner's questions. Refreshed like the main screen."""
-    VIEW_NAMES = {'all': 'All', 'working': 'Working', 'held': 'Held', 'waiting': 'Waiting', 'questions': 'Questions'}
+    VIEW_NAMES = {'all': 'All', 'working': 'Active', 'held': 'Blocker', 'waiting': 'Waiting', 'questions': 'Questions'}
     BINDINGS = [Binding('escape,q', 'app.pop_screen', 'Back', show=False),
                 Binding('tab', 'step_view(1)', 'next view', show=False),
                 Binding('shift+tab', 'step_view(-1)', 'previous view', show=False),
@@ -667,10 +667,12 @@ class FleetApp(App):
 
     # The counts come right after the name, as narrow columns that always show: after a
     # 44-column Needs they scrolled off an 80-column terminal. Needs and Now share the rest.
-    RUNNER_COLUMNS = ('Runner', 'State', 'Run', 'Land', 'Wait', 'Held', 'Total')
+    RUNNER_COLUMNS = ('Runner', 'State', 'Active', 'Mergeable', 'Waiting', 'Blocker', 'Total')
     RUNNER_TEXT = ('Needs', 'Now')
-    LANE_COLUMNS = ('Task', 'Phase', 'Try', 'For', 'Quiet')
+    LANE_COLUMNS = ('Task', 'Status', 'Try', 'For', 'Quiet')
     LANE_TEXT = ('Doing',)
+    STATUS_STYLE = {fleet_view.ACTIVE: 'bold green', fleet_view.MERGEABLE: 'bold cyan',
+                    fleet_view.WAITING: 'bold yellow', fleet_view.BLOCKER: 'bold yellow'}
 
     def on_mount(self):
         table = self.query_one('#runners', DataTable)
@@ -734,16 +736,16 @@ class FleetApp(App):
         keep = self.selected
         rows = []
         for runner in self.runners:
-            now = ', '.join(f'{lane.task} {lane.phase}' for lane in runner.lanes[:2])
+            now = ', '.join(f'{lane.task} {fleet_view.status(lane)[1].lower()}' for lane in runner.lanes[:2])
             if runner.job:
                 now = ', '.join(x for x in (fleet_view.job_text(runner.job), now) if x)
             if len(runner.lanes) > 2:
                 now += f' +{len(runner.lanes) - 2}'
-            run, land, wait, held, total = (str(n) for n in fleet_view.task_counts(runner))
+            active, mergeable, waiting, blocker, total = (str(n) for n in fleet_view.task_counts(runner))
             rows.append({'Runner': (runner.name, ''),
                          'State': (f'{runner.state} {fleet_view.duration(runner.minutes)}'.strip(), f'bold {runner.color}'),
-                         'Run': (run, 'green'), 'Land': (land, 'cyan'), 'Wait': (wait, ''),
-                         'Held': (held, 'yellow' if held != '0' else ''), 'Total': (total, 'bold'),
+                         'Active': (active, 'green'), 'Mergeable': (mergeable, 'cyan'), 'Waiting': (waiting, ''),
+                         'Blocker': (blocker, 'yellow' if blocker != '0' else ''), 'Total': (total, 'bold'),
                          'Needs': (' '.join((fleet_view.needs(runner) or '-').split()), 'yellow' if runner.questions else ''),
                          'Now': (now or '-', '')})
         self.fill(table, rows, self.RUNNER_COLUMNS, self.RUNNER_TEXT)
@@ -788,9 +790,9 @@ class FleetApp(App):
         sentence, style = fleet_view.verdict(runner)
         text.append(f'{runner.name}  ', style='bold')
         text.append(sentence + '\n', style=style)
-        run, land, wait, held, total = fleet_view.task_counts(runner)
+        active, mergeable, waiting, blocker, total = fleet_view.task_counts(runner)
         text.append(f'{total} open: ', style='bold')
-        text.append(f'{run} working · {land} to land · {wait} waiting · {held} held\n')
+        text.append(f'{active} active · {mergeable} mergeable · {waiting} waiting · {blocker} blocker\n')
         waiting = fleet_view.waiting_line(runner)
         if waiting:
             text.append(f'{runner.waiting} waiting: ', style='dim')
@@ -812,8 +814,10 @@ class FleetApp(App):
         if repair:
             text.append(repair + '\n', style='cyan')
         if runner.held:
-            text.append('held: ', style='bold yellow')
-            text.append(', '.join(t + (f' {fleet_view.CAUSES.get(c, c)}' if c else '') for t, c in runner.held) + '\n')
+            asked = {q.id for q in runner.questions}
+            text.append('blocker: ', style='bold yellow')
+            text.append(', '.join(f'{t} {fleet_view.blocker_detail(c, t in asked)}' if c not in fleet_view.WAIT_CAUSES
+                                  else f'{t} waits: {fleet_view.CAUSES[c]}' for t, c in runner.held) + '\n')
         # Short: the full model IDs are in the m and M pickers. One line on 80 columns.
         details = [tilde(runner.repo) or '(repository unknown)']
         if runner.model:
@@ -835,7 +839,7 @@ class FleetApp(App):
         """One row per worker: phase, attempt, how long, and what it is doing in plain words."""
         table = self.query_one('#lanes', DataTable)
         rows = [{'Task': (lane.task, ''),
-                 'Phase': (lane.phase, 'bold yellow' if lane.phase.startswith('waiting') else 'bold green'),
+                 'Status': (' · '.join(fleet_view.status(lane)), self.STATUS_STYLE[fleet_view.status(lane)[0]]),
                  'Try': (str(lane.attempt), ''), 'For': (fleet_view.duration(lane.minutes), ''),
                  'Quiet': (fleet_view.quiet(lane).removeprefix('quiet '), 'bold yellow'),
                  'Doing': (doing(lane), '')} for lane in runner.lanes]

@@ -1900,6 +1900,10 @@ Rules:
 - *Blocker* says who resolves it. *Needs you* is kept for a decision, authorization or
   input automation cannot supply; a merge conflict or a failed check is normally
   *Agent repair*.
+- A hold the engine lifts by itself (an `overlap` hold, offered again once the other
+  task's files are free) is *Waiting*, not a Blocker. The display shows *Needs you*
+  when the task has an open question in BLOCKERS.md; no cause is mapped to *External*
+  yet.
 - *Waiting* always names its reason; a wait without a reason is a defect.
 - Engine slot states (`dispatched`, `reported`, `held`, …) stay internal names; the
   display derives the headline from them and their evidence. Runner-level states
