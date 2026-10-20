@@ -120,23 +120,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No relaxing of `verify_scope` for coordinator files a task's own commit changed.
 - Planner's call (2026-10-19): Now. The runner's own procedure must never fail a correct task; any one of the three changes breaks the loop, and all three together keep it broken.
 
-### TOOLSET-273-e0 — Planning merge drivers survive a toolset self-update (GitHub #5)
-
-- [ ] TOOLSET-273-e0 — Planning merge drivers survive a toolset self-update (GitHub #5)
-- Short: Merge drivers survive self-update
-- Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: [GitHub #5](https://github.com/TrebuchetDynamics/autowork/issues/5); [coordinator](pi-autowork/pi_autowork/coordinator.py) (`setup_planning_merges` writes `merge.docs-sync-*.driver` with the release directory's path); [release](pi-autowork/pi_autowork/release.py) (`prune` removes old releases).
-- Evidence (2026-10-19, one fleet runner): after a self-update pruned the old release, the repository's `.git/config` drivers still named its `goals.py`; any planning-file merge until the next registration used a driver that no longer existed.
-- Touches: pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/release.py, pi-autowork/tests/test_release.py, tests/test_pi_autowork.py
-- Scope: (1) The registered driver command names a stable entry point that outlives releases: the installed toolset package's `goals.py`, or a shim that resolves the current release. (2) A runner re-registers on start when the registered command differs. (3) `prune` never removes a release that a registered driver still names.
-- Acceptance: In fixtures: drivers registered on release A still run after an update to B prunes A; a stale registration from before this change is rewritten on the next start.
-- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_release.py; python3 -m unittest tests.test_pi_autowork; python3 scripts/check.py
-- Dependencies: None.
-- Ownership: Toolset coordinator.
-- Exclusions: No portable `.gitattributes` change; only the local Git config command moves.
-- Planner's call (2026-10-19): Now. Small, and it removes a way for an update to break merges done outside the runner.
-
 ### TOOLSET-274-f0 — An unusable repository stops the service deliberately instead of a restart loop (GitHub #6)
 
 - [ ] TOOLSET-274-f0 — An unusable repository stops the service deliberately instead of a restart loop (GitHub #6)

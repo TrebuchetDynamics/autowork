@@ -1194,14 +1194,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-273-e0",
-      "section": "Now",
-      "status": "open",
-      "title": "Planning merge drivers survive a toolset self-update (GitHub #5)"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-274-f0",
       "section": "Now",
       "status": "open",
@@ -3289,6 +3281,14 @@
       "section": "Done",
       "status": "done",
       "title": "A Touches-only rescope that adds a protected file integrates against the answered contract, or is refused plainly (GitHub #8)"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-273-e0",
+      "section": "Done",
+      "status": "done",
+      "title": "Planning merge drivers survive a toolset self-update (GitHub #5)"
     },
     {
       "depends_on": [],
