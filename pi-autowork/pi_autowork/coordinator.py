@@ -35,7 +35,8 @@ MERGE_PROMPT = (
     "in: {files}. Resolve every conflict keeping both sides' work: keep both task entries in TODO.md and "
     'TODO.archive.md, keep every task record in goals.json and run python3 {goals} merge-finalize . and '
     'python3 {goals} validate . if goals.json exists, then '
-    'run the checks that cover the conflicted files and conclude the merge with a commit. Do not push, rebase, '
+    'run only the tests that cover the conflicted files, not the full check (the runner runs it on the merged '
+    'result), and conclude the merge with a commit. Do not push, rebase, '
     'switch branches or touch {repo}. End with one line: PI_AUTOWORK_RESULT: completed|blocked, then one sentence.')
 
 
@@ -444,7 +445,13 @@ class Coordinator:
         return snapshot.get('tasks') if isinstance(snapshot.get('tasks'), list) else []
 
     def in_flight(self):
-        return any(t.get('state') in IN_FLIGHT for t in self.tasks())
+        # A held conflict whose resolution runs is still moving: the loop must come back for it.
+        return bool(self.resolvers) or any(t.get('state') in IN_FLIGHT for t in self.tasks())
+
+    @property
+    def resolvers(self):
+        """Task -> its merge resolution running beside the loop."""
+        return self.__dict__.setdefault('_resolvers', {})
 
     def job_environment(self, **overrides):
         """Attribute all auxiliary jobs to this repository, including foreground runs.
@@ -505,17 +512,18 @@ class Coordinator:
                     os.killpg(group, signal.SIGTERM)
                 except OSError:
                     pass
-            if self.child:
-                self.child.terminate()
+            for proc in [self.child] + [job['proc'] for job in self.resolvers.values()]:
+                if proc:
+                    proc.terminate()
             return
         self.stop = True
         LOG.say('Stopping: pausing workers so they resume on the next start, then merging finished work '
                 '(Ctrl+C again to force)')
         # Workers are interrupted by the main loop after the engine marks them paused, so a
         # deliberate stop or restart neither spends a task's retry nor holds a second attempt.
-        if self.child:
+        for proc in [self.child] + [job['proc'] for job in self.resolvers.values()]:
             try:
-                self.child.send_signal(signal.SIGINT)
+                proc and proc.send_signal(signal.SIGINT)
             except OSError:
                 pass
 
@@ -745,8 +753,8 @@ class Coordinator:
         """The session into the main branch: the base into the session first (Pi resolves
         conflicts once per base revision), a fast-forward of the base in the main checkout, then a push."""
         self.merge_pending = ''
-        if self.session_busy():
-            return False  # a review is running; the session merges after it
+        if self.session_busy() or self.resolvers:
+            return False  # a review or a merge resolution is running; the session merges after it
         if not self.integ and not self.load_session():
             return True
         self.commit_session_leftovers()
@@ -1241,7 +1249,10 @@ class Coordinator:
         once through the session merge, not left for a final merge a stalled runner never
         reaches; a merge that still fails is a runner blocker the owner sees. A refused ledger is an
         exception: task slots cannot settle until the owner's repair reaches the session, so the
-        owner's planning edits are committed even beside work in flight."""
+        owner's planning edits are committed even beside work in flight. A merge resolution keeps
+        the session still: its merge is adopted only onto the revision it merged."""
+        if self.resolvers:
+            return
         if self.integ and (not self.in_flight() or self.ledger_errors):
             # The owner's quiet planning edits (answers to held tasks) are committed even when
             # there is nothing to merge, or a stalled runner never sees them (TOOLSET-157-cd).
@@ -1302,7 +1313,7 @@ class Coordinator:
         its planning commits (questions, maintainer repairs) stayed off main for hours. Land
         after such a commit, and every PI_AUTOWORK_LAND_EVERY seconds while ahead; running
         workers do not wait it; a Pi job does, and so does a review unless no merge is needed."""
-        if not self.integ or self.child:
+        if not self.integ or self.child or self.resolvers:
             return
         if not (self.land_soon or time.monotonic() - self.landed_at >= self.land_every):
             return
@@ -1423,15 +1434,18 @@ class Coordinator:
     def settle(self):
         """Integrate, verify and close every reported task, in the engine's priority order."""
         self.settled = False
+        self.finish_resolvers()
         snapshot = self.status()
         rows = self.tasks(snapshot)
         for row in rows:
             task, state, reason = row.get('task'), row.get('state') or '', row.get('reason') or ''
             before = self.seen.get(task)
-            if (state == 'held' and row.get('cause') == 'conflict' and not self.session_busy()
-                    and self.resolve_task_conflict(row)):
-                self.settled = True
-                continue
+            if state == 'held' and row.get('cause') == 'conflict' and not self.session_busy():
+                if self.resolve_task_conflict(row):
+                    self.settled = True
+                    continue
+                if task in self.resolvers:
+                    continue  # its resolution runs beside the loop
             if (state == 'held' and row.get('cause') == 'blocker' and not self.session_busy()
                     and self.triage_blocker(row)):
                 self.settled = True
@@ -1467,6 +1481,8 @@ class Coordinator:
         # A conflict resolved above changed that candidate's commit: batch on the current
         # revisions, not the snapshot taken before the resolution.
         rows = self.tasks(self.status())
+        if self.resolvers:
+            return  # their merged revisions batch together once they end, before the next review
         # The engine integrates one candidate at a time, in priority order, and names the one it
         # wants when asked for another: start that one, never every candidate in turn (13 engine
         # runs and 13 "verifying" lines after one reload, TOOLSET-238-11).
@@ -1491,6 +1507,11 @@ class Coordinator:
                 # release for hours (TOOLSET-236-4d). Re-execute now, between two reviews.
                 self.resolve_deferred(deferred)
                 self.restart_if_updated()
+                return
+            if deferred and task not in conflicts:
+                # Before a review, which would keep the resolver waiting until it ends: eight held
+                # conflicts sat behind the next candidate's 45-minute review.
+                self.resolve_deferred(deferred)
                 return
             self.follow_base()  # each review validates against the main branch as it is now
             self.start_integration(task)
@@ -1556,7 +1577,7 @@ class Coordinator:
             if result.get('cause') == 'conflict':  # before a refill can start a fresh retry
                 if resolve_conflicts:
                     row = next((r for r in self.tasks() if r.get('task') == task), None)
-                    if row and self.resolve_task_conflict(row):
+                    if row and (self.resolve_task_conflict(row) or task in self.resolvers):
                         return
                 else:
                     # Grouping: hold it. The engine never retries a conflict with a fresh worker,
@@ -2024,10 +2045,12 @@ class Coordinator:
 
     def resolve_task_conflict(self, row):
         """A commit held for a merge conflict with the session is merged with it in its own
-        worktree, Pi resolving the conflict, and the engine judges the merge from there
-        (TOOLSET-157-cd): once per session revision, instead of reimplementing the task."""
+        worktree, Pi resolving the conflict beside the loop, and the engine judges the merge from
+        there (TOOLSET-157-cd): once per session revision, instead of reimplementing the task.
+        Up to PI_AUTOWORK_RESOLVERS (3) run at once; one at a time inside the loop, nine held
+        conflicts took about twenty minutes each while nothing else moved."""
         task, root = row.get('task'), row.get('worktree')
-        if self.stop or row.get('worker_live') or not root or not Path(root).is_dir() or dirty(root):
+        if self.stop or row.get('worker_live') or not root or not Path(root).is_dir() or task in self.resolvers:
             return False
         adoption = row.get('merge_adoption') or {}
         if not adoption.get('allowed'):
@@ -2039,22 +2062,84 @@ class Coordinator:
         head = git(self.integ, 'rev-parse', 'HEAD')
         if not head or adoption.get('baseline') != head or self.seen.get('resolved-' + task) == head:
             return False
+        commit = git(root, 'rev-parse', 'HEAD')
+        if self.seen.get('unresolved-' + task) == commit:
+            return False  # the session moved beside its failed resolution; the owner answers it first
+        if len(self.resolvers) >= max(1, worker.setting('PI_AUTOWORK_RESOLVERS', 3)) or not self.ready_to_merge(task, root):
+            return False
         self.seen['resolved-' + task] = head
-        if not git_ok(root, 'merge', '-q', '--no-edit', head):
-            files = ' '.join((git(root, 'diff', '--name-only', '--diff-filter=U') or '').split())
-            LOG.say(f'{task}: its commit conflicts with the session in: {files}; asking Pi to resolve the merge '
-                    'in its worktree')
-            branch = git(root, 'symbolic-ref', '--short', '-q', 'HEAD') or task
-            self.pi_job('merge', task, root, MERGE_PROMPT.format(branch=branch, base=head[:12], files=files,
-                                                                 goals=self.goals, repo=self.repo),
-                        f'pi-autowork-merge-{task}-{datetime.now():%Y%m%d%H%M%S}', self.verify_timeout)
+        if git_ok(root, 'merge', '-q', '--no-edit', head):
+            return self.adopt_merge(task)
+        files = ' '.join((git(root, 'diff', '--name-only', '--diff-filter=U') or '').split())
+        LOG.say(f'{task}: its commit conflicts with the session in: {files}; asking Pi to resolve the merge '
+                'in its worktree')
+        branch = git(root, 'symbolic-ref', '--short', '-q', 'HEAD') or task
+        out = tempfile.NamedTemporaryFile(dir=self.state / 'runs', prefix='merge.', delete=False)
+        out.close()
+        env = self.job_environment(PI_AUTOWORK_SESSION=self.integ_branch or os.environ.get('PI_AUTOWORK_SESSION', ''))
+        with open(out.name, 'w') as stream:
+            proc = subprocess.Popen([sys.executable, str(Path(__file__).with_name('pi_runtime.py')), 'job',
+                                     str(self.state), 'merge', task, str(root),
+                                     f'pi-autowork-merge-{task}-{datetime.now():%Y%m%d%H%M%S}', str(self.verify_timeout),
+                                     MERGE_PROMPT.format(branch=branch, base=head[:12], files=files, goals=self.goals,
+                                                         repo=self.repo)], stdout=stream, env=env)
+        self.resolvers[task] = {'proc': proc, 'out': out.name, 'root': root, 'head': head, 'commit': commit,
+                                'merged_count': adoption.get('merged_count')}
+        self.note_resolvers()
+        return False
+
+    def ready_to_merge(self, task, root):
+        """A worktree the resolver can merge in. A resolution stopped by a restart left its merge
+        unfinished, and a worker can leave files uncommitted beside its commit: either kept the
+        resolver away without a word. The merge starts again; the files go to a named stash."""
+        marker = git(root, 'rev-parse', '--path-format=absolute', '--git-path', 'MERGE_HEAD')
+        if marker and Path(marker).exists():
+            git(root, 'merge', '--abort')
+            LOG.say(f'{task}: its worktree held an unfinished merge resolution; starting it again')
+        if dirty(root):
+            if not git_ok(root, 'stash', 'push', '--include-untracked', '-m',
+                          f'autowork: {task} left uncommitted before its merge resolution'):
+                if self.seen.get('unstashed-' + task) != root:
+                    LOG.say(f'{task}: its worktree has uncommitted files that could not be stashed; it waits for the owner')
+                    self.seen['unstashed-' + task] = root
+                return False
+            LOG.say(f'{task}: its uncommitted files were stashed (git stash list in {root}) so its merge can be resolved')
+        return not dirty(root)
+
+    def finish_resolvers(self):
+        """Judge each merge resolution that ended: adopt its merge, or abort it."""
+        for task, job in list(self.resolvers.items()):
+            if job['proc'].poll() is None:
+                continue
+            del self.resolvers[task]
+            try:
+                result = json.loads(Path(job['out']).read_text()) if job['proc'].returncode == 0 else {}
+            except (OSError, ValueError):
+                result = {}
+            Path(job['out']).unlink(missing_ok=True)
+            for note in result.get('notes') or []:
+                LOG.say(note)
+            root, head = job['root'], job['head']
             marker = git(root, 'rev-parse', '--path-format=absolute', '--git-path', 'MERGE_HEAD')
             if (marker and Path(marker).exists()) or dirty(root) or not git_ok(root, 'merge-base', '--is-ancestor',
                                                                               head, 'HEAD'):
                 git(root, 'merge', '--abort')
-                next_step = 'it waits for the owner' if adoption.get('merged_count') else 'it is retried fresh instead'
+                next_step = 'it waits for the owner' if job['merged_count'] else 'it is retried fresh instead'
                 LOG.say(f'{task}: the merge could not be resolved; {next_step}')
-                return False
+                if job['merged_count']:
+                    self.seen['unresolved-' + task] = job['commit']
+                continue
+            self.settled = self.adopt_merge(task) or self.settled
+        self.note_resolvers()
+
+    def note_resolvers(self):
+        """The fleet reads job.json to say what the runner is doing beside its loop."""
+        if self.resolvers:
+            health.job_started(self.state, 'merge', ', '.join(sorted(self.resolvers)))
+        elif not self.child:
+            health.job_finished(self.state)
+
+    def adopt_merge(self, task):
         result = self.engine('--parallel-merged', task)
         if result.get('outcome') != 'MERGED':
             LOG.say(f'{task}: could not adopt its merged commit: {result.get("reason") or result.get("outcome")}')
@@ -2303,8 +2388,9 @@ class Coordinator:
         are adopted. Not while a review or a Pi job runs, nor once a review has ended but its
         answer is not read yet (TOOLSET-187-1d: a reload deferred behind a review re-executed the
         moment it ended and lost it): the cycle reads it, and a later cycle re-executes."""
-        if self.integration or self.child:
-            what = (f"the review of {self.integration['task']}" if self.integration else 'a Pi job')
+        if self.integration or self.child or self.resolvers:
+            what = (f"the review of {self.integration['task']}" if self.integration else
+                    f"the merge resolution of {', '.join(sorted(self.resolvers))}" if self.resolvers else 'a Pi job')
             if self.seen.get('reexec-pending') != what:
                 self.seen['reexec-pending'] = what
                 LOG.say(f'Reload pending: waiting for {what} to end')

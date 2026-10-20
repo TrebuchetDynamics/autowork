@@ -724,6 +724,96 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Next
 
+### TOOLSET-276-2c — A failed git command is never read as a clean tree or an empty result
+
+- [ ] TOOLSET-276-2c — A failed git command is never read as a clean tree or an empty result
+- Status: open
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [reliability research](docs/research/orchestrator-reliability.md) (root cause 3); [common](pi-autowork/pi_autowork/common.py) (`git` returns `None` on failure, `dirty` turns that into `''`); about 21 `git(..) or ''` / `dirty(` call sites in [coordinator](pi-autowork/pi_autowork/coordinator.py).
+- Evidence: a failed `git status` reads as a clean checkout, the same shape as the status read that looked like "nothing running" (TOOLSET-200-c1). Simple Testing Can Prevent Most Critical Failures (OSDI 2014): most severe failures come from mishandled minor errors.
+- Touches: pi-autowork/pi_autowork/common.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/worker.py, pi-autowork/tests/test_git_failures.py
+- Produces: `common.dirty(path)` raises `GitError` (a `RuntimeError` naming the command and stderr) when `git status` fails; `common.git(..., check=False)` keeps returning `None` only where the caller handles `None` explicitly.
+- Scope: (1) `dirty` raises instead of returning `''`. (2) Every caller decides what a failure means at that call: skip this cycle with a logged reason, or stop. None treats it as clean. (3) The other `git(...) or ''` sites that decide whether to commit, merge, land or delete in `coordinator.py` and `worker.py` get the same treatment; display-only sites may keep a placeholder. Other modules' callers are a follow-up task.
+- Acceptance: Given a fake `git` on `PATH` that exits 128 for `status`, when the runner cycle checks the main checkout, then it neither commits, lands nor reports the checkout clean, and it logs the failed command (`pi-autowork/tests/test_git_failures.py::test_failed_status_is_not_clean`). Given the same fake for the worker's checkout, the worker's settle step keeps the slot (`test_failed_status_keeps_worker_slot`).
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_git_failures.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to Git commands themselves or to the status format.
+- Planner's call: invariant for the batch: no path from a failed Git call reaches a commit, landing or deletion.
+
+### TOOLSET-276-a9 — Every hold cause is a known value with its recovery rule in one table
+
+- [ ] TOOLSET-276-a9 — Every hold cause is a known value with its recovery rule in one table
+- Status: open
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [reliability research](docs/research/orchestrator-reliability.md) (root cause 2); [state](skills/autowork/scripts/parallel_state.py) (`cause`, `SCOPE_HOLD`, `NEEDS_PERSON`, `reoffered`); [integration](skills/autowork/scripts/parallel_integrate.py) (`retry_held` reads `reason.startswith(...)` and `'changed files violate Touches' in reason`); [state model test](skills/autowork/scripts/test_parallel_state_model.py).
+- Evidence: about 25 fixes in the hold/retry class, including the chain dbc0ba0 → 74a7136 → 8e5268b; 271-d6 and 272-1c are further cases of a hold no rule recovers.
+- Touches: skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_hold_causes.py
+- Produces: `parallel_state.HOLD_CAUSES`, a mapping from each cause to its recovery (`reoffer_once`, `resolve_conflict`, `ask_owner`, `rerun`, `wait_for_task`); `parallel_state.next_action(slot)`.
+- Scope: (1) `transition` to `held` refuses a cause that is not in `HOLD_CAUSES`; existing slots with an unknown or missing cause read as `crash`. (2) `retry_held` decides from `next_action`, never from the text of `reason`. (3) Behaviour for each existing cause is unchanged.
+- Acceptance: Given a slot moved to `held` with cause `typo`, the transition is refused and the slot is unchanged (`skills/autowork/scripts/test_hold_causes.py::test_unknown_cause_refused`). Given each cause in `HOLD_CAUSES`, `retry_held` takes the action its table entry names, and the existing `test_parallel_integrate.py` still passes (`test_each_cause_follows_its_rule`). The random walk in `test_parallel_state_model.py` checks the new invariant "held implies a known cause".
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_hold_causes.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_state_model.py; python3 scripts/check.py skills/autowork/scripts/test_parallel_integrate.py
+- Dependencies: TOOLSET-271-d6, TOOLSET-272-1c.
+- Ownership: Toolset coordinator.
+- Exclusions: No new hold causes and no change to when a slot is held.
+- Planner's call: after 271-d6 and 272-1c, which both change hold recovery in the same functions; this then folds their rules into the table.
+
+### TOOLSET-276-3f — Tasks that share a hot file never run at the same time
+
+- [ ] TOOLSET-276-3f — Tasks that share a hot file never run at the same time
+- Status: open
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [reliability research](docs/research/orchestrator-reliability.md) (root cause 6); [planner](skills/autowork/scripts/parallel_plan.py) (`hint`, `_shared`, the "likely-independent work first" ranking); [plan lint](skills/docs-sync/scripts/plan_lint.py) (`hot-file` rule); NP-Bench ([arXiv 2610.07261](https://arxiv.org/abs/2610.07261)).
+- Evidence (2026-10-19): nine of this repository's tasks held at once for merge conflicts; `coordinator.py` and `tests/test_pi_autowork.py` are each in about 38 open tasks' `Touches:`. Ranking an overlapping task later does not stop it starting when slots are free.
+- Touches: skills/autowork/scripts/parallel_plan.py, skills/autowork/scripts/test_parallel_plan_hot.py, skills/autowork/references/parallel-workers.md
+- Consumes: the plan lint's hot-file threshold (a file named by three or more open tasks); reuse one constant, do not copy it.
+- Scope: (1) A file is hot when three or more open tasks name it in `Touches:`. (2) A task is not dispatched while a running or integrating task names the same hot file; it waits with reason `waits for <task> (shares hot file <path>)`. (3) Overlap on files that are not hot keeps today's ranking.
+- Acceptance: Given three open tasks naming `a.py` and one of them running, when the planner picks work for free slots, then the other two wait with that reason and a task on `b.py` dispatches (`skills/autowork/scripts/test_parallel_plan_hot.py::test_hot_file_serializes`). Given two tasks sharing a file only they name, both dispatch, the second ranked later (`test_cold_overlap_keeps_ranking`).
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_plan_hot.py; python3 scripts/check.py skills/autowork/scripts/test_parallel_plan.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No return to holding tasks for edits outside `Touches:` (TOOLSET-161-17 stays).
+- Planner's call: a conflict costs a resolver run and often an owner question; one more wait on a shared hot file costs less.
+
+### TOOLSET-276-3d — Landing refuses a commit the tree guard rejects
+
+- [ ] TOOLSET-276-3d — Landing refuses a commit the tree guard rejects
+- Status: open
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [reliability research](docs/research/orchestrator-reliability.md); [tree guard](scripts/tree_guard.py) (`--rev`); [coordinator](pi-autowork/pi_autowork/coordinator.py) (`land_around_edits`, the `update-ref` compare-and-swap); [integration](skills/autowork/scripts/parallel_integrate.py).
+- Evidence: conflict markers reached main twice (b69b2d2, 34b7f31); the second made every engine call fail until a hand fix. The full check now runs the guard, but only after the commit has landed.
+- Touches: pi-autowork/pi_autowork/coordinator.py, skills/autowork/scripts/parallel_integrate.py, pi-autowork/tests/test_landing_guard.py
+- Consumes: `python3 scripts/tree_guard.py --repo DIR --rev REV` (exit 1 with `path:line: reason` lines).
+- Scope: (1) Before any `update-ref` that moves the session branch or main, and before an engine integration commit is accepted, the candidate commit is checked with the tree guard from the runner's toolset release (not the target repository's copy). (2) A refusal holds the task with cause `conflict` and the guard's lines as evidence; main does not move. (3) A repository without Python or JSON files is unaffected.
+- Acceptance: Given a worker commit containing a conflict-marker line, when it is integrated, then main does not move and the task is held naming the file and line (`pi-autowork/tests/test_landing_guard.py::test_marker_commit_never_lands`). Given a clean commit, landing is unchanged (`test_clean_commit_lands`).
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_landing_guard.py; python3 scripts/check.py
+- Dependencies: TOOLSET-230-bf.
+- Ownership: Toolset coordinator.
+- Exclusions: The guard's own rules do not change here.
+- Planner's call: after 230-bf, so the guard runs on the ref-update landing path rather than one about to be replaced. Plan lint flags the hot `coordinator.py`/`parallel_integrate.py` overlap; TOOLSET-276-3f is the runtime answer, and the change here is a few lines at the landing seam.
+
+### TOOLSET-276-11 — Split tests/test_pi_autowork.py into per-feature modules over one fixture module
+
+- [ ] TOOLSET-276-11 — Split tests/test_pi_autowork.py into per-feature modules over one fixture module
+- Status: open
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [reliability research](docs/research/orchestrator-reliability.md) (hot files); [check](scripts/check.py) (`SPLIT` runs the module in 12 processes); [planning craft](skills/shared/PLANNING-CRAFT.md#disjoint-write-sets).
+- Evidence: the module is 2,980 lines, has had 47 fix commits, appears in about 38 open tasks' `Touches:`, and took 764 s of a 1,324 s full check as one process.
+- Touches: tests/test_pi_autowork.py, tests/pi_autowork_fixtures.py, tests/test_pi_autowork_*.py, scripts/check.py
+- Scope: (1) Move the shared runner fixtures (toolset clone, fake Pi CLI, repository builders) into `tests/pi_autowork_fixtures.py`. (2) Move the test classes into modules by feature (landing, integration, status, questions, lifecycle, maintainer…), unchanged. (3) Replace the `SPLIT` entry with the new modules. Run this alone: no other task touching `tests/test_pi_autowork.py` may run beside it.
+- Acceptance: Given the split, the same test IDs (by class and method name) pass as before, counted by a one-off comparison recorded in the commit message; no new module exceeds 800 lines; `python3 scripts/check.py --list` shows the new modules.
+- Checks: python3 scripts/check.py tests/
+- Dependencies: TOOLSET-269-f2, TOOLSET-270-a9, TOOLSET-271-d6, TOOLSET-273-e0.
+- Resources: exclusive (moves a file most open tasks edit; it must not run beside them).
+- Ownership: Toolset coordinator.
+- Exclusions: No test rewrites, deletions or new assertions; tests that need changing are reported, not changed.
+- Planner's call: after the current Now tasks that edit this module, so their candidates do not all conflict with the move. Plan lint: the `tests/test_pi_autowork_*.py` glob is a serial path on purpose, and Acceptance is test-ID parity rather than a new test.
+
 ### TOOLSET-266-7a — Batch remaining docs-maintainer triggers and ask only unresolved owner questions
 
 - [ ] TOOLSET-266-7a — Batch remaining docs-maintainer triggers and ask only unresolved owner questions
@@ -1639,6 +1729,6 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | PARALLEL: Run independent Autowork tasks in parallel workers with one coordinator | met | executed <code>TOOLSET-091-00 live 2026-10-15: Pi 1.2.0 workers (gpt-6.1-sol) via pi-autowork.sh on a disposable repo: 2 overlapping workers, sequential integration, C after A, combined check pass, no push, 158 s vs 240 s sequential; SIGKILLed coordinator restart adopted live workers without duplicates. Codex 0.162.1 workers cannot commit in the workspace-write sandbox (sequential fallback). Hermes workers not run by owner decision.</code> → pass | — |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
-| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | Terminal drag selection: offline gate, PTY and source review pass ([TOOLSET-275-c1](TODO.archive.md#toolset-275-c1)) | TOOLSET-096-7e, TOOLSET-099-87, TOOLSET-117-cb, TOOLSET-118-68, TOOLSET-119-2b, TOOLSET-120-fc, TOOLSET-122-27, TOOLSET-125-3c, TOOLSET-126-02, TOOLSET-127-8f, TOOLSET-129-6c, TOOLSET-129-c4, TOOLSET-130-15, TOOLSET-131-ac, TOOLSET-132-af, TOOLSET-138-62, TOOLSET-139-62, TOOLSET-144-c0, TOOLSET-145-6d, TOOLSET-147-54, TOOLSET-153-64, TOOLSET-154-d3, TOOLSET-155-e2, TOOLSET-156-75, TOOLSET-158-08, TOOLSET-163-f7, TOOLSET-164-f1, TOOLSET-173-94, TOOLSET-178-47, TOOLSET-179-cf, TOOLSET-182-ce, TOOLSET-184-1d, TOOLSET-192-71, TOOLSET-200-c1, TOOLSET-225-75, TOOLSET-230-bf, TOOLSET-231-49, TOOLSET-234-51, TOOLSET-234-d4, TOOLSET-235-0d, TOOLSET-242-d5, TOOLSET-245-6a, TOOLSET-248-60, TOOLSET-249-5b, TOOLSET-252-4c, TOOLSET-254-80, TOOLSET-255-55, TOOLSET-256-4b, TOOLSET-257-bd, TOOLSET-259-ca, TOOLSET-260-ae, TOOLSET-261-15, TOOLSET-262-13, TOOLSET-263-94, TOOLSET-264-39, TOOLSET-265-16, TOOLSET-266-7a, TOOLSET-267-a0, TOOLSET-269-f2, TOOLSET-270-a9, TOOLSET-271-d6, TOOLSET-272-1c, TOOLSET-273-e0, TOOLSET-274-f0 |
+| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | Terminal drag selection: offline gate, PTY and source review pass ([TOOLSET-275-c1](TODO.archive.md#toolset-275-c1)) | TOOLSET-096-7e, TOOLSET-099-87, TOOLSET-117-cb, TOOLSET-118-68, TOOLSET-119-2b, TOOLSET-120-fc, TOOLSET-122-27, TOOLSET-125-3c, TOOLSET-126-02, TOOLSET-127-8f, TOOLSET-129-6c, TOOLSET-129-c4, TOOLSET-130-15, TOOLSET-131-ac, TOOLSET-132-af, TOOLSET-138-62, TOOLSET-139-62, TOOLSET-144-c0, TOOLSET-145-6d, TOOLSET-147-54, TOOLSET-153-64, TOOLSET-154-d3, TOOLSET-155-e2, TOOLSET-156-75, TOOLSET-158-08, TOOLSET-163-f7, TOOLSET-164-f1, TOOLSET-173-94, TOOLSET-178-47, TOOLSET-179-cf, TOOLSET-182-ce, TOOLSET-184-1d, TOOLSET-192-71, TOOLSET-200-c1, TOOLSET-225-75, TOOLSET-230-bf, TOOLSET-231-49, TOOLSET-234-51, TOOLSET-234-d4, TOOLSET-235-0d, TOOLSET-242-d5, TOOLSET-245-6a, TOOLSET-248-60, TOOLSET-249-5b, TOOLSET-252-4c, TOOLSET-254-80, TOOLSET-255-55, TOOLSET-256-4b, TOOLSET-257-bd, TOOLSET-259-ca, TOOLSET-260-ae, TOOLSET-261-15, TOOLSET-262-13, TOOLSET-263-94, TOOLSET-264-39, TOOLSET-265-16, TOOLSET-266-7a, TOOLSET-267-a0, TOOLSET-269-f2, TOOLSET-270-a9, TOOLSET-271-d6, TOOLSET-272-1c, TOOLSET-273-e0, TOOLSET-274-f0, TOOLSET-276-11, TOOLSET-276-2c, TOOLSET-276-3d, TOOLSET-276-3f, TOOLSET-276-a9 |
 
 <!-- goals:coverage:end -->

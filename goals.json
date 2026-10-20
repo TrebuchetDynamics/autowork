@@ -793,7 +793,12 @@
         "TOOLSET-272-1c",
         "TOOLSET-273-e0",
         "TOOLSET-274-f0",
-        "TOOLSET-275-c1"
+        "TOOLSET-275-c1",
+        "TOOLSET-276-11",
+        "TOOLSET-276-2c",
+        "TOOLSET-276-3d",
+        "TOOLSET-276-3f",
+        "TOOLSET-276-a9"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -836,6 +841,11 @@
       "TOOLSET-129-c4",
       "TOOLSET-130-15",
       "TOOLSET-235-0d",
+      "TOOLSET-276-2c",
+      "TOOLSET-276-a9",
+      "TOOLSET-276-3f",
+      "TOOLSET-276-3d",
+      "TOOLSET-276-11",
       "TOOLSET-266-7a",
       "TOOLSET-267-a0",
       "TOOLSET-259-ca",
@@ -1670,6 +1680,46 @@
       "section": "Next",
       "status": "open",
       "title": "Bound docs-maintainer repair loops and report actual changed task bodies"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-276-11",
+      "section": "Next",
+      "status": "open",
+      "title": "Split tests/test_pi_autowork.py into per-feature modules over one fixture module"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-276-2c",
+      "section": "Next",
+      "status": "open",
+      "title": "A failed git command is never read as a clean tree or an empty result"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-276-3d",
+      "section": "Next",
+      "status": "open",
+      "title": "Landing refuses a commit the tree guard rejects"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-276-3f",
+      "section": "Next",
+      "status": "open",
+      "title": "Tasks that share a hot file never run at the same time"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-276-a9",
+      "section": "Next",
+      "status": "open",
+      "title": "Every hold cause is a known value with its recovery rule in one table"
     },
     {
       "depends_on": [

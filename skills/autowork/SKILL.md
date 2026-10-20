@@ -1,7 +1,7 @@
 ---
 name: autowork
 description: "Use to implement and verify ready repository tasks."
-version: 0.28.1
+version: 0.28.2
 author: Hermes Agent
 platforms: [linux, macos]
 metadata:
@@ -182,7 +182,8 @@ This policy is not a runtime guarantee of progress. No fabricated busywork.
 
 Only when the caller asks for parallel work, run `owner_cycle.py REPO --apply
 --parallel [N] --owner-pid PID`: it starts headless host workers, one task each in
-its own worktree, for tasks whose `Touches:` and `Resources:` prove independence.
+its own worktree; `Touches:` only orders tasks so likely-independent work runs first
+and never holds one, while `Resources:` and dependencies still keep tasks apart.
 Then loop `--wait --timeout S`, review each `report.json`, `--integrate TASK
 --timeout S --run CHECK...` (`--run` last), `--parallel-close TASK`, commit the
 coordinator files, and refill with `--apply --parallel`; release only after no slot

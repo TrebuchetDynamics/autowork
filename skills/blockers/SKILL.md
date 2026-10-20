@@ -3,7 +3,7 @@ name: blockers
 description: "Use to resolve blocked tasks: ask only what the owner must."
 license: MIT
 metadata:
-  version: 0.2.0
+  version: 0.2.1
   hermes:
     tags: [blockers, interview, planning, autowork]
 ---
@@ -129,7 +129,7 @@ does not override that filter:
 |---|---|---|
 | quick | a narrow unresolved choice after inspecting dependencies | choose between two valid dependency plans |
 | decision | an outside condition, a dependency not in Now/Next, an unanswered `Needs decision`, a contract mismatch | decide placement or disposition; reconcile the plan without starting work |
-| input | a worker's blocker asking for files, inputs or authorization | widen `Touches:`, supply the input, or narrow the acceptance |
+| input | a worker's blocker asking for files, inputs or authorization | supply the input, grant the authorization, or narrow the acceptance |
 | investigate | evidence shows recovery needs a new scope or acceptance decision | choose the supported scope change |
 
 Within an effort, a larger `unblocks` count comes first, then the oldest. Open with
@@ -146,7 +146,7 @@ Without an available picker, number the options in chat and accept a number.
 - The question names the task and how many tasks wait on it, quotes the worker's or
   engine's words whole when short, and gives the one piece of evidence that matters.
 - Two to four choices, each a concrete plan change in a few words (for example
-  `Widen Touches: add src/feed.py`, `Split: offline part now, device check later`,
+  `Add fixture: tests/data/feed.json`, `Split: offline part now, device check later`,
   `Supersede T-12`). The recommended choice comes first. Typed answers, `skip`
   (leave it open) and `stop` (end now) are always accepted; the picker's free-text
   row carries them.

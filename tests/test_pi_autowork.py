@@ -1248,6 +1248,41 @@ class EngineTests(Fixture):
         self.assertGreaterEqual(result.stdout.count('merged the session into its commit'), 2, result.stdout)
         self.assertIn('Batch: 2 passed (A, B)', result.stdout)
         self.assertGreaterEqual(result.stdout.count('Batch of 2 candidates (A, B)'), 2, result.stdout)
+        # Side by side: the second resolution starts before the first one is adopted.
+        asked = [m.start() for m in re.finditer('asking Pi to resolve the merge in its worktree', result.stdout)]
+        self.assertGreaterEqual(len(asked), 2, result.stdout)
+        self.assertLess(asked[1], result.stdout.index('merged the session into its commit'), result.stdout)
+
+    def test_a_worktree_left_mid_merge_or_with_loose_files_is_made_ready_for_the_resolver(self):
+        """A restart killed a resolution mid-merge, and workers left files beside their commit:
+        both kept the resolver away without a word, and the conflicts stayed held for hours."""
+        sys.path.insert(0, str(ROOT / 'pi-autowork'))
+        from pi_autowork import coordinator
+        runner = object.__new__(coordinator.Coordinator)
+        runner.seen = {}
+        root = self.root / 'held'
+        git = lambda *a: subprocess.run(['git', '-C', str(root), '-c', 'user.email=t@example.invalid',
+                                         '-c', 'user.name=T', *a], capture_output=True, text=True)
+        root.mkdir()
+        git('init', '-q', '-b', 'main')
+        (root / 'f.txt').write_text('base\n')
+        git('add', '.')
+        git('commit', '-qm', 'base')
+        git('checkout', '-qb', 'other')
+        (root / 'f.txt').write_text('other\n')
+        git('commit', '-qam', 'other')
+        git('checkout', '-q', 'main')
+        (root / 'f.txt').write_text('main\n')
+        git('commit', '-qam', 'main')
+        commit = git('rev-parse', 'HEAD').stdout.strip()
+        self.assertNotEqual(git('merge', 'other').returncode, 0)  # stopped mid-merge
+        (root / 'loose.txt').write_text('left by the worker\n')
+        self.assertTrue(runner.ready_to_merge('T', str(root)))
+        self.assertEqual(git('status', '--porcelain').stdout, '')
+        self.assertEqual(git('rev-parse', 'HEAD').stdout.strip(), commit)
+        self.assertIn('left uncommitted before its merge resolution', git('stash', 'list').stdout)
+        git('stash', 'pop')
+        self.assertEqual((root / 'loose.txt').read_text(), 'left by the worker\n')
 
     def test_a_failure_the_base_already_has_does_not_hold_a_candidate(self):
         self.env['PI_AUTOWORK_VALIDATE'] = 'echo "FAIL: test_y (other.T.test_y)"; exit 1'
