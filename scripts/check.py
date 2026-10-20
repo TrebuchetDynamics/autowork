@@ -186,6 +186,12 @@ def main(argv=None):
     if not tests:
         print('FAIL: no offline tests found', flush=True)
         return 1
+    # Cheap first: conflict markers, Python that does not compile or invalid JSON fail
+    # every later test less clearly (markers twice reached main in Python modules).
+    guard = root / 'scripts/tree_guard.py'
+    if guard.is_file() and subprocess.run([sys.executable, str(guard), '--repo', str(root)]).returncode:
+        print('FAIL: the tree guard refused this tree; no tests ran', flush=True)
+        return 1
     # No live-test flags, and no settings of the runner whose worker or reviewer runs this:
     # tests start their own runners, and a service's PI_AUTOWORK_MAIN_CHECK and
     # PI_AUTOWORK_NO_FALLBACK failed them.

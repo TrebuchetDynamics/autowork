@@ -122,6 +122,29 @@ class Check(unittest.TestCase):
         self.assertIn('1 test directories passed', result.stdout)
         self.assertNotIn('live model imported', result.stdout + result.stderr)
 
+    def test_a_broken_tree_fails_before_any_test_runs(self):
+        """Conflict markers twice reached main in Python modules; the tree guard runs first."""
+        guard = ROOT / 'scripts/tree_guard.py'
+        self.assertTrue(guard.is_file(), 'missing tree guard')
+        shutil.copy2(guard, self.root / 'scripts/tree_guard.py')
+        self.write('tests/test_ran.py', 'import unittest\nfrom pathlib import Path\nclass Ran(unittest.TestCase):\n'
+                   "    def test_ran(self): Path('ran').write_text('yes')\n")
+        git = lambda *a: subprocess.run(['git', '-c', 'user.email=t@example.invalid', '-c', 'user.name=T', *a],
+                                        cwd=self.root, check=True, capture_output=True)
+        git('init', '-q')
+        self.write('broken.py', 'def f(:\n')
+        git('add', '-A')
+        result = self.run_check()
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('broken.py:1: python', result.stdout)
+        self.assertFalse((self.root / 'tests/ran').exists(), 'tests ran on a broken tree')
+        self.assertTrue(self.run_check('--list').returncode == 0, 'listing stays import- and check-free')
+        self.write('broken.py', 'x = 1\n')
+        git('add', '-A')
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('tree_guard: OK', result.stdout)
+
     def test_tests_the_resource_gate_skipped_are_counted_not_failed(self):
         """TOOLSET-193-54: a busy host is not a failing check."""
         self.write('tests/test_gate.py', '''import sys, unittest
