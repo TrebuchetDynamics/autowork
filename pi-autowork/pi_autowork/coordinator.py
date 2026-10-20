@@ -725,9 +725,16 @@ class Coordinator:
         return git_ok(self.integ, 'commit', '-q', '--no-edit')
 
     def end_session(self):
-        """Only a clean, fully merged session is removed."""
+        """Only a clean, fully merged session is removed. Its regenerable build output goes first:
+        a day-old session kept for `.dart_tool/` alone said so every cycle and never rotated."""
+        for name in janitor.CACHE_DIRS:
+            cache = Path(self.integ) / name
+            if cache.is_dir() and not cache.is_symlink() and git_ok(self.integ, 'check-ignore', '-q', name):
+                shutil.rmtree(cache, ignore_errors=True)
         if git(self.integ, 'status', '--porcelain', '--untracked-files=all', '--ignored') != '':
-            LOG.say(f'Session worktree {self.integ} has uncommitted or ignored files; keeping it and {self.integ_branch}')
+            if self.seen.get('session-kept') != self.integ:
+                LOG.say(f'Session worktree {self.integ} has uncommitted or ignored files; keeping it and {self.integ_branch}')
+                self.seen['session-kept'] = self.integ
             return False
         if not git_ok(self.repo, 'worktree', 'remove', self.integ):
             return False

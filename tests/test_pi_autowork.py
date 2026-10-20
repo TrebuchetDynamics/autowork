@@ -1906,8 +1906,12 @@ class EngineTests(Fixture):
         path = self.repo / '.worktrees/old-session'
         self.git(self.repo, 'worktree', 'add', '-q', '-b', 'pi-autowork/old', str(path))
         (path / 'landed.txt').write_text('keep this work\n')
-        self.git(path, 'add', 'landed.txt')
+        (path / '.gitignore').write_text('.dart_tool/\n')
+        self.git(path, 'add', 'landed.txt', '.gitignore')
         self.git(path, 'commit', '-qm', 'old session work')
+        # Regenerable build output does not keep a day-old session (it said so every cycle).
+        (path / '.dart_tool/flutter_build').mkdir(parents=True)
+        (path / '.dart_tool/flutter_build/registrant.dart').write_text('// generated\n')
         common = self.git(self.repo, 'rev-parse', '--absolute-git-dir')
         state = self.state / hashlib.sha256(common.encode()).hexdigest()[:16]
         state.mkdir(parents=True)

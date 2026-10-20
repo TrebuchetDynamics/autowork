@@ -118,7 +118,34 @@ class FleetViewTests(unittest.TestCase):
             self.assertTrue(task[key].confirm, key)
         ready = fleet_view.TaskRow('T-1', 'Short', 'Now', 'ready', 'ready')
         self.assertEqual(sorted(a.key for a in fleet_view.task_actions(india, ready, command='aw', script='pa.sh')),
-                         ['d', 'u'])  # nothing held, no agent: re-sort only
+                         ['d', 's', 'u'])  # nothing held, no agent: re-sort and re-section only
+
+    def test_questions_are_answered_where_the_runner_reads_them(self):
+        """From the TUI: each answer writes a field of the task's TODO.md entry, or moves it."""
+        import datetime
+        india = fleet_view.Runner(name='india', repo='/git/india')
+        day = datetime.date(2026, 10, 20)
+        def keys(question):
+            return {a.key: a for a in fleet_view.answers(india, question, command='aw', today=day)}
+        claim = keys(fleet_view.Question('T-1', 'quick', 2, 'claimed', kind='claim'))
+        self.assertEqual(claim['o'].argv, ['aw', 'field', 'T-1', 'Status', 'open', 'india'])
+        self.assertEqual(claim['h'].argv, ['aw', 'field', 'T-1', 'Held by', 'the owner; until 2026-10-27', 'india'])
+        held = keys(fleet_view.Question('T-2', 'input', 1, 'quick hold', kind='quick_hold',
+                                        answer='To rerun, add `Blocker resolution: ab12cd; <producer>` to it.'))
+        self.assertEqual(held['r'].argv, ['aw', 'field', 'T-2', 'Blocker resolution', 'ab12cd; {text}', 'india'])
+        self.assertEqual(held['w'].argv, ['aw', 'field', 'T-2', 'Owner decision', '2026-10-20: {text}', 'india'])
+        self.assertEqual(held['d'].argv, ['aw', 'place', 'T-2', 'Needs decision', 'india',
+                                          '--decision', '2026-10-20: deferred: {text}'])
+        self.assertNotIn('o', held)
+        for answer in held.values():
+            self.assertEqual(answer.label.lower()[0], answer.key)
+        self.assertEqual(keys(fleet_view.Question('FULL-CHECK', 'input', 0, 'no gate')), {})  # an agent answers it
+        blockers = self.base / 'BLOCKERS.md'
+        blockers.write_text('<!-- pi-autowork:questions:start -->\n\n### Q-T-2 — USER_INPUT — effort input — unblocks 1\n\n'
+                            '- Needs: quick hold\n- Answer: add `Blocker resolution: ab12cd; x`\n- Kind: quick_hold\n\n'
+                            '<!-- pi-autowork:questions:end -->\n')
+        question = fleet_view.read_questions(str(self.base))[0]
+        self.assertEqual((question.id, question.kind, question.answer), ('T-2', 'quick_hold', 'add `Blocker resolution: ab12cd; x`'))
 
     def test_tasks_list_every_open_task_in_order_with_what_the_runner_says(self):
         repo = self.base / 'repo'

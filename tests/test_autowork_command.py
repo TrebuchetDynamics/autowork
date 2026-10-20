@@ -200,6 +200,26 @@ class AutoworkCommandTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn('A-2 is already first in Now; no write', result.stdout)
 
+    def test_owner_answers_and_new_tasks_go_through_goals(self):
+        """The TUI's answers, section moves and new tasks: TODO.md, and goals.json where it lists tasks."""
+        (self.repo / 'SPEC.md').write_text('# Slice\n\nStatus: Accepted\n')
+        (self.repo / 'goals.json').write_text(json.dumps({'version': 1, 'goals': [
+            {'id': 'G1', 'title': 'Works', 'source': 'SPEC.md#slice', 'status': 'unmet', 'tasks': ['A-1']}],
+            'tasks': [{'id': 'A-1', 'goal': 'G1', 'title': 'First', 'status': 'open', 'section': 'Now'}]}))
+        (self.repo / 'TODO.md').write_text('# TODO\n\n## Now\n\n- [ ] A-1 — First\n- Status: open\n\n'
+                                           '## Next\n\n## Needs decision\n')
+        result = self.aw('field', 'A-1', 'Owner decision', '2026-10-20: ship it', str(self.repo))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        result = self.aw('place', 'A-1', 'Needs decision', str(self.repo), '--decision', '2026-10-20: deferred: later')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        text = (self.repo / 'TODO.md').read_text()
+        self.assertLess(text.index('## Needs decision'), text.index('- [ ] A-1'))
+        self.assertIn('- Owner decision: 2026-10-20: deferred: later\n', text)
+        result = self.aw('add-task', '--title', 'Second', '--short', 'Second', '--goal', 'G1', str(self.repo))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('## Next\n\n### A-', (self.repo / 'TODO.md').read_text())
+        self.assertEqual(len(json.loads((self.repo / 'goals.json').read_text())['tasks']), 2)
+
     def test_blockers_starts_the_agent_in_the_repository(self):
         """From the TUI or the home directory, Claude Code asked to trust the whole home
         directory: the agent ran where autowork was started, not in the repository."""

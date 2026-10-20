@@ -10,7 +10,8 @@ import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import fleet_view  # noqa: E402
-from pi_autowork.tui import REFRESH, BrowseScreen, FleetApp, LogScreen, TasksScreen, WorkerScreen, doing  # noqa: E402
+from pi_autowork.tui import (REFRESH, BrowseScreen, FleetApp, LogScreen, TaskScreen, TasksScreen,  # noqa: E402
+                             WorkerScreen, doing)
 
 
 class Result:
@@ -33,6 +34,7 @@ async def main():
         india.mkdir()
         (india / 'TODO.md').write_text('# TODO\n\n## Now\n\n- [ ] TASK-034 — Ship the thing\n- Short: Ship it\n\n'
                                        '- [ ] T-9 — Held task\n\n- [ ] TASK-040 — Waits\n')
+        (india / 'goals.json').write_text(json.dumps({'goals': [{'id': 'G-1', 'title': 'Ship', 'status': 'unmet'}]}))
         (env / 'india.env').write_text(f'PI_AUTOWORK_REPO={india}\nPI_AUTOWORK_PRIMARY=openai-codex/gpt-6.1-sol\n')
         (state / 'runner.json').write_text(json.dumps({'pid': os.getpid(), 'repo': str(india)}))
         (state / 'status.json').write_text(json.dumps({
@@ -127,6 +129,10 @@ async def main():
             assert isinstance(app.screen, LogScreen), app.screen  # no stop dialog over the log
             await pilot.press('escape')
             await pilot.pause()
+            (india / 'BLOCKERS.md').write_text('<!-- pi-autowork:questions:start -->\n\n'
+                                               '### Q-T-9 — USER_INPUT — effort input — unblocks 1\n\n'
+                                               '- Needs: the worker asked for a key\n- Answer: Answer in T-9\'s entry.\n'
+                                               '- Kind: held\n\n<!-- pi-autowork:questions:end -->\n')
             await pilot.press('t')                      # Tasks: every open task in TODO.md order
             await pilot.pause()
             assert isinstance(app.screen, TasksScreen), app.screen
@@ -138,7 +144,7 @@ async def main():
             await pilot.pause()
             assert [str(tasks.get_row_at(i)[1]) for i in range(tasks.row_count)] == ['T-9'], tasks.row_count
             keys = str(app.screen.query_one('#task-detail').render())
-            assert keys.rstrip().endswith('Up  Down  Clear  Aside  esc Back'), keys
+            assert keys.rstrip().endswith('enter Open  Up  Down  Section  Clear  Aside  New  esc Back'), keys
             await pilot.press('u')                      # re-sort: an autowork move
             await pilot.pause()
             await app.workers.wait_for_complete()
@@ -149,8 +155,41 @@ async def main():
             await pilot.pause()
             await app.workers.wait_for_complete()
             assert calls[-1] == ['aw', 'clear-held', 'india', 'T-9'], calls
+            await pilot.press('enter')                  # T-9's details: its question, entry and answers
+            await pilot.pause()
+            assert isinstance(app.screen, TaskScreen), app.screen
+            body = str(app.screen.query_one('#task-body').render())
+            assert 'the worker asked for a key' in body and '- [ ] T-9 — Held task' in body, body
+            await pilot.press('w')                      # write a decision: typed, then Enter
+            await pilot.pause()
+            await pilot.press(*'use the test key')
+            await pilot.press('enter')
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            assert calls[-1][:4] == ['aw', 'field', 'T-9', 'Owner decision'] and calls[-1][4].endswith(
+                ': use the test key') and calls[-1][5] == 'india', calls
+            await pilot.press('s')                      # another section
+            await pilot.pause()
+            await pilot.press('down', 'enter')
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            assert calls[-1] == ['aw', 'place', 'T-9', 'Next', 'india'], calls
+            await pilot.press('escape')                 # back to the Tasks window
+            await pilot.pause()
+            await pilot.press('n')                      # a new task, from the form
+            await pilot.pause()
+            form = app.screen
+            form.query_one('#title').value = 'Add a thing'
+            form.query_one('#short').value = 'A thing'
+            form.query_one('#goal').value = 'G-1'
+            form.query_one('#add').press()
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            assert calls[-1] == ['aw', 'add-task', '--title', 'Add a thing', '--short', 'A thing', '--goal', 'G-1',
+                                 '--section', 'Next', 'india'], calls
             await pilot.press('escape')
             await pilot.pause()
+            (india / 'BLOCKERS.md').unlink()            # the later views expect no question
             app.push_screen(WorkerScreen(app.current(), 'TASK-036'))  # a worker row's screen opens
             await pilot.pause()
             assert isinstance(app.screen, WorkerScreen) and app.screen.title == 'india: TASK-036', app.screen

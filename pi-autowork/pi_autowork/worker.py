@@ -502,6 +502,7 @@ def verify(state, task):
     drop_dead_scratch(checkout, root)
     scratch = Path(tempfile.mkdtemp(prefix=f'aw-r-{os.getpid()}-', dir=root))
     os.environ['TMPDIR'] = str(scratch)
+    lease = review_port_lease()
     try:
         if batch_gate:  # a batch already passed the full check on a tree containing this one
             return batch_review(state, task, checkout, json.loads(batch_gate))
@@ -521,8 +522,23 @@ def verify(state, task):
         print(f'pi-autowork: verification of {task} stopped', file=sys.stderr)
         return 1
     finally:
+        if lease is not None:
+            os.close(lease)
         drop_scratch_worktrees(checkout, scratch)
         shutil.rmtree(scratch, ignore_errors=True)
+
+
+def review_port_lease():
+    """A 100-port block of its own for this review's checks and reviewer, as each worker gets: a
+    task whose checks bind $AUTOWORK_PORT_BASE failed its review for want of one. The block is the
+    process's while the returned descriptor stays open; None when none is free."""
+    try:
+        dispatch, _, _ = engine_modules()
+        base, lease = dispatch.port_lease(1)
+    except (ImportError, OSError, ValueError):
+        return None
+    os.environ['AUTOWORK_PORT_BASE'] = str(base)
+    return lease
 
 
 def review_root():
@@ -659,6 +675,7 @@ def verify_batch(state, session, script, tasks):
             print(json.dumps(dict(result, reason='fewer than two candidates merge together')))
             return 0
         os.environ['TMPDIR'] = str(root)
+        lease = review_port_lease()  # held until this process exits
         ok, reason = full_suite_gate(state, 'batch', str(chain), base)
         if not ok:
             # Which candidate broke it is not known yet: each goes through today's integration.

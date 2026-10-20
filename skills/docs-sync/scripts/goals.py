@@ -16,6 +16,8 @@ Agents change goals.json only through these commands, never by hand-editing JSON
                                                 exit 3 with a PRIORITY_DRIFT report when TODO.md order changed
   goals.py reorder <repo>                        record TODO.md task order as the human priority (goals.json only)
   goals.py move <repo> <task> up|down            move an open task among its TODO.md group's open tasks
+  goals.py place <repo> <task> <section>         move an open task to Now, Next or Needs decision (TODO.md and ledger)
+  goals.py field <repo> <task> <label> <value>   set one single-line field of an open task's entry
                                                 (TODO.md only; reorder records the new order)
   goals.py bootstrap-order <repo> [--dry-run]    one-time move of legacy priority into TODO.md order;
                                                 apply requires --expected-revision from the dry run
@@ -1474,6 +1476,13 @@ def main():
     n2.add_argument('--goal', required=True); n2.add_argument('--title', required=True)
     n2.add_argument('--section', default='Next', choices=[s for s in SECTIONS if s not in ('Done', 'Superseded')])
     n2.add_argument('--depends-on', default='')
+    n2.add_argument('--todo', action='store_true', help='also write its TODO.md entry at the top of its section')
+    for flag in ('--short', '--scope', '--acceptance', '--checks'):
+        n2.add_argument(flag, help='with --todo: that field of the entry (--short is required, at most 40 characters)')
+    fd = sub.add_parser('field', help="set one single-line field of an open task's TODO.md entry (an owner answer)")
+    fd.add_argument('repo'); fd.add_argument('task'); fd.add_argument('label'); fd.add_argument('value')
+    pl = sub.add_parser('place', help="move an open task's TODO.md entry and ledger section to Now, Next or Needs decision")
+    pl.add_argument('repo'); pl.add_argument('task'); pl.add_argument('section', choices=('Now', 'Next', 'Needs decision'))
     r = sub.add_parser('redact'); r.add_argument('repo')
     r.add_argument('--replacements-file', required=True, help='JSON absolute literal prefix to portable placeholder map')
     r.add_argument('--archive-dir', required=True, help='private original-byte archive outside repository')
@@ -1562,6 +1571,62 @@ def move_block(text, task, step):
     return new_text, ''
 
 
+def set_field(text, task, label, value):
+    """(new TODO.md text, '') with ``label: value`` the one such line of open task ``task``'s entry,
+    replacing an earlier one, or (None, why). Two lines of one label would hide both from
+    task_fields, so an answer replaces; Git keeps the earlier one."""
+    value = ' '.join(str(value).split())
+    if not value or not re.fullmatch(r'[A-Za-z][A-Za-z /-]*', label):
+        return None, 'a field is a label and a one-line value'
+    blocks = task_blocks(text)
+    block = next((b for b in blocks if b['id'] == task), None)
+    if block is None:
+        return None, f'{task} has no TODO.md entry'
+    if block['mark'] != ' ':
+        return None, f'{task} is checked off'
+    lines = block['core'].split('\n')
+    pattern = re.compile(r'^([ \t]*(?:[-*][ \t]+)?(?:\*\*)?)' + re.escape(label) + r':(?:\*\*)?(?:[ \t]|$)')
+    hits = [i for i, line in enumerate(lines) if pattern.match(line)]
+    if len(hits) > 1:
+        return None, f'{task} has {len(hits)} {label}: lines; keep one by hand'
+    if hits:
+        lines[hits[0]] = f'{pattern.match(lines[hits[0]])[1]}{label}: {value}'
+    else:  # right under the checkbox: never inside another field's continued value
+        mark = next(i for i, line in enumerate(lines) if re.match(TASK_MARK, line))
+        lines.insert(mark + 1, f'- {label}: {value}')
+    new_text = text[:block['start']] + '\n'.join(lines) + text[block['start'] + len(block['core']):]
+    entry = task_bodies(new_text).get(task) or []
+    if len(entry) != 1 or ' '.join(task_fields(entry[0][0]).get(label, '').split()) != value:
+        return None, f'{label}: would not read back from {task}\'s entry'
+    return new_text, ''
+
+
+def place_block(text, task, section):
+    """(new TODO.md text, '') with open task ``task``'s entry moved, bytes intact, to the top of
+    `## <section>`, or (None, why)."""
+    blocks = task_blocks(text)
+    block = next((b for b in blocks if b['id'] == task), None)
+    if block is None:
+        return None, f'{task} has no TODO.md entry'
+    if block['mark'] != ' ':
+        return None, f'{task} is checked off'
+    if block['region'][1].split(' / ')[0] == section:
+        return None, f'{task} is already in {section}'
+    if block['foreign_heading']:
+        return None, f'{task} contains another heading; move it by hand'
+    rest = text[:block['start']] + text[block['end']:]
+    heading = re.search(r'^##[ \t]+' + re.escape(section) + r'[ \t]*\r?$', rest, re.M)
+    if heading is None:
+        return None, f'TODO.md has no "## {section}" section'
+    at = heading.end() + len(re.match(r'(?:\r?\n)*', rest[heading.end():])[0])
+    new_text = rest[:at] + block['core'] + '\n\n' + rest[at:]
+    moved = next((b for b in task_blocks(new_text) if b['id'] == task), None)
+    if (sorted(b['core'] for b in blocks) != sorted(b['core'] for b in task_blocks(new_text))
+            or moved is None or moved['region'][1].split(' / ')[0] != section):
+        return None, 'task block bytes would change'
+    return new_text, ''
+
+
 def touches_errors(repo, data):
     """Open tasks whose `Touches:` is not a list of paths (TOOLSET-213-45): prose or a note ran
     into it, and the engine would hold the worker's own files as outside Touches."""
@@ -1611,6 +1676,16 @@ def execute(a):
         print(json.dumps(result)); return
     if a.cmd == 'new-id':
         print(new_task_id(a.repo, load(a.repo) if path_of(a.repo).exists() else None, a.prefix)); return
+    if a.cmd == 'field':  # TODO.md only: an answer the runner reads from the task's entry
+        todo = Path(a.repo) / 'TODO.md'
+        before = checked_bytes(todo)
+        if before is None:
+            sys.exit('TODO.md not found; no write')
+        new_text, why = set_field(before.decode('utf-8'), a.task, a.label, a.value)
+        if why:
+            sys.exit(why + '; no write')
+        atomic_write(todo, new_text, expected_bytes=before)
+        print(f'ok {a.task} {a.label}: {" ".join(a.value.split())}'); return
     if a.cmd == 'move':  # TODO.md only: goals.json is neither read nor written
         todo = Path(a.repo) / 'TODO.md'
         before = checked_bytes(todo)
@@ -1752,6 +1827,21 @@ def execute(a):
             print(f"WARNING: {goal['id']} is still {goal['status']} with no open task. Record the check you ran: "
                   f"goals.py evidence {a.repo} {goal['id']} --kind executed --ref \"<command>\" --result pass")
         print('ok'); return
+    if a.cmd == 'place':
+        task = next((x for x in data['tasks'] if x['id'] == a.task), None) or sys.exit(f'unknown task {a.task}')
+        if task.get('status') in ('done', 'superseded'):
+            sys.exit(f'task {a.task} is {task["status"]}; no write')
+        todo = Path(a.repo) / 'TODO.md'
+        before = checked_bytes(todo)
+        if before is None:
+            sys.exit('TODO.md not found; no write')
+        new_text, why = place_block(before.decode('utf-8'), a.task, a.section)
+        if why:
+            sys.exit(why + '; no write')
+        atomic_write(todo, new_text, expected_bytes=before)
+        TRANSACTION.set((Path(a.repo), revision(a.repo)))  # the TODO.md write is this command's own
+        task['section'] = a.section
+        dump(a.repo, data); print(f'ok {a.task} -> {a.section}'); return
     if a.cmd == 'section':
         task = next((x for x in data['tasks'] if x['id'] == a.task), None) or sys.exit(f'unknown task {a.task}')
         if task.get('status') in ('done', 'superseded'):
@@ -1773,6 +1863,27 @@ def execute(a):
         missing = [d for d in deps if d not in known]
         if missing:
             sys.exit(f'unknown depends_on task(s): {missing}')
+        if a.todo:
+            short = ' '.join((a.short or '').split())
+            if not short or len(short) > SHORT_LIMIT:
+                sys.exit(f'--todo needs --short of 1 to {SHORT_LIMIT} characters; no write')
+            todo = Path(a.repo) / 'TODO.md'
+            before = checked_bytes(todo)
+            if before is None:
+                sys.exit('TODO.md not found; no write')
+            title = ' '.join(a.title.split())
+            entry = [f'### {a.task} — {title}', '', f'- [ ] {a.task} — {title}', f'- Short: {short}',
+                     '- Status: open', f'- Goal: {a.goal}']
+            entry += [f'- {label}: {" ".join(value.split())}' for label, value in
+                      (('Scope', a.scope), ('Acceptance', a.acceptance), ('Checks', a.checks)) if value]
+            entry.append(f'- Dependencies: {", ".join(deps) if deps else "None."}')
+            text = before.decode('utf-8')
+            heading = re.search(r'^##[ \t]+' + re.escape(a.section) + r'[ \t]*\r?$', text, re.M)
+            if heading is None:
+                sys.exit(f'TODO.md has no "## {a.section}" section; no write')
+            at = heading.end() + len(re.match(r'(?:\r?\n)*', text[heading.end():])[0])
+            atomic_write(todo, text[:at] + '\n'.join(entry) + '\n\n' + text[at:], expected_bytes=before)
+            TRANSACTION.set((Path(a.repo), revision(a.repo)))  # the TODO.md write is this command's own
         data['tasks'].append({'id': a.task, 'goal': a.goal, 'title': a.title, 'status': 'open',
                               'section': a.section, 'depends_on': deps})
         goal['tasks'] = sorted(set(goal.get('tasks', []) + [a.task]))
