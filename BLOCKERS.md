@@ -40,6 +40,14 @@ no extra approval step or execution authority.
 - Answer: Answer in TOOLSET-096-7e's TODO.md entry: widen `Touches:`, supply the input, narrow the acceptance, or add a dated `Owner decision:` line. The runner reruns it when the entry changes.
 - Kind: held
 
+### Q-TOOLSET-098-5d — USER_INPUT — effort input — unblocks 0
+
+- Task: TOOLSET-098-5d — Refresh the installed OMH plugin in each OMH profile to the Hermes 0.22 release
+- Needs: worker reported a blocker: Scope decision required: the approved live-refresh design requires backups and writes to installed plugins under the Hermes home, the shared OMH executable installation, and potentially other live-profile state through /autowork update. This worker is explicitly restricted to work inside its assigned isolated task worktree. Authorize a scoped live-maintenance execution outs…
+- Since: 2026-10-20T21:58:41Z
+- Answer: Answer in TOOLSET-098-5d's TODO.md entry: widen `Touches:`, supply the input, narrow the acceptance, or add a dated `Owner decision:` line. The runner reruns it when the entry changes.
+- Kind: held
+
 ### Q-TOOLSET-200-c1 — USER_DECISION — effort investigate — unblocks 1
 
 - Task: TOOLSET-200-c1 — A status read waits for the writer lock, and a failed read never means nothing is running

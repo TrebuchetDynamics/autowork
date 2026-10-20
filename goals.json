@@ -651,6 +651,7 @@
         "TOOLSET-115-bf",
         "TOOLSET-116-c1",
         "TOOLSET-117-cb",
+        "TOOLSET-117-cb-LIVE",
         "TOOLSET-118-68",
         "TOOLSET-119-2b",
         "TOOLSET-120-fc",
@@ -826,10 +827,8 @@
       "TOOLSET-270-a9",
       "TOOLSET-271-d6",
       "TOOLSET-274-f0",
-      "TOOLSET-252-4c",
       "TOOLSET-230-bf",
       "TOOLSET-200-c1",
-      "TOOLSET-242-d5",
       "TOOLSET-139-62",
       "TOOLSET-179-cf",
       "TOOLSET-158-08",
@@ -852,7 +851,6 @@
       "TOOLSET-129-c4",
       "TOOLSET-130-15",
       "TOOLSET-235-0d",
-      "TOOLSET-278-91",
       "TOOLSET-279-eb",
       "TOOLSET-288-cf",
       "TOOLSET-286-32",
@@ -889,7 +887,6 @@
       "TOOLSET-126-6b",
       "TOOLSET-127-b1",
       "TOOLSET-128-69",
-      "TOOLSET-133-f5",
       "TOOLSET-134-ab",
       "TOOLSET-135-16",
       "TOOLSET-136-0b",
@@ -899,7 +896,6 @@
       "TOOLSET-123-de",
       "TOOLSET-144-c0",
       "TOOLSET-184-1d",
-      "TOOLSET-117-cb",
       "TOOLSET-066",
       "TOOLSET-003",
       "TOOLSET-098-5d",
@@ -915,7 +911,8 @@
       "TOOLSET-101-f6",
       "TOOLSET-145-6d",
       "TOOLSET-215-91",
-      "TOOLSET-146-bc-LIVE"
+      "TOOLSET-146-bc-LIVE",
+      "TOOLSET-117-cb-LIVE"
     ]
   },
   "tasks": [
@@ -1167,14 +1164,6 @@
     },
     {
       "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-278-91",
-      "section": "Now",
-      "status": "open",
-      "title": "A commit kept without its worker's report resumes that worker, not a batch or the merge resolver"
-    },
-    {
-      "depends_on": [],
       "goal": "PARALLEL",
       "id": "TOOLSET-279-eb",
       "section": "Now",
@@ -1254,14 +1243,6 @@
       "section": "Next",
       "status": "open",
       "title": "Refresh the installed OMH plugin in each OMH profile to the Hermes 0.22 release"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-117-cb",
-      "section": "Next",
-      "status": "open",
-      "title": "Compare the Pi CLI worker adapter with AgwaB pi-subagent runSubagent on identical fixtures"
     },
     {
       "depends_on": [],
@@ -1350,14 +1331,6 @@
       "section": "Next",
       "status": "open",
       "title": "Keep log position and add follow search and copy"
-    },
-    {
-      "depends_on": [],
-      "goal": "TEST-SUITE",
-      "id": "TOOLSET-133-f5",
-      "section": "Next",
-      "status": "open",
-      "title": "Define minimum-sufficient regression protection and test budgets"
     },
     {
       "depends_on": [
@@ -1721,6 +1694,16 @@
       "section": "Needs decision",
       "status": "open",
       "title": "Deploy reviewed fleet-audit helpers through the native scanned updater"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-117-cb"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-117-cb-LIVE",
+      "section": "Needs decision",
+      "status": "open",
+      "title": "Live checks for TOOLSET-117-cb"
     },
     {
       "depends_on": [
@@ -2576,6 +2559,14 @@
     },
     {
       "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-117-cb",
+      "section": "Done",
+      "status": "done",
+      "title": "Compare the Pi CLI worker adapter with AgwaB pi-subagent runSubagent on identical fixtures"
+    },
+    {
+      "depends_on": [],
       "goal": "PORTABLE",
       "id": "TOOLSET-121-3d",
       "section": "Done",
@@ -2589,6 +2580,14 @@
       "section": "Done",
       "status": "done",
       "title": "Audit this repository's suite against the test budget"
+    },
+    {
+      "depends_on": [],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-133-f5",
+      "section": "Done",
+      "status": "done",
+      "title": "Define minimum-sufficient regression protection and test budgets"
     },
     {
       "depends_on": [],
@@ -3315,6 +3314,14 @@
       "section": "Done",
       "status": "done",
       "title": "Select and copy terminal TUI text by mouse dragging"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-278-91",
+      "section": "Done",
+      "status": "done",
+      "title": "A commit kept without its worker's report resumes that worker, not a batch or the merge resolver"
     },
     {
       "depends_on": [],

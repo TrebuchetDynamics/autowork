@@ -5142,3 +5142,70 @@ Source section: Now
 - Exclusions: No change to which tasks the engine runs once the files agree.
 - Planner's call: the archive records a close; a ledger that lags it is bookkeeping the runner can fix deterministically, so it needs neither a model nor the owner (owner, 2026-10-18: autowork "must be able to fix these issues easily").
 - Planner's call (2026-10-19 audit; where this differs from the Scope above, this wins): Scope (2) is a repair inside the docs maintainer's transaction (265-16) that calls no model, not a new coordinator planning commit.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-133-f5"></a>
+
+### TOOLSET-133-f5 — Define minimum-sufficient regression protection and test budgets
+
+- [x] TOOLSET-133-f5 — Define minimum-sufficient regression protection and test budgets
+- Short: Define minimum regression protection
+- Status: done
+- Goal: TEST-SUITE — Keep test execution efficient without losing regression protection.
+- Sources: [accepted skill plan](docs/project.md#discoverable-test-optimization-suite-skill), [existing method](skills/engineering/local/test-suite-optimization/PROTOCOL.md), [shared budget](skills/shared/ENGINEERING-CYCLE.md#test-budget), [current suite audit](docs/test-suite-audit.md).
+- Touches: skills/engineering/local/test-suite-optimization/PROTOCOL.md, skills/shared/ENGINEERING-CYCLE.md, skills/engineering/SKILL.md, adapters/skills/engineering/SKILL.md
+- Scope: Strengthen the one existing protocol: behavior/risk matrix, proportional timing/flake/history/diff-coverage evidence, critical-module mutant detection and uncertainty, removal-to-retained-oracle mapping, consolidation, repository-specific runtime/new-case budgets, bounded quarantine, review rules and sound optional impact selection. Default to audit; explicit apply or existing implementation authority permits bounded verified edits without another ceremony. Preserve legacy selector and upstream pins. Supersede count-driven or blanket one-test/no-config-test rules with minimum sufficient detection and justified unique-risk exceptions; do not weaken safety obligations.
+- Acceptance: Canonical guidance covers all accepted method decisions without requiring all tools/history to exist, manufacturing measurements or forcing whole-suite experiments for every audit. It distinguishes mutant outcomes, equal coverage from equal behavior, stable never-failed regressions from valueless tests, and assertless smoke/contractual interactions from meaningless checks. Each deletion retains its risk or documents its retirement; named bug traceability survives consolidation. Quarantines have owner/expiry/risk; CI selection retains a fallback/full gate. Independent fixture review includes missing evidence and read-only scope; failures become narrow corrections, not more prose tests.
+- Checks: Existing engineering protocol routing check; review the compact behavior scenarios named in the accepted plan; verify relative references and unchanged upstream hashes; git diff --check. No full runtime suite for instruction-only edits and no new heading/phrase assertions.
+- Dependencies: None.
+- Ownership: Toolset coordinator; preserve active writers and existing suite-audit IDs.
+- Exclusions: No test deletions in consumer repositories, automatic all-repository scan, required mutation/coverage dependency, new scheduler, CI weakening, upstream skill edits, commit or publication from this planning invocation.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-278-91"></a>
+
+### TOOLSET-278-91 — A commit kept without its worker's report resumes that worker, not a batch or the merge resolver
+
+- [x] TOOLSET-278-91 — A commit kept without its worker's report resumes that worker, not a batch or the merge resolver
+- Short: Retained commits resume their worker
+- Status: done
+- Goal: PI-RUNNER
+- Priority reason (2026-10-19 monitor pass): a stranded commit of this kind (TOOLSET-120-fc) holds its serial path, so TOOLSET-119-2b, TOOLSET-122-27 and TOOLSET-144-c0 cannot start until it recovers.
+- Evidence (2026-10-19 monitor pass): a runner stop marks a dead worker's commit `reported` ("commit retained") although the worker wrote no `report.json`. Batches merge such commits without reading reports, so three were held for a conflict; Pi resolved the conflicts, and `--parallel-merged` then refused each with "merged needs the held commit's report.json" every cycle. Writing a stand-in report is not the fix: `test_a_paused_attempt_resumes_without_its_earlier_report` and `test_a_late_report_from_a_superseded_attempt_never_completes_the_retry` require that a commit without its own worker's report never lands.
+- Touches: skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/parallel_dispatch.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/worker.py, skills/autowork/scripts/test_parallel_state.py, skills/autowork/scripts/test_parallel_integrate.py, pi-autowork/tests/
+- Scope: A slot whose commit has no report of its current attempt is not a batch candidate and is not sent to the merge resolver; its worker resumes on the same attempt with an instruction to write the report for the commit it already made (no reimplementation), or it is held with cause `report` naming what is missing. Already-stranded conflict holds of that kind recover the same way.
+- Acceptance: A focused test shows a retained commit without a report is left out of `batch_order` and conflict resolution and resumes its worker once on the same attempt; after the worker writes a matching report it integrates normally. The two adversarial tests above still pass. No report is ever written by the runner on a worker's behalf.
+- Checks: `python3 scripts/check.py skills/autowork/scripts pi-autowork/tests`; `python3 scripts/check.py`.
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Next action: Reproduce with a stopped worker that committed without a report, then route it to a same-attempt resume before batching.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-117-cb"></a>
+
+### TOOLSET-117-cb — Compare the Pi CLI worker adapter with AgwaB pi-subagent runSubagent on identical fixtures
+
+- [x] TOOLSET-117-cb — Compare the Pi CLI worker adapter with AgwaB pi-subagent runSubagent on identical fixtures
+- Short: Compare Pi worker adapter with AgwaB
+- Status: done
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [research: runtime adapter](docs/research/pi-autowork-reference-architectures.md#runtime-adapter-overstory--agwab), [Kyle Boas live workers](docs/research/pi-autowork-reference-architectures.md#kyle-boas-reusable-live-rpc-workers), [follow-up boundaries](docs/research/pi-autowork-reference-architectures.md#proposed-follow-up-boundaries), [pi-durable](https://github.com/earendil-works/pi/blob/main/packages/durable/README.md).
+- Touches: pi-autowork/, docs/research/pi-autowork-reference-architectures.md
+- Scope: Define the small worker-runtime boundary the research proposes (after Overstory's `AgentRuntime`): `launch`, `observe`, `stop`, `resume`, a capability record (live-process reuse, persistent transcripts, reload survival, crash/restart adoption) and normalized events. Implement it for the current Pi CLI path and, in a spike, for AgwaB's `runSubagent` headless backend with a Toolset-owned worktree as its CWD. Owner addition (2026-10-16): also spike `@earendil-works/pi-durable`, first-party and built for crash recovery (commit before showing; `Harness.open`/`resume`; idempotent `requestId` submissions); note it is marked experimental and allows one process per storage. Add per-tool replay safety to the capability record, after pi-durable's `replay: "safe"`: a tool or check that is not replay-safe is not rerun after a crash, the worker is told it was interrupted. Run both against the same fixtures: cancellation, restart adoption, stale results, out-of-order completion, combined-tree verification, cleanup retention, process-group TERM-to-KILL. Qualify `agent_end`/`agent_settled` against the pinned Pi version.
+- Acceptance: A written comparison with measured results per fixture and a recommendation; compatibility failures are recorded, not worked around by weakening the contract; the CLI path stays the default.
+- Checks: `python3 scripts/check.py`; the comparison fixtures.
+- Dependencies: None.
+- Ownership: Toolset coordinator under the owner's request.
+- Exclusions: No dependency installed into services or the fleet; no change to the default worker; adoption needs an owner decision.
