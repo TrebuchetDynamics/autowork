@@ -806,7 +806,9 @@
         "TOOLSET-281-0d",
         "TOOLSET-282-43",
         "TOOLSET-283-15",
-        "TOOLSET-284-e0"
+        "TOOLSET-284-e0",
+        "TOOLSET-285-47",
+        "TOOLSET-286-32"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -850,6 +852,8 @@
       "TOOLSET-235-0d",
       "TOOLSET-278-91",
       "TOOLSET-279-eb",
+      "TOOLSET-286-32",
+      "TOOLSET-285-47",
       "TOOLSET-276-2c",
       "TOOLSET-276-a9",
       "TOOLSET-276-3f",
@@ -1737,6 +1741,22 @@
       "section": "Next",
       "status": "open",
       "title": "Every hold cause is a known value with its recovery rule in one table"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-285-47",
+      "section": "Next",
+      "status": "open",
+      "title": "Harden release-retention and pruning test isolation under concurrent checks"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-286-32",
+      "section": "Next",
+      "status": "open",
+      "title": "Harden conflicting-owner-plan journey against fixture races"
     },
     {
       "depends_on": [
