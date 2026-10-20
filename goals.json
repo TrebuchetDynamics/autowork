@@ -1134,16 +1134,6 @@
       "title": "A task archived as done is done in the ledger too, and a not-runnable reason names what blocks it"
     },
     {
-      "depends_on": [
-        "TOOLSET-229-d0"
-      ],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-252-4c",
-      "section": "Now",
-      "status": "open",
-      "title": "A worker blocker that names another open task waits for that task, occupies nothing meanwhile, and resumes when it lands"
-    },
-    {
       "depends_on": [],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-265-16",
@@ -3243,6 +3233,16 @@
       "section": "Done",
       "status": "done",
       "title": "A conflict-held commit merged again by the resolver is adopted again when the session moved, and the resolver never runs for a merge the engine will refuse"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-229-d0"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-252-4c",
+      "section": "Done",
+      "status": "done",
+      "title": "A worker blocker that names another open task waits for that task, occupies nothing meanwhile, and resumes when it lands"
     },
     {
       "depends_on": [],
