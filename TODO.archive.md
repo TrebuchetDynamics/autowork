@@ -4730,3 +4730,26 @@ Source section: Next
 - Ownership: Interactive Autowork implementation owner; preserve unrelated main-check edits and live workers.
 - Qualification: Source implementation is complete. Focused TUI/native-command and headless-pilot tests passed; isolated PTY runs rendered both modes, confirmed default mouse-reporting absence versus explicit capture and keyboard quit, and contacted no services. The final complete python3 scripts/check.py passed on source snapshot 29b6d08459fbfb7dc016c6e20d43f9c139dc30c9 (five test directories, zero failed, eight excluded modules); final source review found no issues. Two earlier full runs failed and are retained, including the planning/merge intermittent failure and the corrected tx config-path guard. Actual client clipboard behavior and installed activation are not qualified.
 - Next action: No source reimplementation remains. Load the updated TUI through the existing authorized installation/update path; client clipboard qualification remains a separate observation. No installation, runner restart, job resumption, clipboard access or push is included in this closeout.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-269-f2"></a>
+
+### TOOLSET-269-f2 — A runner never commits or publishes uncommitted changes it did not make (GitHub #3)
+
+- [x] TOOLSET-269-f2 — A runner never commits or publishes uncommitted changes it did not make (GitHub #3)
+- Status: done
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [GitHub #3](https://github.com/TrebuchetDynamics/autowork/issues/3) (recurrence of #2); [coordinator](pi-autowork/pi_autowork/coordinator.py) (the main-checkout sweep that commits `chore: uncommitted work in the main checkout (pi-autowork)` and logs `Committed uncommitted changes in <repo> (...) so the session can merge`).
+- Evidence (2026-10-19, one fleet runner): within two minutes of start the runner committed the owner's unfinished work on 9 files (one a deletion) that no task's `Touches:` named, merged its session and pushed main. Its own status had just said the final merge stops if it would touch uncommitted changes. The session's only change was one file.
+- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py, docs/reference.md
+- Scope: (1) The runner never stages or commits a main-checkout path outside the planning files (`TODO.md`, `TODO.archive.md`, `goals.json`, `BLOCKERS.md`), whatever its age or quietness. (2) When the session merge would touch such a dirty path, the merge waits and the status names the paths, as the status note already promises; when it would not, the merge proceeds and leaves them uncommitted. (3) The owner-planning sweep of quiet planning files stays as it is.
+- Acceptance: In fixtures: a dirty, quiet non-planning file the session does not change stays uncommitted while the session merges and pushes; a dirty file the session does change stops the merge with that path named and no commit; a quiet `TODO.md` edit is still committed as owner planning.
+- Checks: python3 -m unittest tests.test_pi_autowork; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to worker-worktree commits (`Left uncommitted in the session worktree`): those are the runner's own.
+- Planner's call (2026-10-19): Now, first. Publishing unreviewed owner work is the one failure that damages the repository rather than throughput. The issue's expected behaviour decides the policy: only planning files keep the quiet-edit sweep; everything else belongs to whoever wrote it.

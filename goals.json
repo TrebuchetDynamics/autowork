@@ -1165,14 +1165,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-269-f2",
-      "section": "Now",
-      "status": "open",
-      "title": "A runner never commits or publishes uncommitted changes it did not make (GitHub #3)"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-270-a9",
       "section": "Now",
       "status": "open",
@@ -3236,6 +3228,14 @@
       "section": "Done",
       "status": "done",
       "title": "Chat status shows repository runners separately from plugin setup"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-269-f2",
+      "section": "Done",
+      "status": "done",
+      "title": "A runner never commits or publishes uncommitted changes it did not make (GitHub #3)"
     },
     {
       "depends_on": [],
