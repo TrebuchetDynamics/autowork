@@ -100,29 +100,6 @@ class Confirm(ModalScreen[bool]):
         self.dismiss(value)
 
 
-class PickTask(ModalScreen[str]):
-    BINDINGS = [Binding('escape', 'cancel', 'cancel')]
-    DEFAULT_CSS = '''
-    PickTask { align: center middle; }
-    PickTask > Vertical { width: 70; height: auto; max-height: 80%; border: thick $accent; background: $surface; padding: 1 2; }
-    '''
-
-    def __init__(self, tasks):
-        super().__init__()
-        self.tasks = tasks
-
-    def compose(self) -> ComposeResult:
-        with Vertical():
-            yield Label('Set aside which held task?')
-            yield OptionList(*[f'{task}  {fleet_view.CAUSES.get(cause, cause or "")}' for task, cause in self.tasks])
-
-    def on_option_list_option_selected(self, event):
-        self.dismiss(self.tasks[event.option_index][0])
-
-    def action_cancel(self):
-        self.dismiss(None)
-
-
 class PickModel(ModalScreen[str]):
     """Choose a model from Pi's own list; type to filter."""
     BINDINGS = [Binding('escape', 'cancel', 'cancel')]
@@ -226,6 +203,117 @@ class WorkerScreen(Screen):
         self.query_one('#worker-actions', Static).update(text if actions else 'No actions recorded yet.')
 
 
+class TasksScreen(Screen):
+    """One runner's open tasks in priority (TODO.md) order: filter them, re-sort them, clear or
+    set aside a hold, answer the owner's questions. Refreshed like the main screen."""
+    VIEW_NAMES = {'all': 'All', 'working': 'Working', 'held': 'Held', 'waiting': 'Waiting', 'questions': 'Questions'}
+    BINDINGS = [Binding('escape,q', 'app.pop_screen', 'Back', show=False),
+                Binding('tab', 'step_view(1)', 'next view', show=False),
+                Binding('shift+tab', 'step_view(-1)', 'previous view', show=False),
+                *[Binding(str(n + 1), f'show_view("{view}")', view, show=False)
+                  for n, view in enumerate(fleet_view.TASK_VIEWS)],
+                *[Binding(key, f'task("{key}")', key, show=False) for key in 'udcab']]
+    DEFAULT_CSS = '''
+    #task-views { height: 1; padding: 0 1; }
+    #tasks { height: 1fr; }
+    #task-detail { height: auto; max-height: 7; padding: 0 1; border-top: solid $panel; }
+    '''
+    # State and Why are cut to what the terminal has left; Why goes first on a narrow one.
+    FIXED, TEXT = ('#', 'Task', 'Short'), ('State', 'Why')
+
+    def __init__(self, runner_name):
+        super().__init__()
+        self.runner_name, self.view, self.rows, self.shown = runner_name, 'all', [], []
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield Static(id='task-views')
+        yield DataTable(id='tasks', cursor_type='row', zebra_stripes=True)
+        yield Static(id='task-detail')
+
+    def on_mount(self):
+        self.title = f'{self.runner_name}: tasks'
+        self.query_one('#tasks', DataTable).add_columns(*self.FIXED, *self.TEXT)
+        self.refresh_tasks()
+        self.set_interval(REFRESH, self.refresh_tasks)
+
+    def runner(self):
+        return next((r for r in self.app.runners if r.name == self.runner_name), None)
+
+    def refresh_tasks(self, follow=None):
+        """``follow``: keep the cursor on this task wherever it moved (after a re-sort)."""
+        runner = self.runner()
+        self.rows = fleet_view.task_rows(runner) if runner else []
+        views = Text()
+        for number, view in enumerate(fleet_view.TASK_VIEWS):
+            count = len(fleet_view.task_view(self.rows, view))
+            label = f'{number + 1} {self.VIEW_NAMES[view]} {count}'
+            views.append(('  ' if number else '') + label, style='bold reverse' if view == self.view else 'dim')
+        views.append('   tab next view', style='dim')
+        self.query_one('#task-views', Static).update(views)
+        table = self.query_one('#tasks', DataTable)
+        current = follow or (self.current().task if self.current() else None)
+        self.shown = fleet_view.task_view(self.rows, self.view)
+        position = {row.task: number + 1 for number, row in enumerate(self.rows)}
+        cells = [{'#': (str(position[row.task]), 'dim'), 'Task': (row.task, 'bold'),
+                  'Short': (row.short, ''),
+                  'State': (row.state, 'bold yellow' if row.kind in ('held', 'waiting') else
+                            'bold green' if row.kind == 'working' else ''),
+                  'Why': (row.why, 'yellow' if row.question else 'dim')} for row in self.shown]
+        self.app.fill(table, cells, self.FIXED, self.TEXT, minimum=10)
+        tasks = [row.task for row in self.shown]
+        if current in tasks and table.cursor_row != tasks.index(current):
+            table.move_cursor(row=tasks.index(current))
+        self.show_task()
+
+    def current(self):
+        table = self.query_one('#tasks', DataTable)
+        return self.shown[table.cursor_row] if 0 <= table.cursor_row < len(self.shown) else None
+
+    def actions(self, row):
+        runner = self.runner()
+        if runner is None or row is None or self.app.view_only:
+            return []
+        return fleet_view.task_actions(runner, row, command=self.app.command, script=self.app.script,
+                                       agent=self.app.agent)
+
+    def show_task(self):
+        row = self.current()
+        text = Text()
+        if row is None:
+            text.append('No task in this view.', style='dim')
+        else:
+            text.append(row.task, style='bold')
+            text.append(f'  {row.short}\n')
+            text.append(f'{row.section} · {row.state}\n', style='dim')
+            if row.why:
+                text.append(row.why + '\n', style='yellow' if row.question else '')
+        hotkeys(text, [(a.key, a.label) for a in self.actions(row)] + [('esc', 'Back')])
+        self.query_one('#task-detail', Static).update(text)
+
+    def on_data_table_row_highlighted(self, event):
+        self.show_task()
+
+    def action_show_view(self, view):
+        self.view = view
+        self.refresh_tasks()
+
+    def action_step_view(self, step):
+        views = fleet_view.TASK_VIEWS
+        self.action_show_view(views[(views.index(self.view) + step) % len(views)])
+
+    def action_task(self, key):
+        row = self.current()
+        action = next((a for a in self.actions(row) if a.key == key), None)
+        if action is None:
+            return
+        self.follow = row.task
+        if action.confirm:
+            self.app.push_screen(Confirm(action.confirm), lambda yes: yes and self.app.execute(action))
+        else:
+            self.app.execute(action)
+
+
 class RepoTree(DirectoryTree):
     """Directories only; a repository is marked ready (TODO.md and goals.json) or not."""
 
@@ -313,13 +401,12 @@ class FleetApp(App):
         Binding('r', 'run("r")', 'Restart', show=False),
         Binding('m', 'pick_model("model")', 'Model', show=False),
         Binding('f', 'pick_model("fallback")', 'Fallback', show=False),
-        Binding('b', 'run("b")', 'Blockers', show=False),
-        Binding('a', 'set_aside', 'Aside', show=False),
+        Binding('t', 'run("t")', 'Tasks', show=False),
         Binding('u', 'run("u")', 'Uninstall', show=False),
         Binding('n', 'browse', 'New', show=False),
         Binding('q', 'quit', 'Quit', show=False),
     ]
-    CONTROL = {'run', 'set_aside', 'browse', 'pick_model'}
+    CONTROL = {'run', 'browse', 'pick_model'}
 
     def __init__(self, *, command, script, state_root, env_dir, systemctl='systemctl',
                  journalctl='journalctl', agent=None, runner_cmd=subprocess.run, view_only=False, browse_root=None,
@@ -339,7 +426,7 @@ class FleetApp(App):
 
     def check_action(self, action, parameters):
         """View-only (for example served to a browser on a shared network): no control keys."""
-        if self.view_only and action in self.CONTROL and parameters != ('l',):  # the log is read-only
+        if self.view_only and action in self.CONTROL and parameters not in (('l',), ('t',)):  # read-only views
             return False
         # Over the log, worker or browse screen, the runner keys are off: s while reading a log
         # asked to stop the runner, and p on the browse screen is its own Play.
@@ -515,10 +602,7 @@ class FleetApp(App):
             text.append('view only  ', style='dim')
             hotkeys(text, [('l', 'Log'), ('q', 'Quit')])
         else:
-            keys = [(a.key, a.label) for a in self.available(runner)]
-            if runner.held:
-                keys.append(('a', 'Aside'))  # it asks which held task
-            hotkeys(text, keys + [('n', 'New'), ('q', 'Quit')])
+            hotkeys(text, [(a.key, a.label) for a in self.available(runner)] + [('n', 'New'), ('q', 'Quit')])
         if text.plain != getattr(self, '_detail', None):
             self._detail = text.plain
             detail.update(text)
@@ -556,10 +640,10 @@ class FleetApp(App):
             log.write('(nothing in the last hour; Enter shows the whole log)')
 
     # -- actions ----------------------------------------------------------------
-    def available(self, runner, task=None):
-        return fleet_view.actions(runner, command=self.command, script=self.script, agent=self.agent, task=task)
+    def available(self, runner):
+        return fleet_view.actions(runner, command=self.command, script=self.script, agent=self.agent)
 
-    def action_run(self, key, task=None):
+    def action_run(self, key):
         runner = self.current()
         if runner is None:
             if key == 'p':
@@ -568,9 +652,12 @@ class FleetApp(App):
         if key == 'l':
             self.push_screen(LogScreen(runner, self.logs))
             return
+        if key == 't':  # view-only shows the tasks too, without their actions
+            self.push_screen(TasksScreen(runner.name))
+            return
         if self.view_only:
             return
-        action = next((a for a in self.available(runner, task) if a.key == key), None)
+        action = next((a for a in self.available(runner) if a.key == key), None)
         if action is None:
             self.notify(f'Nothing to do with "{key}" for {runner.name} right now.', severity='warning')
             return
@@ -602,13 +689,6 @@ class FleetApp(App):
                                                   if runner.service == 'running' else '?'))
             self.push_screen(Confirm(action.confirm), lambda yes: yes and self.execute(action))
         self.push_screen(PickModel(title, self.model_cache, current), chosen)
-
-    def action_set_aside(self):
-        runner = self.current()
-        if runner is None or not runner.held:
-            self.notify('No held task to set aside here.', severity='warning')
-            return
-        self.push_screen(PickTask(runner.held), lambda task: task and self.action_run('a', task))
 
     def action_browse(self):
         root = self.browse_root or (Path.home() / 'git' if (Path.home() / 'git').is_dir() else Path.home())
@@ -647,6 +727,8 @@ class FleetApp(App):
         self.call_from_thread(self.notify, message[:300], severity='information' if ok else 'error',
                               title=f'{action.label}: {"done" if ok else "failed"}')
         self.call_from_thread(self.action_refresh)
+        if isinstance(self.screen, TasksScreen):
+            self.call_from_thread(self.screen.refresh_tasks, getattr(self.screen, 'follow', None))
 
 
 def main(argv=None):

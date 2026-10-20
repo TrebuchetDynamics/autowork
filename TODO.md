@@ -55,6 +55,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-277-52 — Restore the offline gate for the picker-policy failures at 171b26b
 
 - [ ] TOOLSET-277-52 — Restore the offline gate for the picker-policy failures at 171b26b
+- Short: Restore the picker-policy offline gate
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Restore the offline gate without changing accepted execution policy.
@@ -73,6 +74,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-270-a9 — Pushing is opt-in, and autowork start applies or refuses the settings it is given (GitHub #4)
 
 - [ ] TOOLSET-270-a9 — Pushing is opt-in, and autowork start applies or refuses the settings it is given (GitHub #4)
+- Short: Opt-in push; start applies its settings
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: [GitHub #4](https://github.com/TrebuchetDynamics/autowork/issues/4); [coordinator](pi-autowork/pi_autowork/coordinator.py) (`os.environ.get('PI_AUTOWORK_PUSH', '1')`); [service](pi-autowork/pi_autowork/service.py) (`ENV_NAMES`, env file writing); [command](pi-autowork/pi_autowork/command.py) (`cmd_start`).
@@ -89,6 +91,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-271-d6 — A worker-side merge leaves planning files as the base has them, and a hold the runner caused is recovered (GitHub #7)
 
 - [ ] TOOLSET-271-d6 — A worker-side merge leaves planning files as the base has them, and a hold the runner caused is recovered (GitHub #7)
+- Short: Worker merges keep base planning files
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: [GitHub #7](https://github.com/TrebuchetDynamics/autowork/issues/7); [coordinator](pi-autowork/pi_autowork/coordinator.py) (`MERGE_PROMPT`: runs `goals.py merge-finalize` whenever goals.json exists, and opens with the git-commit-push skill); [integration](skills/autowork/scripts/parallel_integrate.py) (`verify_scope` holds `changed files the coordinator owns`; the `touches_held` re-offer skips coordinator files).
@@ -105,6 +108,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-273-e0 — Planning merge drivers survive a toolset self-update (GitHub #5)
 
 - [ ] TOOLSET-273-e0 — Planning merge drivers survive a toolset self-update (GitHub #5)
+- Short: Merge drivers survive self-update
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: [GitHub #5](https://github.com/TrebuchetDynamics/autowork/issues/5); [coordinator](pi-autowork/pi_autowork/coordinator.py) (`setup_planning_merges` writes `merge.docs-sync-*.driver` with the release directory's path); [release](pi-autowork/pi_autowork/release.py) (`prune` removes old releases).
@@ -121,6 +125,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-274-f0 — An unusable repository stops the service deliberately instead of a restart loop (GitHub #6)
 
 - [ ] TOOLSET-274-f0 — An unusable repository stops the service deliberately instead of a restart loop (GitHub #6)
+- Short: Unusable repo stops, no restart loop
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: [GitHub #6](https://github.com/TrebuchetDynamics/autowork/issues/6); [cli](pi-autowork/pi_autowork/cli.py) (`die(2, 'Not inside a Git repository')`); [service](pi-autowork/pi_autowork/service.py) (`RestartPreventExitStatus=1 3 4`).
@@ -137,6 +142,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-252-4c — A worker blocker that names another open task waits for that task, occupies nothing meanwhile, and resumes when it lands
 
 - [ ] TOOLSET-252-4c — A worker blocker that names another open task waits for that task, occupies nothing meanwhile, and resumes when it lands
+- Short: Blocker on a task waits for that task
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
@@ -158,6 +164,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-234-d4 — A main-repair worker gets the runner's main-check evidence: log, exit code, revisions and isolated reruns
 
 - [ ] TOOLSET-234-d4 — A main-repair worker gets the runner's main-check evidence: log, exit code, revisions and isolated reruns
+- Short: Main repair gets the main-check evidence
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: fleet monitoring (2026-10-18); [maintainer prompt](pi-autowork/pi_autowork/maintainer.py) (`PROMPT`: for `MAIN (main red)` and `MAIN (flaky test)` it adds a repair or hardening task with the failing tests and commits as Evidence); [main check](pi-autowork/pi_autowork/main_check.py) (the runner state's `main-check.log`, `main-check.exit`, `main-check-reruns.log`, `main_check.json`: revision, last green, failures, flaky history); [worker launch and prompt](skills/autowork/scripts/parallel_dispatch.py) (`launch` env, `prompt`).
@@ -176,6 +183,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-230-bf — Integration and closeout move the runner's branch with a ref update, never through a working copy
 
 - [ ] TOOLSET-230-bf — Integration and closeout move the runner's branch with a ref update, never through a working copy
+- Short: Integration moves branches by ref update
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
@@ -194,6 +202,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-200-c1 — A status read waits for the writer lock, and a failed read never means nothing is running
 
 - [ ] TOOLSET-200-c1 — A status read waits for the writer lock, and a failed read never means nothing is running
+- Short: Status read waits for the writer lock
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
@@ -213,6 +222,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-242-d5 — A task archived as done is done in the ledger too, and a not-runnable reason names what blocks it
 
 - [ ] TOOLSET-242-d5 — A task archived as done is done in the ledger too, and a not-runnable reason names what blocks it
+- Short: Archived done means done in the ledger
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
@@ -231,6 +241,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-138-62 — Reconcile the fleet's unmerged parallel-admission branch into main
 
 - [ ] TOOLSET-138-62 — Reconcile the fleet's unmerged parallel-admission branch into main
+- Short: Merge the parallel-admission branch
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
@@ -251,6 +262,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-139-62 — Heal toolset pin drift so every runner receives released fixes
 
 - [ ] TOOLSET-139-62 — Heal toolset pin drift so every runner receives released fixes
+- Short: Heal toolset pin drift on every runner
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
@@ -274,6 +286,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-179-cf — The runner merges the upstream before it dispatches work
 
 - [ ] TOOLSET-179-cf — The runner merges the upstream before it dispatches work
+- Short: Merge the upstream before dispatching
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
@@ -297,6 +310,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-158-08 — A rejected push with a conflicting upstream is resolved, not left to diverge silently
 
 - [ ] TOOLSET-158-08 — A rejected push with a conflicting upstream is resolved, not left to diverge silently
+- Short: Resolve a rejected push, never diverge
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: [monitor findings](docs/plans/2026-10-16-pi-autowork-coordinator.md#fleet-monitor-findings-delivery-environment-and-stall-repair), [push](pi-autowork/pi_autowork/coordinator.py) (`Coordinator.push`, `merge_main`, the Pi merge resolver).
@@ -316,6 +330,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-155-e2 — Keep owner-listed private terms out of public commits, pushes and runner integrations
 
 - [ ] TOOLSET-155-e2 — Keep owner-listed private terms out of public commits, pushes and runner integrations
+- Short: Keep private terms out of public commits
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: owner direction (2026-10-17): "this repo cannot contain references to my private projects ... this repo is public". A local stopgap hook is installed in this checkout's `.git/hooks` (`private-terms-check`, wired to pre-commit, commit-msg and pre-push). It is not part of the repository.
@@ -333,6 +348,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-173-94 — A review that fails only for a missing toolchain gets a provisioning run, then one more review
 
 - [ ] TOOLSET-173-94 — A review that fails only for a missing toolchain gets a provisioning run, then one more review
+- Short: No toolchain: provision, then review
 - Status: open
 - Partial delivery: (1), (2) and (4) done by the owner session (2026-10-17); (3) is open
 - Goal: PI-RUNNER
@@ -355,6 +371,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-265-16 — Route planning-file writes through the docs maintainer without losing owner edits
 
 - [ ] TOOLSET-265-16 — Route planning-file writes through the docs maintainer without losing owner edits
+- Short: Planning writes go via docs maintainer
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Finish one bounded remainder of the accepted standing docs-maintainer feature.
@@ -372,6 +389,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-164-f1 — A standing DOCS-MAINTAINER worker repairs, re-sorts and syncs each repository's task docs
 
 - [ ] TOOLSET-164-f1 — A standing DOCS-MAINTAINER worker repairs, re-sorts and syncs each repository's task docs
+- Short: Standing docs maintainer repairs docs
 - Status: open
 - Recorded partial delivery: first slice and the review-findings trigger done by the owner session (2026-10-17); the rest below is open
 - Goal: PI-RUNNER
@@ -399,6 +417,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-147-54 — Merge pending names its real cause and clears a dirty integration worktree safely
 
 - [ ] TOOLSET-147-54 — Merge pending names its real cause and clears a dirty integration worktree safely
+- Short: Merge pending names its real cause
 - Status: open
 - Prior recovery direction: set aside behind TOOLSET-161-17, whose engine files its held candidate overlaps. The hold was ownership, not the change: restore candidate commit 950ac98 from its kept `-set-aside-` branch, merge current main and reverify it instead of reimplementing.
 - Goal: PI-RUNNER
@@ -421,6 +440,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-154-d3 — Question IDs are single-line and stable, so BLOCKERS.md changes only when questions do
 
 - [ ] TOOLSET-154-d3 — Question IDs are single-line and stable, so BLOCKERS.md changes only when questions do
+- Short: Stable single-line question IDs
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: [monitor findings](docs/plans/2026-10-16-pi-autowork-coordinator.md#fleet-monitor-findings-delivery-environment-and-stall-repair), [questions](pi-autowork/pi_autowork/questions.py) (`build`, `render`, `previous_since`, `update`).
@@ -440,6 +460,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-163-f7 — A claim question says why the claim is kept and quotes the note that holds it
 
 - [ ] TOOLSET-163-f7 — A claim question says why the claim is kept and quotes the note that holds it
+- Short: Claim question says why claim is kept
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: [claims](skills/autowork/scripts/parallel_claims.py) (`HOLD_NOTE`, `hold_note`, `idle_claims`), [status roots](skills/autowork/scripts/parallel_status.py), [questions](pi-autowork/pi_autowork/questions.py) (the `claim` question).
@@ -456,6 +477,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-182-ce — Back-to-back question updates make one commit
 
 - [ ] TOOLSET-182-ce — Back-to-back question updates make one commit
+- Short: Back-to-back question updates: 1 commit
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: feedback from an interactive session in one fleet repository (2026-10-17), pasted by the owner with "please plan these as tasks, folding into existing ones where they overlap" (item 7); [questions writer](pi-autowork/pi_autowork/coordinator.py) (the BLOCKERS.md commit, `commit`).
@@ -472,6 +494,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-153-64 — A planning hold lets repository agents repair the queue without stopping the runner
 
 - [ ] TOOLSET-153-64 — A planning hold lets repository agents repair the queue without stopping the runner
+- Short: Planning hold lets agents repair queue
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: [monitor findings](docs/plans/2026-10-16-pi-autowork-coordinator.md#fleet-monitor-findings-delivery-environment-and-stall-repair), [command](pi-autowork/pi_autowork/command.py) (`cmd_pause`, the paused marker), [coordinator](pi-autowork/pi_autowork/coordinator.py), [fleet view](pi-autowork/pi_autowork/fleet_view.py), [blockers skill](skills/blockers/SKILL.md).
@@ -490,6 +513,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-120-fc — Hands-off runners: the owner only plans and answers questions
 
 - [ ] TOOLSET-120-fc — Hands-off runners: the owner only plans and answers questions
+- Short: Hands-off runners: owner only plans
 - Status: open; initial parts 1-4 and 6 exist offline, with candidate-preserving recovery and repair-versus-owner classification still required below; part 5 superseded by TOOLSET-122-27. Live fleet qualification remains with TOOLSET-096-7e.
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: [automatic recovery continuation](docs/plans/2026-10-16-pi-autowork-coordinator.md#automatic-stall-recovery-and-conditional-docs-sync), [accepted progress and parallelism continuation](docs/plans/2026-10-16-pi-autowork-coordinator.md#useful-progress-and-independent-workers), owner direction (2026-10-16), [design](docs/plans/2026-10-16-pi-autowork-coordinator.md), [runner guide](docs/cross-host.md#run-autowork-continuously), [tx autowork](tmux/README.md).
@@ -513,6 +537,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-125-3c — Runners report unlanded work in health and BLOCKERS.md
 
 - [ ] TOOLSET-125-3c — Runners report unlanded work in health and BLOCKERS.md
+- Short: Report unlanded work in health
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: owner request (2026-10-17: audit runners' .worktrees use and merging after each task, then plan improvements), [plan](docs/plans/2026-10-17-runner-landing-and-worktrees.md), audit findings 3–4.
@@ -528,6 +553,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-126-02 — Every runner worktree in .worktrees, none outliving its work
 
 - [ ] TOOLSET-126-02 — Every runner worktree in .worktrees, none outliving its work
+- Short: Runner worktrees in .worktrees only
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: owner request (2026-10-17: audit runners' .worktrees use and merging after each task, then plan improvements), [plan](docs/plans/2026-10-17-runner-landing-and-worktrees.md), audit findings 1–2, [worktree placement](docs/worktree-placement.md).
@@ -543,6 +569,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-119-2b — Record intent before side effects in worktree creation and slot transitions
 
 - [ ] TOOLSET-119-2b — Record intent before side effects in worktree creation and slot transitions
+- Short: Record intent before side effects
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
@@ -561,6 +588,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-118-68 — Separate worker, test and memory budgets in the parallel resource gate
 
 - [ ] TOOLSET-118-68 — Separate worker, test and memory budgets in the parallel resource gate
+- Short: Separate worker, test, memory budgets
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
@@ -582,6 +610,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-099-87 — Run as many independent tasks at once as possible
 
 - [ ] TOOLSET-099-87 — Run as many independent tasks at once as possible
+- Short: Run every independent task at once
 - Status: open; initial offline implementation exists; remaining scope inference and independent-admission corrections are accepted below. Fleet qualification remains TOOLSET-096-7e.
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: [accepted progress and parallelism continuation](docs/plans/2026-10-16-pi-autowork-coordinator.md#useful-progress-and-independent-workers), [usage](docs/cross-host.md#run-autowork-continuously), [engine](skills/autowork/references/parallel-workers.md).
@@ -603,6 +632,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-146-bc — Run conditional Docs Sync during verified Autowork closeout
 
 - [ ] TOOLSET-146-bc — Run conditional Docs Sync during verified Autowork closeout
+- Short: Conditional Docs Sync at closeout
 - Status: open
 - Goal: DOCS-COMPLETENESS — Make core-document completeness and drift machine-checkable.
 - Sources: [accepted recovery and closeout plan](docs/plans/2026-10-16-pi-autowork-coordinator.md#automatic-stall-recovery-and-conditional-docs-sync), [existing closeout guidance](skills/shared/ENGINEERING-CYCLE.md), [Docs Sync](adapters/skills/docs-sync/SKILL.md), [parallel close](skills/autowork/scripts/parallel_integrate.py).
@@ -621,6 +651,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-156-75 — Split a task into subtasks when that unlocks parallel work or reduces complexity
 
 - [ ] TOOLSET-156-75 — Split a task into subtasks when that unlocks parallel work or reduces complexity
+- Short: Split tasks to unlock parallel work
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: owner direction (2026-10-17): "autowork may create sub tasks if see fit to parallelize or reduce complexity". Related: [monitor findings](docs/plans/2026-10-16-pi-autowork-coordinator.md#fleet-monitor-findings-delivery-environment-and-stall-repair), [admission](skills/autowork/scripts/parallel_plan.py), [goals helper](skills/docs-sync/scripts/goals.py) (`add-task`, `supersede`).
@@ -638,6 +669,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-129-c4 — Make Needs show one evidence-backed next action
 
 - [ ] TOOLSET-129-c4 — Make Needs show one evidence-backed next action
+- Short: Needs shows one next action
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
@@ -656,6 +688,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-130-15 — Separate worker activity, delivery evidence and available capacity
 
 - [ ] TOOLSET-130-15 — Separate worker activity, delivery evidence and available capacity
+- Short: Separate activity, delivery, capacity
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
@@ -687,6 +720,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-235-0d — One busy status read is not 'unavailable': the last state stays, and unavailable dates from the first failed read
 
 - [ ] TOOLSET-235-0d — One busy status read is not 'unavailable': the last state stays, and unavailable dates from the first failed read
+- Short: One busy status read is not unavailable
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: fleet monitoring (2026-10-18); [health](pi-autowork/pi_autowork/health.py) (`update`: any snapshot other than `PARALLEL_STATUS` writes `state='unavailable'` with `since=previous['since']`); [status and TUI](pi-autowork/pi_autowork/fleet_view.py), `autowork status`.
@@ -707,6 +741,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-276-2c — A failed git command is never read as a clean tree or an empty result
 
 - [ ] TOOLSET-276-2c — A failed git command is never read as a clean tree or an empty result
+- Short: A failed git command is never clean
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
@@ -725,6 +760,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-276-a9 — Every hold cause is a known value with its recovery rule in one table
 
 - [ ] TOOLSET-276-a9 — Every hold cause is a known value with its recovery rule in one table
+- Short: One table of hold causes and recovery
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
@@ -743,6 +779,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-276-3f — Tasks that share a hot file never run at the same time
 
 - [ ] TOOLSET-276-3f — Tasks that share a hot file never run at the same time
+- Short: Hot-file tasks never run at once
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
@@ -761,6 +798,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-276-3d — Landing refuses a commit the tree guard rejects
 
 - [ ] TOOLSET-276-3d — Landing refuses a commit the tree guard rejects
+- Short: Landing refuses tree-guard rejections
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
@@ -779,6 +817,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-276-11 — Split tests/test_pi_autowork.py into per-feature modules over one fixture module
 
 - [ ] TOOLSET-276-11 — Split tests/test_pi_autowork.py into per-feature modules over one fixture module
+- Short: Split test_pi_autowork.py by feature
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
@@ -797,6 +836,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-266-7a — Batch remaining docs-maintainer triggers and ask only unresolved owner questions
 
 - [ ] TOOLSET-266-7a — Batch remaining docs-maintainer triggers and ask only unresolved owner questions
+- Short: Batch docs-maintainer triggers
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Finish one bounded remainder of the accepted standing docs-maintainer feature.
@@ -814,6 +854,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-267-a0 — Bound docs-maintainer repair loops and report actual changed task bodies
 
 - [ ] TOOLSET-267-a0 — Bound docs-maintainer repair loops and report actual changed task bodies
+- Short: Bound docs-maintainer repair loops
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Finish one bounded remainder of the accepted standing docs-maintainer feature.
@@ -831,6 +872,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-259-ca — Plans prefer independent tasks; a long dependency chain needs a reason
 
 - [ ] TOOLSET-259-ca — Plans prefer independent tasks; a long dependency chain needs a reason
+- Short: Plans prefer independent tasks
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
@@ -848,6 +890,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-260-ae — Every worker on the host takes a slot from one shared worker pool, shared fairly among runners
 
 - [ ] TOOLSET-260-ae — Every worker on the host takes a slot from one shared worker pool, shared fairly among runners
+- Short: One shared host worker pool
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
@@ -866,6 +909,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-261-15 — A worker's long test runs take a host check slot
 
 - [ ] TOOLSET-261-15 — A worker's long test runs take a host check slot
+- Short: Long worker tests take a check slot
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
@@ -883,6 +927,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-262-13 — A worker can run up to three read-only helpers for its task
 
 - [ ] TOOLSET-262-13 — A worker can run up to three read-only helpers for its task
+- Short: Up to three read-only helpers per task
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
@@ -900,6 +945,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-263-94 — A second attempt runs two workers when spare slots exist, and the first to pass review lands
 
 - [ ] TOOLSET-263-94 — A second attempt runs two workers when spare slots exist, and the first to pass review lands
+- Short: Race two workers on a second attempt
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
@@ -918,6 +964,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-264-39 — Spare capacity triggers the task split before dispatch
 
 - [ ] TOOLSET-264-39 — Spare capacity triggers the task split before dispatch
+- Short: Spare capacity splits tasks first
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
@@ -935,6 +982,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-254-80 — Explain full-check results from their recorded evidence, never from an absent log
 
 - [ ] TOOLSET-254-80 — Explain full-check results from their recorded evidence, never from an absent log
+- Short: Explain full checks from their evidence
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Prevent a reviewer from reading all tests passed when the accepted gate used exceptions or its detailed evidence is missing.
@@ -952,6 +1000,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-255-55 — Bind task claims to runner-owned evidence without changing legacy acceptance
 
 - [ ] TOOLSET-255-55 — Bind task claims to runner-owned evidence without changing legacy acceptance
+- Short: Bind task claims to runner evidence
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Make completion claims auditable against actual evidence without another execution or truth engine.
@@ -969,6 +1018,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-256-4b — Attach evidence-bound semantic assessments to the existing Pi review
 
 - [ ] TOOLSET-256-4b — Attach evidence-bound semantic assessments to the existing Pi review
+- Short: Semantic assessments in the Pi review
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Make completion claims auditable against actual evidence without another execution or truth engine.
@@ -986,6 +1036,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-257-bd — Consume claim evidence through bounded repair and exact-target closeout
 
 - [ ] TOOLSET-257-bd — Consume claim evidence through bounded repair and exact-target closeout
+- Short: Consume claim evidence at closeout
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Make completion claims auditable against actual evidence without another execution or truth engine.
@@ -1003,6 +1054,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-248-60 — An idle runner with an empty queue rests: no new session until the plan or main changes
 
 - [ ] TOOLSET-248-60 — An idle runner with an empty queue rests: no new session until the plan or main changes
+- Short: An idle runner with nothing to do rests
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: fleet monitoring (2026-10-18); [coordinator](pi-autowork/pi_autowork/coordinator.py) (`cycle` calls `ensure_session` and an engine `--apply` every cycle; on `IDLE` the cycle lands the session, releases the lease, calls `end_session` and logs `Queue empty; checking again in {interval}s`; `pause` wakes early only when `plan_signature` changes); TOOLSET-185-74 in [the archive](TODO.archive.md) (the earlier once-a-second version, caused by `packed-refs`).
@@ -1020,6 +1072,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-249-5b — A waiting line is logged when the reasons change, not each minute a drain counter moves
 
 - [ ] TOOLSET-249-5b — A waiting line is logged when the reasons change, not each minute a drain counter moves
+- Short: Log a waiting line when reasons change
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: fleet monitoring (2026-10-18); [coordinator](pi-autowork/pi_autowork/coordinator.py) (the `WAITING` branch logs `Waiting: <summary>` when the summary differs from `last_waiting`); [admission](skills/autowork/scripts/parallel_plan.py) (`priority waits for <task> (draining, waited <n>m)`).
@@ -1036,6 +1089,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-245-6a — A dispatch refused by the runner's own review lock tries again in seconds, not after a full pause
 
 - [ ] TOOLSET-245-6a — A dispatch refused by the runner's own review lock tries again in seconds, not after a full pause
+- Short: Retry a review-lock refusal in seconds
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: fleet monitoring (2026-10-18); [coordinator](pi-autowork/pi_autowork/coordinator.py) (the `BUSY` outcome of `--apply`: `Repository busy (...); checking again in {interval}s` and `blocked_pause`, or `finish(4)` in `--once`/`--until-empty`); [engine](skills/autowork/scripts/task_execution.py) (`BlockingIOError` becomes `BUSY: Repository execution lock is held by a live operation.`); TOOLSET-238-11 in [the archive](TODO.archive.md) (an attempt to return to the loop as soon as a review was accepted exposed this race in fixtures and was dropped).
@@ -1052,6 +1106,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-234-51 — Make the TUI a compact fleet overview with a focused runner workspace
 
 - [ ] TOOLSET-234-51 — Make the TUI a compact fleet overview with a focused runner workspace
+- Short: Compact TUI overview, runner workspace
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Make progress, genuine owner input and the next step clear without reading four simultaneous dense panels.
@@ -1071,6 +1126,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-231-49 — A speculative merge queue validates the next queued commits stacked and lands each that passes in order
 
 - [ ] TOOLSET-231-49 — A speculative merge queue validates the next queued commits stacked and lands each that passes in order
+- Short: Speculative stacked merge queue
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
@@ -1090,6 +1146,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-225-75 — Status and the TUI never list a task closed on the base branch as waiting
 
 - [ ] TOOLSET-225-75 — Status and the TUI never list a task closed on the base branch as waiting
+- Short: Closed tasks never listed as waiting
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: fleet monitoring (2026-10-18); TOOLSET-218-d0 in [the archive](TODO.archive.md) (`--base-ref` on dispatch and integration only); [status](skills/autowork/scripts/parallel_status.py) (`pending_tasks` reads only the session worktree's ledger); [fleet view](pi-autowork/pi_autowork/fleet_view.py).
@@ -1106,6 +1163,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-202-9a — Retire the owner-cycle engine modules no live entry point reaches
 
 - [ ] TOOLSET-202-9a — Retire the owner-cycle engine modules no live entry point reaches
+- Short: Retire unreachable owner-cycle modules
 - Status: open
 - Goal: TEST-SUITE — Optimize test suites without losing defect detection.
 - Sources: [engine graph review](docs/plans/2026-10-17-engine-graph-review.md#engine-graph-review-findings) (finding 4); [historical owner cycle](skills/autowork/references/historical-owner-cycle.md) ("retained as evidence, not current instructions"), [legacy fixture](tests/fixtures/legacy_owner_cycle.py), [live skill](skills/autowork/SKILL.md) (runs only `scripts/owner_cycle.py` and `scripts/worktree_closeout.py`), [offline check](scripts/check.py).
@@ -1122,6 +1180,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-192-71 — The offline check runs tests with SIGINT at its default, even when started in the background
 
 - [ ] TOOLSET-192-71 — The offline check runs tests with SIGINT at its default, even when started in the background
+- Short: Offline check keeps SIGINT default
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: owner-session runs of `scripts/check.py` (2026-10-17); [offline check](scripts/check.py) (`run_unit`).
@@ -1138,6 +1197,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-172-92 — Recover verified managed Hermes checkouts when updates cannot fast-forward
 
 - [ ] TOOLSET-172-92 — Recover verified managed Hermes checkouts when updates cannot fast-forward
+- Short: Recover managed Hermes checkouts
 - Status: open
 - Goal: PORTABLE
 - Sources: Owner's full-suite failure report and selected automatic-safe-recovery policy; [managed checkout recovery](docs/project.md#managed-hermes-checkout-recovery); update_bundle.py prepare/git and scripts/install_menu.py command-result reporting.
@@ -1155,6 +1215,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-178-47 — Keep TUI confirmations readable and stable through refresh and terminal resize
 
 - [ ] TOOLSET-178-47 — Keep TUI confirmations readable and stable through refresh and terminal resize
+- Short: Stable TUI confirmations on resize
 - Status: open
 - Goal: PI-RUNNER
 - Sources: Owner's pasted TUI defect report; [confirmation layout and refresh](docs/workflows.md#tui-confirmation-layout-and-refresh); pi-autowork/pi_autowork/tui.py and existing tui_pilot.py.
@@ -1171,6 +1232,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-131-ac — Open actionable blocker evidence from the selected runner
 
 - [ ] TOOLSET-131-ac — Open actionable blocker evidence from the selected runner
+- Short: Open blocker evidence from the TUI
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: [accepted progress and parallelism plan](docs/plans/2026-10-16-pi-autowork-coordinator.md#useful-progress-and-independent-workers), [fleet view](pi-autowork/pi_autowork/fleet_view.py), [TUI](pi-autowork/pi_autowork/tui.py).
@@ -1185,6 +1247,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-132-af — Keep log position and add follow search and copy
 
 - [ ] TOOLSET-132-af — Keep log position and add follow search and copy
+- Short: Log keeps position; follow, search, copy
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: [accepted progress and parallelism plan](docs/plans/2026-10-16-pi-autowork-coordinator.md#useful-progress-and-independent-workers), [fleet view](pi-autowork/pi_autowork/fleet_view.py), [TUI](pi-autowork/pi_autowork/tui.py).
@@ -1199,6 +1262,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-127-8f — autowork audit: the landing and worktree audit as one command
 
 - [ ] TOOLSET-127-8f — autowork audit: the landing and worktree audit as one command
+- Short: autowork audit: landing and worktrees
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: owner request (2026-10-17: audit runners' .worktrees use and merging after each task, then plan improvements), [plan](docs/plans/2026-10-17-runner-landing-and-worktrees.md), the audit table in the plan.
@@ -1213,6 +1277,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-125-e6 — Run inherited execution regressions once
 
 - [ ] TOOLSET-125-e6 — Run inherited execution regressions once
+- Short: Run inherited regressions once
 - Status: open
 - Goal: TEST-SUITE — Optimize test suites without losing defect detection.
 - Sources: [accepted thinning plan](docs/test-suite-audit.md#suite-thinning-plan-2026-10-16), [test budget](skills/shared/ENGINEERING-CYCLE.md#test-budget).
@@ -1227,6 +1292,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-126-6b — Trim prose-only test assertions while retaining executable contracts
 
 - [ ] TOOLSET-126-6b — Trim prose-only test assertions while retaining executable contracts
+- Short: Trim prose-only test assertions
 - Status: open
 - Goal: TEST-SUITE — Optimize test suites without losing defect detection.
 - Sources: [accepted thinning plan](docs/test-suite-audit.md#suite-thinning-plan-2026-10-16), [test budget](skills/shared/ENGINEERING-CYCLE.md#test-budget).
@@ -1241,6 +1307,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-127-b1 — Thin repeated Pi lifecycle fixtures and fixed waits
 
 - [ ] TOOLSET-127-b1 — Thin repeated Pi lifecycle fixtures and fixed waits
+- Short: Thin Pi lifecycle fixtures and waits
 - Status: open
 - Goal: TEST-SUITE
 - Payoff: Optimize test suites without losing defect detection.
@@ -1257,6 +1324,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-128-69 — Qualify suite thinning and reconcile the test budget
 
 - [ ] TOOLSET-128-69 — Qualify suite thinning and reconcile the test budget
+- Short: Qualify suite thinning and test budget
 - Status: open
 - Goal: TEST-SUITE — Optimize test suites without losing defect detection.
 - Sources: [accepted thinning plan](docs/test-suite-audit.md#suite-thinning-plan-2026-10-16), [test budget](skills/shared/ENGINEERING-CYCLE.md#test-budget).
@@ -1271,6 +1339,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-133-f5 — Define minimum-sufficient regression protection and test budgets
 
 - [ ] TOOLSET-133-f5 — Define minimum-sufficient regression protection and test budgets
+- Short: Define minimum regression protection
 - Status: open
 - Goal: TEST-SUITE — Keep test execution efficient without losing regression protection.
 - Sources: [accepted skill plan](docs/project.md#discoverable-test-optimization-suite-skill), [existing method](skills/engineering/local/test-suite-optimization/PROTOCOL.md), [shared budget](skills/shared/ENGINEERING-CYCLE.md#test-budget), [current suite audit](docs/test-suite-audit.md).
@@ -1285,6 +1354,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-134-ab — Expose test-optimization-suite across supported hosts
 
 - [ ] TOOLSET-134-ab — Expose test-optimization-suite across supported hosts
+- Short: Expose test-optimization-suite on hosts
 - Status: open
 - Goal: TEST-SUITE — Keep test execution efficient without losing regression protection.
 - Sources: [accepted skill plan](docs/project.md#discoverable-test-optimization-suite-skill), [native discovery](__init__.py), [portable registry](adapters/pi.mjs), [package checks](tests/test_portable_package.py).
@@ -1299,6 +1369,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-135-16 — Keep bulk planning within its artifact and execution boundaries
 
 - [ ] TOOLSET-135-16 — Keep bulk planning within its artifact and execution boundaries
+- Short: Keep bulk planning within its bounds
 - Status: open
 - Goal: BACKLOG — Produce a usable repository backlog for Autowork.
 - Sources: [accepted planning handoff plan](docs/workflows.md#planning-only-bulk-handoff-and-skill-recommendations), [shared planning method](skills/shared/RESEARCH-PLAN.md), [handoff contract](skills/shared/PLAN-HANDOFF.md).
@@ -1314,6 +1385,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-136-0b — Make Plan With Me questions resolve consequential uncertainty
 
 - [ ] TOOLSET-136-0b — Make Plan With Me questions resolve consequential uncertainty
+- Short: Plan With Me asks what matters
 - Status: open
 - Goal: BACKLOG — Produce a usable repository backlog for Autowork.
 - Sources: [accepted planning handoff plan](docs/workflows.md#planning-only-bulk-handoff-and-skill-recommendations), [shared planning method](skills/shared/RESEARCH-PLAN.md), [handoff contract](skills/shared/PLAN-HANDOFF.md).
@@ -1329,6 +1401,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-137-cd — Carry justified skill recommendations from plans into Autowork
 
 - [ ] TOOLSET-137-cd — Carry justified skill recommendations from plans into Autowork
+- Short: Carry skill picks from plans to Autowork
 - Status: open
 - Goal: BACKLOG — Produce a usable repository backlog for Autowork.
 - Sources: [accepted planning handoff plan](docs/workflows.md#planning-only-bulk-handoff-and-skill-recommendations), [shared planning method](skills/shared/RESEARCH-PLAN.md), [handoff contract](skills/shared/PLAN-HANDOFF.md).
@@ -1344,6 +1417,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-143-62 — Add the conversational tasks skill and host commands
 
 - [ ] TOOLSET-143-62 — Add the conversational tasks skill and host commands
+- Short: Conversational tasks skill and commands
 - Status: open
 - Goal: PORTABLE
 - Payoff: Align portable workflow discovery.
@@ -1362,6 +1436,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-122-27 — An autowork command: the TUI home, service runners by default, no tmux
 
 - [ ] TOOLSET-122-27 — An autowork command: the TUI home, service runners by default, no tmux
+- Short: autowork command: TUI home, services
 - Status: open; offline implementation done (the `autowork` command, TUI browser, log view, pause and per-service models, `tx autowork` removed; owner additions 2026-10-16: pause services and choose each service's model from Pi's list). Remaining: the live move of runner C, runner B and runner A (stopped since 17:22; runner D already runs as a service) waits for the owner.
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: owner direction (2026-10-16), [TUI](pi-autowork/pi_autowork/tui.py), [fleet view](pi-autowork/pi_autowork/fleet_view.py), [runner guide](docs/cross-host.md#run-autowork-continuously), [tx](tmux/README.md).
@@ -1378,6 +1453,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-123-de — One install.sh for every component, chosen with checkboxes
 
 - [ ] TOOLSET-123-de — One install.sh for every component, chosen with checkboxes
+- Short: One install.sh with component checkboxes
 - Status: open
 - Goal: PORTABLE
 - Payoff: One installer supplies the Pi agent harness as well as the Autowork extension on a host where Pi is absent.
@@ -1398,6 +1474,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-144-c0 — Choose repository models and connect Pi provider accounts in Autowork
 
 - [ ] TOOLSET-144-c0 — Choose repository models and connect Pi provider accounts in Autowork
+- Short: Choose models and connect Pi providers
 - Status: open
 - Goal: PI-RUNNER
 - Sources: Owner's /plan-for-me request; [per-repository Pi models and accounts](docs/project.md#per-repository-pi-models-and-accounts); current `pi-autowork/pi_autowork/{tui,fleet_view,command}.py`; Pi 1.2.0 public SDK declarations.
@@ -1414,6 +1491,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-184-1d — Browse all recorded tasks in the Autowork TUI
 
 - [ ] TOOLSET-184-1d — Browse all recorded tasks in the Autowork TUI
+- Short: Browse all recorded tasks in the TUI
 - Status: open
 - Goal: PI-RUNNER
 - Sources: Owner request to add an all-task viewer; [accepted browser plan](docs/workflows.md#tui-all-task-browser); existing `skills/pending/scripts/task_query.py`, fleet screens and fake TUI pilot.
@@ -1430,6 +1508,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-117-cb — Compare the Pi CLI worker adapter with AgwaB pi-subagent runSubagent on identical fixtures
 
 - [ ] TOOLSET-117-cb — Compare the Pi CLI worker adapter with AgwaB pi-subagent runSubagent on identical fixtures
+- Short: Compare Pi worker adapter with AgwaB
 - Status: open; spike only, adoption is a separate owner decision.
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: [research: runtime adapter](docs/research/pi-autowork-reference-architectures.md#runtime-adapter-overstory--agwab), [Kyle Boas live workers](docs/research/pi-autowork-reference-architectures.md#kyle-boas-reusable-live-rpc-workers), [follow-up boundaries](docs/research/pi-autowork-reference-architectures.md#proposed-follow-up-boundaries), [pi-durable](https://github.com/earendil-works/pi/blob/main/packages/durable/README.md).
@@ -1444,6 +1523,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-066 — Qualify the Claude Code plugin with a live questions-only workflow
 
 - [ ] TOOLSET-066 — Qualify the Claude Code plugin with a live questions-only workflow
+- Short: Qualify the Claude Code plugin live
 - Status: open; live qualification not run.
 - Goal: CLAUDE-CODE — Install the portable workflows in Claude Code.
 - Sources: [Claude Code decision](docs/project.md#claude-code-package-2026-10-15), [install guide](docs/cross-host.md#claude-code), [2026-10-15 replan](docs/project.md#backlog-replan-2026-10-15).
@@ -1459,6 +1539,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-003 — Qualify automatic planning recovery with a real bounded workflow
 
 - [ ] TOOLSET-003 — Qualify automatic planning recovery with a real bounded workflow
+- Short: Qualify automatic planning recovery
 - Status: open; live qualification not run.
 - Goal: RECOVERY — Prove recovery reaches execution, not just a planning receipt.
 - Sources: [accepted scope](docs/project.md#accepted-requirements), [recovery contract](skills/autowork/references/backlog-planning.md), [existing regressions](skills/autowork/scripts/test_backlog_plan.py), [verification limits](docs/testing.md), [2026-10-15 replan](docs/project.md#backlog-replan-2026-10-15).
@@ -1476,6 +1557,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-098-5d — Refresh the installed OMH plugin in each OMH profile to the Hermes 0.22 release
 
 - [ ] TOOLSET-098-5d — Refresh the installed OMH plugin in each OMH profile to the Hermes 0.22 release
+- Short: Refresh OMH plugin for Hermes 0.22
 - Status: open
 - Goal: OMH-TRIM
 - Sources: [OMH plan](docs/project.md#omh-catalog-trim-2026-10-15), [OMH installer](install-omh.py), TOOLSET-082, [2026-10-15 replan](docs/project.md#backlog-replan-2026-10-15).
@@ -1490,6 +1572,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-019 — Deploy reviewed local fixes to selected eligible profiles
 
 - [ ] TOOLSET-019 — Deploy reviewed local fixes to selected eligible profiles
+- Short: Deploy reviewed fixes to profiles
 - Status: in_progress; reviewed scoped local updater is implemented and integrated in eb72be6; selected-profile deployment remains pending.
 - Goal: RECOVERY — Deliver reviewed repairs without remote fetches or fleet-wide side effects.
 - Sources: [accepted recovery plan](docs/project.md#end-to-end-original-task-recovery), [updater](update_bundle.py), [updater tests](tests/test_update_bundle.py), [installation](docs/installation.md), [2026-10-15 replan](docs/project.md#backlog-replan-2026-10-15).
@@ -1506,6 +1589,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-096-7e — Qualify the worktree runner live on a fleet repository
 
 - [ ] TOOLSET-096-7e — Qualify the worktree runner live on a fleet repository
+- Short: Qualify the worktree runner live
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: [usage](docs/cross-host.md#run-autowork-continuously).
@@ -1519,6 +1603,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
 
 - [ ] TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
+- Short: Migrate fleet repos to TODO.md order
 - Status: open.
 - Historical migration receipt: partial (2026-10-14): 6 of 9 migrated and committed locally with unchanged eligible order: this repository and five fleet repositories (four of them after a separate checkpoint commit of their pending queue edits). Not migrated: one repository with a staged 9-file docs batch that includes the queue files, one with a live in-progress claim and active session, and one with no commits. All matching jobs were already paused and stay paused.
 - Goal: PRIORITY — Make TODO.md order the enforced human priority.
@@ -1534,6 +1619,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-011 — Qualify the updated reporting workflow on the affected profile
 
 - [ ] TOOLSET-011 — Qualify the updated reporting workflow on the affected profile
+- Short: Qualify the updated reporting workflow
 - Status: open; original target environment unavailable.
 - Goal: CRON-REPORTING — Verify setup confirmation and scheduled Telegram delivery separately.
 - Sources: [accepted reporting qualification](docs/workflows.md#telegram-reporting-qualification), [reporting contract](skills/cron-autowork/SKILL.md), [verification boundaries](docs/workflows.md), archived TOOLSET-010 source delivery.
@@ -1550,6 +1636,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-149-df — Teach planning and Docs Sync linked task storage with compatible consumers
 
 - [ ] TOOLSET-149-df — Teach planning and Docs Sync linked task storage with compatible consumers
+- Short: Linked task storage in planning
 - Status: open
 - Goal: BACKLOG
 - Sources: [accepted docs maintainer plan, decision 6](docs/plans/2026-10-17-docs-maintainer.md#docs-maintainer-worker) (owner, 2026-10-17: "we need that now"); Owner's ledger-size planning request and explicit no-direct-conversion clarification; [compact task ledger](docs/plans/compact-task-ledger.md#compact-task-ledger).
@@ -1569,6 +1656,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-150-71 — Add a compact active-task index and evidence-preserving history
 
 - [ ] TOOLSET-150-71 — Add a compact active-task index and evidence-preserving history
+- Short: Compact active-task index and history
 - Status: open
 - Goal: BACKLOG
 - Sources: Owner's ledger-size planning request and explicit no-direct-conversion clarification; [compact task ledger](docs/plans/compact-task-ledger.md#compact-task-ledger).
@@ -1586,6 +1674,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-151-01 — Deliver opt-in ledger conversion tools and offline qualification
 
 - [ ] TOOLSET-151-01 — Deliver opt-in ledger conversion tools and offline qualification
+- Short: Opt-in ledger conversion tools
 - Status: open
 - Goal: BACKLOG
 - Sources: Owner's ledger-size planning request and explicit no-direct-conversion clarification; [compact task ledger](docs/plans/compact-task-ledger.md#compact-task-ledger).
@@ -1603,6 +1692,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-278-91 — A commit kept without its worker's report resumes that worker, not a batch or the merge resolver
 
 - [ ] TOOLSET-278-91 — A commit kept without its worker's report resumes that worker, not a batch or the merge resolver
+- Short: Retained commits resume their worker
 - Status: open
 - Goal: PI-RUNNER
 - Evidence (2026-10-19 monitor pass): a runner stop marks a dead worker's commit `reported` ("commit retained") although the worker wrote no `report.json`. Batches merge such commits without reading reports, so three were held for a conflict; Pi resolved the conflicts, and `--parallel-merged` then refused each with "merged needs the held commit's report.json" every cycle. Writing a stand-in report is not the fix: `test_a_paused_attempt_resumes_without_its_earlier_report` and `test_a_late_report_from_a_superseded_attempt_never_completes_the_retry` require that a commit without its own worker's report never lands.
@@ -1619,6 +1709,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-123-a0 — Reinstall the live Hermes profiles and host plugins as autowork
 
 - [ ] TOOLSET-123-a0 — Reinstall the live Hermes profiles and host plugins as autowork
+- Short: Reinstall live profiles as autowork
 - Status: open; live follow-up of TOOLSET-121-3d, which has no compatibility layer. Moved to Needs decision (2026-10-17, planner's call): it changes the owner's installed profiles, plugins and cron jobs live, and its Ownership requires the owner or live authorization, but the runner had queued it to run alone unattended.
 - Goal: PORTABLE — Align portable workflow discovery.
 - Sources: [rename note](README.md#renamed-from-hermes-toolset), [rename decision](docs/project.md#rename-to-autowork-2026-10-16), [installation](docs/installation.md).
@@ -1632,6 +1723,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-129-6c — Qualify landing, push and worktree placement on the live fleet
 
 - [ ] TOOLSET-129-6c — Qualify landing, push and worktree placement on the live fleet
+- Short: Qualify landing and push on the fleet
 - Status: open; live
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: owner request (2026-10-17: audit runners' .worktrees use and merging after each task, then plan improvements), [plan](docs/plans/2026-10-17-runner-landing-and-worktrees.md), audit findings 1–5.
@@ -1646,6 +1738,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-101-f6 — Deploy reviewed fleet-audit helpers through the native scanned updater
 
 - [ ] TOOLSET-101-f6 — Deploy reviewed fleet-audit helpers through the native scanned updater
+- Short: Deploy fleet-audit helpers via updater
 - Status: open
 - Goal: RECOVERY
 - Sources: [maintenance contract](skills/autowork/references/profile-feedback.md), [scoped updater](update_bundle_native.py), [deployment boundary](skills/autowork/references/owner-cycle.md#cross-profile-recovery-and-deployment), [verification](docs/testing.md).
@@ -1664,6 +1757,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-145-6d — Qualify Pi API-key and subscription login locally with owner credentials
 
 - [ ] TOOLSET-145-6d — Qualify Pi API-key and subscription login locally with owner credentials
+- Short: Qualify Pi API-key and subscription
 - Status: open
 - Goal: PI-RUNNER
 - Sources: [per-repository Pi models and accounts](docs/project.md#per-repository-pi-models-and-accounts); offline model/account implementation and its required review.
@@ -1679,6 +1773,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-215-91 — Bundle skills load read-only from the plugin, so the skill review never edits them
 
 - [ ] TOOLSET-215-91 — Bundle skills load read-only from the plugin, so the skill review never edits them
+- Short: Bundle skills load read-only
 - Status: open
 - Goal: PORTABLE
 - Payoff: Align portable workflow discovery.

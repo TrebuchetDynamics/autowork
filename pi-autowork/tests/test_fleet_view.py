@@ -85,17 +85,17 @@ class FleetViewTests(unittest.TestCase):
     def test_actions_are_autowork_commands(self):
         def keys(runner, **kw):
             return {a.key: a for a in fleet_view.actions(runner, command='aw', script='pa.sh', **kw)}
-        running = keys(fleet_view.Runner(name='india', repo='/git/india', mode='service', service='running'),
-                       agent=['claude'], task='T-9')
+        india = fleet_view.Runner(name='india', repo='/git/india', mode='service', service='running', held=[['T-9', 'conflict']],
+                                  questions=[fleet_view.Question('T-9', 'input', 1, 'a key')])
+        running = keys(india, agent=['claude'])
         self.assertTrue(running['l'].interactive and running['l'].argv == [])  # the TUI's own log view
+        self.assertTrue(running['t'].interactive and running['t'].argv == [])  # and its Tasks window
         self.assertEqual(running['s'].argv, ['aw', 'stop', 'india'])
         self.assertEqual(running['r'].argv, ['aw', 'restart', 'india'])
         self.assertEqual((running['p'].label, running['p'].argv), ('Pause', ['aw', 'pause', 'india']))
         self.assertEqual(running['m'].argv, ['aw', 'model', 'india'])
-        self.assertEqual(running['a'].argv, ['pa.sh', '--repo', '/git/india', '--set-aside', 'T-9'])
-        self.assertEqual(running['b'].argv, ['aw', 'blockers', '/git/india'])
         self.assertNotIn('u', running)  # remove only a stopped service
-        for key in ('s', 'r', 'p', 'a'):
+        for key in ('s', 'r', 'p'):
             self.assertTrue(running[key].confirm, key)
         # One key per action, the first letter of its one-word label.
         for action in running.values():
@@ -103,10 +103,47 @@ class FleetViewTests(unittest.TestCase):
         paused = keys(fleet_view.Runner(name='india', repo='/git/india', mode='service', service='dead', state='paused'))
         self.assertEqual((paused['p'].label, paused['p'].argv), ('Play', ['aw', 'resume', 'india']))
         self.assertEqual(paused['u'].argv, ['aw', 'remove', 'india'])
-        self.assertNotIn('b', paused)  # no agent available
         stopped = keys(fleet_view.Runner(name='india', repo='/git/india'))
         self.assertEqual((stopped['p'].label, stopped['p'].argv), ('Play', ['aw', 'start', '/git/india']))
         self.assertNotIn('s', stopped)
+        # A task's own actions, in the Tasks window.
+        held = fleet_view.TaskRow('T-9', 'Short', 'Now', 'held: conflict', 'held', question=True)
+        task = {a.key: a for a in fleet_view.task_actions(india, held, command='aw', script='pa.sh', agent=['claude'])}
+        self.assertEqual(task['u'].argv, ['aw', 'move', 'T-9', 'up', 'india'])
+        self.assertEqual(task['d'].argv, ['aw', 'move', 'T-9', 'down', 'india'])
+        self.assertEqual(task['c'].argv, ['aw', 'clear-held', 'india', 'T-9'])
+        self.assertEqual(task['a'].argv, ['pa.sh', '--repo', '/git/india', '--set-aside', 'T-9'])
+        self.assertEqual(task['b'].argv, ['aw', 'blockers', '/git/india'])
+        for key in ('c', 'a'):
+            self.assertTrue(task[key].confirm, key)
+        ready = fleet_view.TaskRow('T-1', 'Short', 'Now', 'ready', 'ready')
+        self.assertEqual(sorted(a.key for a in fleet_view.task_actions(india, ready, command='aw', script='pa.sh')),
+                         ['d', 'u'])  # nothing held, no agent: re-sort only
+
+    def test_tasks_list_every_open_task_in_order_with_what_the_runner_says(self):
+        repo = self.base / 'repo'
+        repo.mkdir()
+        (repo / 'TODO.md').write_text(
+            '# TODO\n\n## Now\n\n- [ ] T-1 — A first task whose title runs well past forty characters\n'
+            '- Short: First task\n\n- [ ] T-2 — Second task\n\n- [x] T-0 — Done task\n\n'
+            '## Next\n\n- [ ] T-3 — Third task with a title longer than forty characters\n\n'
+            '## Needs decision\n\n- [ ] T-4 — Asked\n')
+        state = self.base / 'state' / 'key'
+        state.mkdir(parents=True)
+        (state / 'status.json').write_text(json.dumps({'tasks': [
+            ['T-2', 'held', 'conflict', 'merge conflict'], ['T-3', 'waiting', '', 'dependency: T-1']]}))
+        runner = fleet_view.Runner(name='repo', repo=str(repo), state_dir=str(state),
+                                   lanes=[fleet_view.Lane(task='T-1', phase='implementing')],
+                                   questions=[fleet_view.Question('T-4', 'decision', 2, 'pick one')])
+        rows = fleet_view.task_rows(runner)
+        self.assertEqual([(r.task, r.short, r.state, r.kind) for r in rows], [
+            ('T-1', 'First task', 'implementing', 'working'),
+            ('T-2', 'Second task', 'held: conflict', 'held'),
+            ('T-3', 'Third task with a title longer than for…', 'waiting', 'waiting'),
+            ('T-4', 'Asked', 'needs decision', 'waiting')])
+        self.assertEqual((rows[2].why, rows[3].why), ('dependency: T-1', 'you: pick one'))
+        self.assertEqual([r.task for r in fleet_view.task_view(rows, 'questions')], ['T-4'])
+        self.assertEqual([r.task for r in fleet_view.task_view(rows, 'held')], ['T-2'])
 
     def test_readiness_needs_todo_goals_and_main(self):
         repo = self.base / 'repo'

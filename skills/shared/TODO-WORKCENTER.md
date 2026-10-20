@@ -69,6 +69,10 @@ can be bounded, write `Resources: exclusive` with the reason instead of leaving
 `Touches:` out. Do not list the root `TODO.md`, `TODO.archive.md`, `goals.json` or
 `CHANGELOG.md`: the coordinator owns them. Proposed or Needs-decision tasks may
 leave `Touches:` until they become executable.
+Every task you create or rewrite also gets `Short:`, one line of at most 40
+characters naming the outcome, for task lists such as the autowork TUI's Tasks
+window (`Short: Retained commits resume their worker`). `goals.py validate` rejects
+a longer one; `goals.py plan-lint` reports a task without one.
 Keep unsupported ideas visibly Proposed/Needs decision instead of fabricating
 acceptance. If research finds no new work, retain existing bytes and report why.
 Missing Graphify or a failed readiness gate must be reported honestly; saving a

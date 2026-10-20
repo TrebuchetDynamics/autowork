@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import time
 
 from pi_autowork import health, main_check, questions as owner_questions
@@ -753,7 +754,7 @@ class Action:
     env: dict = field(default_factory=dict)
 
 
-def actions(runner, *, command, script, agent=None, task=None):
+def actions(runner, *, command, script, agent=None):
     """What the owner can do to this runner now, as `autowork` commands (or the runner script).
     One key per action, the first letter of its one-word label, which the TUI highlights in
     the word: P plays a stopped or paused runner and pauses a running one."""
@@ -777,14 +778,106 @@ def actions(runner, *, command, script, agent=None, task=None):
     if runner.has_service:
         out.append(Action('m', 'Model', [command, 'model', name]))       # the TUI picks the model
         out.append(Action('f', 'Fallback', [command, 'model', name, '--fallback']))
-    if repo and agent:
-        out.append(Action('b', 'Blockers', [command, 'blockers', repo], interactive=True))
-    if repo and task:
-        out.append(Action('a', 'Aside', [script, '--repo', repo, '--set-aside', task],
-                          confirm=f'Set aside {task}? Its work stays on -set-aside-N branches and it runs fresh.'))
+    if repo:
+        out.append(Action('t', 'Tasks', [], interactive=True))  # the TUI's Tasks window
     if repo and runner.has_service and not running:
         out.append(Action('u', 'Uninstall', [command, 'remove', name],
                           confirm=f'Remove pi-autowork@{name}? Its state and worktrees stay.'))
+    return out
+
+
+# The Tasks window's views, in key order: what each shows (a TaskRow's kind).
+TASK_VIEWS = ('all', 'working', 'held', 'waiting', 'questions')
+
+
+@dataclass
+class TaskRow:
+    """One open task of a runner's TODO.md, in its priority order."""
+    task: str
+    short: str          # `Short:` (at most 40 characters), else the title cut to 40
+    section: str        # Now, Next or Needs decision
+    state: str          # in plain words: implementing, implemented, held, waiting, ready, ...
+    kind: str           # working, held, waiting, ready: what a TASK_VIEWS filter matches
+    why: str = ''       # the hold or wait reason, or the owner's question
+    question: bool = False
+
+
+def goals_module():
+    """docs-sync's goals.py from this toolset: TODO.md is parsed the way the runner parses it."""
+    scripts = str(Path(__file__).resolve().parents[2] / 'skills' / 'docs-sync' / 'scripts')
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    import goals
+    return goals
+
+
+def task_rows(runner):
+    """Every open task in ``runner``'s TODO.md, in its order, with what the runner says about it."""
+    try:
+        text = Path(runner.repo, 'TODO.md').read_text()
+    except (OSError, TypeError, ValueError):
+        return []
+    try:
+        states = json.loads(Path(runner.state_dir, 'status.json').read_text()).get('tasks') or []
+    except (OSError, TypeError, ValueError, AttributeError):
+        states = []
+    engine = {row[0]: row for row in states if isinstance(row, list) and len(row) == 4}
+    if not engine:  # a runner from before the per-task list: its groups name up to 20 tasks each
+        engine.update((t, (t, 'waiting', '', g['label'])) for g in runner.waiting_groups for t in g.get('tasks') or [])
+        engine.update((t, (t, 'held', cause or '', '')) for t, cause in runner.held)
+    lanes = {lane.task: lane for lane in runner.lanes}
+    asked = {q.id: q for q in runner.questions}
+    goals = goals_module()
+    rows = []
+    for task, entries in goals.task_bodies(text).items():
+        block, mark, section = entries[0]
+        if mark != ' ' or section not in ('Now', 'Next', 'Needs decision'):
+            continue
+        title = ' '.join(block.split('\n', 1)[0].strip().lstrip('—–-:').split())
+        short = ' '.join((goals.task_fields(block).get('Short') or '').split()) or title
+        _, state, cause, why = engine.get(task, (task, '', '', ''))
+        if task in lanes:
+            words, kind = lanes[task].phase, 'working'
+        elif state == 'held':
+            words, kind = 'held: ' + CAUSES.get(cause, cause or 'held'), 'held'
+        elif state in ('waiting', 'pending'):
+            words, kind = 'waiting', 'waiting'
+        elif state in IN_FLIGHT:
+            words, kind = PHASES[state], 'working'
+        elif section == 'Needs decision':
+            words, kind = 'needs decision', 'waiting'
+        else:
+            words, kind = state or 'ready', 'ready'
+        question = asked.get(task)
+        short = short if len(short) <= 40 else short[:39].rstrip() + '…'
+        rows.append(TaskRow(task=task, short=short, section=section, state=words, kind=kind,
+                            why='you: ' + question.needs if question else why, question=bool(question)))
+    return rows
+
+
+def task_view(rows, view):
+    """The rows a TASK_VIEWS filter shows."""
+    if view == 'all':
+        return rows
+    if view == 'questions':
+        return [r for r in rows if r.question]
+    return [r for r in rows if r.kind == view]
+
+
+def task_actions(runner, row, *, command, script, agent=None):
+    """What the Tasks window can do with one task: re-sort it (TODO.md order is the priority),
+    clear or set aside its hold, or answer the owner's questions in an agent."""
+    repo, name, task = runner.repo, runner.name, row.task
+    out = [Action('u', 'Up', [command, 'move', task, 'up', name]),
+           Action('d', 'Down', [command, 'move', task, 'down', name])]
+    if row.kind == 'held':
+        out.append(Action('c', 'Clear', [command, 'clear-held', name, task],
+                          confirm=f'Clear the hold on {task}? Its commit goes back to integration; '
+                                  'its worktrees stay.'))
+        out.append(Action('a', 'Aside', [script, '--repo', repo, '--set-aside', task],
+                          confirm=f'Set aside {task}? Its work stays on -set-aside-N branches and it runs fresh.'))
+    if agent and runner.questions:
+        out.append(Action('b', 'Blockers', [command, 'blockers', repo], interactive=True))
     return out
 
 

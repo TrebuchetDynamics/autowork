@@ -46,16 +46,20 @@ name, a repository path or `.`. Nothing here calls a model.
 | `autowork run [dir]` | Run the runner in the foreground here, for debugging |
 | `autowork web [--port N] [--host H] [--view-only]` | The TUI in a browser at `http://127.0.0.1:8765` (this machine only); `--view-only` disables control keys |
 | `autowork blockers [dir]` | `/autowork blockers` in an agent (`AUTOWORK_AGENT`, else `claude`, else `pi`) |
+| `autowork move TASK up\|down [target]` | Move an open task among its TODO.md group's open tasks; the runner records the order as its priority |
 | `autowork scorecard [--days N] [--json] [target...]` | Per runner over the last N days (default 7): tasks closed, share of integrations held, median dispatch-to-merge time, new owner questions; no model call |
 
 In the TUI each key is the first letter of its word, highlighted in the detail pane:
 `l` (or Enter) **L**og, `p` **P**lay/**P**ause (starts a stopped service, resumes a
 paused one, pauses a running one), `s` **S**top, `r` **R**estart, `m` **M**odel and
-`f` **F**allback (from Pi's list, type to filter), `b` **B**lockers, `a` set **A**side a
-held task, `u` **U**ninstall the service, `n` **N**ew: browse directories (from `~/git`,
-`AUTOWORK_BROWSE_ROOT`), see which repositories are ready or what they need, and `p` there
-plays one; `q` **Q**uit. Stop, restart, pause, uninstall, set-aside and model changes ask
-first.
+`f` **F**allback (from Pi's list, type to filter), `t` **T**asks, `u` **U**ninstall the
+service, `n` **N**ew: browse directories (from `~/git`, `AUTOWORK_BROWSE_ROOT`), see which
+repositories are ready or what they need, and `p` there plays one; `q` **Q**uit. The Tasks
+window lists every open task in TODO.md order with its `Short:` title, state and reason;
+`1`–`5` (or Tab) show All, Working, Held, Waiting or Questions; on the selected task `u`/`d`
+move it **U**p or **D**own (TODO.md order is the priority), `c` **C**lears its hold, `a`
+sets it **A**side, and `b` answers the owner's **B**lockers in an agent. Stop, restart,
+pause, uninstall, clear, set-aside and model changes ask first.
 Terminal text can be selected by dragging with the mouse, then copied with your
 terminal's copy shortcut (often Ctrl+Shift+C). Mouse capture is off by default;
 keyboard navigation and controls remain available. Use `autowork tui --mouse` to

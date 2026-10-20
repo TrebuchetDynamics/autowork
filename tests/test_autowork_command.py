@@ -188,6 +188,18 @@ class AutoworkCommandTests(unittest.TestCase):
         self.assertIn('ALPHA-1', one.stdout)
         self.assertNotIn('BETA-2', one.stdout)
 
+    def test_move_re_sorts_an_open_task_in_todo(self):
+        """The Tasks window's Up and Down: TODO.md order is the priority the runner records."""
+        (self.repo / 'TODO.md').write_text('# TODO\n\n## Now\n\n- [ ] A-1 — First\n\n- [ ] A-2 — Second\n')
+        result = self.aw('move', 'A-2', 'up', str(self.repo))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('ok A-2 moved up', result.stdout)
+        text = (self.repo / 'TODO.md').read_text()
+        self.assertLess(text.index('A-2'), text.index('A-1'))
+        result = self.aw('move', 'A-2', 'up', str(self.repo))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('A-2 is already first in Now; no write', result.stdout)
+
     def test_blockers_starts_the_agent_in_the_repository(self):
         """From the TUI or the home directory, Claude Code asked to trust the whole home
         directory: the agent ran where autowork was started, not in the repository."""
