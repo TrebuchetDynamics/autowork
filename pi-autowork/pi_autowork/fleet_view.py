@@ -411,6 +411,13 @@ def waiting_line(runner, limit=4):
 QUEUED = ('implemented', 'waiting to integrate')
 
 
+def task_counts(runner):
+    """(being worked on, finished and waiting to land, waiting to start, held, total) for a runner."""
+    landing = sum(lane.phase in QUEUED for lane in runner.lanes)
+    active = len(runner.lanes) - landing if runner.lanes else runner.running
+    return active, landing, runner.waiting, len(runner.held), active + landing + runner.waiting + len(runner.held)
+
+
 def lanes(runner, now=None):
     """Tasks in flight for this runner, from the engine's slots, the runner log and Pi transcripts."""
     now = time.time() if now is None else now

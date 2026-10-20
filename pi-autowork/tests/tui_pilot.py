@@ -68,8 +68,12 @@ async def main():
             assert 'on you' not in detail and 'model openai-codex/gpt-6.1-sol' in detail, detail
             assert '23 waiting: 19 wait for TASK-036 (overlapping files) · 4 on dependencies' in detail, detail
             runners = app.query_one('#runners')
-            assert [str(c.label) for c in runners.columns.values()] == ['Runner', 'State', 'Needs', 'Tasks', 'Now']
-            assert '19 wait for TASK-036 (overlapping files)' in str(runners.get_row_at(0)[2])
+            assert [str(c.label) for c in runners.columns.values()] == ['Runner', 'State', 'Run', 'Land', 'Wait',
+                                                                        'Held', 'Total', 'Needs', 'Now']
+            assert [str(c) for c in runners.get_row_at(0)[2:7]] == ['0', '0', '23', '1', '24']
+            assert '19 wait for TASK-036 (overlapping files)' in str(runners.get_row_at(0)[7])
+            assert '24 open tasks: 0 being worked on · 0 finished, waiting to land · 23 waiting to start · 1 held' \
+                in detail, detail
             log = '\n'.join(line.text for line in app.query_one('#log').lines)
             assert 'TASK-036: waiting' in log and 'pending —' not in log, log
             await pilot.press('s')                      # stop asks first; n declines
@@ -133,6 +137,10 @@ async def main():
             await pilot.pause()
             words = ' '.join(str(narrow.query_one('#detail').render()).split())
             assert 'Waiting — 19 wait for TASK-036 (overlapping files)' in words and 'on you' not in words, words
+            # Every count stays on screen: the text columns shrink instead (they scrolled off before).
+            table = narrow.query_one('#runners')
+            width = sum(c.get_render_width(table) for c in table.columns.values())
+            assert width <= 80, (width, [str(c) for c in table.get_row_at(0)])
         viewer = FleetApp(command='aw', script='pa.sh', state_root=base / 'state', env_dir=env,
                           systemctl=str(systemctl), journalctl=str(journal), agent=['claude'], runner_cmd=run,
                           view_only=True)
