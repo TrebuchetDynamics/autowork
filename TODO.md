@@ -66,9 +66,9 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ### TOOLSET-283-15 — Installed dependencies of a tracked lockfile are linked into worker and review trees without per-runner settings
 
-- [ ] TOOLSET-283-15 — Installed dependencies of a tracked lockfile are linked into worker and review trees without per-runner settings
+- [x] TOOLSET-283-15 — Installed dependencies of a tracked lockfile are linked into worker and review trees without per-runner settings
 - Short: Lockfile dependencies link into trees
-- Status: open
+- Status: done 2026-10-20 (interactive session): lockfile dependency directories linked into worker and review trees when the lockfile matches; reason logged when not; (3) covered by linking before review plus the existing provision-and-reverify path.
 - Goal: PI-RUNNER
 - Evidence: (2026-10-20, one fleet runner): a task was held 45 h after its review failed with 'missing server dependency' for a package that the repository's package.json and package-lock.json declare and its main checkout has installed. The runner's link list named only one unrelated directory, so the review tree had no node_modules and the hold became an owner question.
 - Touches: pi-autowork/pi_autowork/workspaces.py, pi-autowork/pi_autowork/worker.py, pi-autowork/tests/test_worker_tmp.py, tests/test_pi_autowork.py, docs/reference.md

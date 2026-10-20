@@ -90,10 +90,18 @@ def check_stop():
 
 
 def link_ignored(checkout):
-    """Gitignored dependencies the service names are linked from the canonical checkout first."""
-    paths, repo = os.environ.get('PI_AUTOWORK_LINK_PATHS'), os.environ.get('PI_AUTOWORK_REPO')
-    if paths and repo:
-        for path, outcome in workspaces.link_ignored(repo, checkout, paths):
+    """Gitignored dependencies are linked from the canonical checkout first: the paths the service
+    names, and the installed dependencies of tracked lockfiles both trees share (TOOLSET-283-15)."""
+    paths, repo = os.environ.get('PI_AUTOWORK_LINK_PATHS') or '', os.environ.get('PI_AUTOWORK_REPO')
+    if not repo:
+        return
+    named = [p.strip() for p in paths.split(',') if p.strip()]
+    found, skipped = workspaces.lockfile_dependencies(repo, checkout)
+    for path, reason in skipped:
+        print(f'pi-autowork: linked path {path}: {reason}', file=sys.stderr)
+    wanted = named + [p for p in found if p not in named]
+    if wanted:
+        for path, outcome in workspaces.link_ignored(repo, checkout, ','.join(wanted)):
             print(f'pi-autowork: linked path {path}: {outcome}', file=sys.stderr)
 
 

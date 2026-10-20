@@ -279,6 +279,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Worker and review trees get the main checkout's installed dependencies for tracked lockfiles
+  (`node_modules` beside package-lock.json, pnpm-lock.yaml, yarn.lock or npm-shrinkwrap.json;
+  `.venv` beside uv.lock or poetry.lock) without a setting, when the lockfile is identical in
+  both trees. A review without them held a task 45 hours for a package its lockfile declares
+  (TOOLSET-283-15).
+
 - A held commit whose branch the runner itself merged past (only merges of session revisions
   after the recorded commit) is adopted within the three-adoption limit, or rerun fresh from
   the kept tip past it, instead of becoming an owner `rescope or split` question; a conflict-free

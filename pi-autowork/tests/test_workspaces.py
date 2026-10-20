@@ -71,6 +71,34 @@ class LinkTests(unittest.TestCase):
         self.assertFalse(old.exists())
         self.assertEqual(json.loads(session.read_text())['path'], runner.integ)
 
+    def test_installed_dependencies_of_a_shared_lockfile_are_linked_without_a_setting(self):
+        """TOOLSET-283-15: a review tree without the main checkout's node_modules held a task 45
+        hours for a package its tracked lockfile declares."""
+        from pi_autowork import worker
+        (self.main / '.gitignore').write_text('vendor/\nbuild.cfg\nnode_modules/\n')
+        (self.main / 'server').mkdir()
+        (self.main / 'server' / 'package-lock.json').write_text('{"lockfileVersion": 3}\n')
+        self.git('add', '.')
+        self.git('-c', 'user.email=f@example.invalid', '-c', 'user.name=F', 'commit', '-qm', 'lockfile')
+        (self.main / 'server' / 'node_modules' / 'swagger-ui-dist').mkdir(parents=True)
+        (self.main / 'server' / 'node_modules' / 'swagger-ui-dist' / 'index.js').write_text('ok\n')
+        same, changed = Path(self.temp.name) / 'same', Path(self.temp.name) / 'changed'
+        for tree in (same, changed):
+            self.git('worktree', 'add', '-q', '--detach', str(tree))
+        (changed / 'server' / 'package-lock.json').write_text('{"lockfileVersion": 3, "changed": true}\n')
+        printed = []
+        env = {'PI_AUTOWORK_REPO': str(self.main), 'PI_AUTOWORK_LINK_PATHS': 'build.cfg'}
+        with patch.dict(os.environ, env), patch('builtins.print', side_effect=lambda *a, **k: printed.append(a[0])):
+            worker.link_ignored(str(same))
+            worker.link_ignored(str(changed))
+        self.assertEqual((same / 'server/node_modules/swagger-ui-dist/index.js').read_text(), 'ok\n')
+        self.assertTrue((same / 'build.cfg').is_file())  # the named paths still link beside them
+        self.assertFalse((changed / 'server/node_modules').exists())
+        self.assertIn('pi-autowork: linked path server/node_modules: not linked: '
+                      'server/package-lock.json differs from the main checkout', printed)
+        status = subprocess.run(['git', '-C', str(same), 'status', '--porcelain'], capture_output=True, text=True)
+        self.assertEqual(status.stdout, '')  # nothing linked shows up as a change
+
     def test_ignored_paths_are_linked_from_the_canonical_checkout(self):
         whole = Path(self.temp.name) / 'whole'
         self.git('worktree', 'add', '-q', '--detach', str(whole))

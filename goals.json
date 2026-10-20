@@ -1231,14 +1231,6 @@
     },
     {
       "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-283-15",
-      "section": "Now",
-      "status": "open",
-      "title": "Installed dependencies of a tracked lockfile are linked into worker and review trees without per-runner settings"
-    },
-    {
-      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -3303,6 +3295,14 @@
       "section": "Done",
       "status": "done",
       "title": "A headless worker never stops to ask for approval; an interactive skill's approval step counts as given by the task contract"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-283-15",
+      "section": "Done",
+      "status": "done",
+      "title": "Installed dependencies of a tracked lockfile are linked into worker and review trees without per-runner settings"
     },
     {
       "depends_on": [],
