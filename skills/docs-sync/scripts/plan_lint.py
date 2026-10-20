@@ -39,6 +39,7 @@ PLANNING_FILES = ('BLOCKERS.md', 'todo.archive.md')
 FALLBACK_COORDINATOR = ('TODO.md', 'TODO.archive.md', 'goals.json', 'CHANGELOG.md')
 HOT_TASKS, HOT_LINES = 3, 1500
 MAX_TOUCHES, MAX_ACCEPTANCE, MAX_BODY = 5, 3, 6000
+SHOW_OTHERS = 5
 SKIP_DIRS = {'.git', '.worktrees', 'node_modules', '__pycache__', '.venv', 'venv', '.tox'}
 CODE_EXT = ('.py', '.js', '.mjs', '.cjs', '.ts', '.mts', '.cts')
 
@@ -461,8 +462,8 @@ class Linter:
                 named.setdefault(path, set()).add(tid)
         for tid in scoped:
             self.task(tid)
-            self.overlaps(tid, scoped, context)
-            self.shape(tid, named)
+            hot = self.hot(tid, named)
+            self.shape(tid, hot, self.overlaps(tid, context, hot))
         return {'errors': self.errors, 'warnings': self.warnings}
 
     def task(self, tid):
@@ -526,39 +527,49 @@ class Linter:
                 self.add('error', tid, 'dependency-cycle',
                          'dependency cycle ' + ' -> '.join(path) + '; remove one `Dependencies:` edge')
 
-    def overlaps(self, tid, scoped, context):
-        mine = self.info[tid]['touches']
-        if not mine:
-            return
-        position = {t: i for i, t in enumerate(scoped)}
-        for other in context:
-            if other == tid or (other in position and position[other] > position[tid]):
-                continue  # each scoped pair is reported once, on the later task
-            if other in self.closure(tid) or tid in self.closure(other):
-                continue
-            theirs = self.info[other]['touches']
-            shared = [p for p in mine if any(self.parsers.intersects(p, q) for q in theirs)]
-            if shared:
-                self.add('warning', tid, 'touches-overlap',
-                         f'Touches overlaps {other} on {", ".join(shared)} with no dependency between them; '
-                         f'add `Dependencies: {other}` or re-cut so one task owns the path')
-
-    def shape(self, tid, named):
-        info = self.info[tid]
-        touches, fields = info['touches'], info['fields']
-        hot = []
-        for path in touches:
+    def hot(self, tid, named):
+        """{path: reason} for this task's hot paths: named by many open tasks, or a very long file."""
+        found = {}
+        for path in self.info[tid]['touches']:
             count = len(named.get(path, ()))
             if count >= HOT_TASKS:
-                hot.append(f'{path} (named by {count} open tasks)')
+                found[path] = f'named by {count} open tasks'
                 continue
             target = self.repo / path
             if not path.endswith('/') and target.is_file():
                 lines = _line_count(target, self.lines)
                 if lines > HOT_LINES:
-                    hot.append(f'{path} ({lines} lines)')
-        if hot:
-            self.add('warning', tid, 'hot-file', f'hot file(s) {", ".join(hot)}; expect merge conflicts, '
+                    found[path] = f'{lines} lines'
+        return found
+
+    def overlaps(self, tid, context, hot):
+        """One warning per shared path, naming every independent open task that also declares it.
+        Returns the paths reported, whose hot-file note this line already carries."""
+        reported = set()
+        independent = [other for other in context if other != tid
+                       and other not in self.closure(tid) and tid not in self.closure(other)]
+        for path in self.info[tid]['touches']:
+            others = [other for other in independent
+                      if any(self.parsers.intersects(path, q) for q in self.info[other]['touches'])]
+            if not others:
+                continue
+            reported.add(path)
+            shown = ', '.join(others[:SHOW_OTHERS]) + (f', +{len(others) - SHOW_OTHERS}'
+                                                      if len(others) > SHOW_OTHERS else '')
+            subject = f'hot file {path} ({hot[path]})' if path in hot else path
+            plural = 'task' if len(others) == 1 else 'tasks'
+            fix = f'add `Dependencies: {others[0]}`' if len(others) == 1 else 'add `Dependencies:`'
+            self.warnings.append({'task': tid, 'code': 'touches-overlap', 'others': others,
+                                  'message': f'{subject} is also in Touches of {len(others)} independent open '
+                                             f'{plural} ({shown}): {fix} or re-cut so one task owns it'})
+        return reported
+
+    def shape(self, tid, hot, reported):
+        info = self.info[tid]
+        touches, fields = info['touches'], info['fields']
+        rest = [f'{path} ({why})' for path, why in hot.items() if path not in reported]
+        if rest:
+            self.add('warning', tid, 'hot-file', f'hot file(s) {", ".join(rest)}; expect merge conflicts, '
                      'order these tasks with `Dependencies:` or narrow the change')
         directories = [p for p in touches if p.endswith('/') or (self.repo / p).is_dir()]
         if directories:

@@ -180,10 +180,30 @@ class WarningTests(unittest.TestCase):
     def test_overlap_without_dependency(self):
         result = self.lint(now=task('T-1') + task('T-2', touches='src/a.py, src/b.py'))
         found = findings(result, 'touches-overlap', 'warnings')
-        self.assertEqual(len(found), 1)
-        self.assertIn('src/a.py', found[0]['message'])
-        self.assertIn('Dependencies:', found[0]['message'])
+        # One line per (scoped task, shared path): each side names the other.
+        self.assertEqual([(f['task'], f['others']) for f in found], [('T-1', ['T-2']), ('T-2', ['T-1'])])
+        self.assertIn('src/a.py', found[1]['message'])
+        self.assertIn('Dependencies: T-1', found[1]['message'])
         self.assertEqual(result['errors'], [])
+
+    def test_overlap_groups_others_per_path(self):
+        others = ''.join(task(f'T-{n}', touches='src/a.py') for n in range(2, 10))
+        result = self.lint(now=task('T-1', touches='src/a.py, src/b.py') + others)
+        found = [f for f in findings(result, 'touches-overlap', 'warnings') if f['task'] == 'T-1']
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]['others'], [f'T-{n}' for n in range(2, 10)])
+        message = found[0]['message']
+        self.assertIn('hot file src/a.py (named by 9 open tasks) is also in Touches of 8 independent open tasks', message)
+        self.assertIn('T-2, T-3, T-4, T-5, T-6, +3', message)
+        self.assertNotIn('T-7', message)
+
+    def test_hot_overlap_is_one_line(self):
+        result = self.lint(now=task('T-1', touches='src/a.py') + task('T-2', touches='src/a.py')
+                           + task('T-3', touches='src/a.py'))
+        self.assertEqual(findings(result, 'hot-file', 'warnings'), [])
+        found = [f for f in findings(result, 'touches-overlap', 'warnings') if f['task'] == 'T-1']
+        self.assertEqual(len(found), 1)
+        self.assertIn('hot file src/a.py (named by 3 open tasks)', found[0]['message'])
 
     def test_overlap_with_transitive_dependency_is_fine(self):
         result = self.lint(now=task('T-1') + task('T-2', touches='src/b.py', deps='T-1.')
@@ -265,7 +285,7 @@ class ScopeTests(unittest.TestCase):
             # T-3 overlaps out-of-scope T-1: still reported, because all open tasks are context.
             repo = make_repo(folder, now=task('T-1') + task('T-3'))
             found = findings(plan_lint.lint(repo, ['T-3']), 'touches-overlap', 'warnings')
-            self.assertEqual([f['task'] for f in found], ['T-3'])
+            self.assertEqual({f['task'] for f in found}, {'T-3'})
 
     def test_unknown_requested_task(self):
         with tempfile.TemporaryDirectory() as folder:
