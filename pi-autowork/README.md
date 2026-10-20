@@ -14,7 +14,7 @@ repository, under `${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key
 | `pi_autowork/worker.py` | The engine-launched `--worker` and `--verify` modes |
 | `pi_autowork/service.py` | `--install-service` / `--remove-service` for `pi-autowork@<repository>.service` |
 | `pi_autowork/common.py` | Logging, Git helpers and task lifecycle words |
-| `pi_autowork/pi_runtime.py` | Runs one Pi job: model choice and fallback, bounded retries, timeouts, budget, redacted `runs.jsonl` records (a straight port of the runner's Bash; the formal worker-runtime boundary is TOOLSET-117-cb) |
+| `pi_autowork/pi_runtime.py` | Runs one Pi job: model choice and fallback, bounded retries, timeouts, budget, redacted `runs.jsonl` records (the production CLI path; the TOOLSET-117-cb boundary is an isolated comparison spike, not wired into this runner) |
 | `pi_autowork/health.py` | Per-runner `status.json`, one stall announcement per episode with its root blockers, and the `--fleet` view |
 | `pi_autowork/touches_inference.py` | Finds tasks without Touches, records proposed lists, and widens a list the runner inferred (`scripts/pi_autowork_touches.py` remains as a compatibility entry point) |
 | `pi_autowork/workspaces.py` | Mirrors `PI_AUTOWORK_LINK_PATHS` gitignored dependencies into task and review worktrees (real directories, hard-linked files) |
@@ -76,6 +76,15 @@ restore clickable rows/buttons instead; hold Shift while dragging if your termin
 or tmux intercepts selection. The browser view retains mouse controls.
 
 The TUI and web view run Textual 8.2.8 (and textual-serve 1.1.3) through `uv`.
+
+## Isolated runtime comparison
+
+The [TOOLSET-117-cb spike](spikes/runtime-comparison/README.md) compares the current
+CLI path, pinned AgwaB `runSubagent` headless execution and experimental pi-durable
+on identical offline fixtures. It defines launch/observe/stop/resume and explicit
+replay capabilities without changing the default worker. Measurements and limits
+are in the [research comparison](../docs/research/pi-autowork-reference-architectures.md#worker-runtime-comparison-toolset-117-cb).
+Do not configure services to load the spike; adoption requires an owner decision.
 
 Design: [coordinator redesign](../docs/plans/2026-10-16-pi-autowork-coordinator.md),
 [component layout](../docs/plans/pi-autowork-component-layout.md). Tests run from
