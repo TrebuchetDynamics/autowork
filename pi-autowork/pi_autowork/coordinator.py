@@ -1590,7 +1590,7 @@ class Coordinator:
         source = Path(__file__).with_name('worker.py').read_text()
         parts = {}
         for node in ast.parse(source).body:
-            if isinstance(node, ast.FunctionDef) and node.name in ('review', 'full_suite_gate', 'run_gate'):
+            if isinstance(node, ast.FunctionDef) and node.name in ('review', 'full_suite_gate', 'run_gate', 'quiet_reruns'):
                 parts[node.name] = ast.get_source_segment(source, node)
             elif isinstance(node, ast.Assign):
                 for target in node.targets:

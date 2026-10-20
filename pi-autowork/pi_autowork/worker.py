@@ -338,13 +338,13 @@ def full_suite_gate(state, task, checkout, base=None):
     return ok, reason
 
 
-def quiet_reruns(state, task, log, checkout, rev, tests):
+def quiet_reruns(state, task, log, checkout, rev, tests, limit):
     """The ``tests`` that pass when rerun one at a time with a host check slot held, once this
     repository's main check is done. Rerun four at a time beside main's full suite, the runner's
     own engine tests ran out of their 120 s and held three candidates whose trees pass them."""
     receipt = log.with_suffix('.quiet.json')
     receipt.unlink(missing_ok=True)
-    deadline = time.monotonic() + setting('PI_AUTOWORK_VALIDATE_TIMEOUT', 3600, float)
+    deadline = time.monotonic() + limit
     while time.monotonic() < deadline:
         record = main_check.read(state)
         if record.get('state') != 'running' or not main_check.alive(record.get('pid'), record.get('start_time')):
@@ -403,7 +403,7 @@ def run_gate(state, task, checkout, command, base_rev=None):
             reruns = {}
         failures = [f for f in failures if f not in (reruns.get('flaky') or [])]
         if failures and reruns:
-            failures = [f for f in failures if f not in quiet_reruns(state, task, log, checkout, rev, failures)]
+            failures = [f for f in failures if f not in quiet_reruns(state, task, log, checkout, rev, failures, limit)]
         # The coordinator's rule for main: signals and shell errors are not ordinary unittest
         # failures, and the receipt says when the log has no complete summary.
         if not failures and (merged['code'] != 1 or reruns.get('incomplete')):
