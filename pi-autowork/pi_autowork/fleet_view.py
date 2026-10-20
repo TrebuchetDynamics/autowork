@@ -7,6 +7,7 @@ and nothing here changes a runner: actions only build the argv that `autowork` o
 `pi-autowork.sh` already accept.
 """
 from dataclasses import dataclass, field
+import datetime
 import json
 import os
 from pathlib import Path
@@ -493,6 +494,8 @@ class Question:
     effort: str
     unblocks: int
     needs: str
+    answer: str = ''    # how the runner says to answer it
+    kind: str = ''      # held, quick_hold, claim, cycle, contract, outside, ...: which quick answers apply
 
 
 def read_questions(repo, state_dir=''):
@@ -518,6 +521,10 @@ def read_questions(repo, state_dir=''):
             found.append(Question(head[1], head[2], int(head[3]), ''))
         elif found and line.startswith('- Needs: '):
             found[-1].needs = line[len('- Needs: '):].strip()
+        elif found and line.startswith('- Answer: '):
+            found[-1].answer = line[len('- Answer: '):].strip()
+        elif found and line.startswith('- Kind: '):
+            found[-1].kind = line[len('- Kind: '):].strip()
     return found
 
 
@@ -855,6 +862,25 @@ def task_rows(runner):
     return rows
 
 
+def task_entry(runner, task):
+    """``task``'s whole TODO.md entry, as written."""
+    try:
+        text = Path(runner.repo, 'TODO.md').read_text()
+    except (OSError, TypeError, ValueError):
+        return ''
+    block = next((b for b in goals_module().task_blocks(text) if b['id'] == task), None)
+    return block['core'] if block else ''
+
+
+def open_goals(runner):
+    """(id, title) of the goals in ``runner``'s goals.json not yet met: a new task's choices."""
+    try:
+        data = json.loads(Path(runner.repo, 'goals.json').read_text())
+        return [(g['id'], g.get('title') or '') for g in data.get('goals') or [] if g.get('status') != 'met']
+    except (OSError, TypeError, ValueError, KeyError, AttributeError):
+        return []
+
+
 def task_view(rows, view):
     """The rows a TASK_VIEWS filter shows."""
     if view == 'all':
@@ -869,7 +895,8 @@ def task_actions(runner, row, *, command, script, agent=None):
     clear or set aside its hold, or answer the owner's questions in an agent."""
     repo, name, task = runner.repo, runner.name, row.task
     out = [Action('u', 'Up', [command, 'move', task, 'up', name]),
-           Action('d', 'Down', [command, 'move', task, 'down', name])]
+           Action('d', 'Down', [command, 'move', task, 'down', name]),
+           Action('s', 'Section', [], interactive=True)]  # the TUI asks which: Now, Next or Needs decision
     if row.kind == 'held':
         out.append(Action('c', 'Clear', [command, 'clear-held', name, task],
                           confirm=f'Clear the hold on {task}? Its commit goes back to integration; '
@@ -878,6 +905,41 @@ def task_actions(runner, row, *, command, script, agent=None):
                           confirm=f'Set aside {task}? Its work stays on -set-aside-N branches and it runs fresh.'))
     if agent and runner.questions:
         out.append(Action('b', 'Blockers', [command, 'blockers', repo], interactive=True))
+    return out
+
+
+@dataclass
+class Answer:
+    """One way to answer an owner question from the TUI, as an `autowork` command."""
+    key: str
+    label: str              # one word; its key is the first letter
+    explain: str            # what it writes, in a few words
+    argv: list              # `{text}` stands for the owner's words, when ``needs_text``
+    needs_text: bool = False
+
+
+def answers(runner, question, *, command, today=None):
+    """The answers a question's kind supports, written where the runner reads them: the task's
+    TODO.md entry. Questions about no task (FULL-CHECK, LEDGER) have none: an agent answers them."""
+    task, name = question.id, runner.name
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', task) or task in ('FULL-CHECK', 'LEDGER'):
+        return []
+    day = today or datetime.date.today()
+    out = []
+    if question.kind == 'claim':
+        until = day + datetime.timedelta(days=7)
+        out.append(Answer('o', 'Open', 'no one is working on it: Status: open, so the runner runs it',
+                          [command, 'field', task, 'Status', 'open', name]))
+        out.append(Answer('h', 'Held', f'someone is: Held by: the owner; until {until}',
+                          [command, 'field', task, 'Held by', f'the owner; until {until}', name]))
+    fingerprint = re.search(r'Blocker resolution: (\S+?);', question.answer or '')
+    if question.kind == 'quick_hold' and fingerprint:
+        out.append(Answer('r', 'Resolve', 'name the producer task or the decision that unblocks it',
+                          [command, 'field', task, 'Blocker resolution', f'{fingerprint[1]}; {{text}}', name], True))
+    out.append(Answer('w', 'Write', 'your decision, as a dated Owner decision line in its entry',
+                      [command, 'field', task, 'Owner decision', f'{day}: {{text}}', name], True))
+    out.append(Answer('d', 'Defer', 'move it to Needs decision, with your reason as its Owner decision',
+                      [command, 'place', task, 'Needs decision', name, '--decision', f'{day}: deferred: {{text}}'], True))
     return out
 
 

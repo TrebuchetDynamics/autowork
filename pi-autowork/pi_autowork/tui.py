@@ -21,10 +21,10 @@ from pi_autowork import fleet_view  # noqa: E402
 from rich.text import Text  # noqa: E402  (installed with textual)
 from textual.app import App, ComposeResult  # noqa: E402
 from textual.binding import Binding  # noqa: E402
-from textual.containers import Horizontal, Vertical  # noqa: E402
+from textual.containers import Horizontal, Vertical, VerticalScroll  # noqa: E402
 from textual.screen import ModalScreen, Screen  # noqa: E402
-from textual.widgets import (Button, DataTable, DirectoryTree, Footer, Header, Label, OptionList,  # noqa: E402
-                             RichLog, Static)
+from textual.widgets import (Button, DataTable, DirectoryTree, Footer, Header, Input, Label, OptionList,  # noqa: E402
+                             RichLog, Select, Static)
 
 REFRESH = 3.0
 LOG_REFRESH = 5.0
@@ -98,6 +98,100 @@ class Confirm(ModalScreen[bool]):
 
     def action_answer(self, value):
         self.dismiss(value)
+
+
+class TextPrompt(ModalScreen[str]):
+    """One line of the owner's words; Enter saves, Escape cancels."""
+    BINDINGS = [Binding('escape', 'cancel', 'cancel')]
+    DEFAULT_CSS = '''
+    TextPrompt { align: center middle; }
+    TextPrompt > Vertical { width: 80; height: auto; border: thick $accent; background: $surface; padding: 1 2; }
+    '''
+
+    def __init__(self, title, hint):
+        super().__init__()
+        self.title_text, self.hint = title, hint
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Label(Text(self.title_text, style='bold'))
+            yield Label(Text(self.hint, style='dim'))
+            yield Input(placeholder='Enter saves, Esc cancels', id='words')
+
+    def on_input_submitted(self, event):
+        self.dismiss(' '.join(event.value.split()) or None)
+
+    def action_cancel(self):
+        self.dismiss(None)
+
+
+class PickSection(ModalScreen[str]):
+    """Now, Next or Needs decision."""
+    BINDINGS = [Binding('escape', 'cancel', 'cancel')]
+    DEFAULT_CSS = '''
+    PickSection { align: center middle; }
+    PickSection > Vertical { width: 50; height: auto; border: thick $accent; background: $surface; padding: 1 2; }
+    '''
+    SECTIONS = ('Now', 'Next', 'Needs decision')
+
+    def __init__(self, task):
+        super().__init__()
+        self.task_id = task
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Label(f'Move {self.task_id} to:')
+            yield OptionList(*self.SECTIONS)
+
+    def on_option_list_option_selected(self, event):
+        self.dismiss(self.SECTIONS[event.option_index])
+
+    def action_cancel(self):
+        self.dismiss(None)
+
+
+class NewTask(ModalScreen[dict]):
+    """A new task's title, short title, goal and section, and optionally its scope and acceptance."""
+    BINDINGS = [Binding('escape', 'cancel', 'cancel')]
+    DEFAULT_CSS = '''
+    NewTask { align: center middle; }
+    NewTask > VerticalScroll { width: 90; height: auto; max-height: 90%; border: thick $accent; background: $surface; padding: 1 2; }
+    NewTask Input, NewTask Select { margin-bottom: 1; }
+    NewTask Horizontal { height: auto; align-horizontal: right; }
+    NewTask Button { margin-left: 2; }
+    '''
+
+    def __init__(self, goals):
+        super().__init__()
+        self.goals = goals
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll():
+            yield Label(Text('New task', style='bold'))
+            yield Input(placeholder='Title: the outcome, in a sentence', id='title')
+            yield Input(placeholder='Short title for task lists (at most 40 characters)', id='short', max_length=40)
+            yield Select([(f'{gid}  {title}'[:70], gid) for gid, title in self.goals], prompt='Goal', id='goal')
+            yield Select([(name, name) for name in PickSection.SECTIONS], value='Next', allow_blank=False, id='section')
+            yield Input(placeholder='Scope (optional)', id='scope')
+            yield Input(placeholder='Acceptance (optional): the test that proves it', id='acceptance')
+            with Horizontal():
+                yield Button('Add', variant='primary', id='add')
+                yield Button('Cancel', id='cancel')
+
+    def on_button_pressed(self, event):
+        if event.button.id == 'cancel':
+            self.dismiss(None)
+            return
+        value = {key: ' '.join(str(self.query_one(f'#{key}').value or '').split())
+                 for key in ('title', 'short', 'scope', 'acceptance')}
+        goal = self.query_one('#goal', Select).value
+        if not value['title'] or not value['short'] or goal in (None, Select.BLANK):
+            self.notify('A new task needs a title, a short title and a goal.', severity='warning')
+            return
+        self.dismiss(dict(value, goal=goal, section=self.query_one('#section', Select).value))
+
+    def action_cancel(self):
+        self.dismiss(None)
 
 
 class PickModel(ModalScreen[str]):
@@ -212,7 +306,8 @@ class TasksScreen(Screen):
                 Binding('shift+tab', 'step_view(-1)', 'previous view', show=False),
                 *[Binding(str(n + 1), f'show_view("{view}")', view, show=False)
                   for n, view in enumerate(fleet_view.TASK_VIEWS)],
-                *[Binding(key, f'task("{key}")', key, show=False) for key in 'udcab']]
+                *[Binding(key, f'task("{key}")', key, show=False) for key in 'udcabs'],
+                Binding('n', 'new_task', 'New', show=False)]
     DEFAULT_CSS = '''
     #task-views { height: 1; padding: 0 1; }
     #tasks { height: 1fr; }
@@ -281,15 +376,39 @@ class TasksScreen(Screen):
         row = self.current()
         text = Text()
         if row is None:
-            text.append('No task in this view.', style='dim')
+            text.append('No task in this view.\n', style='dim')
         else:
             text.append(row.task, style='bold')
             text.append(f'  {row.short}\n')
             text.append(f'{row.section} · {row.state}\n', style='dim')
             if row.why:
                 text.append(row.why + '\n', style='yellow' if row.question else '')
-        hotkeys(text, [(a.key, a.label) for a in self.actions(row)] + [('esc', 'Back')])
+        keys = [(a.key, a.label) for a in self.actions(row)]
+        if not self.app.view_only:
+            keys.append(('n', 'New'))
+        hotkeys(text, ([('enter', 'Open')] if row else []) + keys + [('esc', 'Back')])
         self.query_one('#task-detail', Static).update(text)
+
+    def on_data_table_row_selected(self, event):
+        row = self.current()
+        if row is not None:
+            self.app.push_screen(TaskScreen(self.runner_name, row.task))
+
+    def action_new_task(self):
+        runner = self.runner()
+        if runner is None or self.app.view_only:
+            return
+
+        def add(task):
+            if not task:
+                return
+            argv = [self.app.command, 'add-task', '--title', task['title'], '--short', task['short'],
+                    '--goal', task['goal'], '--section', task['section']]
+            for key in ('scope', 'acceptance'):
+                if task[key]:
+                    argv += [f'--{key}', task[key]]
+            self.app.execute(fleet_view.Action('n', f'New task in {runner.name}', argv + [runner.name]))
+        self.app.push_screen(NewTask(fleet_view.open_goals(runner)), add)
 
     def on_data_table_row_highlighted(self, event):
         self.show_task()
@@ -308,10 +427,114 @@ class TasksScreen(Screen):
         if action is None:
             return
         self.follow = row.task
+        if key == 's':
+            runner = self.runner()
+            self.app.push_screen(PickSection(row.task), lambda section: section and self.app.execute(
+                fleet_view.Action('s', f'Section {row.task}', [self.app.command, 'place', row.task, section, runner.name])))
+            return
         if action.confirm:
             self.app.push_screen(Confirm(action.confirm), lambda yes: yes and self.app.execute(action))
         else:
             self.app.execute(action)
+
+
+class TaskScreen(Screen):
+    """One task: its question and the runner's suggested answer, its whole TODO.md entry and
+    its worker's last actions. Answer it here; refreshed like the main screen."""
+    BINDINGS = [Binding('escape,q', 'app.pop_screen', 'Back', show=False),
+                Binding('s', 'section', 'Section', show=False),
+                *[Binding(key, f'answer("{key}")', key, show=False) for key in 'ohrwd']]
+    DEFAULT_CSS = '''
+    #task-scroll { height: 1fr; padding: 0 1; }
+    #task-answers { height: auto; padding: 0 1; border-top: solid $panel; }
+    '''
+
+    def __init__(self, runner_name, task):
+        super().__init__()
+        self.runner_name, self.task_id = runner_name, task
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with VerticalScroll(id='task-scroll'):
+            yield Static(id='task-body')
+        yield Static(id='task-answers')
+
+    def on_mount(self):
+        self.title = f'{self.runner_name}: {self.task_id}'
+        self.refresh_tasks()
+        self.set_interval(REFRESH, self.refresh_tasks)
+
+    def runner(self):
+        return next((r for r in self.app.runners if r.name == self.runner_name), None)
+
+    def question(self):
+        runner = self.runner()
+        return next((q for q in runner.questions if q.id == self.task_id), None) if runner else None
+
+    def answers(self):
+        runner, question = self.runner(), self.question()
+        if runner is None or question is None or self.app.view_only:
+            return []
+        return fleet_view.answers(runner, question, command=self.app.command)
+
+    def refresh_tasks(self, follow=None):
+        runner, question = self.runner(), self.question()
+        row = next((r for r in fleet_view.task_rows(runner) if r.task == self.task_id), None) if runner else None
+        text = Text()
+        text.append(self.task_id, style='bold')
+        if row:
+            text.append(f'  {row.short}\n')
+            text.append(f'{row.section} · {row.state}\n', style='dim')
+        else:
+            text.append('  (closed, or not in TODO.md now)\n', style='dim')
+        if question:
+            text.append(f'\nQuestion for you ({question.effort}, unblocks {question.unblocks})\n', style='bold yellow')
+            text.append(question.needs + '\n', style='yellow')
+            if question.answer:
+                text.append('The runner suggests: ', style='bold')
+                text.append(question.answer + '\n', style='dim')
+        elif row and row.why:
+            text.append(row.why + '\n')
+        entry = fleet_view.task_entry(runner, self.task_id) if runner else ''
+        if entry:
+            text.append('\nTODO.md entry\n', style='bold')
+            text.append(entry + '\n')
+        actions = fleet_view.recent_actions(runner, self.task_id) if runner else []
+        if actions:
+            text.append('\nLast actions\n', style='bold')
+            for line, age in actions:
+                text.append(f'{fleet_view.ago(age):>9}  ', style='dim')
+                text.append(line + '\n')
+        self.query_one('#task-body', Static).update(text)
+        keys = Text()
+        for answer in self.answers():
+            hotkeys(keys, [(answer.key, answer.label)])
+            keys.append(f'  {answer.explain}\n', style='dim')
+        hotkeys(keys, ([] if self.app.view_only else [('s', 'Section')]) + [('esc', 'Back')])
+        self.query_one('#task-answers', Static).update(keys)
+
+    def action_answer(self, key):
+        answer = next((a for a in self.answers() if a.key == key), None)
+        if answer is None:
+            return
+
+        def run(words):
+            if answer.needs_text and not words:
+                return
+            argv = [part.replace('{text}', words or '') for part in answer.argv]
+            self.app.execute(fleet_view.Action(answer.key, f'{answer.label} {self.task_id}', argv))
+        if answer.needs_text:
+            self.app.push_screen(TextPrompt(f'{answer.label}: {self.task_id}', answer.explain), run)
+        else:
+            self.app.push_screen(Confirm(f'{answer.label} {self.task_id}: {answer.explain}?'), lambda yes: yes and run(''))
+
+    def action_section(self):
+        runner = self.runner()
+        if runner is None or self.app.view_only:
+            return
+        self.app.push_screen(PickSection(self.task_id), lambda section: section and self.app.execute(
+            fleet_view.Action('s', f'Section {self.task_id}',
+                              [self.app.command, 'place', self.task_id, section, runner.name])))
 
 
 class RepoTree(DirectoryTree):
@@ -727,7 +950,7 @@ class FleetApp(App):
         self.call_from_thread(self.notify, message[:300], severity='information' if ok else 'error',
                               title=f'{action.label}: {"done" if ok else "failed"}')
         self.call_from_thread(self.action_refresh)
-        if isinstance(self.screen, TasksScreen):
+        if isinstance(self.screen, (TasksScreen, TaskScreen)):
             self.call_from_thread(self.screen.refresh_tasks, getattr(self.screen, 'follow', None))
 
 

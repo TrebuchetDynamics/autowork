@@ -247,7 +247,7 @@ def render(questions, since):
     for q in questions:
         lines += [f"### Q-{q['id']} — {q['type']} — effort {q['effort']} — unblocks {q['unblocks']}", '',
                   f"- Task: {q['task']}", f"- Needs: {q['needs']}", f"- Since: {since.get(q['id'])}",
-                  f"- Answer: {q['answer']}", '']
+                  f"- Answer: {q['answer']}", f"- Kind: {q.get('kind') or 'other'}", '']
     lines.append(END)
     return '\n'.join(lines)
 
