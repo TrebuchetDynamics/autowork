@@ -1,9 +1,10 @@
 """Serialized, validated local integration. Worker reports are evidence, not acceptance."""
+import hashlib
 import math
 from datetime import datetime
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import subprocess
 import re
 import sys
@@ -159,6 +160,7 @@ def verify(repo, common, slot, contracts):
     if mismatch:
         raise Hold('report', 'report.json does not match worker commit/files or reports failure: ' + mismatch)
     verify_scope(repo, common, slot, contracts, files)
+    report['doc_impact'] = assess_doc_impact(repo, slot, task, files, report)
     return files, report
 
 
@@ -218,6 +220,53 @@ def adopt_runner_merged(repo, common, slot, tip):
     slot.update(state.write_slot(common, value, slot))
     state.event(common, 'runner_merged_adopted', task_id=slot['task_id'], commit=tip, merged_count=count + 1)
     return True
+
+
+def assess_doc_impact(repo, slot, task, files, report):
+    """Retain assessment evidence, not doc acceptance or a second close gate.
+
+    DOCS-MAINTAINER consumes pending/legacy evidence (TOOLSET-266-7a).
+    Bind committed objects, never dirty checkout bytes or a later integration HEAD.
+    Incomplete assessment needs Maintain, not another implementation attempt.
+    """
+    impact = report.get('doc_impact')
+    inputs = {'baseline': slot['baseline'], 'commit': slot['commit'],
+              'task_contract_sha256': hashlib.sha256(task['contract'].encode()).hexdigest(), 'documents': {}}
+
+    def pending(reason):
+        return {'status': 'pending', 'reason': reason, 'paths': [], 'checks': [],
+                'resume': 'DOCS-MAINTAINER: assess the verified diff, task acceptance and affected docs',
+                'inputs': inputs}
+
+    if not isinstance(impact, dict):
+        return pending('No doc-impact assessment in worker report; assess legacy evidence')
+    status, reason, paths = impact.get('status'), impact.get('reason'), impact.get('paths')
+    if (status not in ('not_needed', 'updated', 'pending') or not isinstance(reason, str) or not reason.strip()
+            or not isinstance(paths, list) or any(not isinstance(p, str) or not p or '\0' in p
+                or PurePosixPath(p).is_absolute() or '..' in PurePosixPath(p).parts
+                or PurePosixPath(p).as_posix() != p or p == '.' for p in paths)):
+        return pending('Incomplete doc-impact status, reason or repository-relative paths')
+    for path in paths:
+        versions = []
+        for revision in (slot['baseline'], slot['commit']):
+            entry = git(repo, '--literal-pathspecs', 'ls-tree', '-z', revision, '--', path)
+            metadata = entry.split('\t', 1)[0].split()
+            versions.append(metadata[2] if len(metadata) == 3 and metadata[1] == 'blob' else None)
+        if not any(versions):
+            return pending(f'Doc-impact path is not a committed document: {path}')
+        inputs['documents'][path] = versions[1]  # None records a deleted document.
+    if 'inputs' in impact and impact['inputs'] != inputs:
+        return pending('Doc-impact inputs moved; reconcile the original assessment')
+    checks = impact.get('checks', [])
+    if (not isinstance(checks, list) or any(not isinstance(c, dict) or c.get('result') != 'pass'
+            or not c.get('command') or c not in report['checks'] for c in checks)
+            or (status == 'updated' and (not checks or not set(paths).intersection(files)))):
+        return pending('Doc-impact updated claim needs changed doc paths and passing report checks')
+    resume = impact.get('resume', '')
+    if status == 'pending' and (not isinstance(resume, str) or not resume.strip()):
+        return pending(reason.strip())
+    return {'status': status, 'reason': reason.strip(), 'paths': paths, 'checks': checks,
+            'resume': resume if status == 'pending' else '', 'inputs': inputs}
 
 
 def report_mismatch(repo, report, task, commit, files):
@@ -609,6 +658,8 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
                 files, report = verify(repo, common, slot, contracts)
                 require_no_writers(repo, files)
                 if slot['state'] == 'integrating':
+                    # Pre-upgrade intents can recover without the reported transition.
+                    slot = state.write_slot(common, dict(slot, report=report), slot)
                     recovered = recover_integration(repo, common, slot, contracts)
                     if recovered:
                         return recovered

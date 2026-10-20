@@ -35,7 +35,8 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
 3. **Review the report.** Read `report.json` at
    `<git-common-dir>/autowork-execution/slot-data/<TASK>/attempt-N/report.json`
    (commit, changed files, checks, blockers, pending live checks, proposed
-   CHANGELOG line) and the commit itself. A report is a claim; integration verifies
+   CHANGELOG line and [doc-impact evidence](#documentation-impact-evidence)) and
+   the commit itself. A report is a claim; integration verifies
    it. `blockers` name what only a person can provide (credentials, devices, spending,
    third-party changes, open product or security decisions); a worker that reports any
    is held with `cause: blocker`, with or without a commit, and gets no fresh attempt.
@@ -116,6 +117,47 @@ chain ends: `held`, `claim`, `contract` (a TODO entry the engine will not run, w
 reason), `outside`, `cycle`, or moving work, with how many tasks it holds),
 completed/failed/integration-queue counts, and journal metrics (wall, worker,
 integration and waiting time, peak workers, conflicts, retries).
+
+## Documentation impact evidence
+
+Every worker assesses the final diff against task Acceptance and existing docs.
+Use `doc_impact` in `report.json`, for example (illustrative, not a receipt):
+
+```json
+{"status": "updated", "reason": "Guide now describes the changed command",
+ "paths": ["docs/guide.md"],
+ "checks": [{"command": "git diff --check", "result": "pass", "summary": "guide read back; diff whitespace checked"}]}
+```
+
+- `not_needed`: explain why inspected docs already cover the change or why
+  metadata-only work affects none. `paths` lists inspected docs (may be empty).
+- `updated`: name changed component docs and copy their passing readback/check
+  records from the report's top-level `checks`. Resolve bundled Docs Sync in the
+  actual host for scoped Maintain; no full bootstrap or global manifest.
+- `pending`: put the concrete gap in `reason`, inspected docs in `paths` (may be
+  empty), and the specific DOCS-MAINTAINER action in `resume`. Shared documents
+  remain with the coordinator; do not edit their policy, Acceptance or history.
+
+Integration retains the assessment in the slot's verified `report.doc_impact` and
+exposes it as `doc_impact` in the task snapshot, including after closure/restart.
+It adds `inputs` with exact `baseline`, worker `commit`, `task_contract_sha256` and
+`documents` mapping inspected paths to committed blob IDs (null for deletion).
+These are worker-source inputs, not a claim that merged/current docs are identical.
+Consumers must compare current source/docs and preserve foreign dirty work before
+reconciling; never make stale evidence current by repinning it. An existing
+mismatched `inputs` binding, missing/invalid assessment, missing path or unsupported
+update/check claim becomes `pending`, not an implementation retry or silent no-op.
+Older reports remain valid and need assessment. Raw reports remain available
+beside normalized slot evidence.
+
+DOCS-MAINTAINER owns the conditional closeout Maintain pass (TOOLSET-266-7a).
+These fields introduce no new trigger, model call, closure gate or second atomic-close
+authority. A worker assertion is not documentation acceptance; archive/index
+rendering alone is not Maintain. Sequential native/portable closeout uses the same
+[scoped assessment](../../shared/ENGINEERING-CYCLE.md#one-canonical-backlog-one-executor-one-closure-owner)
+in its authorized session. Required doc failure/interruption preserves code and
+pending evidence without replaying implementation. Stops/pauses/budget limits
+launch no new work; once/until-empty limits include needed closeout.
 
 ## Runner jobs versus outside sessions
 
