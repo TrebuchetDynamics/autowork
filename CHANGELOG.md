@@ -22,6 +22,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- A finished commit still waiting to merge a day after dispatch (`PI_AUTOWORK_STALE_HOURS`,
+  default 24) is set aside and its task runs fresh on current main, the new worker shown
+  the earlier branch: day-old commits conflicted with each other at every landing and held
+  back every task that shared their files.
 - `--parallel-set-aside` accepts a finished commit whose review a restart interrupted
   (left `integrating`, no review running), unless that integration's merge already
   landed in main.
