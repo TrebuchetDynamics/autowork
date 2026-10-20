@@ -24,14 +24,6 @@ no extra approval step or execution authority.
 - Answer: Read the evidence (the worker's report and validation log under .git/autowork-execution/slot-data/TOOLSET-200-c1/), then rescope or split TOOLSET-200-c1 in its TODO.md entry. The runner reruns it when the entry changes.
 - Kind: held
 
-### Q-TOOLSET-099-87 — USER_DECISION — effort investigate — unblocks 0
-
-- Task: TOOLSET-099-87 — Run as many independent tasks at once as possible
-- Needs: merge conflict; worker and canonical checkout preserved; adopted 2 of 3; conflict in: tests/test_pi_autowork.py
-- Since: 2026-10-20T19:33:17Z
-- Answer: Read the evidence (the worker's report and validation log under .git/autowork-execution/slot-data/TOOLSET-099-87/), then rescope or split TOOLSET-099-87 in its TODO.md entry. The runner reruns it when the entry changes.
-- Kind: held
-
 ### Q-TOOLSET-118-68 — USER_DECISION — effort investigate — unblocks 0
 
 - Task: TOOLSET-118-68 — Separate worker, test and memory budgets in the parallel resource gate
