@@ -16,14 +16,6 @@ no extra approval step or execution authority.
 - Answer: Read the evidence (the worker's report and validation log under .git/autowork-execution/slot-data/TOOLSET-125-3c/), then rescope or split TOOLSET-125-3c in its TODO.md entry. The runner reruns it when the entry changes.
 - Kind: held
 
-### Q-TOOLSET-200-c1 — USER_DECISION — effort investigate — unblocks 1
-
-- Task: TOOLSET-200-c1 — A status read waits for the writer lock, and a failed read never means nothing is running
-- Needs: merge conflict; worker and canonical checkout preserved; adopted 2 of 3; conflict in: pi-autowork/pi_autowork/coordinator.py, pi-autowork/tests/test_maintainer.py
-- Since: 2026-10-20T19:33:17Z
-- Answer: Read the evidence (the worker's report and validation log under .git/autowork-execution/slot-data/TOOLSET-200-c1/), then rescope or split TOOLSET-200-c1 in its TODO.md entry. The runner reruns it when the entry changes.
-- Kind: held
-
 ### Q-TOOLSET-118-68 — USER_DECISION — effort investigate — unblocks 0
 
 - Task: TOOLSET-118-68 — Separate worker, test and memory budgets in the parallel resource gate
