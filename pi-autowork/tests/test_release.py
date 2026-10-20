@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import select
 import shlex
 import subprocess
 import sys
@@ -55,14 +56,29 @@ class ReleaseCheckTests(unittest.TestCase):
             (self.work / name).write_text(text)
         self.publish('STATE_SCHEMA = 1\n', 'old API')
         self.git(self.toolset, 'pull', '-q', '--ff-only')
+        # Only this test's child can use its private releases. Unrelated host
+        # interpreters with unreadable environments conservatively stop pruning.
+        processes = []
+        glob = Path.glob
+        self.enterContext(patch.object(Path, 'glob', lambda path, pattern:
+            iter(processes) if path == Path('/proc') and pattern == '[0-9]*' else glob(path, pattern)))
         selected = release.prepare(self.state_root, self.toolset)
+        os.utime(selected / '.git', ns=(1_000_000_000, 1_000_000_000))
+        prepared = [selected]
         child = subprocess.Popen([sys.executable, '-u', '-c',
                                   'import sys; sys.path.insert(0, sys.argv[1]); '
                                   'import first; print("ready", flush=True); input(); '
                                   'print(first.run())', str(selected)],
                                  env=dict(os.environ, PI_AUTOWORK_TOOLSET=str(selected)),
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        self.addCleanup(lambda: child.poll() is None and (child.kill(), child.wait()))
+        def cleanup_child():
+            if child.poll() is None:
+                child.kill()
+            child.communicate()  # reap and close all three pipes, including on assertion failure
+
+        self.addCleanup(cleanup_child)
+        processes.append(Path(f'/proc/{child.pid}'))  # real environ/stat reads, even after exit
+        self.assertTrue(select.select([child.stdout], [], [], 10)[0], 'child did not become ready')
         self.assertEqual(child.stdout.readline().strip(), 'ready')
         for number in range(2, 5):
             (self.work / 'first.py').write_text('from second import new_api\n')
@@ -70,13 +86,17 @@ class ReleaseCheckTests(unittest.TestCase):
             self.publish(f'STATE_SCHEMA = 1\n# {number}\n', f'release {number}')
             self.git(self.toolset, 'pull', '-q', '--ff-only')
             latest = release.prepare(self.state_root, self.toolset)
+            # Older snapshots have explicit, distinct mtimes before the next
+            # prepare prunes; no dependence on clock resolution or elapsed sleeps.
+            os.utime(latest / '.git', ns=(number * 1_000_000_000, number * 1_000_000_000))
+            prepared.append(latest)
         self.assertTrue(selected.is_dir())  # a live child's old release is not pruned
         out, err = child.communicate('\n', timeout=10)
         self.assertEqual((child.returncode, out.strip()), (0, '1'), err)
         release.prepare(self.state_root, self.toolset)
         self.assertFalse(selected.exists())
         self.assertTrue(latest.is_dir())
-        self.assertEqual(len(list((self.state_root / 'releases').glob('*/'))), 2)
+        self.assertEqual(set((self.state_root / 'releases').glob('*/')), set(prepared[-2:]))
 
     def test_legacy_driver_pins_a_stopped_runners_release_until_registration_moves(self):
         # Isolate driver references from live-process retention on a busy host.
