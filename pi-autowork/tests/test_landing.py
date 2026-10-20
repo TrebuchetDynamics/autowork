@@ -111,6 +111,24 @@ class DirtyLandingTests(LandingFixture):
         self.assertIn('+owner: parked', diff)
         self.assertNotIn('+session:', diff)
 
+    def test_nonplanning_overlap_waits_even_when_the_edits_could_merge(self):
+        self.note.write_text(self.original)  # no owner-planning edit in this case
+        note = self.repo / 'notes.txt'
+        note.write_text(self.original)
+        self.git(self.repo, 'add', 'notes.txt')
+        self.git(self.repo, 'commit', '-qm', 'owner file')
+        self.git(self.integ, 'merge', '--no-edit', 'main')
+        (self.integ / 'notes.txt').write_text(self.original.replace('session: old', 'session: new'))
+        self.git(self.integ, 'commit', '-qam', 'session edit')
+        note.write_text(self.parked)
+        main = self.head('main')
+        with mock.patch.dict(os.environ, {'PI_AUTOWORK_PLANNING_QUIET': '0'}):
+            self.assertFalse(self.runner.merge_main())
+        self.assertIn('notes.txt', self.runner.merge_pending)
+        self.assertEqual(self.head('main'), main)
+        self.assertEqual(note.read_text(), self.parked)
+        self.assertEqual(self.git(self.repo, 'diff', '--cached', '--name-only'), '')
+
     def test_unsafe_edits_leave_the_ref_index_and_edit_untouched(self):
         real_run, real_fsync, real_read = subprocess.run, os.fsync, Path.read_bytes
         main = self.head('main')

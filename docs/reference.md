@@ -108,6 +108,25 @@ live in `$AUTOWORK_WORKER_CHECK_DIR` beside the attempt's report, and reconcilia
 adds their total as `worker_check_slot_wait_seconds` to an existing worker report.
 This is voluntary: commands run without the wrapper are not slot-limited.
 
+## Main-checkout changes (Pi runner)
+
+Source: [`coordinator.py`](../pi-autowork/pi_autowork/coordinator.py)
+`commit_owner_changes`, `owner_planning_paths` and `fast_forward_main`.
+
+The runner never stages or commits non-planning changes from the main checkout,
+regardless of their age or quietness. If the session would change a dirty
+non-planning path, landing waits as **Merge pending** and names the paths, even
+when the edits could merge without a conflict. If the paths do not overlap,
+the session merges and pushes normally, leaving the owner's working-tree and
+staged changes uncommitted.
+
+The owner-planning sweep still commits `TODO.md`, `TODO.archive.md`, `goals.json`
+and `BLOCKERS.md` (including the repository's configured TODO archive) once their
+content has stayed unchanged for `PI_AUTOWORK_PLANNING_QUIET` seconds (default
+`600`) and no process holds them open for writing. Unfinished Git operations
+are left alone. This main-checkout boundary does not change recovery commits
+of uncommitted changes in the runner's own session worktree.
+
 ## Rolling planning tasks (Pi runner)
 
 Source: [`parallel_plan.py`](../skills/autowork/scripts/parallel_plan.py),

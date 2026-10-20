@@ -5,7 +5,26 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ## [Unreleased]
 
+### Added
+
+- `goals.py plan-lint REPO [--tasks ID,...] [--json] [--strict]` lints TODO.md task
+  contracts before dispatch with the runner's own parsers. Errors (exit 1): missing or
+  duplicate required fields, missing or unparseable Touches, coordinator files in
+  Touches, unknown or cyclic dependencies, and Checks commands naming a test file or
+  module that neither exists nor is created by the task's Touches. Warnings: Touches
+  overlapping another open task with no dependency path, hot files, directories,
+  serial paths, oversized tasks and Acceptance that names no test.
+
 ### Changed
+
+- Planning skills now plan for parallel work: `Touches:` is described everywhere as
+  the expected write set that only orders parallel work (never a hold), and the
+  planning craft adds task sizing, disjoint write sets (hot-file extraction,
+  focused test files), acceptance that names a failing test, optional
+  `Produces:`/`Consumes:` seams, a pre-mortem and a batch dependency check. Plan
+  With Me, Plan For Me and the plan handoff lint the saved batch with
+  `goals.py plan-lint`; special-case guidance moved to each planner's
+  `references/special-cases.md`.
 
 - The terminal TUI leaves mouse dragging to terminal text selection by default.
   `autowork tui --mouse` opts into clickable controls; keyboard navigation and
@@ -255,6 +274,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Parallel `reconcile` no longer aborts for every slot when one worker's HEAD shares no
+  history with its baseline; that slot is held with cause `diverged`. A worker adopted
+  after surviving the stop that paused it no longer keeps its pause marker, so its
+  later crash is held on attempt 2 instead of resumed. Found by the new model-based
+  state test.
 - "Waiting to integrate until another session leaves the main checkout" is said once per
   session again. The line carried the session's changing status ("running command", "terminal
   used 2 min ago"), so it repeated every minute.
@@ -593,6 +617,8 @@ claim of a tagged release, completed installation or live workflow qualification
   remain separate. No memory provider or store is changed by the pin update.
 
 ### Added
+
+- Seeded, replayable model-based tests drive the parallel worker slot state machine and check every step against a reference model (`test_parallel_state_model.py`).
 
 - The runner answers worker blockers it can resolve, and the attempt resumes in its own
   worktree instead of waiting for the owner: a short triage job reads the report and

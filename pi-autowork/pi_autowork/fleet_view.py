@@ -345,8 +345,8 @@ def verdict(runner):
     if runner.state == 'working':
         # Live workers, not every task in flight: 15 finished commits waiting to merge read as
         # "16 of 1 workers busy".
-        queued = sum(lane.phase in ('implemented', 'waiting to integrate') for lane in runner.lanes)
-        busy = runner.running or sum(lane.phase not in ('implemented', 'waiting to integrate') for lane in runner.lanes)
+        queued = sum(lane.phase in QUEUED for lane in runner.lanes)
+        busy = runner.running or sum(lane.phase not in QUEUED for lane in runner.lanes)
         of = f' of {runner.max_workers}' if runner.max_workers else ''
         text = f"Working — {busy}{of} worker{'s' if busy != 1 else ''} busy"
         if queued:
@@ -407,6 +407,10 @@ def waiting_line(runner, limit=4):
     return ' · '.join(parts) + (f' · +{more} more reasons' if more > 0 else '')
 
 
+# Finished commits only waiting to land: they sort below the tasks being worked on.
+QUEUED = ('implemented', 'waiting to integrate')
+
+
 def lanes(runner, now=None):
     """Tasks in flight for this runner, from the engine's slots, the runner log and Pi transcripts."""
     now = time.time() if now is None else now
@@ -437,7 +441,8 @@ def lanes(runner, now=None):
         activity, age = _activity(runner.state_dir, task, now) if runner.state_dir else ('', None)
         out.append(Lane(task=task, phase=phase, detail=detail, attempt=slot.get('attempt', 1),
                         minutes=int((now - started) // 60) if started else None, activity=activity, activity_age=age))
-    return out
+    # Twenty finished commits listed first hid the eight tasks actually running.
+    return sorted(out, key=lambda lane: lane.phase in QUEUED)
 
 
 def ago(seconds):

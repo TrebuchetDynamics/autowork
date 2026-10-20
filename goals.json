@@ -793,7 +793,14 @@
         "TOOLSET-272-1c",
         "TOOLSET-273-e0",
         "TOOLSET-274-f0",
-        "TOOLSET-275-c1"
+        "TOOLSET-275-c1",
+        "TOOLSET-276-11",
+        "TOOLSET-276-2c",
+        "TOOLSET-276-3d",
+        "TOOLSET-276-3f",
+        "TOOLSET-276-a9",
+        "TOOLSET-277-52",
+        "TOOLSET-278-91"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -801,10 +808,9 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-269-f2",
+      "TOOLSET-277-52",
       "TOOLSET-270-a9",
       "TOOLSET-271-d6",
-      "TOOLSET-272-1c",
       "TOOLSET-273-e0",
       "TOOLSET-274-f0",
       "TOOLSET-252-4c",
@@ -836,6 +842,11 @@
       "TOOLSET-129-c4",
       "TOOLSET-130-15",
       "TOOLSET-235-0d",
+      "TOOLSET-276-2c",
+      "TOOLSET-276-a9",
+      "TOOLSET-276-3f",
+      "TOOLSET-276-3d",
+      "TOOLSET-276-11",
       "TOOLSET-266-7a",
       "TOOLSET-267-a0",
       "TOOLSET-259-ca",
@@ -886,6 +897,7 @@
       "TOOLSET-149-df",
       "TOOLSET-150-71",
       "TOOLSET-151-01",
+      "TOOLSET-278-91",
       "TOOLSET-123-a0",
       "TOOLSET-129-6c",
       "TOOLSET-101-f6",
@@ -1153,14 +1165,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-269-f2",
-      "section": "Now",
-      "status": "open",
-      "title": "A runner never commits or publishes uncommitted changes it did not make (GitHub #3)"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-270-a9",
       "section": "Now",
       "status": "open",
@@ -1177,14 +1181,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-272-1c",
-      "section": "Now",
-      "status": "open",
-      "title": "A Touches-only rescope that adds a protected file integrates against the answered contract, or is refused plainly (GitHub #8)"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-273-e0",
       "section": "Now",
       "status": "open",
@@ -1197,6 +1193,14 @@
       "section": "Now",
       "status": "open",
       "title": "An unusable repository stops the service deliberately instead of a restart loop (GitHub #6)"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-277-52",
+      "section": "Now",
+      "status": "open",
+      "title": "Restore the offline gate for the picker-policy failures at 171b26b"
     },
     {
       "depends_on": [],
@@ -1670,6 +1674,54 @@
       "section": "Next",
       "status": "open",
       "title": "Bound docs-maintainer repair loops and report actual changed task bodies"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-276-11",
+      "section": "Next",
+      "status": "open",
+      "title": "Split tests/test_pi_autowork.py into per-feature modules over one fixture module"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-276-2c",
+      "section": "Next",
+      "status": "open",
+      "title": "A failed git command is never read as a clean tree or an empty result"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-276-3d",
+      "section": "Next",
+      "status": "open",
+      "title": "Landing refuses a commit the tree guard rejects"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-276-3f",
+      "section": "Next",
+      "status": "open",
+      "title": "Tasks that share a hot file never run at the same time"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-276-a9",
+      "section": "Next",
+      "status": "open",
+      "title": "Every hold cause is a known value with its recovery rule in one table"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-278-91",
+      "section": "Next",
+      "status": "open",
+      "title": "A commit kept without its worker's report resumes that worker, not a batch or the merge resolver"
     },
     {
       "depends_on": [
@@ -3176,6 +3228,22 @@
       "section": "Done",
       "status": "done",
       "title": "Chat status shows repository runners separately from plugin setup"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-269-f2",
+      "section": "Done",
+      "status": "done",
+      "title": "A runner never commits or publishes uncommitted changes it did not make (GitHub #3)"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-272-1c",
+      "section": "Done",
+      "status": "done",
+      "title": "A Touches-only rescope that adds a protected file integrates against the answered contract, or is refused plainly (GitHub #8)"
     },
     {
       "depends_on": [],

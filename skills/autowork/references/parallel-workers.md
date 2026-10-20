@@ -267,8 +267,8 @@ nothing parallel was claimed or started.
   retried task leaves the first attempt's worktree and branch for manual cleanup.
 - **Hold causes:** every held slot records a machine-readable `cause`: `scope` (with
   `outside`, the undeclared protected files), `report`, `conflict`,
-  `validation`, `contract_changed`, `moved`, `blocker`, `crash` (died twice) or
-  `launch`. Integration's `HELD` result carries `cause` and `outside` too.
+  `validation`, `contract_changed`, `moved`, `blocker`, `crash` (died twice),
+  `diverged` (the worker's HEAD does not descend from its baseline) or `launch`. Integration's `HELD` result carries `cause` and `outside` too.
 - **Holds from before TOOLSET-161-17:** a commit held for `overlap`, or for `scope` on
   files that are not protected (including coordinator-owned files), is offered again once
   (`REOFFERED`) in priority order and integrates by merge; a worker held with

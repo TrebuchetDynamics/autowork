@@ -3,7 +3,7 @@ name: plan-with-me
 description: "Use to plan together through research and questions."
 license: MIT
 metadata:
-  version: 0.3.3
+  version: 0.3.4
   hermes:
     tags: [interview, requirements, documentation, planning]
 ---
@@ -18,8 +18,9 @@ tasks. Read the [planning craft](../shared/PLANNING-CRAFT.md), the pinned
 Use Docs Sync to reconcile findings and answers into existing documentation. Follow
 the [shared contract](../shared/COMMON-CONTRACT.md) and
 [plan handoff](../shared/PLAN-HANDOFF.md). For cancelled tasks, blockers, pending-task
-lists, validation performance, onboarding pages, teaching, investor briefs,
-jurisdiction changes, long interviews and live gates, load the matching section of [special cases](references/special-cases.md).
+lists, validation performance, simpler test cleanup, companion frontends, onboarding
+pages, teaching, investor briefs, jurisdiction changes, long interviews and live
+gates, load the matching section of [special cases](references/special-cases.md).
 
 `/plan_with_me` (`/plan-with-me` also works in CLI) starts an interview about the
 current repository; arguments narrow the topic. `/plan_with_me blockers [repo|name]`
@@ -126,32 +127,6 @@ unresolved matters left open. Silence is neither an answer nor acceptance. In
 scheduled/noninteractive runs, report the single highest-value question and leave
 it pending; do not fabricate replies or poll.
 
-## Companion frontends and platform scope
-
-1. Establish the product boundary before discussing implementation: distinguish an existing website, a native companion app, an embedded website and an additional browser build of the companion. A second frontend for the same backend is not automatically a WebView or a second web application.
-2. Use concrete product names when asking about platforms. If a reply mentions keeping the existing website and adding the companion, clarify whether a separate Flutter browser build is also required; do not treat the word "web" as proof of that requirement or silently discard an earlier explicit platform choice.
-3. Inspect existing page loaders, public APIs, role gates and shared UI patterns before proposing parity. A generic list endpoint may omit the page's filters, summaries, history, position provenance or privacy projection. Prefer shared server read models over duplicating queries or scraping framework-internal page data.
-4. Settle frontend/platform scope before asking about hosting or designing cross-origin authentication. First-party cookie reuse, native session handling and cross-site browser access have different constraints; an unresolved deployment choice does not authorize a new token protocol, relaxed cookies or broad CORS access.
-5. Once native versus embedded and feature depth are settled, save those answers in the existing planning owner before another consequential round when continuity would otherwise be lost. Mark only unresolved choices Open; do not restart discovery or make understood product scope look undecided. Keep cloud session/state independent of local-device connection state when the requested module must work without that connection.
-
-## Scope reductions and simpler test cleanup
-
-When the user chooses a simpler qualitative task, remove timing, benchmark,
-repeated-run and speed-target requirements from its active contract; retain
-correctness checks instead of the retired measurement campaign. Prefer one bounded
-test-value cleanup over new measurement infrastructure in that scope. Inspect
-unchanged test verdicts before edits. Require each deletion or consolidation to
-identify duplicated behavior/assertions and the retained test protecting them;
-low priority, similar names, coverage overlap or fewer tests alone never justify
-losing unique regression, security, boundary or configuration protection. Keep
-uncertain cases and report recommendations instead.
-
-State whether low-priority items means test cases or repository tasks; do not
-silently turn a test-cleanup request into unrelated backlog cancellation. If the
-user requests a new simpler replacement, save the successor and supersede the old
-task without marking its unproven outcome passed. Creating that replacement does
-not implement it, renew an execution budget or dispatch a worker.
-
 ## Audits and readiness questions
 
 "Audit X", "is X ready?" or "what is left?" asks what to do next, not only for a
@@ -197,7 +172,10 @@ applying its canonical ledger and concurrency rules. Default invocation already
 requests this persistence, so do not ask again whether to save. Accepted intent
 becomes bounded Now/Next tasks with dependencies, acceptance, verification and
 `Touches:` (plus `Resources:` where needed) per the
-[TODO work center](../shared/TODO-WORKCENTER.md).
+[TODO work center](../shared/TODO-WORKCENTER.md). Cut and write them by the
+[planning craft](../shared/PLANNING-CRAFT.md#size-each-task): small tasks with
+disjoint write sets, acceptance that names a failing test, and a pre-mortem whose
+guards land in the owning tasks.
 For accepted work too large for one batch, follow
 [rolling planning](../shared/TODO-WORKCENTER.md#rolling-planning): save only the
 first batch whose content is known now, at most 8 new tasks total including one
@@ -210,8 +188,10 @@ adds no planning task and keeps the existing saving flow.
 
 Unanswered product choices remain outside executable work. Run the
 [builder check](../shared/PLANNING-CRAFT.md#builder-check-before-handoff) on the
-saved tasks and fold its answers in. Validate changed docs and ledger, then run the
-actual consumer backlog-check when handing off accepted tasks. Put the accepted-plan
+saved tasks and fold its answers in. Lint them with `goals.py plan-lint <repo>
+--tasks ID,ID,...`: fix every error and report each warning with your call on it
+([plan handoff](../shared/PLAN-HANDOFF.md)). Validate changed docs and ledger, then
+run the actual consumer backlog-check when handing off accepted tasks. Put the accepted-plan
 anchor in each affected task's Sources, not only its Next action; repair supported
 missing bindings and rerun the same gate. Report the ready first task separately
 from a dependent successor: `backlog_reconciled_not_eligible` for a combined slice

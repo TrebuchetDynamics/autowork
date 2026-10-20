@@ -341,6 +341,9 @@ class FleetViewTests(unittest.TestCase):
         self.assertRegex(fleet_view.ago(one.activity_age), r'^(1|2)\ds ago$')
         self.assertEqual((two.phase, two.detail), ('waiting to integrate', 'until another session leaves the main checkout (pid 7)'))
         self.assertEqual((two.activity, two.activity_age), ('', None))
+        # The finished commit waiting to land sorts below the task being worked on, whatever its name.
+        (slots / 'T-0.json').write_text(json.dumps({'task_id': 'T-0', 'state': 'reported', 'attempt': 1}))
+        self.assertEqual([lane.task for lane in fleet_view.lanes(runner)], ['T-1', 'T-0', 'T-2'])
 
     def test_phase_text_is_split_into_a_short_phase_and_its_detail(self):
         self.assertEqual(fleet_view._split_phase('verifying'), ('verifying', ''))

@@ -18,6 +18,17 @@ any parallel code, and checks that a Claude Code coordinator without
 `--worker-command` or a missing worker CLI returns `SEQUENTIAL_FALLBACK` without
 claiming or starting anything.
 
+## Tree guard and fix hotspots
+
+`python3 scripts/check.py` first runs `python3 scripts/tree_guard.py`, which refuses
+conflict-marker lines, Python that does not compile and invalid JSON in tracked files;
+`--rev <commit>` vets a candidate commit without a checkout and `--staged` the index.
+A file that must show markers carries `tree-guard: allow-markers` in its first five
+lines. To prevent fewer bugs being fixed twice: every fix ships with a regression test
+that fails before the fix, a commit repairing an earlier one adds a `Fixes: <sha>`
+trailer, and `python3 scripts/fix_hotspots.py` (fix commits per file, ratio and
+fix-of-a-fix chains; `--json`) guides which files to refactor or test first.
+
 ## Verify
 
 Repository-status chat coverage runs through the normal offline entry point:
