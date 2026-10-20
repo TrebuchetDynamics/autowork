@@ -1482,6 +1482,9 @@ def main():
     b.add_argument('--plan', required=True, help='accepted repo-relative path#heading')
     b.add_argument('--tasks', required=True, help='existing comma-separated task IDs')
     b.add_argument('--receipt', help='prior JSON stdout receipt to recheck for staleness')
+    pl = sub.add_parser('plan-lint', help='read-only lint of TODO.md task contracts before dispatch'); pl.add_argument('repo')
+    pl.add_argument('--tasks', default='', help='comma-separated task IDs (default: open Now/Next tasks)')
+    pl.add_argument('--json', action='store_true'); pl.add_argument('--strict', action='store_true', help='exit 1 on warnings too')
     for parser in sub.choices.values():
         parser.add_argument('--expected-revision', help='refuse if goals.json or TODO.md changed since revision')
         parser.add_argument('--canonical-repo', help='explicit target checkout of the same Git repository (default: requested repo)')
@@ -1489,6 +1492,9 @@ def main():
     if a.cmd == 'merge-driver':
         from planning_merge import driver
         sys.exit(driver(a.kind, a.ancestor, a.ours, a.theirs))
+    if a.cmd == 'plan-lint':  # read-only: no lock or revision guard needed
+        import plan_lint
+        sys.exit(plan_lint.report(a.repo, plan_lint.task_list(a.tasks), as_json=a.json, strict=a.strict))
     if a.cmd == 'focus' and sum((a.clear, a.goal is not None, a.json)) != 1:
         f.error('provide exactly one of GOAL, --clear or --json')
     with coordination(a.repo, a.canonical_repo) as repo:
