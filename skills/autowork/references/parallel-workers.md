@@ -166,15 +166,22 @@ SDKs and package caches remain in `AUTOWORK_CACHE`, independently of temp cleanu
 
 ## Admission: Touches and Resources
 
-`Touches:` schedules work; it never holds it (TOOLSET-161-17):
+`Touches:` schedules work, and a shared file holds it:
 
 - `Touches:` is a comma-separated list of repository-relative paths or globs the
   task is expected to change; `*` also matches across `/`, and a trailing `/` covers a
-  directory. It is a hint: tasks whose `Touches:` overlap running or earlier-chosen work
-  are dispatched after independent tasks, never held. A worker may change whatever else
-  its task needs; the merge into the base, one candidate at a time in priority order,
-  settles overlap, and a real conflict goes to the merge resolver. A missing or invalid
-  `Touches:` is no hint (the task ranks after hinted ones).
+  directory. A task that names a file (not a directory or glob) that running work, a
+  commit not landed yet, or a waiting higher-priority task also names waits until that
+  task lands: started together, they conflict at merge, and each conflict costs a
+  resolver run and a second review. Directory and glob overlap only ranks a task after
+  independent ones (TOOLSET-161-17), and an idle claim holds nothing. A worker may change
+  whatever else its task needs; the merge into the base, in priority order, settles the
+  rest, and a real conflict goes to the merge resolver. A missing or invalid `Touches:`
+  is no hint (the task ranks after hinted ones).
+- While worker slots idle and tasks wait on a shared file, the DOCS-MAINTAINER re-cuts
+  those tasks before they run (`overlap` trigger): it may merge one into a task that has
+  not started, split off the shared-file part as a dependent follow-up, supersede a
+  duplicate or make the order explicit, without touching running tasks.
 - `Resources: live` or `Resources: exclusive` makes a task run alone. Other names
   (for example `Resources: port-8080, test-db`) keep tasks that share a name from
   running together.

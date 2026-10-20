@@ -79,6 +79,18 @@ def triggers(rows, main=None, findings=None, reported_flakes=(), ledger_errors=(
     return sorted(found)[:limit]
 
 
+def overlap(row):
+    """The dispatcher's wait for a file another task names (parallel_plan), or ''."""
+    reason = ' '.join(str(row.get('reason') or '').split())
+    return reason if row.get('state') == 'waiting' and reason.startswith('shares ') else ''
+
+
+def overlaps(rows, limit=6):
+    """[(task, 'overlap', why)] for the highest-priority tasks waiting on another task's file:
+    re-cut before they run, a conflict costs no resolver run and no second review."""
+    return [(r['task'], 'overlap', why) for r in rows if r.get('task') and (why := overlap(r))][:limit]
+
+
 def key(found):
     """The set's identity. A red main is the same trigger while the same tests fail: tasks now
     land one by one, so its commits since the last green grow without anything new to repair."""
@@ -119,6 +131,16 @@ PROMPT = (
     'reporting any test result, so no test is known to fail. Never add a repair task for test names. Unless an open task '
     'covers it, add one task to make the full check run to its results (pin or provision the crashing tool from the '
     'repository\'s setup docs, or restate the repository\'s `Full check:` line), with the crash line as Evidence. '
+    'For overlap (the task waits because it names a file another task also names: one running, one whose '
+    'commit waits to land, or one ahead of it in the queue; started together they conflict at merge, which costs '
+    'a resolver run and a second review): you may add, remove, merge and split tasks that have not started, and '
+    'reorder them, so that what runs next has disjoint Touches. Prefer, in order: merge it into the other task '
+    'when that one has not started either (combine Scope, Touches, Acceptance and Checks into one entry and '
+    'supersede the other with python3 {goals} supersede); split the shared-file part into a follow-up task that '
+    'depends on the other task, so the rest starts now with Touches that no longer name that file; supersede it '
+    'when the other task already delivers it; otherwise make the order explicit in Dependencies. Never edit the '
+    'entry of a task that is running or whose commit waits to land; keep every Acceptance item in whichever task '
+    'now owns it; never widen product scope. '
     'For repeated quick hold: three consecutive attempts held within ten minutes on the same missing input. '
     'This blocker gets one repair, not repeated cosmetic entry edits. Restate the task so the named missing '
     'input is produced (add a producer task and dependency), or move it to Needs decision. Only when the '
