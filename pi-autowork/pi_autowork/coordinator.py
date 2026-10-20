@@ -2127,6 +2127,12 @@ class Coordinator:
                 if job['merged_count']:
                     self.seen['unresolved-' + task] = job['commit']
                 continue
+            # The session often moves while Pi resolves (its own questions commit): merge that
+            # too, or the engine refuses the resolution and the next pass merges it anyway.
+            now = git(self.integ, 'rev-parse', 'HEAD')
+            if now and now != head and not git_ok(root, 'merge', '-q', '--no-edit', now):
+                git(root, 'merge', '--abort')
+                continue  # the next pass resolves the resolution against the new session
             self.settled = self.adopt_merge(task) or self.settled
         self.note_resolvers()
 
