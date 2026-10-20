@@ -1,6 +1,8 @@
 # Pi Autowork: open-source reference architectures
 
-**Research snapshot:** 2026-10-16. **Scope:** research and planning, not implementation or installation.
+**Original research snapshot:** 2026-10-16. **Scope:** research and planning, plus
+an isolated [worker-runtime comparison spike](#worker-runtime-comparison-toolset-117-cb).
+The spike is not production adoption or a fleet installation.
 
 ## Decision brief
 
@@ -244,6 +246,130 @@ Confidence is high for the cited source branches and explicit license texts; mod
 Keep follow-ups attached to the existing coordinator redesign. The recommended first experiment is not a whole-framework adoption: compare the existing Pi CLI adapter with one execution-only adapter behind the same contract, using identical fixtures for cancellation, restart adoption, stale results, out-of-order completion, combined-tree verification and cleanup retention. Record any compatibility failure rather than weakening the contract.
 
 This research does not approve code reuse, a file migration, a service restart, publication or fleet rollout. Those remain separate implementation/operational decisions.
+
+## Worker-runtime comparison (TOOLSET-117-cb)
+
+**Decision: retain the production CLI default.** The isolated
+[probe and reproduction guide](../../pi-autowork/spikes/runtime-comparison/README.md)
+implement `launch`, `observe`, `stop`, `resume`, capabilities and normalized execution
+events for the current CLI, AgwaB headless `runSubagent`, and first-party pi-durable.
+No coordinator import, service dependency, runtime selector or default changed.
+Adoption remains a separate owner decision. All probe code is experimental spike
+code, not a supported replacement worker.
+
+### Inputs, method and measured results
+
+Measured locally on 2026-10-20 on Linux with Pi **1.3.0**, Node **26.7.0**, AgwaB
+[`ab91a74`](https://github.com/AgwaB/pi-subagent/tree/ab91a74fcbd079caa27f9e48932004d1fd9c1e9f)
+(`@agwab/pi-subagent` 0.7.2), and npm
+[`@earendil-works/pi-durable@1.3.0`](https://registry.npmjs.org/@earendil-works/pi-durable/-/pi-durable-1.3.0.tgz).
+Pi's matching source tag is
+[`v1.3.0`](https://github.com/earendil-works/pi/tree/71023aec1546d6d677a65669c5665c0927ce0dd0).
+The published durable tarball reports SHA-512 integrity
+`2aD0xead1LH0BBwUBxex28in/PpUJEwyaEiW/nLoTFUcZ/lDYEl6LHX6mGZKJG8tUHzERwJyysDgy0ruidt84w==`.
+The [compact result record](../../pi-autowork/spikes/runtime-comparison/results.json)
+binds each measurement to hashes of the probe and the shared engine/runtime source
+it exercised. Dependencies were cached locally only, with no upstream source patches.
+Top-level package pins do not pin all transitive dependencies.
+
+One sequential sample per backend/fixture, elapsed wall seconds including fixture
+Git setup and supervision; **not a performance benchmark or throughput claim**.
+The same deterministic model/tool double drives the real Pi CLI, real
+`runSubagent` headless backend and real durable Harness. No model network, provider
+credentials, production workspace or live service is involved.
+
+| Fixture | CLI seconds / verdict | AgwaB seconds / verdict | Durable seconds / verdict | Observed outcome |
+|---|---|---|---|---|
+| Cancellation | 0.577 pass | 1.436 pass | 0.482 pass | Active tool stopped, no success delivered, CWD retained |
+| Restart adoption | 0.601 pass | 1.981 pass | 0.514 pass | Launching coordinator process exits; new coordinator adopts live worker; exactly one tool execution |
+| Stale results | 1.046 pass | 3.502 pass | 1.029 pass | Old handle fenced; injected old-token receipt cannot complete current assignment |
+| Out-of-order completion | 1.076 pass | 3.128 pass | 1.003 pass | Second worker finishes first; distinct receipts and correct CWD outputs |
+| Combined-tree verification | 1.201 pass | 2.915 pass | 0.890 pass | Both individual candidates pass; exact combined tree fails semantic check; main unchanged |
+| Cleanup retention | 0.630 pass | 1.388 pass | 0.643 pass | Dirty candidate and then committed-unmerged worktree remain present |
+| Process-group TERM-to-KILL | 2.724 pass | 3.297 pass | 2.574 pass | TERM-ignoring child in a separate session is killed; no live marked writer remains |
+| Crash/replay | 1.154 pass (refusal) | 1.161 **compatibility failure** | 1.734 pass (recovery) | CLI refuses replay; AgwaB leaves detached Pi live without recoverable Toolset receipt; durable recovers safely |
+| Pi settlement events | 0.511 pass | 1.150 pass | N/A | Pi emits two `agent_end` then one `agent_settled`; first end does not deliver terminal success |
+
+Total: 25 passing fixture observations, one explicit compatibility failure, one
+non-applicable cell. A completed comparison is not a claim that all runtimes passed.
+Cancellation, fences, stop escalation, combined-tree verification and retention
+qualify the **Toolset + adapter composition**, not those policies in upstream alone.
+Combined-tree checking uses a disposable Git index and validates the exact merged
+tree; it does not treat worker text as acceptance or promote canonical main.
+
+### Capability and ownership comparison
+
+| Capability in this adapter | CLI | AgwaB headless | pi-durable |
+|---|---|---|---|
+| Live-process reuse after an assignment | No | No | No in this one-shot wrapper; Harness itself supports further submissions |
+| Persistent transcript | Pi session | Pi session plus upstream run artifacts | Committed Harness entries |
+| Coordinator reload/process restart, worker still alive | Adopt supervisor by process birth identity | Same | Same |
+| Worker/supervisor crash recovery | Interrupt notice; no automatic crash continuation | Incompatible supervisor-group crash window, below | Reopen same store, `resume`, deduplicate submission |
+| Per-tool replay | No native enforcement; refuse dead-worker replay | No native enforcement; not qualified after crash | `safe` reruns; `unsafe` becomes model-visible `interrupted` |
+| Workspace/acceptance/cleanup owner | Toolset | Toolset: `workspace: shared`, `worktree: false` | Toolset |
+
+The record declares `fixture_safe: safe`, `fixture_unsafe: unsafe`, and unsafe by
+default for unknown operations/checks. Durable's unsafe crash case executes once;
+the safe case executes twice. Reopening and submitting the same `requestId` twice
+returns the same submission, while new assignments use fresh IDs. The unsafe
+interruption is present in committed model context, not merely in a supervisor
+warning. CLI executes each interrupted tool once and returns an interruption
+notice instead of rerunning it; **that is fail-closed refusal, not equivalent
+recovery**. AgwaB's safe replay case is unqualified because its preceding unsafe
+crash case cannot recover the wrapper receipt.
+
+### Compatibility findings and recommendation
+
+1. **AgwaB's artifact layout differs.** `runSubagent` rejects `runsDir` outside
+   CWD (`registry.runPaths`). Its supported ignored `.runtime-agwab/` location is
+   used here, not a patched upstream. Toolset normally keeps execution state
+   outside worktrees; adoption must resolve that ownership/layout difference.
+2. **Detached-worker crash window remains.** Killing the exact same supervisor
+   process group leaves AgwaB's separately grouped Pi child running. A new Toolset
+   wrapper sees marked liveness but cannot reconstruct its lost terminal receipt.
+   The probe records this failure and stops the child during final cleanup; it
+   does not silently broaden the crash injection, replay the unsafe tool or call
+   missing evidence success. This is a limit of this adapter composition, **not
+   proof that AgwaB's separate reconcile/status APIs cannot solve it**; those native
+   recovery APIs are not qualified by this probe.
+3. **Pi event names are not interchangeable.** Against actual Pi 1.3.0, an
+   extension pauses after the first `agent_end`, adds runnable context, then
+   continues. Both wrappers remain running until the child finishes, with two
+   ends and one settlement observed. CLI's existing `analyse` requires settlement.
+   AgwaB's pinned parser extracts assistant/`agent_end` output without requiring
+   `agent_settled`; its process-exit wait protected this fixture, but the parser
+   alone is not a settlement fence. Neither event is task acceptance.
+4. **Durable has the strongest demonstrated worker-crash recovery.** The
+   [first-party contract](https://github.com/earendil-works/pi/blob/71023aec1546d6d677a65669c5665c0927ce0dd0/packages/durable/README.md)
+   is experimental, commits before presenting state, and permits only one process
+   per storage with no cross-process locking. The adapter uses `Harness.open`,
+   `resume`, fsynced JSONL and an external storage lock, reading committed context
+   rather than forwarding raw model deltas. The storage design supplies crash
+   recovery, **not exactly-once external tool effects or power-loss qualification**.
+5. **Review hardened the spike, not the production engine.** The current shared
+   `parallel_state.worker_live`/`parallel_dispatch.stop` can trust a numeric process
+   group after its original leader dies. This probe instead rechecks leader birth
+   at each group signal, uses marked-descendant discovery after leader death and
+   resolves CWD aliases before the live-writer guard. Focused regressions reproduce
+   stale-PID and CWD-alias hazards without signalling any non-fixture process.
+   Cancellation now requires an unsuccessful outcome and drained liveness; retention
+   is checked after stop as well as before it. Production stop behavior is unchanged;
+   these fixture passes must not be read as a fix to the shared engine.
+
+Prefer pi-durable over AgwaB **for a future crash-recovery pilot**, not immediate
+adoption. It proved per-tool interruption and idempotent submissions without
+importing another backlog. Retain Toolset's workspace, fencing, verification,
+retention and process-tree ownership regardless of backend. The extra capabilities
+are not sufficient to justify switching a production worker on this evidence.
+
+Remaining separately authorized qualification: a real-provider disposable-project
+run, provider retry/abort behavior, built-in tool/check replay policies, resource
+pressure, long-lived worker reuse, Pi extension `/reload` survival, native upstream
+reconcile/interrupt paths and
+storage power-loss behavior. No real-model speed, cost, code quality, fleet
+reliability or universal Pi-version compatibility was measured. Existing marked-
+process supervision is Linux-specific and not a sandbox: a child clearing its
+marker is outside its coverage.
 
 ## Source-grounded verification and large-agent claims
 
