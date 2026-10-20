@@ -45,7 +45,8 @@ class CompleteBundleTests(unittest.TestCase):
                     if not (folder/'SKILL.md').is_file() and folder.name != 'shared':
                         continue
                     for source in folder.rglob('*'):
-                        if source.is_file() and '__pycache__' not in source.parts and source.suffix not in ('.pyc', '.pyo'):
+                        # The installer's ignore_patterns: local caches are never installed.
+                        if source.is_file() and not {'__pycache__', '.pytest_cache', '.git'} & set(source.parts) and source.name != '.DS_Store' and source.suffix not in ('.pyc', '.pyo'):
                             target = home/'skills'/source.relative_to(ROOT/'skills')
                             self.assertEqual(target.read_bytes(), source.read_bytes(), str(target))
                             self.assertEqual(target.stat().st_mode & 0o111, source.stat().st_mode & 0o111)

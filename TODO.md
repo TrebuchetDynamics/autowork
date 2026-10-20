@@ -67,21 +67,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Ownership: Toolset coordinator.
 - Exclusions: No change to the adoption limit, the resolver or how conflicts are detected.
 
-### TOOLSET-285-29 — A task whose last attempt failed its review is reworked once with the findings, never left silently held
-
-- [x] TOOLSET-285-29 — A task whose last attempt failed its review is reworked once with the findings, never left silently held
-- Short: Review-failed last attempt is reworked
-- Status: done 2026-10-20 (interactive session): one rework with finding and kept tip after a last-attempt review failure; second failure held as reviewed_twice (owner question, re-reviewable by a changed reviewer); entry edits reset it; fixture and runner tests.
-- Goal: PI-RUNNER
-- Evidence: (2026-10-20, one fleet runner): a task's second attempt failed its review ('required scheduler and signed-execution acceptance evidence is missing'). The engine offers fresh retries only to first attempts, and the question list classes review failures as technical, so the task was neither retried nor asked about and appeared nowhere among the runner's roots or questions.
-- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/test_parallel_integrate.py, pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_questions.py, tests/test_pi_autowork.py
-- Scope: (1) A held slot whose cause is a review failure (validation, not environment) on its last attempt gets one fresh rework attempt of the same task: the previous commit is kept on a -set-aside-N branch, and the new prompt names that tip and quotes the reviewer's findings as what to fix. (2) A second review failure of the rework becomes an owner question quoting both findings. (3) Until then, status, the TUI and BLOCKERS.md show such a task as 'reworking after review' or as the question, never as nothing: no held task may be neither retried nor asked.
-- Acceptance: In fixtures: a task whose second attempt fails review with a finding gets exactly one rework attempt whose prompt contains the finding and the kept tip; a rework that passes lands; a rework that fails again yields one owner question quoting both findings; a status snapshot never shows a held task with no retry, no question and no root.
-- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 -m unittest discover -s pi-autowork/tests -p test_questions.py; python3 scripts/check.py tests/test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
-- Dependencies: None.
-- Ownership: Toolset coordinator.
-- Exclusions: No change to review content, gates or the attempt limit for other causes; an environment hold keeps its provisioning path.
-
 ### TOOLSET-277-52 — Restore the offline gate for the picker-policy failures at 171b26b
 
 - [ ] TOOLSET-277-52 — Restore the offline gate for the picker-policy failures at 171b26b
@@ -741,6 +726,24 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Next action: Reproduce with a batch fixture where one candidate breaks a test, then split on BATCH_GATE_FAILED.
 
 ## Next
+
+### TOOLSET-288-cf — Two runner tests fail only under full-check load
+
+- [ ] TOOLSET-288-cf — Two runner tests fail only under full-check load
+- Short: Two runner tests fail under load
+- Status: open
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [check](scripts/check.py); [runner tests](tests/test_pi_autowork.py) (`test_a_killed_coordinator_restarts_at_once_and_adopts_live_workers`); [integration tests](skills/autowork/scripts/test_parallel_integrate.py) (`test_retry_runs_beside_an_overlapping_worker`); [coordinator](pi-autowork/pi_autowork/coordinator.py) (the `BUSY` outcome); [retry](skills/autowork/scripts/parallel_integrate.py) (`retry_held`).
+- Evidence: a full `python3 scripts/check.py` on 2147c130, run while a live runner worked the same host, failed both tests: the restart after `kill` exited 4 with "Repository busy: Repository execution lock is held by a live operation." (the killed runner's engine helper still held the execution lock), and `retry_held` returned `IDLE` instead of `RETRIED`. Each passed alone twice; the retry test passed 12 times in parallel and inside its whole module (146 tests).
+- Touches: pi-autowork/pi_autowork/coordinator.py, skills/autowork/scripts/parallel_integrate.py, tests/test_pi_autowork.py, skills/autowork/scripts/test_parallel_integrate.py
+- Scope: (1) Find why each fails under load: for the restart, whether `until-empty` treats `BUSY` from a dead runner's helper as final before the helper exits; for the retry, which `IDLE` branch of `retry_held` is taken (capacity, an empty held set, or the plan) and why. (2) Fix the product race if there is one (a restart waits for a dead runner's helper within a bound instead of exiting 4); otherwise make the fixture wait on the state it needs instead of on timing. (3) Record the `IDLE` branch taken in the result so the next such failure names it.
+- Acceptance: Given a killed runner whose engine helper still holds the execution lock, when the runner restarts with `--until-empty`, then it waits for the helper and exits 0 (`test_a_killed_coordinator_restarts_at_once_and_adopts_live_workers`, also with the helper delayed on purpose). `retry_held` results for `IDLE` name their branch (`test_retry_runs_beside_an_overlapping_worker` asserts it). Both tests pass in three consecutive full checks.
+- Checks: python3 -m unittest discover -s tests -p test_pi_autowork.py -k killed_coordinator; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py -k retry; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No retries or longer sleeps added to the tests to hide the failure.
+- Planner's call: queued rather than fixed by hand because live runner workers own all four files.
 
 ### TOOLSET-286-32 — Harden conflicting-owner-plan journey against fixture races
 
@@ -1807,6 +1810,6 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | PARALLEL: Run independent Autowork tasks in parallel workers with one coordinator | partial | executed <code>TOOLSET-091-00 live 2026-10-15: Pi 1.2.0 workers (gpt-6.1-sol) via pi-autowork.sh on a disposable repo: 2 overlapping workers, sequential integration, C after A, combined check pass, no push, 158 s vs 240 s sequential; SIGKILLed coordinator restart adopted live workers without duplicates. Codex 0.162.1 workers cannot commit in the workspace-write sandbox (sequential fallback). Hermes workers not run by owner decision.</code> → pass | TOOLSET-279-eb |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
-| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | Terminal drag selection: offline gate, PTY and source review pass ([TOOLSET-275-c1](TODO.archive.md#toolset-275-c1)) | TOOLSET-096-7e, TOOLSET-099-87, TOOLSET-117-cb, TOOLSET-118-68, TOOLSET-119-2b, TOOLSET-120-fc, TOOLSET-122-27, TOOLSET-125-3c, TOOLSET-126-02, TOOLSET-127-8f, TOOLSET-129-6c, TOOLSET-129-c4, TOOLSET-130-15, TOOLSET-131-ac, TOOLSET-132-af, TOOLSET-139-62, TOOLSET-144-c0, TOOLSET-145-6d, TOOLSET-147-54, TOOLSET-153-64, TOOLSET-154-d3, TOOLSET-155-e2, TOOLSET-156-75, TOOLSET-158-08, TOOLSET-163-f7, TOOLSET-164-f1, TOOLSET-173-94, TOOLSET-178-47, TOOLSET-179-cf, TOOLSET-182-ce, TOOLSET-184-1d, TOOLSET-192-71, TOOLSET-200-c1, TOOLSET-225-75, TOOLSET-230-bf, TOOLSET-231-49, TOOLSET-234-51, TOOLSET-235-0d, TOOLSET-242-d5, TOOLSET-245-6a, TOOLSET-248-60, TOOLSET-249-5b, TOOLSET-252-4c, TOOLSET-255-55, TOOLSET-256-4b, TOOLSET-257-bd, TOOLSET-260-ae, TOOLSET-261-15, TOOLSET-262-13, TOOLSET-263-94, TOOLSET-264-39, TOOLSET-265-16, TOOLSET-266-7a, TOOLSET-267-a0, TOOLSET-270-a9, TOOLSET-271-d6, TOOLSET-274-f0, TOOLSET-276-11, TOOLSET-276-2c, TOOLSET-276-3d, TOOLSET-276-3f, TOOLSET-276-a9, TOOLSET-277-52, TOOLSET-278-91, TOOLSET-285-47, TOOLSET-286-32, TOOLSET-287-44 |
+| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | Terminal drag selection: offline gate, PTY and source review pass ([TOOLSET-275-c1](TODO.archive.md#toolset-275-c1)) | TOOLSET-096-7e, TOOLSET-099-87, TOOLSET-117-cb, TOOLSET-118-68, TOOLSET-119-2b, TOOLSET-120-fc, TOOLSET-122-27, TOOLSET-125-3c, TOOLSET-126-02, TOOLSET-127-8f, TOOLSET-129-6c, TOOLSET-129-c4, TOOLSET-130-15, TOOLSET-131-ac, TOOLSET-132-af, TOOLSET-139-62, TOOLSET-144-c0, TOOLSET-145-6d, TOOLSET-147-54, TOOLSET-153-64, TOOLSET-154-d3, TOOLSET-155-e2, TOOLSET-156-75, TOOLSET-158-08, TOOLSET-163-f7, TOOLSET-164-f1, TOOLSET-173-94, TOOLSET-178-47, TOOLSET-179-cf, TOOLSET-182-ce, TOOLSET-184-1d, TOOLSET-192-71, TOOLSET-200-c1, TOOLSET-225-75, TOOLSET-230-bf, TOOLSET-231-49, TOOLSET-234-51, TOOLSET-235-0d, TOOLSET-242-d5, TOOLSET-245-6a, TOOLSET-248-60, TOOLSET-249-5b, TOOLSET-252-4c, TOOLSET-255-55, TOOLSET-256-4b, TOOLSET-257-bd, TOOLSET-260-ae, TOOLSET-261-15, TOOLSET-262-13, TOOLSET-263-94, TOOLSET-264-39, TOOLSET-265-16, TOOLSET-266-7a, TOOLSET-267-a0, TOOLSET-270-a9, TOOLSET-271-d6, TOOLSET-274-f0, TOOLSET-276-11, TOOLSET-276-2c, TOOLSET-276-3d, TOOLSET-276-3f, TOOLSET-276-a9, TOOLSET-277-52, TOOLSET-278-91, TOOLSET-285-47, TOOLSET-286-32, TOOLSET-287-44, TOOLSET-288-cf |
 
 <!-- goals:coverage:end -->

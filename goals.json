@@ -810,7 +810,9 @@
         "TOOLSET-285-29",
         "TOOLSET-285-47",
         "TOOLSET-286-32",
-        "TOOLSET-287-44"
+        "TOOLSET-287-44",
+        "TOOLSET-288-cf",
+        "TOOLSET-289-71"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -852,6 +854,7 @@
       "TOOLSET-235-0d",
       "TOOLSET-278-91",
       "TOOLSET-279-eb",
+      "TOOLSET-288-cf",
       "TOOLSET-286-32",
       "TOOLSET-285-47",
       "TOOLSET-276-2c",
@@ -1723,6 +1726,14 @@
       "section": "Next",
       "status": "open",
       "title": "Harden conflicting-owner-plan journey against fixture races"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-288-cf",
+      "section": "Next",
+      "status": "open",
+      "title": "Two runner tests fail only under full-check load"
     },
     {
       "depends_on": [
@@ -3341,6 +3352,16 @@
       "section": "Done",
       "status": "done",
       "title": "A task whose last attempt failed its review is reworked once with the findings, never left silently held"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-129-c4"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-289-71",
+      "section": "Done",
+      "status": "done",
+      "title": "Task status shows Active, Mergeable, Waiting or Blocker with a detail"
     },
     {
       "depends_on": [
