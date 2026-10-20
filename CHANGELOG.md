@@ -291,6 +291,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A review no longer runs out of time rerunning a hundred failures one by one: the quiet
+  rerun tries a sample of five (`PI_AUTOWORK_QUIET_SAMPLE`) first, and when none passes alone
+  the rest are not rerun; the base comparison decides. Three reviews on 2026-10-20 spent
+  three hours each rerunning about 108 failures at 120 s apiece, and their reviewers never
+  started.
 - The fleet view no longer shows a task as `Active · Verifying` after its review died: a
   live `--verify` process is required. A task a live batch is checking reads
   `Waiting · Batch check`; any other, `Waiting · Merge turn` (its review is not running).

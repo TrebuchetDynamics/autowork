@@ -107,5 +107,23 @@ class GateCommandTests(unittest.TestCase):
         self.assertLess(time.monotonic() - started, 30)
 
 
+    def test_failures_none_of_a_sample_excuses_are_not_rerun_one_at_a_time(self):
+        """108 failures rerun alone, each to its 120 s limit, took three hours: every review that
+        met a broken host ran out of time before its reviewer started."""
+        tests = [f't.T.test_{n:03}' for n in range(20)]
+        for passes, expected in ((False, [5]), (True, [5, 15])):
+            sizes = []
+
+            def rerun(log, checkout, receipt, rev, only=(), workers=None):
+                sizes.append(len(only))
+                Path(receipt).write_text(json.dumps({'rev': rev, 'flaky': sorted(only) if passes else []}))
+
+            env = dict(os.environ, PI_AUTOWORK_CHECK_ROOT=str(self.repo / 'slots'), PI_AUTOWORK_QUIET_WAIT='0')
+            with patch.dict(os.environ, env, clear=True), patch.object(main_check, 'rerun_failures', rerun):
+                flaky = worker.quiet_reruns(self.state, 'T-1', self.repo / 'T-1-merged.log', str(self.repo),
+                                            'abc', tests, 3600)
+            self.assertEqual(sizes, expected)
+            self.assertEqual(flaky, tests if passes else [])
+
 if __name__ == '__main__':
     unittest.main()

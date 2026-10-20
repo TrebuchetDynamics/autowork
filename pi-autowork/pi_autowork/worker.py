@@ -436,26 +436,39 @@ def quiet_reruns(state, task, log, checkout, rev, tests, limit):
         if time.monotonic() >= deadline:
             raise QuietWindowMissed
 
-    def rerun():
-        main_check.rerun_failures(str(log), checkout, str(receipt), rev, only=set(tests), workers=1)
+    def rerun(only):
+        main_check.rerun_failures(str(log), checkout, str(receipt), rev, only=set(only), workers=1)
+        quiet = json.loads(receipt.read_text())
+        if not isinstance(quiet, dict) or quiet.get('rev') != rev or not isinstance(quiet.get('flaky'), list):
+            raise ValueError('the rerun left no receipt for this revision')
+        return quiet['flaky']
+
+    def reruns():
+        # A sample first: 108 failures rerun one at a time, each to its 120 s limit, took three
+        # hours and every review's time limit with them. When no failure of the sample passes
+        # alone they are not flaky; the base comparison that follows says whose they are.
+        sample = max(1, setting('PI_AUTOWORK_QUIET_SAMPLE', 5))
+        flaky = rerun(tests[:sample])
+        if flaky and tests[sample:]:
+            flaky += rerun(tests[sample:])
+        elif tests[sample:]:
+            print(f'pi-autowork: none of {sample} failures of {task} passed alone; the other '
+                  f'{len(tests) - sample} are not rerun', file=sys.stderr)
+        return flaky
 
     try:
         try:
             with main_check.check_slot(waiting):
-                rerun()
+                return reruns()
         except QuietWindowMissed:
             print(f'pi-autowork: no quiet check slot for {task} within {wait:g} s; '
                   'rerunning its failures one at a time without one', file=sys.stderr)
-            rerun()
-        quiet = json.loads(receipt.read_text())
+            return reruns()
     except main_check.Stopped:
         raise
     except Exception as error:  # like the first reruns: without a receipt, none is excused
         print(f'pi-autowork: rerunning the failures of {task} alone failed: {error}', file=sys.stderr)
         return []
-    if not isinstance(quiet, dict) or quiet.get('rev') != rev or not isinstance(quiet.get('flaky'), list):
-        return []
-    return quiet['flaky']
 
 
 def run_gate(state, task, checkout, command, base_rev=None, *, evidence=None):
