@@ -601,6 +601,12 @@ def reconcile(repo, owner_pid):
             if worker_live(slot):
                 target = 'running'
             else:
+                import autowork_run
+                data = common / 'slot-data' / slot['task_id'] / f'attempt-{slot.get("data_attempt", slot["attempt"])}'
+                try:
+                    autowork_run.report_wait(data / 'worker-checks', data / 'report.json')
+                except (OSError, ValueError):
+                    pass  # preserve missing/malformed reports for the usual reconciliation
                 root = workspace(common, slot['worktree'], slot['branch'], slot['baseline'])
                 head = execution.git(root, 'rev-parse', 'HEAD')
                 dirty = bool(execution.git(root, 'status', '--porcelain', '--untracked-files=all'))

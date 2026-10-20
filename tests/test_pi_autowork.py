@@ -44,6 +44,7 @@ def setUpModule():
                            check=True, capture_output=True).stdout
     if patch:
         subprocess.run(['git', '-C', str(ROOT), 'apply', '-'], input=patch, check=True)
+        subprocess.run(['git', '-C', str(ROOT), 'add', '--', *paths], check=True)
         subprocess.run(['git', '-C', str(ROOT), '-c', 'user.email=t@example.invalid', '-c', 'user.name=T',
                         'commit', '-qam', 'production code under test'], check=True)
     RUNNER = ROOT / 'scripts/pi-autowork.sh'

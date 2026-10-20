@@ -81,6 +81,33 @@ relative to this repository.
 | [`skills/docs-sync/scripts/goals.py`](../skills/docs-sync/scripts/goals.py) | `init`, `validate`, `fmt`, `render`, `revision`, `archive`, `next`, `reorder`, `bootstrap-order`, `focus`, `task`, `supersede`, `section`, `new-id`, `add-task`, `redact`, `evidence`, `backlog-check` | `goals.py --help`; [document scaffold](../skills/docs-sync/references/document-scaffold.md#first-task-index-initialization) |
 | [`skills/docs-sync/scripts/docs.py`](../skills/docs-sync/scripts/docs.py) | `validate`, `check`, `stale`, `profiles` | `docs.py --help`; [role manifest](../skills/docs-sync/references/document-scaffold.md#optional-role-manifest) |
 
+## Worker long checks: `autowork-run`
+
+Source: [`autowork_run.py`](../skills/autowork/scripts/autowork_run.py) and
+[`parallel_dispatch.py`](../skills/autowork/scripts/parallel_dispatch.py).
+Every dispatched worker has `autowork-run` on its PATH. Run suites or builds
+expected to take more than two minutes through it; run focused tests directly:
+
+```sh
+autowork-run python3 scripts/check.py path/to/test_module.py
+autowork-run bash -c 'build-command && integration-command'
+```
+
+The wrapper takes a host-wide **worker** check slot before starting the literal
+command and arguments, then returns its exit code (128 + signal for a signal exit).
+It prints one `waiting for a worker check slot` line if queued. These slots are
+separate from runner full-check slots, but use the same private host directory
+and `flock` mechanism. A killed process cannot leave a stale lease; a surviving
+check subprocess keeps its lease until it ends. Normal completion releases it
+including when a background descendant survives.
+
+The worker command watchdog excludes recorded queue intervals, including waits
+inside a shell tool call; `PI_AUTOWORK_COMMAND_TIMEOUT` still bounds execution
+after admission. The worker's overall task timeout is unchanged. Queue records
+live in `$AUTOWORK_WORKER_CHECK_DIR` beside the attempt's report, and reconciliation
+adds their total as `worker_check_slot_wait_seconds` to an existing worker report.
+This is voluntary: commands run without the wrapper are not slot-limited.
+
 ## Rolling planning tasks (Pi runner)
 
 Source: [`parallel_plan.py`](../skills/autowork/scripts/parallel_plan.py),
@@ -155,6 +182,8 @@ lists, except in opted-out profiles. Full setup additionally applies the `omh` b
 | `PI_AUTOWORK_MERGE_BACKLOG` | [`parallel_dispatch.py`](../skills/autowork/scripts/parallel_dispatch.py) `merge_backlog`, `admit` | Finished commits waiting to merge before fresh dispatch can pause; default twice the worker count (16 for 8 workers), `0` disables. Counts slots with commits in `reported` or `integrating`, not held or already integrated work. |
 | `PI_AUTOWORK_MERGE_BACKLOG_AFTER` | [`parallel_dispatch.py`](../skills/autowork/scripts/parallel_dispatch.py) `merge_backlog` | Oldest finished commit's queue age in seconds before the count gate pauses fresh dispatch; default `1200`. Queue time starts at reporting, not worker launch. Nonnegative integers; invalid settings use their defaults. |
 | `PI_AUTOWORK_CHECK_SLOTS` | [`main_check.py`](../pi-autowork/pi_autowork/main_check.py), [`worker.py`](../pi-autowork/pi_autowork/worker.py) | Host-wide full-check concurrency per user: default CPU count divided by 8, rounded down, at least 1; `0` disables admission. Set consistently across runners. Main checks, merged-tree gates and base runs share flock slots; focused worker checks do not. Waiting reports `waiting for a check slot, N ahead` (running checks plus earlier waiters) in main/worker status. The check and integration timeout budgets exclude slot waiting; check execution keeps its full timeout (`PI_AUTOWORK_VALIDATE_TIMEOUT`, default 3600 s). Does not change `scripts/check.py`'s own job count or the dispatch resource gate. |
+| `PI_AUTOWORK_WORKER_CHECK_SLOTS` | [`autowork_run.py`](../skills/autowork/scripts/autowork_run.py) | Positive host-wide worker suite/build concurrency per user: default CPU count divided by 4, rounded down, at least 2. Set consistently across runners. Independent of `PI_AUTOWORK_CHECK_SLOTS`; focused tests run directly. |
+| `PI_AUTOWORK_COMMAND_TIMEOUT` | [`pi_runtime.py`](../pi-autowork/pi_autowork/pi_runtime.py) | Worker tool-command execution limit, default 1800 s (capped below the overall worker timeout). `autowork-run` slot waiting is excluded; the overall task timeout is not extended. |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USERS`, `TELEGRAM_HOME_CHANNEL` | Update menu healing, from each profile's `.env` (not the process environment) | For each distinct bot token, the chats whose leftover command lists the updater checks; see [installation](installation.md#update-all-profiles). |
 
 Once both merge-backlog thresholds are met, fresh tasks show
@@ -176,6 +205,6 @@ available. This is a wait, not a request for a decision.
 | `ROOT/maintenance/toolset-update/restart.json` | Updater | The last gateway restart the updater requested (process ID), or its deferred-restart waiter (process ID, latest chat-turn count), plus `covers`, the updates that restart will load; used to report progress, avoid overlapping restarts and record the outcome on each covered update. Once finished, also `finished` and the recorded `outcome`, which status shows when a later receipt replaced the covered one. |
 | `ROOT/maintenance/toolset-update/pinned/NAME-*/` | `hermes autowork pin` | One pin: `record.json` (profile, link, checkout, revision), the saved `link`, and after unpinning the kept clone (`unpinned-*`). |
 | `ROOT/maintenance/toolset-update/run.log` | Updater | Output of updates started with `/autowork update` and of gateway restarts the updater requests; terminal `hermes autowork update` prints to the terminal. |
-| `${XDG_RUNTIME_DIR:-/run/user/UID}/autowork-checks-UID/` | Pi runner full checks | Shared per-user slot locks and FIFO waiter tickets, independent of repository and task `$TMPDIR`; falls back to `/var/tmp/autowork-checks-UID/` when the runtime directory is unavailable. Slot locks live with their file descriptors, including in the check subprocess: a dead check cannot leave a stale lock. Do not delete slot/mutex files while runners are active. |
+| `/run/user/UID/autowork-checks-UID/` | Pi runner and worker checks | Shared per-user slot locks and runner FIFO waiter tickets, independent of repository, `$XDG_RUNTIME_DIR` and task `$TMPDIR`; falls back to `/var/tmp/autowork-checks-UID/` when the runtime directory is unavailable. Worker checks use separate `worker-slot-*` locks. `PI_AUTOWORK_CHECK_ROOT` overrides the private directory for fixtures or isolated hosts. Slot locks live with their file descriptors, including in the check subprocess: a dead check cannot leave a stale lock. Do not delete slot/mutex files while runners are active. |
 | `TODO.md`, `goals.json`, `TODO.archive.md` (project) | Docs Sync, Autowork | Work queue, its machine index and completed-task history. |
 | `docs/roles.json` (project, optional) | Docs Sync | Document role manifest. |
