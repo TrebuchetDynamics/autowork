@@ -22,9 +22,36 @@ release latency or developer feedback, restore correctness before optimizing,
 keep an active frozen candidate untouched, then use one-variable experiments and
 repeated passing full-gate times under matched conditions. A failing run is not a
 performance baseline. Never invent an SLA or claim speedup without repeatable
-evidence. For explicitly qualitative cleanup, follow SKILL.md's simpler-test-cleanup
-rules instead of carrying forward timing experiments. Preserve required behavioral
-coverage, not necessarily redundant test identities. Planning launches nothing.
+evidence. For explicitly qualitative cleanup, follow
+[simpler test cleanup](#simpler-test-cleanup-and-scope-reductions) instead of
+carrying forward timing experiments. Preserve required behavioral coverage, not
+necessarily redundant test identities. Planning launches nothing.
+
+## Companion frontends and platform scope
+
+1. Establish the product boundary before discussing implementation: distinguish an existing website, a native companion app, an embedded website and an additional browser build of the companion. A second frontend for the same backend is not automatically a WebView or a second web application.
+2. Use concrete product names when asking about platforms. If a reply mentions keeping the existing website and adding the companion, clarify whether a separate Flutter browser build is also required; do not treat the word "web" as proof of that requirement or silently discard an earlier explicit platform choice.
+3. Inspect existing page loaders, public APIs, role gates and shared UI patterns before proposing parity. A generic list endpoint may omit the page's filters, summaries, history, position provenance or privacy projection. Prefer shared server read models over duplicating queries or scraping framework-internal page data.
+4. Settle frontend/platform scope before asking about hosting or designing cross-origin authentication. First-party cookie reuse, native session handling and cross-site browser access have different constraints; an unresolved deployment choice does not authorize a new token protocol, relaxed cookies or broad CORS access.
+5. Once native versus embedded and feature depth are settled, save those answers in the existing planning owner before another consequential round when continuity would otherwise be lost. Mark only unresolved choices Open; do not restart discovery or make understood product scope look undecided. Keep cloud session/state independent of local-device connection state when the requested module must work without that connection.
+
+## Simpler test cleanup and scope reductions
+
+When the user chooses a simpler qualitative task, remove timing, benchmark,
+repeated-run and speed-target requirements from its active contract; retain
+correctness checks instead of the retired measurement campaign. Prefer one bounded
+test-value cleanup over new measurement infrastructure in that scope. Inspect
+unchanged test verdicts before edits. Require each deletion or consolidation to
+identify duplicated behavior/assertions and the retained test protecting them;
+low priority, similar names, coverage overlap or fewer tests alone never justify
+losing unique regression, security, boundary or configuration protection. Keep
+uncertain cases and report recommendations instead.
+
+State whether low-priority items means test cases or repository tasks; do not
+silently turn a test-cleanup request into unrelated backlog cancellation. If the
+user requests a new simpler replacement, save the successor and supersede the old
+task without marking its unproven outcome passed. Creating that replacement does
+not implement it, renew an execution budget or dispatch a worker.
 
 ## Blockers and recovery
 

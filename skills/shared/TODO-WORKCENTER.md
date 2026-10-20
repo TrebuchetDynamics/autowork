@@ -44,7 +44,10 @@ who add tasks at the same time on separate clones never create two tasks with th
 same ID. Allocate it with `goals.py new-id <repo>` (or omit the ID in
 `goals.py add-task`); it works without `goals.json` too. Keep existing IDs unchanged. Put executable details in full TODO
 bodies: outcome, source/plan link, bounded scope, acceptance checks, dependencies,
-status and next action. `Checks:` names the focused commands that prove the
+status and next action; a task that uses another's output may name the seam in
+optional `Produces:`/`Consumes:` fields. Each acceptance criterion names the test
+that proves it ([executable acceptance](PLANNING-CRAFT.md#executable-acceptance)).
+`Checks:` names the focused commands that prove the
 acceptance (a test file, class or selector), plus the repository's normal check
 only when the change crosses modules; acceptance asks for behavior, never for a
 number of tests (see the [test budget](ENGINEERING-CYCLE.md#test-budget)). Under a
@@ -53,16 +56,17 @@ is satisfied by that run, not by the worker.
 Reconcile matching goals.json entries. Link a substantial
 plan from its tasks; do not create a separate plan file merely to satisfy a ritual.
 Every executable task you create or rewrite gets `Touches:`: the repository-relative
-paths or globs it may change (a trailing `/` covers a directory). Derive it from the
-scope, sources and the code you inspected, including its tests and docs. When unsure,
-widen to the owning directories rather than omit the field: a worker that changes a
-file outside `Touches:` is held and retried alone, so a slightly broad list costs less
-than a missing one. Add `Resources:` where needed (`live` or `exclusive` to run alone,
-or shared names such as `test-db`). Only when no path can be bounded, write
-`Resources: exclusive` with the reason instead of leaving `Touches:` out. Parallel
-Autowork runs a task beside others only when these prove it independent; a task
-without `Touches:` runs alone and holds back every lower-priority task while it is
-first. Do not list the root `TODO.md`, `TODO.archive.md`, `goals.json` or
+paths or globs it is expected to change (a trailing `/` covers a directory). Name the
+exact files from the scope, sources and the code you inspected, including its tests
+and docs; when a file is not known yet, widen to the owning directories rather than
+omit the field. Parallel Autowork uses `Touches:` to run likely-independent work
+first and never holds a task for it: overlap is settled by merging in priority order,
+and a real conflict costs a resolver run, so the plan is what keeps write sets apart
+([disjoint write sets](PLANNING-CRAFT.md#disjoint-write-sets)). A task without
+`Touches:` ranks after the tasks that have it. Add `Resources:` where needed (`live`
+or `exclusive` to run alone, or shared names such as `test-db`). Only when no path
+can be bounded, write `Resources: exclusive` with the reason instead of leaving
+`Touches:` out. Do not list the root `TODO.md`, `TODO.archive.md`, `goals.json` or
 `CHANGELOG.md`: the coordinator owns them. Proposed or Needs-decision tasks may
 leave `Touches:` until they become executable.
 Keep unsupported ideas visibly Proposed/Needs decision instead of fabricating

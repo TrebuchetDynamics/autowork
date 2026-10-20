@@ -7,6 +7,15 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Planning skills now plan for parallel work: `Touches:` is described everywhere as
+  the expected write set that only orders parallel work (never a hold), and the
+  planning craft adds task sizing, disjoint write sets (hot-file extraction,
+  focused test files), acceptance that names a failing test, optional
+  `Produces:`/`Consumes:` seams, a pre-mortem and a batch dependency check. Plan
+  With Me, Plan For Me and the plan handoff lint the saved batch with
+  `goals.py plan-lint`; special-case guidance moved to each planner's
+  `references/special-cases.md`.
+
 - The terminal TUI leaves mouse dragging to terminal text selection by default.
   `autowork tui --mouse` opts into clickable controls; keyboard navigation and
   browser mouse controls remain available.

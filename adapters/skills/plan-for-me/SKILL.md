@@ -20,7 +20,7 @@ TODO.md tasks through [Docs Sync](../docs-sync/SKILL.md), including acceptance,
 dependencies, `Touches:` and Now/Next ordering. Planning does not implement or dispatch workers.
 Explicit read-only/chat-only/no-write/dry-run requests save nothing. Record goals, non-goals,
 anti-goals and every default as the planner's call, and run the builder check on
-the saved tasks before reporting them ready. Report saved paths, task IDs, the
+the saved tasks and lint them with `goals.py plan-lint <repo> --tasks IDS` before reporting them ready. Report saved paths, task IDs, the
 planner's calls and the next executable task, distinguishing proposals from ready work.
 
 Use the [single-pass handoff](../../../skills/shared/PLAN-HANDOFF.md#one-planning-pass-one-handoff):

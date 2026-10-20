@@ -22,8 +22,10 @@ when that choice changes the accepted outcome. Resolve it in planning or keep on
 the affected slice pending; independent accepted slices remain executable.
 
 Use the existing task body for the execution handoff: outcome and exclusions,
-decisions and relevant evidence, real dependencies, observable acceptance with
-exact checks, and the next executable action. Include known setup/recovery steps
+decisions and relevant evidence, real dependencies, observable acceptance whose
+criteria each name the test that proves them, exact checks, and the next executable
+action, which starts with the failing test named in Acceptance (see the
+[planning craft](PLANNING-CRAFT.md#executable-acceptance)). Include known setup/recovery steps
 and separate live qualification when applicable. This is a content standard, not
 a new schema, receipt or approval gate; fill only actual gaps in existing tasks.
 Do not prescribe every edit or require unknown implementation details up front.
@@ -79,8 +81,10 @@ or external authority remain explicit; choose routine reversible details yoursel
 
 Resolve `goals.py` from the sibling docs-sync skill as described in the
 [shared contract](COMMON-CONTRACT.md). Use its supported mutations and validate
-and render the canonical ledger; preserve concurrency/revision guards. Check the
-actual consumer with `backlog-check <repo> --plan path#heading --tasks T1,T2`.
+and render the canonical ledger; preserve concurrency/revision guards. Once the
+batch is written, lint it with `goals.py plan-lint <repo> --tasks ID,ID,...` before
+reporting it saved: fix every error, and report each warning with the planner's
+call on it (fixed, or kept and why). Check the actual consumer with `backlog-check <repo> --plan path#heading --tasks T1,T2`.
 Report its JSON state and exit: `draft_saved` (1),
 `backlog_reconciled_not_eligible` (2), or `ready_for_autowork` (0).
 Readiness is not execution authorization or a live ownership check.
