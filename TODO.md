@@ -52,6 +52,18 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Now
 
+### TOOLSET-284-e0 — The autowork core SKILL.md has room again: detail moves to references/
+
+- [ ] TOOLSET-284-e0 — The autowork core SKILL.md has room again: detail moves to references/
+- Touches: skills/autowork/SKILL.md, skills/autowork/references/
+- Short: Core SKILL.md back under budget
+- Status: open
+- Goal: PI-RUNNER
+- Scope: skills/autowork/SKILL.md is 15994 of the 16000 bytes test_picker_policy allows, so any task that adds a line to it fails its review (TOOLSET-230-bf: 16421 bytes). Move detailed procedure out of the core into existing or new files under skills/autowork/references/, leaving in the core a one-line pointer per moved section and every phrase other tests assert in it. No behavior or policy change; wording moves, it is not rewritten.
+- Acceptance: skills/autowork/SKILL.md is at most 13000 bytes, leaving room for later tasks (test_picker_policy.PickerPolicyTests.test_core_stays_lean_and_points_to_every_reference); every reference file is still linked from the core (same test); every test that asserts core or reference text still passes (python3 scripts/check.py skills/autowork/scripts tests).
+- Checks: python3 scripts/check.py skills/autowork/scripts/test_picker_policy.py; python3 scripts/check.py skills/autowork/scripts tests
+- Dependencies: None.
+
 ### TOOLSET-283-15 — Installed dependencies of a tracked lockfile are linked into worker and review trees without per-runner settings
 
 - [ ] TOOLSET-283-15 — Installed dependencies of a tracked lockfile are linked into worker and review trees without per-runner settings

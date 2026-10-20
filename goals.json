@@ -805,7 +805,8 @@
         "TOOLSET-280-4f",
         "TOOLSET-281-0d",
         "TOOLSET-282-43",
-        "TOOLSET-283-15"
+        "TOOLSET-283-15",
+        "TOOLSET-284-e0"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -1243,6 +1244,14 @@
       "section": "Now",
       "status": "open",
       "title": "Installed dependencies of a tracked lockfile are linked into worker and review trees without per-runner settings"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-284-e0",
+      "section": "Now",
+      "status": "open",
+      "title": "The autowork core SKILL.md has room again: detail moves to references/"
     },
     {
       "depends_on": [],
