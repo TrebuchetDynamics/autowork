@@ -111,9 +111,9 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ### TOOLSET-280-4f — A held commit whose branch the runner itself merged past is recovered by the runner, never asked of the owner as a rescope
 
-- [ ] TOOLSET-280-4f — A held commit whose branch the runner itself merged past is recovered by the runner, never asked of the owner as a rescope
+- [x] TOOLSET-280-4f — A held commit whose branch the runner itself merged past is recovered by the runner, never asked of the owner as a rescope
 - Short: Runner-merged held branch self-recovers
-- Status: open
+- Status: done 2026-10-20 (interactive session): runner-merged tips adopted within the limit or rerun from the kept tip (`runner_merged`, technical); abandoned clean merges aborted; fixture tests.
 - Goal: PI-RUNNER
 - Sources: [integration](skills/autowork/scripts/parallel_integrate.py) (`verify`: raises `reported commit/branch/lineage mismatch` when `refs/heads/<branch>` is not `slot['commit']`; `merged`; `retry_held`, `_retire`), [slot state](skills/autowork/scripts/parallel_state.py) (`merge_adoption`, `exhausted`, `readoptable`), [coordinator](pi-autowork/pi_autowork/coordinator.py) (`resolve_task_conflict`, `adopt_merge`); TOOLSET-251-c4 in [the archive](TODO.archive.md#toolset-251-c4) (adoption limit and per-revision rule).
 - Evidence: (2026-10-20, one fleet runner, stalled about 20 h, 8 dependents held): two tasks on their second attempt had passed every listed check on their recorded commits. Before TOOLSET-251-c4 reached that runner, its conflict resolver merged later session commits into each branch 13 and 15 times while the engine refused adoption, so the slot kept the old commit. When the hold was later cleared for technical recovery, verify found the branch past the recorded commit and the runner asked the owner to rescope or split both tasks. One worktree also held an uncommitted, conflict-free merge with no live process. The owner answered each by hand with a retry that restores the kept branch.

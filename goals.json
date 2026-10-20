@@ -1232,14 +1232,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-280-4f",
-      "section": "Now",
-      "status": "open",
-      "title": "A held commit whose branch the runner itself merged past is recovered by the runner, never asked of the owner as a rescope"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-283-15",
       "section": "Now",
       "status": "open",
@@ -3295,6 +3287,14 @@
       "section": "Done",
       "status": "done",
       "title": "Select and copy terminal TUI text by mouse dragging"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-280-4f",
+      "section": "Done",
+      "status": "done",
+      "title": "A held commit whose branch the runner itself merged past is recovered by the runner, never asked of the owner as a rescope"
     },
     {
       "depends_on": [],

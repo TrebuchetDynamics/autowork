@@ -274,6 +274,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A held commit whose branch the runner itself merged past (only merges of session revisions
+  after the recorded commit) is adopted within the three-adoption limit, or rerun fresh from
+  the kept tip past it, instead of becoming an owner `rescope or split` question; a conflict-free
+  merge a resolver left uncommitted in a task worktree is aborted before verification
+  (TOOLSET-280-4f).
+
 - A worker never waits for a person's approval: its prompt says the task contract is the
   approved design, and a worker that ends its session on a question without a commit or
   report is resumed once in the same session; asking twice holds the task quoting the

@@ -58,7 +58,8 @@ class Hold(ValueError):
 
     Causes: scope (changed files outside Touches; ``outside`` lists them), overlap
     (another slot's or a coordinator file), report, conflict, validation,
-    contract_changed, moved (canonical HEAD moved twice), blocker.
+    contract_changed, moved (canonical HEAD moved twice), blocker, runner_merged
+    (the branch moved past its commit only through session merges; ``tip`` names it).
     """
     def __init__(self, cause, reason, **details):
         super().__init__(reason)
@@ -130,6 +131,11 @@ def verify(repo, common, slot, contracts):
     state.workspace(common, slot['worktree'], slot['branch'], slot['baseline'])
     if slot['branch'] != expected_branch(slot):
         raise ValueError(BRANCH_HOLD)
+    abort_abandoned_merge(common, slot)
+    tip = runner_merged_tip(repo, slot)
+    if tip and not adopt_runner_merged(repo, common, slot, tip):
+        raise Hold('runner_merged', f'its branch moved past the reported commit {slot["commit"][:12]} to {tip[:12]} '
+                   'only through merges of the session; the runner reruns it from that tip', tip=tip)
     commit = slot.get('commit', '')
     try:
         lineage = git(repo, 'merge-base', slot['baseline'], commit) == slot['baseline'] if commit else False
@@ -154,6 +160,64 @@ def verify(repo, common, slot, contracts):
         raise Hold('report', 'report.json does not match worker commit/files or reports failure: ' + mismatch)
     verify_scope(repo, common, slot, contracts, files)
     return files, report
+
+
+def abort_abandoned_merge(common, slot):
+    """Abort a conflict-free merge a resolver left uncommitted in the task worktree (TOOLSET-280-4f).
+    verify runs only with no worker and no resolver in that worktree, so nobody is finishing it,
+    and the resolver can merge again. One with unmerged paths is left for the conflict hold."""
+    root = execution.safe_path(slot['worktree'])
+    marker = Path(git(root, 'rev-parse', '--path-format=absolute', '--git-path', 'MERGE_HEAD'))
+    if not marker.is_file() or git(root, 'diff', '--name-only', '--diff-filter=U'):
+        return
+    merging = marker.read_text().strip()
+    git(root, 'merge', '--abort')
+    state.event(common, 'abandoned_merge_aborted', task_id=slot['task_id'], merge_head=merging)
+
+
+def runner_merged_tip(repo, slot):
+    """The branch tip, when it moved past the recorded commit only through merges whose other
+    parents are canonical revisions; else None. One fleet runner's resolver merged the session
+    into two held branches 13 and 15 times while adoption was refused, and the next verify asked
+    the owner to rescope both tasks for a 'reported commit/branch/lineage mismatch'."""
+    commit = slot.get('commit') or ''
+    try:
+        tip = git(repo, 'rev-parse', '--verify', 'refs/heads/' + slot['branch'])
+        if not commit or tip == commit or not ancestor(repo, commit, tip):
+            return None
+        head = git(repo, 'rev-parse', 'HEAD')
+        steps = git(repo, 'rev-list', '--first-parent', '--parents', f'{commit}..{tip}').splitlines()
+    except ValueError:
+        return None
+    for line in steps:
+        parents = line.split()[1:]
+        if len(parents) < 2 or not all(ancestor(repo, p, head) for p in parents[1:]):
+            return None  # a commit nobody recorded: the owner question names it
+    return tip
+
+
+def adopt_runner_merged(repo, common, slot, tip):
+    """Adopt a runner-merged tip as a resolver's merge is adopted, within the same three adoptions;
+    False when the limit is reached or the worktree is not clean on that tip. Updates ``slot``."""
+    count = slot.get('merged_count', 1 if slot.get('merged_base') else 0)
+    root = execution.safe_path(slot['worktree'])
+    try:
+        if (count >= 3 or git(root, 'rev-parse', 'HEAD') != tip
+                or git(root, 'status', '--porcelain', '--untracked-files=no')):
+            return False
+        base = git(repo, 'merge-base', 'HEAD', tip)
+    except ValueError:
+        return False
+    data = dispatch.data_dir(common, slot)
+    report = execution.read(data / 'report.json')
+    if not isinstance(report, dict) or report.get('task') != slot['task_id']:
+        return False
+    report.update(commit=tip, changed_files=changed(repo, base, tip))
+    execution.save(data / 'report.json', report)
+    value = dict(slot, baseline=base, commit=tip, merged_base=base, merged_count=count + 1)
+    slot.update(state.write_slot(common, value, slot))
+    state.event(common, 'runner_merged_adopted', task_id=slot['task_id'], commit=tip, merged_count=count + 1)
+    return True
 
 
 def report_mismatch(repo, report, task, commit, files):
@@ -1395,6 +1459,14 @@ def retry_held(args):
             # held task whose TODO entry changed since its attempt was dispatched runs fresh,
             # its earlier work kept on -set-aside-N names; an entry that disappeared was
             # closed or removed by a person, so nothing is queued again.
+            # A branch the runner itself merged past its recorded commit, beyond the adoptions
+            # allowed: a fresh attempt, its kept tip named in the prompt (TOOLSET-280-4f).
+            merged_past = next((s for s in current if s['state'] == 'held' and s.get('cause') == 'runner_merged'
+                                and not state.worker_live(s)), None)
+            if merged_past is not None:
+                state.event(common, 'runner_merged_requeued', task_id=merged_past['task_id'],
+                            tip=merged_past.get('tip', ''))
+                return dict(_retire(repo, common, merged_past, True), outcome='REQUEUED')
             changed_slot = next((s for s in current if s['state'] == 'held' and not state.worker_live(s)
                                  and entry_changed(repo, common, s)), None)
             if changed_slot is not None:
