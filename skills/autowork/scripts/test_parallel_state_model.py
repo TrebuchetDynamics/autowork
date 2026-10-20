@@ -121,6 +121,7 @@ class Walk:
             self.fx.worktree(task)
             self.fx.worktree(task + '-r2')
         self.model = {t: None for t in TASKS}
+        self.claim_gen, self.paused_claim = 0, {}  # coordinator claims; claim that paused each task
         self.alive = {}  # pid -> Popen of a fixture worker process
         self.trees = {str(self.fx.paths[n]): dict(moved=False, dirty=False, head=self.fx.base, diverged=False)
                       for n in self.fx.paths if n != 'base'}
@@ -257,13 +258,17 @@ class Walk:
             upd = {}
             if live:
                 target = 'running'
+                if rec['state'] == 'running' and rec['paused'] and self.paused_claim.get(task) != self.claim_gen:
+                    new = copy.deepcopy(rec)
+                    new['paused'] = False
+                    writes[task] = self.model[task] = new
             else:
                 tree = self.trees[rec['worktree']]
                 if old_blocker and (tree['moved'] or not tree['dirty']):
                     continue
                 if tree['moved']:
                     if tree['diverged']:
-                        target, upd = 'held', {'reason': DIVERGED}
+                        target, upd = 'held', {'reason': DIVERGED, 'cause': 'diverged'}
                     else:
                         target, upd = 'reported', {'commit': tree['head']}
                         if tree['dirty']:
@@ -491,6 +496,7 @@ class Walk:
             rec = self.model[task]
             if rec and rec['state'] in ('dispatched', 'running') and self.live(rec) and not rec['paused']:
                 rec['paused'] = True
+                self.paused_claim[task] = self.claim_gen
                 expected.append(task)
                 writes[task] = rec
         self.case.assertEqual(state.pause(self.fx.repo, self.fx.owner)['paused'], expected)
@@ -514,6 +520,7 @@ class Walk:
         with self.case.assertRaises(ValueError):
             state.reconcile(self.fx.repo, self.fx.owner)
         self.case.assertEqual(state.claim(self.fx.repo, self.fx.owner, profile='fixture')['outcome'], 'CLAIMED')
+        self.claim_gen += 1
         self.case.assertEqual(self.snapshot()[0], before[0], 'a coordinator restart changed slot records')
         return {}
 
@@ -792,9 +799,8 @@ class StateModelTests(unittest.TestCase):
                               branch='autowork/' + task, baseline=fx.base)
         return fx
 
-    @unittest.expectedFailure
     def test_reconcile_holds_a_worker_whose_head_has_unrelated_history(self):
-        # BUG: parallel_state.reconcile (line ~612) runs `git merge-base BASELINE HEAD`, which exits 1
+        # Was a bug: parallel_state.reconcile runs `git merge-base BASELINE HEAD`, which exits 1
         # when the worker's HEAD shares no history with the baseline; execution.git turns that into
         # ValueError('consumer must be an existing Git workspace') and the whole reconcile aborts.
         # Expected: that slot is held 'worker HEAD does not descend from baseline' (the diverged
@@ -808,9 +814,8 @@ class StateModelTests(unittest.TestCase):
             self.assertEqual((result['A']['state'], result['A']['reason']), ('held', DIVERGED))
             self.assertEqual(result['B']['state'], 'released')
 
-    @unittest.expectedFailure
     def test_a_diverged_worker_hold_records_a_cause(self):
-        # CONTRACT GAP: references/parallel-workers.md says "every held slot records a
+        # Was a contract gap: references/parallel-workers.md says "every held slot records a
         # machine-readable cause", but reconcile's diverged-HEAD hold (parallel_state.py ~613)
         # sets only `reason`. Sequence: create A; reset its worktree to a sibling of the baseline;
         # reconcile. Expected: held with a cause. Actual: held with cause None (unless an earlier
@@ -822,9 +827,8 @@ class StateModelTests(unittest.TestCase):
             self.assertEqual((held['state'], held['reason']), ('held', DIVERGED))
             self.assertIsNotNone(held.get('cause'))
 
-    @unittest.expectedFailure
     def test_an_adopted_worker_does_not_keep_a_stale_pause(self):
-        # BUG: pause() marks live workers so the death a deliberate stop causes resumes the same
+        # Was a bug: pause() marks live workers so the death a deliberate stop causes resumes the same
         # attempt. When the worker survives the stop, the next coordinator adopts it (reconcile:
         # target 'running', no write because it already is running) and `paused` stays set. Its
         # later, genuine crash is then reported as 'stopped by a runner restart; resumes on
@@ -845,7 +849,10 @@ class StateModelTests(unittest.TestCase):
             worker.kill()
             worker.wait()
             crashed = next(s for s in state.reconcile(fx.repo, fx.owner) if s['task_id'] == 'B')
-            self.assertEqual((crashed['state'], crashed.get('cause')), ('held', 'crash'))
+            # Held, not resumed: a second interruption on attempt 2. A worker that left nothing
+            # behind is labelled 'empty' rather than 'crash' by change().
+            self.assertEqual(crashed['state'], 'held')
+            self.assertIn(crashed.get('cause'), ('crash', 'empty'))
 
 
 if __name__ == '__main__':

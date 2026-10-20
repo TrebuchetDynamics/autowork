@@ -274,6 +274,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Parallel `reconcile` no longer aborts for every slot when one worker's HEAD shares no
+  history with its baseline; that slot is held with cause `diverged`. A worker adopted
+  after surviving the stop that paused it no longer keeps its pause marker, so its
+  later crash is held on attempt 2 instead of resumed. Found by the new model-based
+  state test.
 - "Waiting to integrate until another session leaves the main checkout" is said once per
   session again. The line carried the session's changing status ("running command", "terminal
   used 2 min ago"), so it repeated every minute.

@@ -128,7 +128,12 @@ check them against the full text before relying on a specific number.
   and JSON that does not parse; the first step of `scripts/check.py`, and usable on a
   candidate commit (`--rev`) without a checkout.
 - `scripts/fix_hotspots.py`: fix-of-a-fix hotspots from Git history.
-- A model-based random-walk test of the worker slot state machine.
+- A model-based random-walk test of the worker slot state machine
+  (`test_parallel_state_model.py`). It found three defects, now fixed: `reconcile`
+  aborted for every slot when one worker's HEAD shared no history with its baseline;
+  that diverged hold recorded no `cause` (now `diverged`); and a worker adopted after
+  surviving the stop that paused it kept its pause marker, so its later crash was
+  resumed instead of held.
 
 Remaining runner changes need files that live workers own (`coordinator.py`,
 `parallel_integrate.py`); they are queued as tasks rather than edited around them.
