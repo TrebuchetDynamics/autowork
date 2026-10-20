@@ -442,7 +442,8 @@
         "TOOLSET-109-f1",
         "TOOLSET-113-04",
         "TOOLSET-146-bc",
-        "TOOLSET-146-bc-LIVE"
+        "TOOLSET-146-bc-LIVE",
+        "TOOLSET-293-25"
       ],
       "title": "Make core-document completeness and drift machine-checkable"
     },
@@ -1720,6 +1721,14 @@
       "section": "Next",
       "status": "open",
       "title": "Harden conflicting-owner-plan journey against fixture races"
+    },
+    {
+      "depends_on": [],
+      "goal": "DOCS-COMPLETENESS",
+      "id": "TOOLSET-293-25",
+      "section": "Next",
+      "status": "open",
+      "title": "Split goals.py once its private copies and the runner's parse cache allow it"
     },
     {
       "depends_on": [
