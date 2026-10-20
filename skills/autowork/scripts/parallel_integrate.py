@@ -619,7 +619,7 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
                     fresh_contracts = {t['id']: t for t in dispatch.contracts(repo)}
                     verify(repo, common, slot, fresh_contracts)
                     verify_scope(repo, common, slot, fresh_contracts, changed(repo, baseline, merge))
-                    if fresh_contracts[task]['contract'] != contracts[task]['contract']:
+                    if display_free(fresh_contracts[task]['contract']) != display_free(contracts[task]['contract']):
                         raise Hold('contract_changed', 'task contract changed during validation')
                     require_no_writers(repo, changed(repo, baseline, merge))
                     if git(repo, 'symbolic-ref', 'HEAD') != canonical_branch:
@@ -692,7 +692,7 @@ def recover_integration(repo, common, slot, contracts):
     """
     info = slot.get('integration') or {}
     if (not info.get('commit') or not info.get('baseline')
-            or info.get('task_contract') != contracts[slot['task_id']]['contract']
+            or display_free(info.get('task_contract')) != display_free(contracts[slot['task_id']]['contract'])
             or info.get('canonical_branch') != git(repo, 'symbolic-ref', 'HEAD')
             or git(repo, 'rev-list', '--parents', '-n', '1', info['commit']).split()[1:]
                != [info['baseline'], slot['commit']]):
@@ -794,20 +794,33 @@ def archive_path(repo):
     return execution.archive_file(repo)
 
 
+# How a task is shown or ordered, not what it asks: adding `Short:` to every entry sent each held
+# task's finished work aside as if its contract had changed.
+DISPLAY_FIELDS = ('Short', 'Priority reason')
+_DISPLAY_LINE = re.compile(r'(?m)^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?(?:Short|Priority reason[^:\n]*):[^\n]*\n?')
+
+
+def display_free(contract):
+    """The contract without its display-only lines, for comparing two versions of one entry."""
+    return _DISPLAY_LINE.sub('', contract or '').strip()
+
+
 def require_task_contract(items, expected, *, archived=False):
     """Only closure-owned checkbox/status changes may differ from validation."""
     closed = re.sub(r'(?m)^([ \t]*(?:[-*][ \t]+)?Status:)[^\n]*', r'\1 done', expected)
     if archived and len(items) > 1:
         # History can hold an older entry for the same ID (sierra TASK-029): the closed
         # entry matching this contract is the one this close wrote.
-        items = [item for item in items if item[1].lower() == 'x' and item[0].strip() in (expected, closed)]
+        items = [item for item in items if item[1].lower() == 'x'
+                 and display_free(item[0]) in (display_free(expected), display_free(closed))]
     if len(items) != 1:
         raise ValueError('task contract provenance missing or ambiguous; no close')
     body, mark, _ = items[0]
     # A live body may already read `Status: done` with its box unchecked: an earlier
     # close that wrote the status but missed a bold `**ID**` checkbox.
-    if ((archived and mark.lower() != 'x') or body.strip() not in
-            ({expected, closed} if mark.lower() == 'x' or not archived else {expected})):
+    if ((archived and mark.lower() != 'x') or display_free(body) not in
+            ({display_free(expected), display_free(closed)} if mark.lower() == 'x' or not archived
+             else {display_free(expected)})):
         raise ValueError(CONTRACT_CHANGED)
 
 
@@ -946,12 +959,10 @@ def entry_changes(repo, common, slot):
 
     before, after = fields(previous.strip()), fields(items[0][0].strip())
     return sorted(key for key in before.keys() | after.keys()
-                  if key not in DISPLAY_FIELDS and before.get(key) != after.get(key))
+                  if not key.startswith(DISPLAY_FIELDS) and before.get(key) != after.get(key))
 
 
-# How a task is shown or ordered, not what it asks: adding `Short:` to every entry sent each held
-# task's finished work aside as if its contract had changed.
-DISPLAY_FIELDS = ('Short', 'Priority reason')
+
 
 
 def blocker_resolved(repo, common, slot, hold):
