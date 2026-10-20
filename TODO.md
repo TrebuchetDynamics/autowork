@@ -36,20 +36,14 @@ accepted phases, ownership and live qualification boundary; do not change an act
 worker's assigned contract. Review the archive-shipping, safe-update and Pi
 settlement/cancellation checks when refining that existing design.
 
-MAIN repair remains with TOOLSET-184-b3; preserve the owner's leading tasks in Now.
-The [current evidence](docs/tasks/TOOLSET-184-b3-main-recovery.md#current-main-receipt-at-e4faccb)
-records two failures at e4faccb after recorded green 520ddb8: conflict recovery
-reruns A after a dirty-session merge abort, and passing-validation daemon cleanup
-reports `EXECUTED` instead of `CHILDREN_TERMINATED`. The full gate is red
-(3 directories passed, 2 failed, 8 exclusions); its one skip is not a pass.
-Earlier failing-validation/daemon, waiting-runner and lock failures remain
-revision-bound regression evidence, not the current failure list. TOOLSET-140-f4's scratch allocation
-is now integrated; verify the supplied worker/reviewer paths rather than wait for
-that completed task. Preserve the stopped worker's retained 19-file candidate and
-reconcile only still-needed changes against current main.
-The
-[failed review](TODO.archive.md#main-receipt-at-3ca53ce-and-toolset-184-b3-review)
-remains binding. Do not start a duplicate repair or replay the older candidate.
+MAIN at 171b26b reports two picker-policy failures, now owned by TOOLSET-277-52
+([evidence](docs/tasks/TOOLSET-277-52-picker-policy-main-red.md#reported-main-failure)).
+TOOLSET-184-b3 is already closed and archived; its
+[older integration/scratch evidence](docs/tasks/TOOLSET-184-b3-main-recovery.md#current-main-receipt-at-e4faccb)
+and [review](TODO.archive.md#main-receipt-at-3ca53ce-and-toolset-184-b3-review)
+remain historical, not the current failure list or an instruction to reopen it.
+The new repair is first in Now as explicitly requested for MAIN red; all existing
+owner-priority tasks retain their relative order.
 
 Current priority (owner, 2026-10-17): **Autowork pipeline bugs first**.
 The [pipeline-first order](docs/plans/2026-10-16-pi-autowork-coordinator.md#pipeline-first-queue-priority-2026-10-17)
@@ -57,6 +51,24 @@ supersedes older positional comments inside task bodies, not their scope, gates 
 ownership. UI/features, ledger redesign and deferred live work follow runtime fixes.
 
 ## Now
+
+### TOOLSET-277-52 — Restore the offline gate for the picker-policy failures at 171b26b
+
+- [ ] TOOLSET-277-52 — Restore the offline gate for the picker-policy failures at 171b26b
+- Status: open
+- Goal: PI-RUNNER
+- Payoff: Restore the offline gate without changing accepted execution policy.
+- Sources: [accepted runner contract](docs/project.md#continuous-pi-runner-2026-10-15); [repair evidence and boundary](docs/tasks/TOOLSET-277-52-picker-policy-main-red.md#repair-boundary); [picker policy tests](skills/autowork/scripts/test_picker_policy.py); [Autowork core](skills/autowork/SKILL.md).
+- Evidence: MAIN red at 171b26b after last green 3a00a05: `test_picker_policy.PickerPolicyTests.test_core_stays_lean_and_points_to_every_reference` and `test_picker_policy.PickerPolicyTests.test_no_early_exit_and_terminal_results_continue`. Supplied commit window: 171b26b, f057d64, 24748e1, 653998e, ce092d9, 5cfb7f8, 1f6364d, a41e3f0, 42f257a, 07b0338 (the trigger truncated the last to `07b03`). The [receipt and focused reproduction](docs/tasks/TOOLSET-277-52-picker-policy-main-red.md#focused-reproduction) record the full window, exact assertions and six-test exit-1 reproduction at 2c4bf2c: core is 16076 bytes against a strict 16000 limit; test expects version 0.28.1 while core declares 0.28.2. All references are currently linked. No flaky classification is reported for these failures.
+- Touches: skills/autowork/SKILL.md, skills/autowork/references/, skills/autowork/scripts/test_picker_policy.py
+- Scope: Reconcile the lean-core and stale-version assertions with the current accepted policy. Move detail to existing references as needed, retain all reference links, and preserve meaningful continuation, caller-stop, authority and no-busywork regression coverage. Inspect the cited change window; unrelated fleet, coordinator, state-machine and plan-lint changes are evidence context, not permission to rewrite them.
+- Acceptance: The two named failures pass, the core remains strictly below 16000 bytes and links every reference, and coverage no longer rejects a valid policy solely for its incidental patch version. Existing continuation, caller-stop, authority and no-busywork semantics remain intact; no size-limit increase or wholesale assertion removal. The full offline check passes with skips and exclusions reported separately, not counted as passes.
+- Checks: `python3 -m unittest discover -s skills/autowork/scripts -p test_picker_policy.py -v`; `python3 scripts/check.py`.
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No product/runtime redesign, live qualification, publication or coordinator-owned planning edits by the code worker. Do not reopen TOOLSET-184-b3 or replay its older candidate.
+- Next action: Reproduce the two assertions using repository files, make the smallest policy-preserving repair, then run the focused and full checks. The original runner bundle is not a prerequisite; TOOLSET-234-d4 owns its delivery and the failures reproduce locally.
+- Priority reason: The current DOCS-MAINTAINER instruction explicitly puts an uncovered main-red repair first in Now. Preserve every pre-existing task's relative order.
 
 ### TOOLSET-269-f2 — A runner never commits or publishes uncommitted changes it did not make (GitHub #3)
 
@@ -1729,6 +1741,6 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | PARALLEL: Run independent Autowork tasks in parallel workers with one coordinator | met | executed <code>TOOLSET-091-00 live 2026-10-15: Pi 1.2.0 workers (gpt-6.1-sol) via pi-autowork.sh on a disposable repo: 2 overlapping workers, sequential integration, C after A, combined check pass, no push, 158 s vs 240 s sequential; SIGKILLed coordinator restart adopted live workers without duplicates. Codex 0.162.1 workers cannot commit in the workspace-write sandbox (sequential fallback). Hermes workers not run by owner decision.</code> → pass | — |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
-| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | Terminal drag selection: offline gate, PTY and source review pass ([TOOLSET-275-c1](TODO.archive.md#toolset-275-c1)) | TOOLSET-096-7e, TOOLSET-099-87, TOOLSET-117-cb, TOOLSET-118-68, TOOLSET-119-2b, TOOLSET-120-fc, TOOLSET-122-27, TOOLSET-125-3c, TOOLSET-126-02, TOOLSET-127-8f, TOOLSET-129-6c, TOOLSET-129-c4, TOOLSET-130-15, TOOLSET-131-ac, TOOLSET-132-af, TOOLSET-138-62, TOOLSET-139-62, TOOLSET-144-c0, TOOLSET-145-6d, TOOLSET-147-54, TOOLSET-153-64, TOOLSET-154-d3, TOOLSET-155-e2, TOOLSET-156-75, TOOLSET-158-08, TOOLSET-163-f7, TOOLSET-164-f1, TOOLSET-173-94, TOOLSET-178-47, TOOLSET-179-cf, TOOLSET-182-ce, TOOLSET-184-1d, TOOLSET-192-71, TOOLSET-200-c1, TOOLSET-225-75, TOOLSET-230-bf, TOOLSET-231-49, TOOLSET-234-51, TOOLSET-234-d4, TOOLSET-235-0d, TOOLSET-242-d5, TOOLSET-245-6a, TOOLSET-248-60, TOOLSET-249-5b, TOOLSET-252-4c, TOOLSET-254-80, TOOLSET-255-55, TOOLSET-256-4b, TOOLSET-257-bd, TOOLSET-259-ca, TOOLSET-260-ae, TOOLSET-261-15, TOOLSET-262-13, TOOLSET-263-94, TOOLSET-264-39, TOOLSET-265-16, TOOLSET-266-7a, TOOLSET-267-a0, TOOLSET-269-f2, TOOLSET-270-a9, TOOLSET-271-d6, TOOLSET-272-1c, TOOLSET-273-e0, TOOLSET-274-f0, TOOLSET-276-11, TOOLSET-276-2c, TOOLSET-276-3d, TOOLSET-276-3f, TOOLSET-276-a9 |
+| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | Terminal drag selection: offline gate, PTY and source review pass ([TOOLSET-275-c1](TODO.archive.md#toolset-275-c1)) | TOOLSET-096-7e, TOOLSET-099-87, TOOLSET-117-cb, TOOLSET-118-68, TOOLSET-119-2b, TOOLSET-120-fc, TOOLSET-122-27, TOOLSET-125-3c, TOOLSET-126-02, TOOLSET-127-8f, TOOLSET-129-6c, TOOLSET-129-c4, TOOLSET-130-15, TOOLSET-131-ac, TOOLSET-132-af, TOOLSET-138-62, TOOLSET-139-62, TOOLSET-144-c0, TOOLSET-145-6d, TOOLSET-147-54, TOOLSET-153-64, TOOLSET-154-d3, TOOLSET-155-e2, TOOLSET-156-75, TOOLSET-158-08, TOOLSET-163-f7, TOOLSET-164-f1, TOOLSET-173-94, TOOLSET-178-47, TOOLSET-179-cf, TOOLSET-182-ce, TOOLSET-184-1d, TOOLSET-192-71, TOOLSET-200-c1, TOOLSET-225-75, TOOLSET-230-bf, TOOLSET-231-49, TOOLSET-234-51, TOOLSET-234-d4, TOOLSET-235-0d, TOOLSET-242-d5, TOOLSET-245-6a, TOOLSET-248-60, TOOLSET-249-5b, TOOLSET-252-4c, TOOLSET-254-80, TOOLSET-255-55, TOOLSET-256-4b, TOOLSET-257-bd, TOOLSET-259-ca, TOOLSET-260-ae, TOOLSET-261-15, TOOLSET-262-13, TOOLSET-263-94, TOOLSET-264-39, TOOLSET-265-16, TOOLSET-266-7a, TOOLSET-267-a0, TOOLSET-269-f2, TOOLSET-270-a9, TOOLSET-271-d6, TOOLSET-272-1c, TOOLSET-273-e0, TOOLSET-274-f0, TOOLSET-276-11, TOOLSET-276-2c, TOOLSET-276-3d, TOOLSET-276-3f, TOOLSET-276-a9, TOOLSET-277-52 |
 
 <!-- goals:coverage:end -->

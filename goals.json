@@ -798,7 +798,8 @@
         "TOOLSET-276-2c",
         "TOOLSET-276-3d",
         "TOOLSET-276-3f",
-        "TOOLSET-276-a9"
+        "TOOLSET-276-a9",
+        "TOOLSET-277-52"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -806,6 +807,7 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
+      "TOOLSET-277-52",
       "TOOLSET-269-f2",
       "TOOLSET-270-a9",
       "TOOLSET-271-d6",
@@ -1207,6 +1209,14 @@
       "section": "Now",
       "status": "open",
       "title": "An unusable repository stops the service deliberately instead of a restart loop (GitHub #6)"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-277-52",
+      "section": "Now",
+      "status": "open",
+      "title": "Restore the offline gate for the picker-policy failures at 171b26b"
     },
     {
       "depends_on": [],
