@@ -12,7 +12,8 @@ from unittest.mock import patch
 
 SCRIPT=Path(__file__).with_name('owner_cycle.py')
 
-class DirectExecutionTests(unittest.TestCase):
+class ExecutionFixtureMixin:
+    """Shared setup and command helper only; no discoverable regression cases."""
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.repo=Path(self.tmp.name)/'repo';self.repo.mkdir()
@@ -44,6 +45,8 @@ class DirectExecutionTests(unittest.TestCase):
                          env=self.env,capture_output=True,text=True,timeout=15)
         self.assertTrue(p.stdout,p.stderr)
         return p,json.loads(p.stdout)
+
+class DirectExecutionTests(ExecutionFixtureMixin, unittest.TestCase):
     def test_todo_only_default_needs_no_profile_board_or_registration(self):
         for value in ('broken JSON',json.dumps({'task_id':'old','status':'blocked'}),json.dumps({'status':'done'})):
             (self.state/'goal-handoff.json').write_text(value)
@@ -129,7 +132,7 @@ class DirectExecutionTests(unittest.TestCase):
         self.assertEqual(r['outcome'],'OWNER_REQUIRED')
         self.assertFalse((self.repo/'worked').exists())
 
-class RecoveryTests(DirectExecutionTests):
+class RecoveryTests(ExecutionFixtureMixin, unittest.TestCase):
     def ledger(self):
         data = {'version': 1, 'goals': [{'id': 'G', 'title': 'fixture', 'source': 'TODO.md',
             'status': 'partial', 'tasks': ['T1', 'T2'], 'priority': 1, 'depends_on': []}],

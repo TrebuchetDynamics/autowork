@@ -1066,3 +1066,48 @@ validation and diff check. Raw inventories/timings/logs stay in scratch. No full
 Python gate, Node test gate, excluded suite, live service/model or Telegram check
 ran here. This is a disposition and bounded handoff, **not a minimized or newly
 qualified suite**; integration remains the coordinator's separate guarded step.
+
+## Inherited execution result (TOOLSET-125-e6)
+
+Applied only the inherited-execution batch from baseline
+`c5d87eef3e5158f34e6ae48d2f41c614c483b2a8`, on Linux x86_64 with Python 3.12.14.
+The current source has more cases than either historical inventory above:
+**11 direct + 38 recovery + one selection-cache = 50 executions** before;
+**11 direct + 27 recovery + one selection-cache = 39 unique executions** after.
+The accepted plan's 47 → 36 and F1's 48 → 37 remain historical, not targets that
+justify deleting later regressions. Coordinator-owned task counts need reconciliation.
+The Git-timeout/BUSY and runner-job/session-attribution recovery cases and the
+selection-cache case are retained, not thinned to force an obsolete count.
+
+[ExecutionFixtureMixin](../skills/autowork/scripts/test_task_execution.py) now owns
+only `setUp` and `call`, and does not inherit `unittest.TestCase`. Both concrete
+classes inherit that mixin and `unittest.TestCase` independently. The eleven removed
+`RecoveryTests.test_*` IDs map exactly to the same-name retained
+`DirectExecutionTests.test_*` IDs in the accepted plan's eleven-name mapping above.
+Before refactoring each pair was the identical method object; RecoveryTests had no
+fixture override. Fresh collection confirms exactly those eleven IDs disappeared,
+no IDs were added, and all 39 declared cases still execute once.
+
+A task-local AST comparison against the baseline verifies every retained test and
+helper body is unchanged, including actions, assertions and branch predicates.
+The moved `setUp` and `call` bodies are unchanged and resolve to the same method
+objects for both classes; each test still creates and cleans its own mutable fixture.
+Their sizes remain 26 and five lines respectively. The module grows from 563 to
+566 lines solely for the fixture-only class boundary/documentation; it retains all
+39 declared test methods. No replacement meta-test, skip, framework, dependency,
+production hook or runtime change was added. Dynamic line/branch coverage and
+mutation were not measured; structural equivalence is not a new coverage receipt.
+
+Same-machine, uninstrumented focused command, one passing run per version:
+`python3 -m unittest discover -s skills/autowork/scripts -p test_task_execution.py`.
+Before: **50 passed, 43.474 s unittest / 43.60 s wall**. After: **39 passed,
+27.296 s unittest / 27.38 s wall**. Shared-host samples are not idle medians or a
+whole-suite speedup claim. Raw logs, collection mappings and the AST verifier stay
+in task scratch outside Git.
+
+The focused sharded-runner command `python3 scripts/check.py
+skills/autowork/scripts/test_task_execution.py` also passed **39 tests** (28.437 s
+unittest), with the normal eight module exclusions unchanged. Full
+`python3 scripts/check.py` acceptance belongs to the coordinator's merged-tree gate
+and was not run by this worker. No live/model, service or delivery check was run;
+this test-only batch adds no live qualification requirement.
