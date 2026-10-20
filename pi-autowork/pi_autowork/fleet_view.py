@@ -411,6 +411,13 @@ def waiting_line(runner, limit=4):
 QUEUED = ('implemented', 'waiting to integrate')
 
 
+def task_counts(runner):
+    """(being worked on, finished and waiting to land, waiting to start, held, total) for a runner."""
+    landing = sum(lane.phase in QUEUED for lane in runner.lanes)
+    active = len(runner.lanes) - landing if runner.lanes else runner.running
+    return active, landing, runner.waiting, len(runner.held), active + landing + runner.waiting + len(runner.held)
+
+
 def lanes(runner, now=None):
     """Tasks in flight for this runner, from the engine's slots, the runner log and Pi transcripts."""
     now = time.time() if now is None else now
@@ -747,35 +754,37 @@ class Action:
 
 
 def actions(runner, *, command, script, agent=None, task=None):
-    """What the owner can do to this runner now, as `autowork` commands (or the runner script)."""
+    """What the owner can do to this runner now, as `autowork` commands (or the runner script).
+    One key per action, the first letter of its one-word label, which the TUI highlights in
+    the word: P plays a stopped or paused runner and pauses a running one."""
     repo, name = runner.repo, runner.name
-    out = [Action('enter', 'log', [], interactive=True)]  # the TUI's own full-screen log view
+    out = [Action('l', 'Log', [], interactive=True)]  # the TUI's own full-screen log view (also Enter)
     running = runner.service in ('running', 'start', 'reload')
     if runner.has_service and running:
-        out.append(Action('p', 'pause', [command, 'pause', name],
+        out.append(Action('p', 'Pause', [command, 'pause', name],
                           confirm=f'Pause {name}? Its service stops and stays off until resumed; '
                                   'workers resume on the same attempt.'))
     elif runner.has_service and runner.state == 'paused':
-        out.append(Action('p', 'resume', [command, 'resume', name]))
-    if runner.has_service:
-        out.append(Action('m', 'model', [command, 'model', name]))       # the TUI picks the model
-        out.append(Action('M', 'fallback model', [command, 'model', name, '--fallback']))
+        out.append(Action('p', 'Play', [command, 'resume', name]))
+    elif repo:
+        out.append(Action('p', 'Play', [command, 'start', repo]))
     if running:
-        out.append(Action('s', 'stop', [command, 'stop', name],
+        out.append(Action('s', 'Stop', [command, 'stop', name],
                           confirm=f'Stop {name}? Workers pause and resume on the same attempt at the next start.'))
         if runner.has_service:
-            out.append(Action('R', 'restart', [command, 'restart', name],
+            out.append(Action('r', 'Restart', [command, 'restart', name],
                               confirm=f'Restart {name}? It reloads in place; running workers keep running.'))
-    elif repo:
-        out.append(Action('a', 'start service', [command, 'start', repo]))
-    if repo and runner.has_service and not running:
-        out.append(Action('u', 'remove service', [command, 'remove', name],
-                          confirm=f'Remove pi-autowork@{name}? Its state and worktrees stay.'))
-    if repo and task:
-        out.append(Action('x', f'set aside {task}', [script, '--repo', repo, '--set-aside', task],
-                          confirm=f'Set aside {task}? Its work stays on -set-aside-N branches and it runs fresh.'))
+    if runner.has_service:
+        out.append(Action('m', 'Model', [command, 'model', name]))       # the TUI picks the model
+        out.append(Action('f', 'Fallback', [command, 'model', name, '--fallback']))
     if repo and agent:
-        out.append(Action('b', 'answer blockers', [command, 'blockers', repo], interactive=True))
+        out.append(Action('b', 'Blockers', [command, 'blockers', repo], interactive=True))
+    if repo and task:
+        out.append(Action('a', 'Aside', [script, '--repo', repo, '--set-aside', task],
+                          confirm=f'Set aside {task}? Its work stays on -set-aside-N branches and it runs fresh.'))
+    if repo and runner.has_service and not running:
+        out.append(Action('u', 'Uninstall', [command, 'remove', name],
+                          confirm=f'Remove pi-autowork@{name}? Its state and worktrees stay.'))
     return out
 
 

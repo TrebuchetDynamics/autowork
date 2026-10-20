@@ -9,7 +9,8 @@ import tempfile
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pi_autowork.tui import BrowseScreen, FleetApp, LogScreen, WorkerScreen  # noqa: E402
+from pi_autowork import fleet_view  # noqa: E402
+from pi_autowork.tui import BrowseScreen, FleetApp, LogScreen, WorkerScreen, doing  # noqa: E402
 
 
 class Result:
@@ -17,6 +18,12 @@ class Result:
 
 
 async def main():
+    # A worker's own words, without what its row already says; cut mid-word only to keep far more.
+    lane = fleet_view.Lane(task='T-1', phase='verifying', detail='', attempt=1, minutes=1,
+                           activity='said: T-1 committed as `abc`.', activity_age=1)
+    assert doing(lane) == 'reviewer: committed as `abc`.', doing(lane)
+    assert FleetApp.fit('reviewer: committed as abc', 16) == 'reviewer: commi…', FleetApp.fit('reviewer: committed as abc', 16)
+    assert FleetApp.fit('one two three four', 15) == 'one two three…'
     with tempfile.TemporaryDirectory() as folder:
         base = Path(folder)
         state, env = base / 'state' / 'india', base / 'env'
@@ -65,11 +72,19 @@ async def main():
             detail = str(app.query_one('#detail').render())
             # TOOLSET-166-b4: the verdict first, then why tasks wait, grouped.
             assert detail.lstrip().startswith('india  Waiting — 19 wait for TASK-036 (overlapping files)'), detail
-            assert 'on you' not in detail and 'model openai-codex/gpt-6.1-sol' in detail, detail
+            assert 'on you' not in detail and 'model gpt-6.1-sol' in detail, detail
             assert '23 waiting: 19 wait for TASK-036 (overlapping files) · 4 on dependencies' in detail, detail
             runners = app.query_one('#runners')
-            assert [str(c.label) for c in runners.columns.values()] == ['Runner', 'State', 'Needs', 'Tasks', 'Now']
-            assert '19 wait for TASK-036 (overlapping files)' in str(runners.get_row_at(0)[2])
+            assert [str(c.label) for c in runners.columns.values()] == ['Runner', 'State', 'Run', 'Land', 'Wait',
+                                                                        'Held', 'Total', 'Needs', 'Now']
+            assert [str(c) for c in runners.get_row_at(0)[2:7]] == ['0', '0', '23', '1', '24']
+            assert '19 wait for TASK-036 (overlapping files)' in str(runners.get_row_at(0)[7])
+            assert '24 open: 0 working · 0 to land · 23 waiting · 1 held' in detail, detail
+            # The keys, each word's first letter highlighted in it; one key per action.
+            hints = app.query_one('#detail').render()
+            assert str(hints).rstrip().endswith('Log  Pause  Stop  Restart  Model  Fallback  Aside  New  Quit'), str(hints)
+            marked = {str(hints)[span.start:span.end] for span in hints.spans if 'underline' in str(span.style)}
+            assert marked == set('LPSRMFANQ'), marked
             log = '\n'.join(line.text for line in app.query_one('#log').lines)
             assert 'TASK-036: waiting' in log and 'pending —' not in log, log
             await pilot.press('s')                      # stop asks first; n declines
@@ -107,7 +122,7 @@ async def main():
             assert isinstance(app.screen, WorkerScreen) and app.screen.title == 'india: TASK-036', app.screen
             await pilot.press('escape')
             await pilot.pause()
-            await pilot.press('d')                      # browse: half is not ready, ready starts after a yes
+            await pilot.press('n')                      # new: browse; half is not ready, ready plays after a yes
             await pilot.pause()
             assert isinstance(app.screen, BrowseScreen), app.screen
             screen = app.screen
@@ -115,13 +130,13 @@ async def main():
             await pilot.pause()
             path = screen.chosen.path if screen.chosen else ''
             if path.endswith('half'):
-                await pilot.press('s')
+                await pilot.press('p')
                 await pilot.pause()
                 assert len(calls) == 2, calls          # not ready: nothing runs
                 await pilot.press('down')
                 await pilot.pause()
             assert screen.chosen and screen.chosen.ready and screen.chosen.path.endswith('ready'), screen.chosen
-            await pilot.press('s')
+            await pilot.press('p')
             await pilot.pause()
             await pilot.press('y')
             await pilot.pause()
@@ -133,6 +148,10 @@ async def main():
             await pilot.pause()
             words = ' '.join(str(narrow.query_one('#detail').render()).split())
             assert 'Waiting — 19 wait for TASK-036 (overlapping files)' in words and 'on you' not in words, words
+            # Every count stays on screen: the text columns shrink instead (they scrolled off before).
+            table = narrow.query_one('#runners')
+            width = sum(c.get_render_width(table) for c in table.columns.values())
+            assert width <= 80, (width, [str(c) for c in table.get_row_at(0)])
         viewer = FleetApp(command='aw', script='pa.sh', state_root=base / 'state', env_dir=env,
                           systemctl=str(systemctl), journalctl=str(journal), agent=['claude'], runner_cmd=run,
                           view_only=True)
@@ -140,11 +159,11 @@ async def main():
         async with viewer.run_test(size=(140, 40)) as pilot:
             await pilot.pause()
             assert 'view only' in str(viewer.query_one('#detail').render())
-            for key in ('s', 'p', 'm', 'x', 'b', 'd'):
+            for key in ('s', 'p', 'm', 'f', 'r', 'a', 'b', 'u', 'n'):
                 await pilot.press(key)
                 await pilot.pause()
             assert len(calls) == before, calls          # view-only: no key runs anything
-            await pilot.press('enter')
+            await pilot.press('l')
             await pilot.pause()
             assert isinstance(viewer.screen, LogScreen)  # but the log can be read
         # A TUI left open restarts itself on new code, but never over an open dialog.

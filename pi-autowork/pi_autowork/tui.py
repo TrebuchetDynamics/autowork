@@ -42,6 +42,37 @@ def code_stamp():
 QUESTIONS_SHOWN = 3
 
 
+def hotkeys(text, keys):
+    """Append 'Log  Pause  Stop', each word's key letter highlighted in it (the first letter
+    by convention; a key the word lacks is shown before it)."""
+    for number, (key, label) in enumerate(keys):
+        text.append('  ' if number else '')
+        at = label.lower().find(key.lower())
+        if at < 0:
+            text.append(key, style='bold underline cyan')
+            text.append(' ' + label)
+        else:
+            text.append(label[:at])
+            text.append(label[at], style='bold underline cyan')
+            text.append(label[at + 1:])
+
+
+def tilde(path):
+    home = str(Path.home())
+    return '~' + path[len(home):] if path and (path == home or path.startswith(home + '/')) else path
+
+
+def doing(lane):
+    """What a worker is doing, without what the row already says: its own task ID after
+    "said:", and "said:" after "reviewer:"."""
+    text = ' '.join(fleet_view.doing(lane).split())
+    text = text.replace('reviewer: said: ', 'reviewer: ', 1)
+    for prefix in ('said: ', 'reviewer: '):
+        if text.startswith(prefix + lane.task):
+            text = prefix + text[len(prefix + lane.task):].lstrip(' :,')
+    return text
+
+
 class Confirm(ModalScreen[bool]):
     BINDINGS = [Binding('y', 'answer(True)', 'yes'), Binding('n,escape', 'answer(False)', 'no')]
     DEFAULT_CSS = '''
@@ -215,7 +246,7 @@ class RepoTree(DirectoryTree):
 
 class BrowseScreen(Screen):
     """Pick a repository and start its service."""
-    BINDINGS = [Binding('s', 'start', 'start service'), Binding('escape,q', 'app.pop_screen', 'back')]
+    BINDINGS = [Binding('p', 'start', 'Play'), Binding('escape,q', 'app.pop_screen', 'back')]
     CSS = '''
     #tree { width: 1fr; }
     #info { width: 1fr; padding: 0 1; }
@@ -245,7 +276,7 @@ class BrowseScreen(Screen):
         info.append(str(node.data.path) + '\n', style='bold')
         if self.chosen.ready:
             info.append('ready', style='bold green')
-            info.append(f' on {self.chosen.branch}. Press s to start its service.\n')
+            info.append(f' on {self.chosen.branch}. Press p to play (start) its service.\n')
         elif not self.chosen.repo:
             info.append('not a Git repository\n', style='dim')
         else:
@@ -272,19 +303,19 @@ class FleetApp(App):
     #log { height: 1fr; min-height: 4; border-top: solid $panel; }
     '''
     BINDINGS = [
-        Binding('enter', 'run("enter")', 'log'),
-        Binding('d', 'browse', 'start a repository'),
-        Binding('a', 'run("a")', 'start'),
-        Binding('s', 'run("s")', 'stop'),
-        Binding('R', 'run("R")', 'restart'),
-        Binding('p', 'run("p")', 'pause/resume'),
-        Binding('m', 'pick_model("model")', 'model'),
-        Binding('M', 'pick_model("fallback")', 'fallback'),
-        Binding('u', 'run("u")', 'remove service'),
-        Binding('x', 'set_aside', 'set aside'),
-        Binding('b', 'run("b")', 'blockers'),
-        Binding('r', 'refresh', 'refresh'),
-        Binding('q', 'quit', 'quit'),
+        # One key per action, the first letter of its word, shown highlighted in the detail
+        # pane (the footer repeated them, cut short). Enter on a runner opens its log too.
+        Binding('l', 'run("l")', 'Log'),
+        Binding('p', 'run("p")', 'Play/Pause'),
+        Binding('s', 'run("s")', 'Stop'),
+        Binding('r', 'run("r")', 'Restart'),
+        Binding('m', 'pick_model("model")', 'Model'),
+        Binding('f', 'pick_model("fallback")', 'Fallback'),
+        Binding('b', 'run("b")', 'Blockers'),
+        Binding('a', 'set_aside', 'Aside'),
+        Binding('u', 'run("u")', 'Uninstall'),
+        Binding('n', 'browse', 'New'),
+        Binding('q', 'quit', 'Quit'),
     ]
     CONTROL = {'run', 'set_aside', 'browse', 'pick_model'}
 
@@ -306,10 +337,8 @@ class FleetApp(App):
 
     def check_action(self, action, parameters):
         """View-only (for example served to a browser on a shared network): no control keys."""
-        if self.view_only and action in self.CONTROL:
+        if self.view_only and action in self.CONTROL and parameters != ('l',):  # the log is read-only
             return False
-        if action == 'run' and parameters and parameters[0] == 'enter':
-            return True
         return True
 
     # -- layout -----------------------------------------------------------------
@@ -319,18 +348,63 @@ class FleetApp(App):
         yield Static(id='detail')
         yield DataTable(id='lanes', cursor_type='row', zebra_stripes=True)
         yield RichLog(id='log', wrap=True, highlight=False, markup=False)
-        yield Footer()
+
+    # The counts come right after the name, as narrow columns that always show: after a
+    # 44-column Needs they scrolled off an 80-column terminal. Needs and Now share the rest.
+    RUNNER_COLUMNS = ('Runner', 'State', 'Run', 'Land', 'Wait', 'Held', 'Total')
+    RUNNER_TEXT = ('Needs', 'Now')
+    LANE_COLUMNS = ('Task', 'Phase', 'Try', 'For', 'Quiet')
+    LANE_TEXT = ('Doing',)
 
     def on_mount(self):
         table = self.query_one('#runners', DataTable)
-        table.add_columns('Runner', 'State', 'Needs', 'Tasks', 'Now')
-        self.query_one('#lanes', DataTable).add_columns('Task', 'Phase', 'Try', 'For', 'Doing')
+        table.add_columns(*self.RUNNER_COLUMNS, *self.RUNNER_TEXT)
+        self.query_one('#lanes', DataTable).add_columns(*self.LANE_COLUMNS, *self.LANE_TEXT)
         self.action_refresh()
         self.refresh_log()
         self.set_interval(REFRESH, self.action_refresh)
         self.set_interval(LOG_REFRESH, self.refresh_log)
         self.code = code_stamp()
         self.set_interval(CODE_CHECK, self.reload_if_updated)
+
+    def on_resize(self, event):
+        self._shown = {}  # the columns fit the new width
+        if self.query_one('#runners', DataTable).columns:  # the first resize comes before on_mount
+            self.action_refresh()
+
+    @staticmethod
+    def fit(text, room):
+        """``text`` in ``room`` columns: cut at a word, or mid-word when that keeps far more."""
+        if len(text) <= room:
+            return text
+        cut = text[:room - 1]
+        words = cut.rsplit(' ', 1)[0]
+        return (words if len(words) > room * 2 // 3 else cut).rstrip(' ,;:·') + '…'
+
+    def fill(self, table, rows, fixed, text, minimum=16):
+        """Show ``rows`` ({column: (text, style)}) in ``table``. The fixed columns always show,
+        whole; the text columns share what the terminal has left, each cut to fit, and the last
+        named goes first when fewer than ``minimum`` columns would be left for each. Redrawn only
+        when something changed, since a clear-and-rewrite every refresh made the panes flicker."""
+        width = lambda column: max([len(column), *(len(row[column][0]) for row in rows)]) + 2  # padding
+        left = self.size.width - sum(width(c) for c in fixed) - 4  # border and scrollbar
+        shown = list(text)
+        while shown and left // len(shown) - 2 < minimum:
+            shown.pop()
+        room = left // max(1, len(shown)) - 2
+        columns = (*fixed, *shown)
+        cells = [tuple((self.fit(row[c][0], room) if c in shown else row[c][0], row[c][1]) for c in columns)
+                 for row in rows]
+        shown_before = self.__dict__.setdefault('_shown', {})
+        if shown_before.get(table.id) == (columns, cells):
+            return False
+        shown_before[table.id] = (columns, cells)
+        table.clear(columns=tuple(str(c.label) for c in table.columns.values()) != columns)
+        if not table.columns:
+            table.add_columns(*columns)
+        for row, values in zip(rows, cells):
+            table.add_row(*(Text(value, style=style) for value, style in values), key=row[columns[0]][0])
+        return True
 
     def reload_if_updated(self):
         """Start again on new code, between actions and with no dialog open."""
@@ -349,18 +423,14 @@ class FleetApp(App):
                 now = ', '.join(x for x in (fleet_view.job_text(runner.job), now) if x)
             if len(runner.lanes) > 2:
                 now += f' +{len(runner.lanes) - 2}'
-            state = f'{runner.state} {fleet_view.duration(runner.minutes)}'.strip()
-            tasks = f'{runner.running} run  {runner.waiting} wait  {len(runner.held)} held'
-            rows.append((runner.name, state, runner.color, fleet_view.short(fleet_view.needs(runner) or '-', 44),
-                         bool(runner.questions), tasks, fleet_view.short(now or '-', 40)))
-        # Redraw only what changed: a clear-and-rewrite every refresh made panes flicker
-        # and repaint over each other.
-        if rows != getattr(self, '_rows', None):
-            self._rows = rows
-            table.clear()
-            for name, state, color, need, asked, tasks, now in rows:
-                table.add_row(name, Text(state, style=f'bold {color}'), Text(need, style='yellow' if asked else ''),
-                              tasks, now, key=name)
+            run, land, wait, held, total = (str(n) for n in fleet_view.task_counts(runner))
+            rows.append({'Runner': (runner.name, ''),
+                         'State': (f'{runner.state} {fleet_view.duration(runner.minutes)}'.strip(), f'bold {runner.color}'),
+                         'Run': (run, 'green'), 'Land': (land, 'cyan'), 'Wait': (wait, ''),
+                         'Held': (held, 'yellow' if held != '0' else ''), 'Total': (total, 'bold'),
+                         'Needs': (' '.join((fleet_view.needs(runner) or '-').split()), 'yellow' if runner.questions else ''),
+                         'Now': (now or '-', '')})
+        self.fill(table, rows, self.RUNNER_COLUMNS, self.RUNNER_TEXT)
         names = [r.name for r in self.runners]
         if names:
             row = names.index(keep) if keep in names else 0
@@ -386,7 +456,7 @@ class FleetApp(App):
         """Enter on a runner (the table takes the key itself): its full-screen log; on a
         worker: its last actions."""
         if event.data_table.id == 'runners':
-            self.action_run('enter')
+            self.action_run('l')
         elif event.data_table.id == 'lanes' and event.row_key is not None and self.current() is not None:
             self.push_screen(WorkerScreen(self.current(), event.row_key.value))
 
@@ -394,7 +464,7 @@ class FleetApp(App):
         detail = self.query_one('#detail', Static)
         runner = self.current()
         if runner is None:
-            detail.update('No pi-autowork runners yet. Press d to choose a repository and start its service.')
+            detail.update('No pi-autowork runners yet. Press n for a new one: choose a repository and play its service.')
             self.query_one('#lanes', DataTable).display = False
             return
         text = Text()
@@ -402,6 +472,9 @@ class FleetApp(App):
         sentence, style = fleet_view.verdict(runner)
         text.append(f'{runner.name}  ', style='bold')
         text.append(sentence + '\n', style=style)
+        run, land, wait, held, total = fleet_view.task_counts(runner)
+        text.append(f'{total} open: ', style='bold')
+        text.append(f'{run} working · {land} to land · {wait} waiting · {held} held\n')
         waiting = fleet_view.waiting_line(runner)
         if waiting:
             text.append(f'{runner.waiting} waiting: ', style='dim')
@@ -425,17 +498,21 @@ class FleetApp(App):
         if runner.held:
             text.append('held: ', style='bold yellow')
             text.append(', '.join(t + (f' {fleet_view.CAUSES.get(c, c)}' if c else '') for t, c in runner.held) + '\n')
-        details = [runner.repo or '(repository unknown)']
+        # Short: the full model IDs are in the m and M pickers. One line on 80 columns.
+        details = [tilde(runner.repo) or '(repository unknown)']
         if runner.model:
-            details.append(f'model {runner.model}, fallback {runner.fallback}')
+            details.append(f'model {runner.model.rsplit("/", 1)[-1]}, fallback {runner.fallback.rsplit("/", 1)[-1]}')
         text.append('  '.join(details) + '\n', style='dim')
         if runner.toolset:  # a development checkout instead of the Pi package: say so
             text.append(f'toolset {runner.toolset} (PI_AUTOWORK_TOOLSET, not the Pi package)\n', style='yellow')
         if self.view_only:
-            text.append('view only', style='dim')
+            text.append('view only  ', style='dim')
+            hotkeys(text, [('l', 'Log'), ('q', 'Quit')])
         else:
-            text.append('  '.join(f'[{a.key}] {a.label}' for a in self.available(runner)) + '  [d] start a repository',
-                        style='dim')
+            keys = [(a.key, a.label) for a in self.available(runner)]
+            if runner.held:
+                keys.append(('a', 'Aside'))  # it asks which held task
+            hotkeys(text, keys + [('n', 'New'), ('q', 'Quit')])
         if text.plain != getattr(self, '_detail', None):
             self._detail = text.plain
             detail.update(text)
@@ -444,23 +521,14 @@ class FleetApp(App):
     def show_lanes(self, runner):
         """One row per worker: phase, attempt, how long, and what it is doing in plain words."""
         table = self.query_one('#lanes', DataTable)
-        rows = []
-        for lane in runner.lanes:
-            quiet = fleet_view.quiet(lane)
-            rows.append((lane.task, lane.phase, str(lane.attempt), fleet_view.duration(lane.minutes),
-                         fleet_view.doing(lane), quiet))
-        if rows != getattr(self, '_lane_rows', None):
-            self._lane_rows = rows
-            keep = table.cursor_row
-            table.clear()
-            for task, phase, attempt, minutes, doing, quiet in rows:
-                activity = Text(doing)
-                if quiet:
-                    activity.append(f'  {quiet}', style='bold yellow')
-                style = 'bold yellow' if phase.startswith('waiting') else 'bold green'
-                table.add_row(task, Text(phase, style=style), attempt, minutes, activity, key=task)
-            if rows:
-                table.move_cursor(row=min(keep, len(rows) - 1))
+        rows = [{'Task': (lane.task, ''),
+                 'Phase': (lane.phase, 'bold yellow' if lane.phase.startswith('waiting') else 'bold green'),
+                 'Try': (str(lane.attempt), ''), 'For': (fleet_view.duration(lane.minutes), ''),
+                 'Quiet': (fleet_view.quiet(lane).removeprefix('quiet '), 'bold yellow'),
+                 'Doing': (doing(lane), '')} for lane in runner.lanes]
+        keep = table.cursor_row
+        if self.fill(table, rows, self.LANE_COLUMNS, self.LANE_TEXT) and rows:
+            table.move_cursor(row=min(keep, len(rows) - 1))
         table.display = bool(runner.lanes)
 
     def logs(self, runner, lines=200, since=None):
@@ -488,10 +556,10 @@ class FleetApp(App):
     def action_run(self, key, task=None):
         runner = self.current()
         if runner is None:
-            if key == 'a':
+            if key == 'p':
                 self.action_browse()
             return
-        if key == 'enter':
+        if key == 'l':
             self.push_screen(LogScreen(runner, self.logs))
             return
         if self.view_only:
@@ -508,7 +576,7 @@ class FleetApp(App):
     def action_pick_model(self, which):
         runner = self.current()
         if runner is None or not runner.has_service:
-            self.notify('Models are set per service; start one first (a, or d to browse).', severity='warning')
+            self.notify('Models are set per service; play one first (p, or n for a new one).', severity='warning')
             return
         if self.model_cache is None:
             self.model_cache = self.list_models()
@@ -534,7 +602,7 @@ class FleetApp(App):
         if runner is None or not runner.held:
             self.notify('No held task to set aside here.', severity='warning')
             return
-        self.push_screen(PickTask(runner.held), lambda task: task and self.action_run('x', task))
+        self.push_screen(PickTask(runner.held), lambda task: task and self.action_run('a', task))
 
     def action_browse(self):
         root = self.browse_root or (Path.home() / 'git' if (Path.home() / 'git').is_dir() else Path.home())
