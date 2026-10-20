@@ -2210,6 +2210,10 @@ class Coordinator:
         task, root = row.get('task'), row.get('worktree')
         if self.stop or row.get('worker_live') or not root or not Path(root).is_dir() or task in self.resolvers:
             return False
+        if self.reexec_due():
+            # The reload waits for running resolvers and a due reload starts no batch: new ones
+            # each kept it pending, so for hours nothing landed while conflicts were resolved.
+            return False
         adoption = row.get('merge_adoption') or {}
         if not adoption.get('allowed'):
             reason = adoption.get('reason') or 'the engine did not authorize merge adoption'

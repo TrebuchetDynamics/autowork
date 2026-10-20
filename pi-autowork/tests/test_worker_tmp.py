@@ -880,6 +880,18 @@ class BatchLandingTests(unittest.TestCase):
             runner.commit_session_leftovers, runner.ahead = (lambda: None), (lambda: 0)
             with patch.object(coordinator, 'git', return_value='TODO.md\ndocs/plan.md\n'):
                 self.assertTrue(runner.merge_main())  # planning and docs leave the verdicts valid
+
+    def test_a_due_reload_starts_no_merge_resolver(self):
+        """Each new resolver kept the reload pending, and a due reload starts no batch: commits
+        were resolved again and again for hours while none landed."""
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator = self.runner(folder, {})
+            runner.stop, runner.reload = False, True
+            row = {'task': 'B', 'state': 'held', 'cause': 'conflict', 'worktree': folder,
+                   'merge_adoption': {'allowed': True, 'baseline': 'abc'}}
+            with patch.object(coordinator, 'git', side_effect=AssertionError('resolution started')):
+                self.assertFalse(runner.resolve_task_conflict(row))
+            self.assertEqual(runner.resolvers, {})
 class HeadlessApprovalTests(unittest.TestCase):
     """TOOLSET-282-43: a worker loaded an interactive design skill, ended its session with "Do you
     approve?" after 28 s, and the runner held the task as a dead worker for the owner to rescope."""
