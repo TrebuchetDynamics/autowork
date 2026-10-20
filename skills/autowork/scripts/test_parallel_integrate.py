@@ -1377,6 +1377,14 @@ finally:
                 finally:
                     state.slot_path(self.common, task).unlink(missing_ok=True)
 
+    def test_a_reviewer_that_ran_out_of_time_is_a_timeout_hold(self):
+        """A fresh worker reimplemented a finished 90-minute task because its review ran out of time."""
+        self.worker()
+        argv = ['bash', '-c', 'echo "AUTOWORK_HOLD_REASON: the review ran out of time after 1800 s"; exit 1']
+        result = self.module().integrate(self.repo, self.owner, 'A', argv, 10)
+        self.assertEqual((result['outcome'], result.get('cause')), ('HELD', 'timeout'), result)
+        self.assertIn('the review ran out of time after 1800 s', state.slots(self.common)[0]['reason'])
+
     def test_a_validation_hold_is_reverified_once_per_reviewer_version(self):
         """A changed verdict earns another look; the same failure, apart from SHAs, does not."""
         root, _ = self.worker()

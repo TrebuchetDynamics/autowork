@@ -223,12 +223,15 @@ class Coordinator:
         that runs a long check does not stop dispatch, status and questions (TOOLSET-183-d6)."""
         out = tempfile.NamedTemporaryFile(dir=self.state / 'runs', prefix='integrate.', delete=False)
         out.close()
+        limit = str(self.review_limit(task))
         args = [sys.executable, str(self.engine_path), str(self.integ), '--owner-pid', str(os.getpid()),
-                '--integrate', task, '--timeout', str(self.review_limit(task)), '--reviewer-version', self.reviewer_version(),
+                '--integrate', task, '--timeout', limit, '--reviewer-version', self.reviewer_version(),
                 '--base-ref', self.base, *(['--batch-order', ','.join(chain)] if (chain := self.batch_chain()) else []),
                 '--run', '/bin/bash', self.process_script, '--verify', str(self.state), task]
+        # The reviewer's own Pi limit follows the review's: one doubled after a timeout reaches it too.
         with open(out.name, 'w') as stream, open(self.state / 'engine.err', 'a') as err:
-            child = subprocess.Popen(args, stdout=stream, stderr=err, stdin=subprocess.DEVNULL)
+            child = subprocess.Popen(args, stdout=stream, stderr=err, stdin=subprocess.DEVNULL,
+                                     env=dict(os.environ, PI_AUTOWORK_VERIFY_TIMEOUT=limit))
         self.integration = {'task': task, 'proc': child, 'out': out.name, 'started': time.time()}
         self.snapshot = None
 

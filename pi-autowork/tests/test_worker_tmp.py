@@ -225,6 +225,22 @@ class WorkerTmpTests(unittest.TestCase):
             self.assertEqual(worker.review(state, 'T-1', str(self.repo), head, ''), 0)
         self.assertEqual(job.call_args.args[6], '1800')
 
+    def test_a_review_without_a_verdict_says_why_for_the_hold(self):
+        """A reviewer that ran out of time left only "no verdict": held as a validation failure,
+        the task was reimplemented by a fresh worker instead of reviewed again with more time."""
+        import contextlib
+        import io
+        state = self.elsewhere() / 'state'
+        head = worker.git(str(self.repo), 'rev-parse', 'HEAD')
+        for result, reason in (({'ok': False, 'text': '', 'why': 'timeout'}, 'the review ran out of time after 1800 s'),
+                               ({'ok': False, 'text': '', 'why': 'no_model'}, 'the reviewer did not finish (no_model)'),
+                               ({'ok': True, 'text': 'Checked the files.'}, 'the reviewer gave no verdict')):
+            with self.subTest(reason=reason), patch.dict(os.environ, PI_AUTOWORK_VERIFY_TIMEOUT='1800'), \
+                    patch.object(worker.pi_runtime, 'job', return_value=result), \
+                    contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(worker.review(state, 'T-1', str(self.repo), head, ''), 1)
+            self.assertIn(f'AUTOWORK_HOLD_REASON: {reason}\n', out.getvalue())
+
     def test_an_empty_task_timeout_keeps_the_documented_default(self):
         state = self.elsewhere() / 'state'
         prompt, report = state / 'prompt.md', state / 'attempt-1' / 'report.json'

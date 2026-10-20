@@ -320,24 +320,24 @@ def job(s, role, task, directory, message, session, limit, extra):
         if over_budget(s):
             notes.append(f'{role} {task}: budget reached (${spent(s)} of ${s.max_cost} in '
                          f'{s.window_text} h); not starting Pi')
-            return dict(ok=False, text='', notes=notes)
+            return dict(ok=False, text='', notes=notes, why='budget')
         chosen, reason = choose(s)
         if chosen is None:
             record(s, role, task, 'no_model', s.primary, reason, {'error': reason or 'no model ready'})
-            return dict(ok=False, text='', notes=notes)
+            return dict(ok=False, text='', notes=notes, why='no_model')
         run = run_pi(s, directory, message + note, session, chosen, limit, extra, role=role)
         if STOP:
             record(s, role, task, 'interrupted', chosen, reason, run)
-            return dict(ok=False, text='', notes=notes)
+            return dict(ok=False, text='', notes=notes, why='interrupted')
         if run['rc'] == 124:
             record(s, role, task, 'timeout', chosen, reason, run)
-            return dict(ok=False, text='', notes=notes)
+            return dict(ok=False, text='', notes=notes, why='timeout')
         if provider_failure(run) or not run['settled'] or run['aborted']:
             kind = 'provider' if provider_failure(run) else 'crash'
             attempt += 1
             record(s, role, task, kind + '_failure', chosen, reason, run)
             if attempt > s.max_retries:
-                return dict(ok=False, text='', notes=notes)
+                return dict(ok=False, text='', notes=notes, why=kind + '_failure')
             if kind == 'provider' and chosen == s.primary and s.fallback_enabled:
                 cool_primary(s, run['error'] or 'provider failure')
             else:
