@@ -338,22 +338,45 @@ def full_suite_gate(state, task, checkout, base=None):
     return ok, reason
 
 
+class QuietWindowMissed(Exception):
+    """No quiet window came within PI_AUTOWORK_QUIET_WAIT."""
+
+
 def quiet_reruns(state, task, log, checkout, rev, tests, limit):
     """The ``tests`` that pass when rerun one at a time with a host check slot held, once this
     repository's main check is done. Rerun four at a time beside main's full suite, the runner's
-    own engine tests ran out of their 120 s and held three candidates whose trees pass them."""
+    own engine tests ran out of their 120 s and held three candidates whose trees pass them.
+    The wait for that quiet window is bounded by PI_AUTOWORK_QUIET_WAIT (default 900 s): the
+    host's few check slots are shared by every runner's full suite, and a two-minute rerun queued
+    behind them held a review for three hours. Past the bound the tests rerun one at a time
+    without a slot."""
     receipt = log.with_suffix('.quiet.json')
     receipt.unlink(missing_ok=True)
-    deadline = time.monotonic() + limit
+    wait = setting('PI_AUTOWORK_QUIET_WAIT', 900, float)
+    deadline = time.monotonic() + min(limit, wait)
     while time.monotonic() < deadline:
         record = main_check.read(state)
         if record.get('state') != 'running' or not main_check.alive(record.get('pid'), record.get('start_time')):
             break
         check_stop()
         time.sleep(5)
+
+    def waiting(_ahead):
+        check_stop()
+        if time.monotonic() >= deadline:
+            raise QuietWindowMissed
+
+    def rerun():
+        main_check.rerun_failures(str(log), checkout, str(receipt), rev, only=set(tests), workers=1)
+
     try:
-        with main_check.check_slot(lambda ahead: check_stop()):
-            main_check.rerun_failures(str(log), checkout, str(receipt), rev, only=set(tests), workers=1)
+        try:
+            with main_check.check_slot(waiting):
+                rerun()
+        except QuietWindowMissed:
+            print(f'pi-autowork: no quiet check slot for {task} within {wait:g} s; '
+                  'rerunning its failures one at a time without one', file=sys.stderr)
+            rerun()
         quiet = json.loads(receipt.read_text())
     except main_check.Stopped:
         raise

@@ -2394,6 +2394,36 @@ finally:
                 worker.kill()
             worker.wait()
 
+    def test_a_checks_finished_orphan_is_reaped_while_the_check_runs(self):
+        """Reviews held ~110 runner tests: each waited 120 s on a worker that had exited but
+        stayed a zombie of the validator, which had adopted it and never reaped it."""
+        orphan = '''
+import os, sys, time
+r, w = os.pipe()
+if os.fork() == 0:
+    pid = os.fork()
+    if pid == 0:
+        os.setsid()
+        os._exit(0)
+    os.write(w, str(pid).encode())
+    os._exit(0)
+os.wait()
+pid = int(os.read(r, 32))
+deadline = time.monotonic() + 5
+while time.monotonic() < deadline:
+    try:
+        os.killpg(pid, 0)
+    except ProcessLookupError:
+        sys.exit(0)
+    time.sleep(.05)
+sys.exit(1)
+'''
+        for check_slot_wait in (False, True):
+            with self.subTest(check_slot_wait=check_slot_wait):
+                result = execution.bounded_command([sys.executable, '-c', orphan], self.repo, self.common, 'A', 30,
+                                                   check_slot_wait=check_slot_wait)
+                self.assertEqual(result['outcome'], 'EXECUTED', result)
+
 
 
 class ExpectedBranchTests(unittest.TestCase):

@@ -690,6 +690,29 @@ def timeout_activity(common, slot, now):
         return ''
 
 
+def reported_commit(common, slot):
+    """The commit this attempt's report.json names when it is the clean branch tip, or None.
+
+    A worker whose session did not exit after it committed and reported has finished: a
+    fleet task's worker passed every check and wrote its report, then hung for 70 minutes,
+    and the timeout discarded the commit twice and asked the owner to rescope the task."""
+    try:
+        report = execution.read(data_dir(common, slot) / 'report.json')
+        root = execution.safe_path(slot['worktree'])
+        head = execution.git(root, 'rev-parse', 'HEAD')
+        if (not isinstance(report, dict) or report.get('task') != slot['task_id'] or not head
+                or head == slot['baseline'] or report.get('blockers')
+                or execution.git(root, 'status', '--porcelain', '--untracked-files=no')
+                or execution.git(root, 'merge-base', slot['baseline'], head) != slot['baseline']):
+            return None
+        named = report.get('commit')
+        if not isinstance(named, str) or len(named) < 7 or not head.startswith(named):
+            return None
+        return head
+    except (ValueError, OSError):
+        return None
+
+
 def enforce_timeouts(repo, owner_pid, common, default_timeout):
     """Each worker keeps the timeout it was started with (saved in its meta.json)."""
     stopped = []
@@ -699,6 +722,12 @@ def enforce_timeouts(repo, owner_pid, common, default_timeout):
                 and time.time() - slot['started_at'] > limit):
             activity = timeout_activity(common, slot, time.time())
             stop(slot['worker'], slot['worktree'])
+            commit = reported_commit(common, slot)
+            if commit:
+                stopped.append(state.transition(
+                    repo, owner_pid, slot['task_id'], 'reported', commit=commit,
+                    reason=f'its worker kept running after reporting this commit; stopped at the {limit:g} s timeout'))
+                continue
             stopped.append(state.transition(repo, owner_pid, slot['task_id'], 'interrupted',
                                             reason=f'worker timeout after {limit:g} s' + activity))
     return stopped

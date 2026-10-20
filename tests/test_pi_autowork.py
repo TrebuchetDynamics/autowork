@@ -1302,6 +1302,44 @@ class EngineTests(Fixture):
         git('stash', 'pop')
         self.assertEqual((root / 'loose.txt').read_text(), 'left by the worker\n')
 
+    def test_a_resolution_the_session_moved_past_merges_the_new_session_before_adoption(self):
+        """The runner's own questions commit moved the session a second after each resolver
+        started, so every resolution was first refused ('could not adopt its merged commit')."""
+        sys.path.insert(0, str(ROOT / 'pi-autowork'))
+        from pi_autowork import coordinator
+        session, root = self.root / 'session', self.root / 'task'
+        git = lambda where, *a: subprocess.run(['git', '-C', str(where), '-c', 'user.email=t@example.invalid',
+                                                '-c', 'user.name=T', *a], capture_output=True, text=True,
+                                               check=True).stdout.strip()
+        session.mkdir()
+        git(session, 'init', '-q', '-b', 'main')
+        for name in ('base', 'task', 'first', 'second'):
+            if name == 'task':
+                git(session, 'worktree', 'add', '-q', '-b', 'T', str(root))
+                where = root
+            else:
+                where = session
+            (where / f'{name}.txt').write_text(name + '\n')
+            git(where, 'add', '.')
+            git(where, 'commit', '-qm', name)
+            if name == 'first':
+                resolved = git(session, 'rev-parse', 'HEAD')
+                git(root, 'merge', '-q', '--no-edit', resolved)  # what the resolver did
+        runner = object.__new__(coordinator.Coordinator)
+        runner.state, runner.integ, runner.child, runner.seen = self.root / 'state', str(session), None, {}
+        runner.state.mkdir()
+        out = self.root / 'merge.json'
+        out.write_text('{}')
+        proc = subprocess.Popen(['true'])
+        proc.wait()
+        runner.resolvers['T'] = {'proc': proc, 'out': str(out), 'root': str(root), 'head': resolved,
+                                 'commit': 'c', 'merged_count': 0}
+        adopted = []
+        runner.adopt_merge = lambda task: adopted.append(task) or True
+        runner.finish_resolvers()
+        self.assertEqual(adopted, ['T'])
+        git(root, 'merge-base', '--is-ancestor', git(session, 'rev-parse', 'HEAD'), 'HEAD')
+
     def test_a_failure_the_base_already_has_does_not_hold_a_candidate(self):
         self.env['PI_AUTOWORK_VALIDATE'] = 'echo "FAIL: test_y (other.T.test_y)"; exit 1'
         result = self.run_runner('--until-empty')
