@@ -327,7 +327,8 @@ class DispatchTests(unittest.TestCase):
             if output.exists() and output.read_text():
                 break
             time.sleep(.01)
-        self.assertEqual(int(output.read_text()), os.nice(0) + dispatch.WORKER_NICE)
+        # The kernel caps niceness at 19: inside main's own niced check this test starts at 10.
+        self.assertEqual(int(output.read_text()), min(19, os.nice(0) + dispatch.WORKER_NICE))
 
     def test_worker_gets_main_evidence_location_and_repair_instructions(self):
         data = self.common / 'slot-data/A/attempt-1'
