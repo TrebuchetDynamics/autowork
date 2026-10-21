@@ -16,7 +16,7 @@ files, excluded/generated files and semantic-update notices with actual contents
 HEAD alone is not freshness for dirty files. Inspect source even when graph is fresh.
 
 Bootstrap/Maintain may generate derived graph artifacts within the authorized
-workspace. Keep outputs separate from canonical docs/ledger and never overwrite a
+workspace. Keep outputs separate from canonical docs/tasks and never overwrite a
 larger existing graph with a scoped scan. Do not auto-stage outputs, install hooks,
 modify ignore policy or enable watchers/global stores. Audit creates no graph,
 cache, memory or other files and never installs dependencies; query an existing
@@ -36,7 +36,7 @@ Placeholder community labels are not semantic documentation analysis.
 
 This is explicitly a code-only baseline, not analysis of requirements/docs. For
 full analysis use the loaded skill's AST plus host-agent semantic extraction of
-relevant README, accepted requirements/specs, tests, runbooks and existing TODO.
+relevant README, accepted requirements/specs, tests, runbooks and existing tasks.
 No external provider, credentials or upload is authorized just by this workflow.
 Use existing supported dependencies; if installation needs authority, do not silently
 install. Large-corpus scope warnings and extraction/health guards still apply.
@@ -81,16 +81,16 @@ Use findings to correct existing owners, not generate a competing graph wiki:
 - Runbook: real failure paths, recovery prerequisites and observable signals.
 - PRD: preserve accepted intent; name implementation drift instead of rewriting goals.
 
-## 3. Turn verified gaps into better TODO.md slices
+## 3. Turn verified gaps into better task slices
 
 Before creating a task, join accepted intent to a demonstrated gap in source/tests
 and check existing goals/tasks/owners for the same outcome. Graph findings without
 accepted intent remain proposals or owner questions, not executable work. Reuse
-IDs and preserve completed work, leases, focus and canonical ledger authority;
-do not invent task IDs from graph node IDs.
+IDs and preserve completed work, holds and focus; add tasks only through
+`autowork tasks` and do not invent task IDs from graph node IDs.
 
-For graph-backed work, every added or materially revised task carries the required body fields
-plus `Graph evidence:` inside its Sources section (node/path, source locations,
+For graph-backed work, every added or materially revised task carries the required contract fields
+plus `Graph evidence:` inside its `Sources:` note (node/path, source locations,
 confidence and scope). If graph coverage is unavailable, say so and cite the
 verified source instead. Do not require graph metadata for untouched historical tasks.
 Name the user/system outcome rather than "review hub" or "improve documentation".
@@ -102,11 +102,12 @@ Decompose along the verified change/impact path into a bounded vertical slice:
 - Acceptance/checks: observable result, exact feasible test command or planned test,
   expected signal, plus relevant negative/failure and regression cases. Unrun checks
   stay planned; source relationships do not prove passing behavior.
-- `Dependencies:`: actual prerequisite tasks, with reason grounded in the verified
-  path; graph adjacency alone does not establish a scheduling dependency.
-- `Ownership:`: actual integration/component owner or unresolved owner question.
+- `Dependencies:` (`depends_on`): actual prerequisite tasks, with reason grounded in
+  the verified path; graph adjacency alone does not establish a scheduling dependency.
+- `Ownership:` (`ownership`): worker, coordinator or owner, from the actual
+  integration/component owner or an unresolved owner question.
 
-Order Now/Next by accepted milestone, dependency readiness, user impact and risk;
+Order Now/Next (section and rank) by accepted goal, dependency readiness, user impact and risk;
 use graph impact to explain blast radius, not to override focus/priority authority.
 Fix supported documentation now. Implementation tasks include docs/tests as part
 of delivery instead of multiplying graph exploration/preflight tasks. Keep at most
@@ -118,11 +119,11 @@ For each changed doc claim or new task, show the evidence chain:
 accepted requirement -> graph path/finding -> verified source/test gap -> owned
 correction or bounded task -> observable acceptance. Record material unsupported
 claims/coverage warnings and the queries actually run in existing authorized owners
-or private run receipts; do not add timestamp-only churn to TODO.
+or private run receipts; do not add timestamp-only churn to task records.
 
-Run existing goals fmt/validate/render and consumer backlog-check gates unchanged.
+Run `autowork tasks validate --worktree .` and `autowork tasks why ID` for new tasks.
 Check dependency/ownership fields, duplicate outcomes and Now/Next eligibility.
-Unchanged evidence must keep goals.json and TODO.md byte-identical on repeat.
+Unchanged evidence must keep `tasks/` byte-identical on repeat.
 Report graph freshness/coverage, actual commands/results, source corroboration,
 changed owners/tasks and outstanding uncertainty. Static policy tests and a real
 Graphify CLI smoke test do not prove model adherence or better live task quality.
