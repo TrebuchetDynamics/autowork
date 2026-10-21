@@ -41,6 +41,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- **Shared test modules no longer serialize work** (TOOLSET-341-eb82856d). A path named by
+  three unfinished contracts became a hot file, and tasks sharing it waited for each other;
+  nearly every engine task adds tests to `tests/test_pi_autowork.py`, so five tasks waited on
+  one for that file while seven of eight workers sat idle. Test modules (under `tests/`, or
+  `test_*.py` / `*_test.py`) now only rank, like directories; production files keep the
+  hot-file rule.
 - **One full check of main, not two** (TOOLSET-336-3c). The runner started a background
   full check of main beside every batch check of main plus its candidates, two full suites
   at once on an already loaded host. Main's check now waits while a batch or the merge
