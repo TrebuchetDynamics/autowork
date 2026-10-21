@@ -242,13 +242,14 @@ def clear_intent(repo):
 def drain(repo, owner_pid):
     """The runner's step towards a deferred conversion, under its coordinator lease and the
     engine's locks: every attempt with no live worker is set aside (work kept). Returns
-    dict(live=[...], set_aside=[...], blocked=[...]); conversion may run once live and
-    blocked are empty. A repeated quick hold without its Blocker resolution stays: it needs
-    the owner's answer."""
+    dict(live=[...], set_aside=[...], landed=[...], blocked=[...]); conversion may run once
+    live and blocked are empty. ``landed``: set-aside attempts whose merge is already in
+    main but whose task was never closed (it converts open; close it with its evidence). A
+    repeated quick hold without its Blocker resolution stays: it needs the owner's answer."""
     import parallel_integrate
     import parallel_state
     common = parallel_state.common_dir(Path(repo))
-    result = dict(live=[], set_aside=[], blocked=[], claimed=False)
+    result = dict(live=[], set_aside=[], landed=[], blocked=[], claimed=False)
     if not _own_lease(common, owner_pid) or not parallel_state.live_coordinator(common):
         # A dead runner's lease is taken over; a live one is never broken.
         taken = parallel_state.claim(Path(repo), owner_pid, max_workers=16)
@@ -261,17 +262,27 @@ def drain(repo, owner_pid):
             parallel_state.require_owner(common, owner_pid)
             slots = parallel_state.slots(common) if (common / 'slots').is_dir() else []
             for slot in slots:
+                if slot['state'] not in task_commands.OCCUPYING:
+                    continue
                 if parallel_state.worker_live(slot):
                     result['live'].append(slot['task_id'])
                     continue
+                merged = slot['state'] in ('integrating', 'integrated') and parallel_integrate.landed(
+                    repo, (slot.get('integration') or {}).get('commit'))
                 try:
                     parallel_integrate._retire(repo, common, slot, True)
                     result['set_aside'].append(slot['task_id'])
+                    if merged:
+                        result['landed'].append(slot['task_id'])
                 except ValueError as exc:
                     result['blocked'].append(f"{slot['task_id']}: {exc}")
     except BlockingIOError:
+        if result['claimed']:
+            release_drain(repo, owner_pid)
         raise Refused('the engine is busy (its dispatch, integration or writer lock is held)') from None
     except ValueError as exc:
+        if result['claimed']:
+            release_drain(repo, owner_pid)
         raise Refused(f'the drain could not read or retire a slot: {exc}') from None
     return result
 
@@ -303,6 +314,7 @@ def convert_after_drain(repo, owner_pid):
                         detail=f'conversion refused: {exc}')
         clear_intent(repo)
         return dict(result, outcome='CONVERTED', set_aside=drained['set_aside'] + result.get('set_aside', []),
+                    landed=drained['landed'],
                     detail=f"converted {result.get('tasks')} tasks and {result.get('goals')} goals")
     finally:
         if drained['claimed']:

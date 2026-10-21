@@ -2817,14 +2817,17 @@ class Coordinator:
         if step['outcome'] == 'CONVERTED':
             LOG.say(f"Converted this repository to tasks/ after its drain ({step['detail']}; "
                     f"commit {step.get('commit')})")
+            for task in step.get('landed') or []:
+                LOG.say(f'{task}: its merge is already in main but it was never closed; it converted open: '
+                        f'check the merge and close it with `autowork tasks done {task} --evidence ...`')
             return True
         self.conversion_blocker = f"deferred conversion: {step['detail']}"
         return False
 
     def planning_ready(self):
         """A session sees the committed base, not the owner's untracked planning files."""
-        if not (Path(self.repo) / 'tasks').is_dir() and self.convert_deferred():
-            pass  # converted now: plan from the new store below
+        if not (Path(self.repo) / 'tasks').is_dir():
+            self.convert_deferred()  # when the owner asked: drain, then convert (plans below at once)
         if not (Path(self.repo) / 'tasks').is_dir():
             # Unconverted: nothing is selected and no model runs until the owner migrates it.
             blocker = self.conversion_blocker or \

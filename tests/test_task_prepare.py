@@ -357,6 +357,21 @@ class DeferredConversionTests(Repo):
         self.assertIsNone(parallel_state.live_coordinator(parallel_state.common_dir(self.repo)))
         self.assertEqual(self.prepare()['outcome'], 'READY')
 
+    def test_a_merge_already_in_main_is_named_not_silently_redone(self):
+        record = self.repo / '.git/autowork-execution/slots/T-001.json'
+        slot = json.loads(record.read_text())
+        record.write_text(json.dumps(dict(slot, state='integrated',
+                                          integration={'commit': self.git('rev-parse', 'HEAD')})))
+        step = self.after_drain()
+        self.assertEqual((step['outcome'], step['set_aside'], step['landed']), ('CONVERTED', ['T-001'], ['T-001']))
+
+    def test_a_finished_slot_is_left_alone(self):
+        record = self.repo / '.git/autowork-execution/slots/T-001.json'
+        record.write_text(json.dumps(dict(json.loads(record.read_text()), state='released')))
+        step = self.after_drain()
+        self.assertEqual((step['outcome'], step['set_aside']), ('CONVERTED', []), step)
+        self.assertTrue(record.exists())
+
     def test_a_live_worker_is_waited_for_never_stopped(self):
         import task_execution
         worker = subprocess.Popen(['sleep', '60'])

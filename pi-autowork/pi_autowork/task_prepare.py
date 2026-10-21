@@ -205,6 +205,8 @@ def runner(repo):
     if not common:
         return dict(running=False, release=None, reads_tasks=None)
     state = Path(root) / hashlib.sha256(common.encode()).hexdigest()[:16]
+    if not (state / 'lock').is_file():  # never ran here; opening it would create it (--check writes nothing)
+        return dict(running=False, release=None, reads_tasks=None)
     try:
         import fcntl
         with open(state / 'lock', 'a') as handle:
