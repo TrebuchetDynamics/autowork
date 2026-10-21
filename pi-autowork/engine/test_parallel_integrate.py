@@ -520,6 +520,16 @@ class IntegrationTests(unittest.TestCase):
         self.git('worktree', 'add', '-q', '-b', 'elsewhere', str(other), self.baseline)
         self.agent_process(cwd=other)
         self.assertEqual(module.integrate(session, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        # Still guarded: a session with no known workspace, and one in the integration worktree.
+        proc = self.agent_process()
+        found = dict(execution.identity(proc.pid), kind='session', active=None, written=[],
+                     evidence='session: activity unknown')
+        for case, spaces in (('no workspace', []),
+                             ('integration worktree', [str(module.worktree_path(self.repo, 'autowork-integration'))])):
+            with self.subTest(case=case), \
+                    patch.object(execution, 'external_workers', return_value=[dict(found, workspaces=spaces)]):
+                with self.assertRaises(module.WritersBusy):
+                    module.require_no_writers(self.repo, ['A.txt'])
 
     def test_a_main_checkout_session_on_the_same_files_still_waits(self):
         session = self.session_checkout()
