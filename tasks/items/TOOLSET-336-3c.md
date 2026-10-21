@@ -18,3 +18,4 @@ checks = ["python3 scripts/check.py pi-autowork/tests/test_main_check.py tests/t
 exclusions = []
 +++
 
+- Held by: owner's interactive session (supervisor), implementing it now
