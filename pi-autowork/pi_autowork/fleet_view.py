@@ -663,7 +663,7 @@ def needs(runner):
 TASK_LINE = re.compile(r'^\[(\d\d:\d\d)\] (\S+): (\w+)\b')
 # systemd's own lines about the unit, and the runner's start banner (its settings are in the detail).
 UNIT_LINE = re.compile(r'^(Starting|Started|Stopping|Stopped) pi-autowork@|^pi-autowork@\S+: ')
-BANNER = re.compile(r'^(PI AUTOWORK$|Repository: |Toolset: |Engine: |Primary: |Fallback: |Budget: |Mode: )')
+BANNER = re.compile(r'^(PI AUTOWORK$|Repository: |Toolset: |Engine: |Primary: |Fallback: |Mode: )')
 WORD_STYLES = {'done': 'green', 'integrated': 'green', 'failed': 'bold red', 'running': 'cyan',
                'verifying': 'cyan', 'landing': 'cyan', 'implemented': 'cyan', 'resuming': 'cyan', 'paused': 'yellow'}
 

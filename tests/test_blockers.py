@@ -57,7 +57,7 @@ class BlockersContract(unittest.TestCase):
 
     def test_technical_holds_require_recovery_and_observed_outcomes(self):
         for phrase in ('Execute authorized local recovery', 'not merely another Next action',
-                       'same task, candidate and cumulative budgets',
+                       'keep the same task and candidate',
                        'saved answer is not a removed hold', 'missing terminal evidence stays unqualified',
                        'do not edit a live worker', 'read-only requests execute nothing'):
             self.assertIn(phrase, self.ref)

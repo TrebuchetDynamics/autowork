@@ -2315,7 +2315,7 @@ Path('untracked.pyo').unlink()
     def test_sequential_command_output_is_byte_identical_to_original(self):
         from types import SimpleNamespace
         from unittest.mock import patch
-        args = SimpleNamespace(run=['true'], timeout=10, budget_seconds=None, source_path=[], plan=None, owner_pid=None)
+        args = SimpleNamespace(run=['true'], timeout=10, source_path=[], plan=None, owner_pid=None)
         fixed = SimpleNamespace(hex='fixed-offline-receipt')
         with patch.object(execution.uuid, 'uuid4', return_value=fixed), patch.object(execution.time, 'monotonic', return_value=1):
             with execution.lock(self.common / 'writer.lock') as fd:

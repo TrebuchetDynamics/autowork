@@ -129,11 +129,6 @@ class DirectExecutionTests(ExecutionFixtureMixin, unittest.TestCase):
         p,r=self.call('--apply','--timeout','5','--source-path','fixture.py','--run',sys.executable,'fixture.py')
         self.assertEqual(r['outcome'],'SOURCE_CHANGED')
         self.assertFalse(r['command_receipt']['inputs_match'])
-    def test_timeout_budget_cannot_be_refilled_by_next_tick(self):
-        self.fixture.write_text('import time\ntime.sleep(1)\n')
-        p,r=self.call('--apply','--timeout','1','--budget-seconds','.05','--run',sys.executable,'fixture.py')
-        self.assertEqual(r['outcome'],'TIMED_OUT')
-        self.assertEqual(self.call('--apply','--timeout','1','--budget-seconds','10','--run',sys.executable,'fixture.py')[1]['outcome'],'LIMIT_REQUIRED')
     def test_ordinary_apply_without_owner_does_not_fake_dispatch(self):
         p,r=self.call('--apply')
         self.assertEqual(r['outcome'],'OWNER_REQUIRED')
@@ -385,13 +380,14 @@ class RecoveryTests(ExecutionFixtureMixin, unittest.TestCase):
         self.assertEqual(result['completed_tasks'], [])
         self.assertEqual(self.todo.read_bytes(), before)
 
-    def test_pending_command_accounting_cannot_be_reset(self):
+    def test_a_leftover_command_allowance_is_not_read(self):
+        """Command allowances are gone (2026-10-21): only --timeout bounds a command, and a
+        budget file an older engine left behind gates nothing."""
         common = self.repo / '.git/autowork-execution'
         common.mkdir()
-        (common / 'budget-T1.json').write_text(json.dumps({'allocation': 5, 'remaining': 5, 'pending': 'interrupted'}))
+        (common / 'budget-T1.json').write_text(json.dumps({'allocation': 5, 'remaining': 0, 'pending': 'interrupted'}))
         _, result = self.call('--apply', '--timeout', '2', '--run', sys.executable, 'fixture.py')
-        self.assertEqual(result['outcome'], 'LIMIT_REQUIRED')
-        self.assertFalse((self.repo / 'worked').exists())
+        self.assertEqual((result['outcome'], result['command_receipt']['exit_code']), ('EXECUTED', 0))
 
     def test_relative_path_executable_is_fingerprinted_at_child_cwd(self):
         executable = self.repo / 'bin' / 'fixture-command'
@@ -469,14 +465,6 @@ class RecoveryTests(ExecutionFixtureMixin, unittest.TestCase):
         self.set_todo(self.todo_text.replace('Dependencies: T1.', 'Dependencies: None.\n  Sources: [slice](SPEC.md#slice)'))
         self.assertEqual(self.call('--plan', 'SPEC.md#slice')[1]['task']['id'], 'T2')
         self.assertEqual(self.call('--tasks', 'T1', '--plan', 'SPEC.md#slice')[0].returncode, 1)
-
-    def test_malformed_retained_budget_never_becomes_new_allowance(self):
-        common = self.repo / '.git/autowork-execution'; common.mkdir()
-        for malformed in (None, {}, [], False, {'remaining': 1}, {'allocation': True, 'remaining': 1, 'pending': False}):
-            (common / 'budget-T1.json').write_text(json.dumps(malformed))
-            _, result = self.call('--apply', '--timeout', '1', '--budget-seconds', '1', '--run', sys.executable, 'fixture.py')
-            self.assertEqual(result['outcome'], 'LIMIT_REQUIRED', malformed)
-        self.assertFalse((self.repo / 'worked').exists())
 
     def test_directory_or_missing_check_input_is_not_fresh_evidence(self):
         (self.repo / 'src').mkdir()

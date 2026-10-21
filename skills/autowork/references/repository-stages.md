@@ -49,7 +49,7 @@ Use the [execution engine](../SKILL.md) for direct current-session implementatio
 source-bound recovery, review, checks and commits. Read it as the execution stage
 of Autowork, not a second command or an excuse to skip this preparation. Resolve
 its relative helper/reference paths under `../`. Preserve actual process/workspace ownership,
-explicit budgets, live writers and repository exceptions. Apply
+live writers and repository exceptions. Apply
 [unattended continuation](owner-cycle.md) and process owner
 inbox replies before repeating an unchanged blockage.
 

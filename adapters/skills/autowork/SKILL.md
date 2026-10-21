@@ -55,11 +55,11 @@ history, never written. Explicit read-only runs write nothing.
    For a ready task, compose reconciliation, accepted body, explicit bounded
    code/docs/tests/dependency sources and a short execution contract in one host-native
    preparation step. Retain objective/scope, acceptance/checks, source/base,
-   ownership, authority, budget and stop conditions. Do not run a duplicate
+   ownership, authority and stop conditions. Do not run a duplicate
    validate-only, planning/docs audit, full suite or optional skill loader first.
    Keep detailed inputs in the existing task receipt and routine status compact.
-   Preserve stale/held/incomplete/interrupted/owned refusals and consumed budget;
-   prepare only the missing input; preserve existing evidence and explicit allocations.
+   Preserve stale/held/incomplete/interrupted/owned refusals;
+   prepare only the missing input; preserve existing evidence.
    No Kanban lookup, historical card, native continuation or review transition is required.
    Inspect actual process identity and workspace activity before adopting idle work.
    Advisory local locks do not coordinate other hosts or manual writers ignoring them.
@@ -70,7 +70,7 @@ history, never written. Explicit read-only runs write nothing.
    same task. Record material deviations; use bounded planning only for a newly
    discovered consequential choice, not routine debugging or a missing fixture.
 3. Batch connected consumers, runners and tests into one useful outcome; split
-   only for concrete dependency, concurrency, authority or budget boundaries.
+   only for concrete dependency, concurrency or authority boundaries.
    Implement the smallest complete outcome, run discriminating checks, fix failures and
    satisfy required review. Separate offline implementation from live qualification.
    Use installed specialist skills only for concrete gaps, not a mandatory phase chain.
@@ -91,7 +91,7 @@ history, never written. Explicit read-only runs write nothing.
    coordinator/DOCS-MAINTAINER. Follow the shared [documentation closeout](../../../skills/shared/ENGINEERING-CYCLE.md#one-canonical-backlog-one-executor-one-closure-owner):
    preserve foreign dirty docs, reconcile moved inputs and keep implementation with
    pending evidence on failure/interruption, without replaying it. Needed closeout
-   stays within the original task limit; stops/pauses/budget limits launch no new work.
+   stays within the original task; stops and pauses launch no new work.
    Commit attributable verified work locally unless forbidden. Use ordinary Git and
    the repository's conventions; do not manufacture a Hermes card or receipt. Follow
    repository integration policy and existing authority. Push/deploy requires its
@@ -125,9 +125,8 @@ Default interactive execution completes one slice, including authorized recovery
 and closeout. An explicit one-task limit stops new selection after that task;
 standing authority cannot override the caller's narrower stop. Explicit continuation or whole-spec scope
 permits further eligible batches only within its accepted bounds.
-Recurrence authorizes the saved occurrence, not wider scope or extra budgets.
-Reconcile consumed history first; unknown usage is not zero, and
-exhaustion requires explicit additional allocation, never a new occurrence or session.
+Recurrence authorizes the saved occurrence, not wider scope. Reconcile consumed
+history first.
 
 When preparation stalls, execute an existing in-scope recovery step first: rebuild
 recoverable patches/inputs, verify the actual consumer requirements, then retry.
@@ -156,6 +155,7 @@ checks only when policy allows; changed inputs and mandatory gates need checks.
 Finish authorized closeout and continue the requested scope without a new approval
 round. Do not manufacture parent completion or silently widen an active task.
 
-Do not invent a universal lifetime-task cap. An unavailable enforcement capability
-holds only the operation requiring an explicit cap, not independent inspection or
-already-authorized local verification/integration. A prompt cannot enforce spending.
+Autowork has no token, cost or time budgets: usage and cost are measured, never a
+reason to stop, and timeouts only bound single runs. A task that still declares a
+budget, allowance or ceiling is not held for it: record its usage as evidence and keep
+working to its acceptance. Spending money remains an authority only the owner grants.

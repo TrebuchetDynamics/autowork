@@ -11,13 +11,13 @@ worker-runtime boundary (launch/observe/stop/resume) is TOOLSET-117-cb. Behavior
 - a provider failure or an unsettled/aborted run is retried up to
   PI_AUTOWORK_MAX_RETRIES times, resuming the same session, with backoff;
 - every run appends one redacted line to STATE/runs.jsonl; the raw stream, which
-  holds prompts, code and tool output, is deleted;
-- no run starts once PI_AUTOWORK_MAX_COST is reached within PI_AUTOWORK_COST_WINDOW.
+  holds prompts, code and tool output, is deleted. Cost and tokens are recorded there
+  to be measured, never enforced: there is no spending limit.
 
     pi_runtime.py job STATE ROLE TASK DIR SESSION LIMIT MESSAGE [PI ARGS...]
         -> {"ok": bool, "text": str, "notes": [...]}
     pi_runtime.py choose STATE  -> {"chosen": model|null, "reason": str}; exit 1 if none
-    pi_runtime.py ready STATE MODEL | spent STATE | over-budget STATE
+    pi_runtime.py ready STATE MODEL
 """
 from datetime import datetime, timedelta
 import json
@@ -58,9 +58,6 @@ class Settings:
         self.cooldown = int(env.get('PI_AUTOWORK_COOLDOWN', '1800'))
         self.backoff = int(env.get('PI_AUTOWORK_BACKOFF', '30'))
         self.max_retries = int(env.get('PI_AUTOWORK_MAX_RETRIES', '3'))
-        self.max_cost = env.get('PI_AUTOWORK_MAX_COST', '0')
-        self.window_text = env.get('PI_AUTOWORK_COST_WINDOW', '24')
-        self.window = float(self.window_text)
         self.skill_args = env.get('PI_AUTOWORK_SKILL_ARGS', '').split()
         self.dry_run = env.get('PI_AUTOWORK_DRY_RUN', '0') == '1'
         self.session_label = env.get('PI_AUTOWORK_SESSION', '')
@@ -121,32 +118,6 @@ def choose(s):
     else:
         reason = _provider_file(s).get('reason') or 'primary cooling down'
     return (s.fallback if auth_ready(s, s.fallback) else None), reason
-
-
-# --- Budget ---------------------------------------------------------------------
-def spent(s):
-    since = now_iso(s.window)
-    total = 0.0
-    try:
-        lines = (s.state / 'runs.jsonl').read_text().splitlines()
-    except OSError:
-        return 0
-    for line in lines:
-        try:
-            row = json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(row, dict) and str(row.get('time', '')) >= since:
-            total += float(row.get('cost_usd') or 0)
-    return int(total) if total == int(total) else total
-
-
-def over_budget(s):
-    try:
-        limit = float(s.max_cost)
-    except ValueError:
-        return False
-    return limit != 0 and spent(s) >= limit
 
 
 # --- One run --------------------------------------------------------------------
@@ -335,10 +306,6 @@ def record(s, role, task, outcome, model, fallback, run, result='', *, directory
 def job(s, role, task, directory, message, session, limit, extra):
     attempt, note, notes = 0, '', []
     while True:
-        if over_budget(s):
-            notes.append(f'{role} {task}: budget reached (${spent(s)} of ${s.max_cost} in '
-                         f'{s.window_text} h); not starting Pi')
-            return dict(ok=False, text='', notes=notes, why='budget')
         chosen, reason = choose(s)
         if chosen is None:
             record(s, role, task, 'no_model', s.primary, reason, {'error': reason or 'no model ready'},
@@ -385,11 +352,6 @@ def main(argv):
         return 0
     if len(argv) == 3 and argv[0] == 'ready':
         return 0 if auth_ready(Settings(argv[1]), argv[2]) else 1
-    if len(argv) == 2 and argv[0] == 'spent':
-        print(spent(Settings(argv[1])))
-        return 0
-    if len(argv) == 2 and argv[0] == 'over-budget':
-        return 0 if over_budget(Settings(argv[1])) else 1
     if len(argv) == 2 and argv[0] == 'choose':
         chosen, reason = choose(Settings(argv[1]))
         print(json.dumps({'chosen': chosen, 'reason': reason}))

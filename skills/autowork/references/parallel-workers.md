@@ -175,7 +175,7 @@ authority. A worker assertion is not documentation acceptance; task-store
 bookkeeping alone is not Maintain. Sequential native/portable closeout uses the same
 [scoped assessment](../../shared/ENGINEERING-CYCLE.md#one-canonical-backlog-one-executor-one-closure-owner)
 in its authorized session. Required doc failure/interruption preserves code and
-pending evidence without replaying implementation. Stops/pauses/budget limits
+pending evidence without replaying implementation. Stops and pauses
 launch no new work; once/until-empty limits include needed closeout.
 
 ## Runner jobs versus outside sessions
