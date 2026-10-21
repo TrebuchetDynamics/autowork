@@ -145,24 +145,25 @@ def roots(rows):
     TODO entry is not runnable as written), ``outside``
     (a dependency that is no Now/Next task: an outside condition, or a task held in
     Needs decision), ``cycle`` (tasks waiting on each other), ``running``/``integrating``/``restarting`` (moving work). Each
-    root counts the waiting tasks it holds, most first.
+    root counts the waiting tasks it holds, most first, and names them in ``tasks``.
     """
     by_id = {r['task']: r for r in rows}
 
-    counts = {}
+    held_by = {}
     for row in rows:
         if row['state'] == 'waiting' and row.get('root_kind') == 'contract':
-            counts[row['task']] = counts.get(row['task'], 0) + 1  # stuck work of its own, not someone else's
+            held_by.setdefault(row['task'], []).append(row['task'])  # stuck work of its own, not someone else's
         if row['state'] == 'waiting' and row.get('blocked_by') and row['blocked_by'] != [row['task']]:
             for root in _ends(row['task'], by_id, {row['task']}):
-                counts[root] = counts.get(root, 0) + 1
+                held_by.setdefault(root, []).append(row['task'])
     result = []
-    for tid, count in counts.items():
+    for tid, tasks in held_by.items():
+        count = len(tasks)
         row = by_id.get(tid)
         kind = ('outside' if row is None else row['root_kind'] if row.get('root_kind')
                 else 'claim' if row.get('blocked_by') == [tid]
                 else 'cycle' if row['state'] == 'waiting' else ROOT_KINDS.get(row['state'], row['state']))
-        result.append(dict(id=tid, kind=kind, blocks=count, cause=(row or {}).get('cause'),
+        result.append(dict(id=tid, kind=kind, blocks=count, tasks=tasks, cause=(row or {}).get('cause'),
                            reason=(row or {}).get('reason') or ''))
     return sorted(result, key=lambda r: (-r['blocks'], r['id']))
 

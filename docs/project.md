@@ -1959,8 +1959,15 @@ Rules:
   labelled reasons that sum to it: commits in flight by phase (implemented, waiting for
   review; reviewed, waiting for their merge turn; …), the queue's reasons, and overlap
   holds.
+- A waiting task that cannot move until something is resolved is a *Blocker*, not
+  *Waiting*: its wait ends at a root that needs a person or a repair (a runner
+  blocker, a hold other than overlap, a claim, an entry not runnable as written, an
+  outside condition or Needs-decision task, a dependency cycle). The Blocker row
+  names each held task and what stops the others ("2 behind Q-1 (outside condition
+  …)").
 
-Implementation: TOOLSET-289-71; counts that add up: TOOLSET-351-54bd774c.
+Implementation: TOOLSET-289-71; counts that add up: TOOLSET-351-54bd774c; stopped
+waits as Blockers: TOOLSET-352-8337d438.
 
 ## Interactive checkout writer (2026-10-20)
 

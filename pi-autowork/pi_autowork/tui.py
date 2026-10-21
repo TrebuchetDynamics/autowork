@@ -868,10 +868,9 @@ class FleetApp(App):
         waiting = fleet_view.waiting_detail(runner)
         if waiting:
             detail_row(text, 'Waiting', waiting)
-        if runner.held:
-            asked = {q.id for q in runner.questions}
-            detail_row(text, 'Blocker', ', '.join(f'{t} {fleet_view.blocker_detail(c, t in asked)}' if c not in fleet_view.WAIT_CAUSES
-                                          else f'{t} waits: {fleet_view.CAUSES[c]}' for t, c in runner.held), 'bold red')
+        blockers = fleet_view.blocker_parts(runner, {q.id for q in runner.questions})
+        if blockers:
+            detail_row(text, 'Blocker', blockers, 'bold red')
         if runner.questions:  # what the owner can answer, easiest first (BLOCKERS.md)
             count = len(runner.questions)
             detail_row(text, 'Questions', fleet_view.question_summary(runner)
