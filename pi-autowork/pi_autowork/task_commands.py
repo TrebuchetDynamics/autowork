@@ -350,15 +350,15 @@ def place_between(ranked, position):
 
 
 def new_id(repo, store, prefix=None):
-    """Next number plus a two-hex hash; IDs in the frozen TODO.archive.md history are taken too."""
+    """Next number plus an eight-hex hash; legacy and archived IDs are taken too."""
     ids = set(store.tasks) | set(store.goals)
     archive = Path(repo) / 'TODO.archive.md'
     if archive.is_file():
-        ids |= set(re.findall(r'\b[A-Za-z][A-Za-z0-9_]*-\d+(?:-[0-9a-f]{2})?\b', archive.read_text()))
-    numbered = [m.groups() for m in (re.fullmatch(r'([A-Za-z][A-Za-z0-9_]*)-(\d+)(?:-[0-9a-f]{2})?', i)
+        ids |= set(re.findall(r'\b[A-Za-z][A-Za-z0-9_]*-\d+(?:-(?:[0-9a-f]{8}|[0-9a-f]{2}))?\b', archive.read_text()))
+    numbered = [m.groups() for m in (re.fullmatch(r'([A-Za-z][A-Za-z0-9_]*)-(\d+)(?:-(?:[0-9a-f]{8}|[0-9a-f]{2}))?', i)
                                      for i in ids) if m]
     if prefix is None:  # the tasks' most common prefix; never a goal's
-        own = [m.group(1) for m in (re.fullmatch(r'([A-Za-z][A-Za-z0-9_]*)-\d+(?:-[0-9a-f]{2})?', t)
+        own = [m.group(1) for m in (re.fullmatch(r'([A-Za-z][A-Za-z0-9_]*)-\d+(?:-(?:[0-9a-f]{8}|[0-9a-f]{2}))?', t)
                                     for t in store.tasks) if m]
         pool = own or [p for p, n in numbered if f'{p}-{n}' not in store.goals]
         prefix = max(sorted(set(pool)), key=pool.count) if pool else 'T'
@@ -368,7 +368,7 @@ def new_id(repo, store, prefix=None):
     number = str(max([0] + [int(n) for n in numbers]) + 1).zfill(max([3] + [len(n) for n in numbers]))
     for _ in range(64):
         digest = hashlib.sha256(f'{prefix}-{number}:{time.time_ns()}:{os.urandom(8).hex()}'.encode()).hexdigest()
-        if (candidate := f'{prefix}-{number}-{digest[:2]}') not in ids:
+        if (candidate := f'{prefix}-{number}-{digest[:8]}') not in ids:
             return candidate
     raise CommandError(f'no unused ID for {prefix}-{number}')
 
