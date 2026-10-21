@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-310-50"
 title = "Extend autowork scorecard into the evaluation report"
 short = "Evaluation scorecard"
-status = "open"
+status = "done"
 goal = "EVALUATION"
 section = "Next"
 rank = 7000
@@ -16,6 +16,8 @@ scope = "autowork scorecard reports, per runner and overall, over --days up to 3
 acceptance = ["On fixture data spanning 30 days, --json and --csv carry the same values per metric and week, each labelled measured, estimate or missing.", "A window with no verified task reports rates as missing, not 0; a task retried twice counts once as verified, with every attempt's cost.", "--baseline compares measured cost and owner minutes per task with the file's values, labelled estimate; without it the comparison reads 'no baseline'.", "Manual closures are reported separately and excluded from verified tasks and the unattended completion rate; each counts as an owner intervention."]
 checks = ["python3 -m unittest discover -s pi-autowork/tests", "python3 scripts/check.py"]
 exclusions = ["No dashboard or web view; no new dependency."]
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-310-50.toml"
 +++
 
 - Sources: [30-day evaluation](docs/evaluation.md#30-day-evaluation)
