@@ -61,6 +61,39 @@ class ReopenTests(LandingFixture):
         log = self.git(self.repo, 'log', '--format=%s', '-3', 'main')
         self.assertIn('docs(tasks): reopen T (pi-autowork)', log)
 
+    def test_refused_reopening_keeps_uncommitted_session_bookkeeping(self):
+        note = self.integ / 'BLOCKERS.md'
+        note.write_text('old question\n')
+        self.git(self.integ, 'add', 'BLOCKERS.md')
+        self.git(self.integ, 'commit', '-qm', 'old question')
+        self.close_on_session()
+        self.edit_on_main({'acceptance': ['changed after closure']})
+        note.write_text('session question not committed yet\n')
+        self.git(self.integ, 'add', 'BLOCKERS.md')
+        hook = self.repo / '.git/hooks/pre-commit'
+        hook.write_text('#!/bin/sh\necho "pre-commit: checks failed" >&2\nexit 1\n')
+        hook.chmod(0o755)
+        before = self.head('pi-autowork/s')
+        self.assertFalse(self.runner.merge_main())
+        self.assertIn('could not be reopened', self.runner.merge_pending)
+        self.assertEqual(self.head('pi-autowork/s'), before)
+        self.assertEqual(note.read_text(), 'session question not committed yet\n')
+
+    def test_reopening_does_not_discard_an_uncommitted_task_note(self):
+        self.close_on_session()
+        self.edit_on_main({'acceptance': ['changed after closure']})
+        self.git(self.integ, 'merge', '-q', '--no-edit', 'main')  # a retained stale close
+        path = self.integ / 'tasks/items/T.md'
+        edited = task_store.set_note(path.read_text(), 'Note', 'keep this session note')
+        path.write_text(edited)
+        self.git(self.repo, 'commit', '-q', '--allow-empty', '-m', 'main moved')
+        hook = self.repo / '.git/hooks/pre-commit'
+        hook.write_text('#!/bin/sh\nexit 1\n')
+        hook.chmod(0o755)
+        self.assertFalse(self.runner.merge_main())
+        self.assertEqual(path.read_text(), edited)
+        self.assertIn('could not be reopened', self.runner.merge_pending)
+
     def test_a_rank_edit_keeps_the_close(self):
         self.close_on_session()
         self.edit_on_main({'rank': 5000})  # priority is no contract: the verification still covers it

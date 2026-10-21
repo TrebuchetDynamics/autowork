@@ -807,6 +807,10 @@ class Coordinator:
             return True  # an unreadable store is the LEDGER repair's, and selects nothing
         if not stale:
             return True
+        for task, _, _ in stale:
+            if git(self.integ, 'status', '--porcelain', '--', f'tasks/items/{task}.md'):
+                LOG.warn(f'{task}: cannot reopen over uncommitted session bookkeeping; its edits are kept')
+                return False
         paths = []
         for task, pinned, now in stale:
             reason = (f'{datetime.now():%Y-%m-%d}: its contract changed after its verified close '
@@ -833,15 +837,20 @@ class Coordinator:
         """Merge ``ref`` into the session; task files merge per file like any other text, and a
         conflicting one is left for the Pi resolver. A close the merge left under another contract
         is reopened; if that cannot be committed, the merge is undone (it waits, not lands)."""
+        self.merge_error = ''
         if git_ok(self.integ, 'merge-base', '--is-ancestor', ref, 'HEAD'):
             return True
         before = git(self.integ, 'rev-parse', 'HEAD')
-        if not git_ok(self.integ, 'merge', '-q', '--no-ff', '--no-edit', ref):
+        result = subprocess.run(['git', '-C', str(self.integ), 'merge', '-q', '--no-ff', '--no-edit', ref],
+                                capture_output=True, text=True)
+        if result.returncode:
+            self.merge_error = (result.stdout + result.stderr).strip() or f'git merge exited with status {result.returncode}'
             return False
         if self.reopen_stale_closures():
             return True
-        git(self.integ, 'reset', '-q', '--hard', before)
-        LOG.say(f'Held the merge of {ref}: a task it leaves done under a changed contract could not be reopened')
+        git(self.integ, 'reset', '-q', '--merge', before)  # keep unstaged bookkeeping if its commit was refused
+        self.merge_error = 'a task the merge leaves done under a changed contract could not be reopened'
+        LOG.say(f'Held the merge of {ref}: {self.merge_error}')
         return False
 
     def end_session(self):
@@ -891,14 +900,23 @@ class Coordinator:
                 self.seen['merge-batch'] = note
                 LOG.say(f'Merge pending: {note}')
             return False
-        self.commit_session_leftovers()
+        commit_error = self.commit_session_leftovers()
+        if commit_error:
+            self.merge_pending = commit_error
+            LOG.say(f'Merge pending: {self.merge_pending}. The session edits are kept in {self.integ}.')
+            return False
         ahead = self.ahead()
-        if ahead == 0:
+        if ahead == 0 and git_ok(self.integ, 'merge-base', '--is-ancestor', self.base, 'HEAD'):
             return True
         planning_note = self.commit_owner_changes()
         if not self.merge_planning(self.base):
             conflicts = (git(self.integ, 'diff', '--name-only', '--diff-filter=U') or '').splitlines()
-            files = ' '.join(conflicts) or '(unknown files)'
+            if not conflicts:
+                self.merge_pending = f'could not merge {self.base} into {self.integ_branch}: {self.merge_error}'
+                git(self.integ, 'merge', '--abort')
+                LOG.say(f'Merge pending: {self.merge_pending}. The branch and its worktree ({self.integ}) are kept.')
+                return False
+            files = ' '.join(conflicts)
             base_rev = git(self.repo, 'rev-parse', self.base)
             if not self.stop and self.resolved_for != base_rev:  # once per main revision, not per session
                 self.resolved_for = base_rev
@@ -1354,17 +1372,27 @@ class Coordinator:
 
     def commit_session_leftovers(self):
         """The session worktree is the runner's own: anything left there uncommitted (a close
-        that failed after writing, an interrupted merge) is committed, or every later merge
-        refuses it (bravo, TASK-010)."""
+        that failed after writing, an interrupted merge) is committed. If a hook refuses
+        bookkeeping, unstage only those paths, preserving the working edits so an unrelated
+        main fix can still merge. Work-commit failures keep the session held."""
         marker = git(self.integ, 'rev-parse', '--path-format=absolute', '--git-path', 'MERGE_HEAD')
         if marker and Path(marker).exists():
             git(self.integ, 'merge', '--abort')
         if not dirty(self.integ):
-            return
+            return ''
         git(self.integ, 'add', '-A')
-        if git_ok(self.integ, 'commit', '-q', '-m', 'chore: commit uncommitted session changes (pi-autowork)',
-                  '-m', 'Left uncommitted in the session worktree; committed so the session can merge.'):
-            LOG.say(f'Committed uncommitted changes left in the session worktree ({self.integ})')
+        if not self.commit_session('-q', '-m', 'chore: commit uncommitted session changes (pi-autowork)',
+                                   '-m', 'Left uncommitted in the session worktree; committed so the session can merge.'):
+            staged = git(self.integ, 'diff', '--cached', '--no-renames', '--name-only', '-z')
+            paths = [p for p in (staged or '').split('\0') if p]
+            if (paths and all(planning_path(p) for p in paths)
+                    and git_ok(self.integ, 'reset', '-q', 'HEAD', '--', *paths)
+                    and git_ok(self.integ, 'diff', '--cached', '--quiet')):
+                LOG.say('Unstaged session bookkeeping after the refused commit; working edits are kept')
+                return ''
+            return self.session_commit_error
+        LOG.say(f'Committed uncommitted changes left in the session worktree ({self.integ})')
+        return ''
 
     def follow_base(self):
         """The session follows the main branch whenever no review is running, and takes
@@ -1383,8 +1411,15 @@ class Coordinator:
             # there is nothing to merge, or a stalled runner never sees them (TOOLSET-157-cd).
             self.commit_owner_changes()
         behind = git(self.repo, 'rev-list', f'{self.integ_branch}..{self.base}') if self.integ else ''
-        if not behind or dirty(self.integ) or (self.batch_pending() and not self.session_busy()):
+        if not behind or (self.batch_pending() and not self.session_busy()):
             return  # batch verdicts wait to land on the trees they were reached on (TOOLSET-258-07)
+        if dirty(self.integ):
+            if not self.session_busy():
+                # A refused bookkeeping commit may leave no ahead commit at all. Recover
+                # through the landing seam instead of waiting forever on its dirty guard.
+                self.merge_blocker = ('' if self.merge_main()
+                                      else f'the session cannot take {self.base}: {self.merge_pending}')
+            return
         if self.session_busy():
             # A review is running. Planning-only commits are taken at once: integration lands the
             # review's merge on top without validating again (TOOLSET-233-ba). Anything else waits
@@ -1464,6 +1499,16 @@ class Coordinator:
         self.sync_upstream()
         return True
 
+    def commit_session(self, *args):
+        """Keep Git's diagnostic when session bookkeeping cannot be committed, including hook output."""
+        result = subprocess.run(['git', '-C', str(self.integ), 'commit', *args], capture_output=True, text=True)
+        self.session_commit_error = ''
+        if result.returncode:
+            detail = (result.stdout + result.stderr).strip() or f'git commit exited with status {result.returncode}'
+            self.session_commit_error = f'Session bookkeeping commit refused: {detail}. Repository hooks were not bypassed.'
+            LOG.warn(self.session_commit_error)
+        return result.returncode == 0
+
     def commit(self, paths, *message):
         if self.session_busy():
             return False  # a review is running: its fast-forward needs the session unchanged
@@ -1474,7 +1519,7 @@ class Coordinator:
         args = []
         for line in message:
             args += ['-m', line]
-        done = git_ok(self.integ, 'commit', '-q', *args)
+        done = self.commit_session('-q', *args)
         self.land_soon = self.land_soon or done
         return done
 
