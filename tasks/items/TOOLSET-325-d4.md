@@ -7,7 +7,7 @@ status = "open"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 21000
-depends_on = []
+depends_on = ["TOOLSET-316-d5", "TOOLSET-324-73"]
 touches = ["pi-autowork/pi_autowork/cli.py", "pi-autowork/pi_autowork/service.py", "pi-autowork/pi_autowork/health.py", "tests/test_autowork_command.py", "tests/test_pi_autowork.py"]
 resources = []
 kind = "implementation"
@@ -19,3 +19,4 @@ exclusions = []
 +++
 
 - Sources: https://github.com/TrebuchetDynamics/autowork/issues/6
+- Coordination: Wait for TOOLSET-316-d5 to land its reported cli.py change (candidate c1e94f7d07bef1d6ad89d769257c376de805c189; slot-data/TOOLSET-316-d5/attempt-1/report.json in the Git common execution directory), then TOOLSET-324-73 for shared service.py and tests/test_autowork_command.py. Issue 6 setup exits, stop-reason reporting and the pre-write repository identity guard remain one checked startup path in cli.py:main; no acceptance is dropped or delivered by the display-only 316-d5 candidate. TOOLSET-330-c2 follows this task for shared cli.py and status tests; no Now priority is changed.
