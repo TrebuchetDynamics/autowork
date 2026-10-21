@@ -43,6 +43,49 @@ for a selected prepare/inspect batch. After later execution, inspect that case's
 phase-one inventory separately from the execution diff. Review tool traces for commits, service changes, generated tests,
 installation and delegation attempts even if no resulting file remains.
 
+## Consequential-question interviews
+
+`interviews.py` extends the same disposable repository with eight bounded
+multi-turn cases per entrypoint. It prepares inputs and inventories writes; it
+**does not** run a model or automatically grade interview quality.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 tests/fixtures/planning/interviews.py prepare "$TMPDIR/interview-eval"
+# In a fresh session for each NAME, send NAME.request.txt first.
+# Keep NAME.driver.json outside the model context; send each reply only after
+# inspecting the preceding answer, in that same session. Never simulate replies.
+PYTHONDONTWRITEBYTECODE=1 python3 tests/fixtures/planning/interviews.py inspect "$TMPDIR/interview-eval"
+```
+
+Use `--cases two-decisions,stop-resume` and/or `--entrypoints native,portable`
+for narrower runs. Each case has at most four user turns. The evaluator should
+stop at that bound and record remaining uncertainty rather than manufacture
+answers or let the model run an unbounded interview. If the model asks a different
+consequential question, retain the actual trace and assess whether the scripted
+reply resolves it; do not score merely matching wording/order as success.
+
+| Case | Decision/artifact observation |
+| --- | --- |
+| two-decisions | First answer settles capitalization only; the next material question covers blank-input behavior, then both decisions reach acceptance/tasks. |
+| vague-intent | Ask for a real user example before offering arbitrary options; use that example as concrete success. No writes. |
+| fully-specified | Save complete FMT-01 without filler or implementation. |
+| ambiguous-round | Bare yes accepts neither of two recommendations. Explicit acceptance of choice 1 does not settle choice 2; skip/finish leaves only affected work open. |
+| shared-constraint | Ask the shared blank-record policy once, reuse its answer across tasks; no repo-fact/routine-authority questions or invented dependency for the independent length helper. |
+| stop-resume | Stop saves corrected capitalization and open blank policy without another question. Resume reads saved progress and does not ask the settled choice again. |
+| delegation | Explicit Plan For Me switch reuses constraints; choices are planner calls, not attributed user answers. No dispatch. |
+| builder-followup | Only unanswered consequential batch failure behavior returns to the user; settled intent and routine naming do not. No writes. |
+
+Read intermediate saved artifacts at stop and before resume, not just the final
+state. Score accepted/proposed/open decisions, observable acceptance and affected
+task readiness against the actual replies. Count neither questions nor matching
+phrases. Preserve all tool traces, loaded references, source hashes, host/model,
+transcripts and inventories in scratch. `source-sha256.json` pins both entrypoints
+and shared guidance; supplement it with paths/hashes for other references actually
+loaded. Inspect `outside_planning_owners` findings (including any coordination
+lock), rather than treating them as automatically safe or automatically failed.
+Questions-only specimens permit no writes whatsoever. No new mandatory task schema
+or consumer fixture dependency is introduced.
+
 Pi command/package checks separately exercise literal arguments, challenge and
 research selectors plus actual injected boundary bytes. Direct-source specimen
 runs establish behavior only for the recorded host/model/source closure. They do

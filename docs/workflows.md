@@ -324,8 +324,8 @@ checkout additionally links planning craft. Updating source alone cannot establi
 installed behavior. Record the loaded entrypoint/revision in behavioral checks;
 do not overwrite plugin caches by hand or assume every runner uses checkout HEAD.
 
-Current Plan With Me permits a plain “yes” to accept every recommendation in a
-round and offers to skip the interview at its opening. It also has useful guidance
+At that checkout, Plan With Me permitted a plain “yes” to accept every recommendation
+in a round and offered to skip the interview at its opening. It also had useful guidance
 on impact, scenarios and settled answers. Preserve that substance while removing
 the ambiguous bulk-answer shortcut and premature finish/skip behavior. There is no
 evidence that a fixed question quota would improve intent coverage.
@@ -394,9 +394,8 @@ preservation only. Source-model runs do not prove installed/native-host or Teleg
 behavior; record actual loaded paths/hashes and keep those qualification gaps
 explicit. The existing plan lint can suggest dependency edges for overlapping
 writes; treat these as scheduling warnings, not new product prerequisites. Re-cut
-or retain the warning with a reason instead of inventing dependencies. Interview
-quality and recommendation application remain the separate TOOLSET-136-0b/137-cd
-scope below.
+or retain the warning with a reason instead of inventing dependencies. Question
+quality and recommendation application have their own scopes below.
 
 TOOLSET-135-16 source evaluation: 15 fresh-context Pi delegate cases
 (`gpt-6.1-sol`) inspected the actual loaded sources, tool traces, before/after bytes
@@ -446,6 +445,35 @@ Builder review checks missing consequential decisions and executable task qualit
 not wording or question count. It must not reopen settled answers or ask for a
 blanket implementation approval. For a fully specified request, explain briefly
 that no unresolved product choices remain and save the plan without an interview.
+
+The source entrypoints now share the
+[consequential uncertainty loop](../skills/shared/PLANNING-CRAFT.md#consequential-uncertainty):
+track what a different answer changes, research facts, ask the next ready material
+question, and bind each reply to the choice it actually resolves. Both remove the
+opening skip pitch and blanket-yes shortcut. Stop/finish saves resolved progress
+without another question; resume reuses accepted decisions and corrections. This
+changes source instructions, not host enforcement or installed plugin caches.
+The [bounded interview specimens](../tests/fixtures/planning/README.md#consequential-question-interviews)
+exercise decisions, artifacts and tool traces at both source entrypoints, including
+multi-turn continuation, vague/fully specified intent, ambiguous replies, shared
+constraints, stop/resume, delegation and builder follow-up. They are manual model
+evaluations, not question-count or phrase-matching tests.
+
+TOOLSET-136-0b source evaluation used Pi delegates (`gpt-6.1-sol`): eight bounded
+scenarios at each entrypoint, plus focused mid-interview delegation and ambiguous
+answer replays after review. Both continued from capitalization to the still-open
+blank-input decision, elicited concrete vague-intent examples, avoided filler for
+specified intent, reused shared constraints and saved corrected stop/resume state.
+Questions-only cases wrote nothing; writable cases changed only the plan and TODO.
+A five-sample unchanged-source control accepted both recommendations from bare
+“yes” in four samples; five candidate samples clarified its scope instead (pooled
+across entrypoints, not five per host). One initial portable trace incorrectly
+inferred no exporter from formatter-only reads; owner-inspection guidance was
+strengthened, and the replay inspected the exporter and retained its actual behavior
+as evidence, not acceptance. Traces, intermediate artifacts and inventories were
+reviewed, not just final replies. No implementation or commands ran inside the
+specimens; they do not establish indexed-consumer readiness. Installed Pi caches,
+native Hermes/Claude Code/Codex, other models and Telegram remain unexercised.
 
 #### Recommendations Autowork can use — TOOLSET-137-cd
 

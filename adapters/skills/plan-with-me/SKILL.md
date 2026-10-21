@@ -17,14 +17,23 @@ whole-frontier questionnaire or repeated approval of settled answers.
 `Selected mode: challenge`, a Grill Me compatibility request, or an explicit
 request to challenge a plan selects this mode. Preserve the literal user request
 and its restrictions; mode selection adds no implementation or write authority.
-Follow the [planning craft](../../../skills/shared/PLANNING-CRAFT.md): size the
-work, offer to skip the questions, get the user describing before offering options,
-and ask in rounds (one open question, or a few ready decisions numbered with
-recommendations worded so "yes" accepts them), using native user-input tools or
-chat. Inspect existing docs/source first so questions resolve product intent rather
-than facts already in the repo. Play each understood part back with guesses marked.
-Decide routine engineering details yourself and say them as your calls. Honor
-questions-only/read-only without writing files.
+Follow the [consequential uncertainty loop](../../../skills/shared/PLANNING-CRAFT.md#consequential-uncertainty):
+track open intent, concrete acceptance, scope and constraints by the decisions/tasks
+they change; ask the highest-impact ready question with context and trade-offs,
+using native user-input tools or chat. Thin intent needs a concrete example, not an
+arbitrary option menu. Inspect repository facts yourself and decide routine details
+within authority as planner calls. After every answer, update only what it resolves,
+play back new understanding with guesses marked, then ask the next consequential
+question. Continue until material intent and acceptance are actionable; a fully
+specified request needs no filler. Ask shared batch constraints once.
+
+A bare "yes" accepts one unambiguous proposal, never several separate
+recommendations; clarify ambiguous answer scope and keep affected choices open.
+Preserve corrections and accepted decisions on resume. "You decide" delegates that
+choice; "skip" leaves it open; "stop/finish" ends all questioning and preserves
+resolved progress without fabricated answers. Do not habitually offer to skip at
+the opening; an explicit switch to Plan For Me reuses existing evidence/decisions.
+Honor questions-only/read-only without writing files.
 
 `/plan_with_me blockers [repo|name]` is [`/blockers`](../blockers/SKILL.md): routine
 planning repairs first, then genuine owner questions, easiest first; replanning happens here
@@ -32,10 +41,14 @@ before the next question.
 
 Save explicit answers in existing requirement/spec documents when permitted. At
 finish, summarize scope, non-goals, acceptance and open questions. Ask for approval
-only if your synthesis adds material unaccepted intent. Reconcile accepted decisions
-through [Docs Sync](../docs-sync/SKILL.md): full TODO.md tasks, priorities,
+only if your synthesis adds material unaccepted intent and the user has not said
+stop/finish; otherwise leave that intent open without another question. Reconcile
+accepted decisions through [Docs Sync](../docs-sync/SKILL.md): full TODO.md tasks, priorities,
 dependencies, checks and `Touches:`. Run the planning craft's builder check on the saved tasks
-and lint them with `goals.py plan-lint <repo> --tasks IDS` before reporting them ready. Do not start implementation merely because a plan exists.
+and lint them with `goals.py plan-lint <repo> --tasks IDS` before reporting them ready.
+Bring only unanswered consequential builder questions back to the user; settle
+repository facts and routine details yourself, without reopening accepted answers.
+Do not start implementation merely because a plan exists.
 
 Use the [single-pass handoff](../../../skills/shared/PLAN-HANDOFF.md#one-planning-pass-one-handoff):
 resume accepted decisions and existing task IDs, investigate only missing evidence,

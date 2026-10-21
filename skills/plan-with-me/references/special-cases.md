@@ -77,6 +77,10 @@ For a pending-task list, separate unresolved product
 choices, recovery scope/budget and live-operation gates; do not interview every task
 or reopen settled deferrals and cancellations. Group tasks only when one shared
 choice governs them, retaining each task's acceptance and separate operation gates.
+Ask that shared choice once, record which tasks its answer governs and reuse it
+throughout the batch. Do not turn a bare "yes" into approval of separate task
+recommendations; clarify only affected unanswered choices. One pending task does
+not hold independent accepted work.
 
 ## Landing pages, READMEs and onboarding
 
@@ -124,6 +128,15 @@ inventing a legal structure from transcription. Record a possible physical venue
 a scenario until selected, not as an automatic expansion of launch scope.
 
 ## Saving across a long interview
+
+Keep the compact uncertainty map with the existing brief: resolved decisions,
+planner calls, assumptions, and consequential open issues with their affected
+tasks. After each answer, continue to the next issue that still changes intent or
+acceptance, not an arbitrary interview length. On "stop/finish", end questioning
+and save the resolved portion (chat only in no-write mode), with unresolved choices
+explicitly open. On resume, read that state rather than repeating the interview;
+corrections supersede prior proposals without erasing history. A skipped question
+is not delegated or answered, and a delegated choice is not user acceptance.
 
 Put accepted amendments before preserved historical
 scope and reconcile affected Scope, Sources, Next action and recovery summaries;
