@@ -126,11 +126,19 @@ cannot reproduce (a value spread over several lines, a trailing comment, line br
 control characters, unknown keys) instead of dropping it, and checks that the result reads
 back to exactly the intended values.
 
-`autowork tasks` reads at HEAD (`list`, `show`, `why`, `validate`; `validate --worktree`
-checks uncommitted edits through a throwaway commit that leaves the index and refs alone)
-and edits the working tree (`add`, `field`, `place`, `move`, `hold`, `release`, `done`,
-`supersede`, `goal`; `new-id` allocates an ID); it never commits. A write refuses a file that changed
-since it was read and is undone when the resulting store does not validate. `field` sets a
+`autowork tasks` reads at HEAD (`list`, `show`, `why`, `validate`; `--worktree` on `list`,
+`show` and `validate` reads uncommitted edits through a throwaway commit that leaves the
+index and refs alone) and edits the working tree (`add`, `field`, `place`, `move`, `hold`,
+`release`, `done`, `supersede`, `goal`; `new-id` allocates an ID); it never commits. A write
+holds the repository's task lock (`<git dir>/autowork-tasks.lock`), so two writers never
+interleave; refuses a file that changed since it was read, or since the `record_revision`
+given as `--expect REV`; and is undone when the resulting store does not validate. A write
+to the contract (the hashed fields or the goal), the section, or the status (`done`,
+`supersede`) of a task whose attempt is live (a dispatched, running, reported, integrating
+or integrated slot, or the sequential lease) is refused: rank, title, short and notes stay
+open, and a held or interrupted attempt stays repairable. `add` writes a whole contract at once (`--resources`, `--exclusions`,
+`--kind`, `--ownership`, `--sources`) and refuses a task whose goal and title match an open
+or done one, naming it. `field` sets a
 typed header field, or any other label as a body note (`Held by`, `Owner decision`).
 `done --evidence` closes a task outside the engine (a planning task, or one whose acceptance
 the evidence shows met) and keeps the evidence as its note; `goal` adds a goal or changes its
@@ -142,13 +150,20 @@ authority beyond its typed fields, and a declared check still needs approval to 
 
 ## Converting a repository: `autowork migrate`
 
-`autowork migrate [repo] [--dry-run]` converts a TODO.md + goals.json repository once. It
+`autowork migrate [repo] [--dry-run] [--no-commit]` converts a TODO.md + goals.json
+repository once; `autowork tasks prepare` runs it for Docs Sync, so no owner has to. It
 refuses, writing nothing, while a worker slot is occupied (running, held, reported,
 integrating or integrated), a coordinator or sequential lease is live, a task is
-`in_progress`, planning files are uncommitted, or `tasks/` already exists. It builds every
-record, reads them back through a throwaway commit and requires the same task set and the
-same selection order as the current queue before writing; then it removes TODO.md and
-goals.json (no stub), keeps TODO.archive.md, and makes one local commit. Ranks are 1000 x
+`in_progress`, planning files are uncommitted, or `tasks/` is already committed. It builds
+every record, reads them back through a throwaway commit and requires the same task set and
+the same selection order as the current queue before writing. The converted commit (records
+added, TODO.md and goals.json removed with no stub, TODO.archive.md kept) is recorded as
+`refs/autowork/migration` before any file changes; its paths are then staged in the working
+tree and index, HEAD moves to it by compare-and-swap, and the ref is deleted. A run
+interrupted at any point leaves the ref, and the next run finishes from where it stopped, or
+refuses, changing nothing, when a path holds content that is neither the old nor the
+converted version; a ref built on an older HEAD with nothing staged is rebuilt. With
+`--no-commit` it stops after staging, and a later run (or the owner's commit) lands it. Ranks are 1000 x
 the recorded human order. Typed fields keep the engine's present meaning (dependencies as
 task IDs, resources as the tokens it enforces, owner-only work without a recorded live
 authorization as `ownership = "owner"`, no Touches as `["**"]`); a `Live authorization` line
@@ -158,6 +173,23 @@ conversion, naming the task, so the source is fixed first; every other label, an
 the original Ownership, Resources and Live authorization wording, is kept as a body note.
 Done and superseded tasks, and archived tasks that open work depends on, become closed
 records with no section or rank.
+
+## Preparing a repository: `autowork tasks prepare`
+
+`autowork tasks prepare [repo] [--check | --no-commit]` ([source](pi_autowork/task_prepare.py))
+is the first step of every Docs Sync Bootstrap or Maintain, on every host. It prints one JSON
+report: `state` (`legacy`, `conversion_pending`, `none`, `uncommitted`, `converted`,
+`invalid`), the `actions` it took, `refusals`, tasks `in_flight`, `pending` task paths, the
+store's counts, drafts and selection `order`, and `diagnostics` (`DRAFT`, `NOT_RUNNABLE`,
+`LIVE_NOT_AUTHORIZED`, `UNKNOWN_DEPENDENCY`, `SUPERSEDED_DEPENDENCY`, `TOUCHES_TASK_STORE`,
+`OPEN_TASK_UNDER_MET_GOAL`, `GOAL_WITHOUT_WORK`, `BROKEN_SOURCE` for a missing path or
+heading anchor, `DUPLICATE_TASK`, `IN_FLIGHT`), each naming the `autowork tasks` command that
+repairs it. It converts a legacy repository and finishes a pending conversion through
+`autowork migrate`'s transaction; for `none` it lists tracked documents and the headings
+marked `Status: Accepted`. Everything else is judgement: it decides no intent, writes no
+goal, task or field, and grants nothing. `--check` writes no file, ref, index, lock or
+object; `--no-commit` stages a conversion without moving HEAD. It exits 1 when `ok` is false
+(a refusal or an invalid store) and, on an unchanged repository, reports the same result.
 
 ## Integration and closure
 
@@ -189,7 +221,9 @@ The public-seam tests use real temporary Git repositories. They cover pinned
 reads/immutability/replacement refs, pending edits/renames/index preservation,
 fingerprint boundaries, absent authority, corrupt-store refusal (including
 symlinked store directories and numeric conversion limits) and draft visibility.
-`tests/test_task_migrate.py`, `tests/test_task_commands.py`, the engine's dispatch and
+`tests/test_task_migrate.py`, `tests/test_task_commands.py`, `tests/test_task_prepare.py`
+(the Docs Sync lifecycle: bootstrap, conversion, staging, interruption, refusal, audit,
+repair, concurrency and repeat runs on disposable repositories), the engine's dispatch and
 integration tests and `tests/test_task_store_qualification.py` cover conversion, the CLI,
 admission, closure and one runner journey on a fixture repository. None of them is
 live-service acceptance.

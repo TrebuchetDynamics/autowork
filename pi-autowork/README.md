@@ -48,7 +48,8 @@ name, a repository path or `.`. Nothing here calls a model.
 | `autowork blockers [dir]` | `/autowork blockers` in an agent (`AUTOWORK_AGENT`, else `claude`, else `pi`) |
 | `autowork tasks list\|validate\|new-id [target]`, `autowork tasks show\|why TASK [target]` | Read the `tasks/` store at HEAD (`validate --worktree`: uncommitted edits too) |
 | `autowork tasks add\|field\|place\|move\|hold\|release\|done\|supersede\|goal ... [target]` | Edit task and goal files in the working tree, never committing: an owner answer (`field TASK "Owner decision" TEXT`, `"Blocker resolution"`), a section (`place`, optionally `--decision`), the priority (`move TASK up\|down` changes its rank), a hold (`hold --by`, `release`), a close with evidence (`done`), a new task or goal. Each write validates the whole store |
-| `autowork migrate [target] [--dry-run]` | Convert a TODO.md + goals.json repository to `tasks/` once, in one local commit; it refuses while work is in flight |
+| `autowork tasks prepare [target] [--check\|--no-commit]` | What Docs Sync runs first: detect the store's state, convert or finish converting a TODO.md + goals.json repository, and report diagnostics with the command that repairs each, as JSON; `--check` writes nothing ([task store](task-store.md#preparing-a-repository-autowork-tasks-prepare)) |
+| `autowork migrate [target] [--dry-run] [--no-commit]` | Convert a TODO.md + goals.json repository to `tasks/` once, in one local commit (`--no-commit`: staged); an interrupted run resumes; it refuses while work is in flight |
 | `autowork scorecard [--days N] [--json] [target...]` | Per runner over the last N days (default 7): tasks closed, share of integrations held, median dispatch-to-merge time, new owner questions; no model call |
 
 In the TUI each key is the first letter of its word, highlighted in the detail pane:

@@ -121,10 +121,13 @@ concurrent-write rules rather than inventing a new schema.
 
 ## First task-index initialization
 
-Goals and tasks come from the CLI, never from hand-seeded records. A repository
-that still has TODO.md and goals.json is converted once by the owner with
-`autowork migrate [repo]`; do not hand-convert it. In a repository with no task
-store at all, the first `autowork tasks goal` starts `tasks/`.
+Goals and tasks come from the CLI, never from hand-seeded records. Start with
+`autowork tasks prepare .`: it converts a TODO.md + goals.json repository itself
+(one proven local commit; `--no-commit` stages it), finishes an interrupted
+conversion, and for a repository with no task store reports `state: none` with
+the headings marked `Status: Accepted`. Never hand-convert. With no accepted
+heading, report the missing intent instead of creating tasks. Otherwise the first
+`autowork tasks goal` starts `tasks/`.
 
 Put actual accepted intent in a plan heading (only when the owner accepted this scope):
 
@@ -143,12 +146,14 @@ autowork tasks goal STARTUP --title "Application starts" --source docs/plan.md#s
 autowork tasks add --goal STARTUP --title "Verify startup" --short "Verify startup" \
   --scope "Add the startup check; no deployment or runtime configuration changes." \
   --acceptance "The project's startup test passes." \
-  --checks "<exact test command>" --touches tests/
-autowork tasks field <new task ID> Sources "docs/plan.md#startup-slice"
+  --checks "<exact test command>" --touches tests/ \
+  --sources "docs/plan.md#startup-slice"
 autowork tasks validate --worktree .
+autowork tasks prepare .
 ```
 
-Expected: `validate` reports `"ok": true` with no drafts. Give every executable
+Expected: `validate` reports `"ok": true` with no drafts, and `prepare` reports no
+diagnostics. Give every executable
 task its `touches` through `--touches` (widen to owning directories when
 unsure, or set `resources` to `exclusive` with a reason). An added goal starts
 `unmet`; never mark it met without completed tasks and an executed, passing check.

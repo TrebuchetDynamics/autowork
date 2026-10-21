@@ -17,6 +17,16 @@ Separate current architecture from planned changes. Maintain README, requirement
 architecture/spec, test plan, runbook and changelog as applicable; add conditional
 roles only when useful. Fix supported doc issues now.
 
+Before task work, run `autowork tasks prepare .` in the consumer repository (Audit:
+`--check`, which writes nothing; without commit authority: `--no-commit`). It converts
+a TODO.md + goals.json repository itself, finishes an interrupted conversion, or
+refuses, writing nothing, while a worker or lease is in flight; report a refusal and
+continue document work. Its `state` is `none` for a new repository (bootstrap goals
+from its `accepted` headings only, else report the missing intent and create no
+queue), and its `diagnostics` name defects with the `autowork tasks` command that
+repairs each: repair only from accepted evidence, never grant ownership, `live` or
+resources, never close work to silence one, and leave `IN_FLIGHT` contracts alone.
+
 Turn remaining accepted gaps into goals and tasks in `tasks/`, the repository's only
 task store, through `autowork tasks`: `goal ID --title --source path#anchor
 --priority N` for goals, `add --goal G --title T --short S` with `--scope`,
@@ -30,11 +40,13 @@ distinct; priority is section, then rank. Only typed fields (`ownership`,
 `resources`, `live`) grant authority; live authorization is the owner's to grant.
 Preserve existing IDs, completed work, holds and priorities; never manufacture work.
 
-Each `autowork tasks` write changes only the working tree, never commits, refuses a
-file changed since it was read and validates the whole store. Finish with
-`autowork tasks validate --worktree .`; `list`, `show` and `why` read the committed
-store. Never write TODO.md or goals.json; a repository that still has them waits for
-the owner's `autowork migrate`. An existing `TODO.archive.md` is frozen, read-only
+Each `autowork tasks` write changes only the working tree, never commits, takes the
+task lock, refuses a file changed since it was read (or since `--expect REV`, the
+`record_revision` of `show ID --worktree`) and validates the whole store; `add`
+refuses a duplicate title under the same goal. Finish with `autowork tasks validate
+--worktree .` and `autowork tasks prepare .` again (an unchanged repository reports
+the same result); `list`, `show` and `why` read the committed store. Never write
+TODO.md or goals.json. An existing `TODO.archive.md` is frozen, read-only
 history ([frozen archive](../../../skills/docs-sync/references/todo-archive.md)).
 Do not create a second tracker. Use source inspection for routine edits; graph tools
 only when available and useful or explicitly required. Check links, commands and

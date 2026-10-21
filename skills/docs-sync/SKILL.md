@@ -1,7 +1,7 @@
 ---
 name: docs-sync
 description: "Use when maintaining repo docs and goal-linked tasks."
-version: 0.13.0
+version: 0.14.0
 license: MIT
 metadata:
   hermes:
@@ -39,7 +39,8 @@ under the ownership and review rules below.
 | Maintain | Update affected owners only. |
 | Audit | Read/report; write only when explicitly authorized. |
 
-Bare `/docs_sync` or `/docs-sync` means Bootstrap + Maintain: inspect, build every
+Bare `/docs_sync` or `/docs-sync` means Bootstrap + Maintain: inspect, prepare the
+task store ([prepare the store first](#prepare-the-store-first)), build every
 applicable core owner, correct supported drift, and run goal-gap analysis. Arguments
 narrow scope. Explicit Audit/read-only scope changes no files, including `tasks/`
 and BLOCKERS.md. Task-addition/brainstorming persistence is narrow Maintain, not
@@ -288,10 +289,43 @@ A repository's tasks live in `tasks/`, its only task store (format:
 A record missing contract fields is a visible draft and is never selected. A
 `TODO.archive.md` that exists is frozen, read-only history: read it, never write it
 (see [frozen archive](references/todo-archive.md)). BLOCKERS.md keeps owner
-questions; CHANGELOG.md keeps releases. A repository that still has TODO.md and
-goals.json selects nothing until the owner runs `autowork migrate [repo]` once;
-do not convert it yourself or recreate those files. In a repository with no task
-store at all, the first `autowork tasks goal` starts `tasks/`; never hand-write records.
+questions; CHANGELOG.md keeps releases. Never recreate TODO.md or goals.json, and
+never hand-write records.
+
+### Prepare the store first
+
+Every authorized Bootstrap or Maintain begins, in the resolved consumer repository,
+with `autowork tasks prepare <consumer>` (Audit: `autowork tasks prepare --check
+<consumer>`, which writes no file, ref, index, lock or object). It reports the
+`state` and does the mechanical part itself, so the owner never converts or
+initializes anything by hand:
+
+| `state` | Prepare did | You do next |
+| --- | --- | --- |
+| `legacy` | Converted TODO.md + goals.json through `autowork migrate`'s proven transaction: same task set, IDs, dependencies, ranks and selection order; TODO.archive.md kept | Reconcile on the converted store and report the conversion commit |
+| `conversion_pending` | Finished an interrupted or staged conversion, or refused | Resolve the named path, then rerun |
+| `none` | Nothing; listed `documents` and `accepted` headings | Bootstrap goals and tasks from accepted headings only; with none, report the missing intent and create no queue |
+| `uncommitted` | Read the working-tree store | Continue; commit the task files with the docs when authorized |
+| `converted` | Read the committed store | Reconcile |
+| `invalid` | Refused with `path:line` errors | Fix that line from its accepted source or Git history, then rerun |
+
+Without commit authority, run `prepare --no-commit`: a conversion is staged and HEAD
+does not move; report it as pending, not landed. A refusal (`ok: false`) writes
+nothing: a live worker, lease or claimed task, uncommitted planning files, or content
+that is neither the old nor the converted version. Report it and continue independent
+document work; never force, hand-convert or delete the recorded conversion ref.
+
+Then work its `diagnostics`, each with the command that repairs it: `DRAFT`,
+`NOT_RUNNABLE`, `LIVE_NOT_AUTHORIZED`, `UNKNOWN_DEPENDENCY`, `SUPERSEDED_DEPENDENCY`,
+`TOUCHES_TASK_STORE`, `OPEN_TASK_UNDER_MET_GOAL`, `GOAL_WITHOUT_WORK`, `BROKEN_SOURCE`,
+`DUPLICATE_TASK` and `IN_FLIGHT`. Repair one only from accepted documents, source or
+executed checks; without that evidence, keep the record a draft or place it in Needs
+decision. Never grant `worker` ownership, `live`, or resources, and never close a task
+or meet a goal to silence a diagnostic. `IN_FLIGHT` tasks keep their contract: the
+CLI refuses contract, section and closing writes to them until their attempt ends.
+Then reconcile the accepted requirements with the store (From gaps to tasks below).
+Finish with `autowork tasks validate --worktree .`, commit when authorized, and run
+`prepare` again: an unchanged repository reports the same result and writes nothing.
 
 ### Edit tasks and goals with `autowork tasks`
 
@@ -300,9 +334,10 @@ repository. Read first, then write:
 
 | Need | Command |
 | --- | --- |
-| Inspect | `autowork tasks list`, `autowork tasks show ID`, `autowork tasks why ID` |
+| Detect, convert, recover, diagnose | `autowork tasks prepare [--check\|--no-commit]` |
+| Inspect | `autowork tasks list`, `autowork tasks show ID [--worktree]`, `autowork tasks why ID` |
 | Add or change a goal | `autowork tasks goal ID --title T --source path#anchor --priority N [--status S] [--focus/--no-focus] [--depends-on G] [--evidence TEXT]` |
-| Add a task | `autowork tasks add --goal G --title T --short S [--section Next] [--scope TEXT] [--acceptance A ...] [--checks C ...] [--touches P ...] [--depends-on ID ...]` |
+| Add a task | `autowork tasks add --goal G --title T --short S [--section Next] [--scope TEXT] [--acceptance A ...] [--checks C ...] [--touches P ...] [--depends-on ID ...] [--resources R ...] [--exclusions E ...] [--kind K] [--ownership O] [--sources path#anchor]` |
 | Set a typed field or note | `autowork tasks field ID LABEL VALUE` (for example `rank`, `touches`, `checks`, `kind`, `ownership`, `resources`, `exclusions`, `depends_on`, or a note label such as `Sources`) |
 | Change section | `autowork tasks place ID Now\|Next\|"Needs decision" [--decision TEXT]` |
 | Reorder | `autowork tasks move ID up\|down`, or `field ID rank N` |
@@ -312,9 +347,14 @@ repository. Read first, then write:
 
 A new goal needs `--title`, `--source` and `--priority`. `add` rejects an unknown
 goal and allocates the next ID (`autowork tasks new-id` shows it); it defaults to
-`kind = "implementation"`, `ownership = "worker"` and the bottom of its section.
-Each write changes only the working tree, never commits, refuses a file changed
-since it was read and is undone when the resulting store does not validate. After
+`kind = "implementation"`, `ownership = "worker"` and the bottom of its section, and
+writes the whole contract in one write. It refuses a second task with the same goal
+and title (open or done), naming the existing one: change that record instead.
+Each write changes only the working tree, never commits, waits for the repository's
+task lock, refuses a file changed since it was read and is undone when the resulting
+store does not validate. When you decide from a record you read earlier, pass its
+`record_revision` (from `show ID --worktree`) as `--expect REV`: a record another
+writer changed since is refused, never overwritten; reread it and reapply. After
 the batch, run `autowork tasks validate --worktree .`, then commit the task files
 with the docs when authorized. `list`, `show` and `why` read the committed store
 (HEAD), so confirm selection with them only after that commit. Unchanged evidence

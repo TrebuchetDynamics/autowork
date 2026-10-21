@@ -27,7 +27,7 @@ service, so the work goes on after this session ends:
    can't run. That means: no `autowork` command, no systemd user session, `autowork
    start` fails, or the runner stops at once. Say why in one line first. If `autowork
    start` says the repository isn't ready (for example, no `tasks/` store yet), fix
-   that first (`autowork migrate .` converts an existing TODO.md and goals.json once;
+   that first (`autowork tasks prepare .` converts an existing TODO.md and goals.json once;
    otherwise plan tasks with [Docs Sync](../docs-sync/SKILL.md)), then start the runner.
 
 Work in this session instead only when the user asks for it ("here", "in this session",

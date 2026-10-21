@@ -12,9 +12,22 @@ claim of a tagged release, completed installation or live workflow qualification
   canonical checkout holds it until its files are committed or reverted, or it ends;
   another session's edit is denied with the holder and its files named, and continues in
   a worktree. `status|release` show and free it. Install steps: docs/worktree-placement.md.
+- `autowork tasks prepare [--check|--no-commit]`, which Docs Sync runs first on every host:
+  it detects the task-store state, converts a TODO.md + goals.json repository or finishes
+  an interrupted conversion, lists accepted headings for a new repository, and reports
+  diagnostics (drafts, unauthorized live work, broken sources, duplicates, goals without
+  work, in-flight tasks), each with its repair command. Docs Sync no longer asks the owner
+  to run `autowork migrate`.
 
 ### Changed
 
+- `autowork migrate` is one recoverable transaction: the converted commit is recorded as
+  `refs/autowork/migration` before any file changes, staged, then landed by
+  compare-and-swap; an interrupted run resumes or refuses, and `--no-commit` stages it.
+- `autowork tasks` writes take a per-checkout task lock, accept `--expect REV`, refuse
+  contract, section and closing changes to a task a worker or lease holds, and `add` takes
+  the whole contract (`--resources`, `--exclusions`, `--kind`, `--ownership`, `--sources`)
+  and refuses a duplicate title under the same goal. `list` and `show` take `--worktree`.
 - **Task Store v2 (breaking).** A repository's tasks live in `tasks/`: one file per task
   (`tasks/items/<ID>.md`) and per goal (`tasks/goals/<ID>.md`), TOML frontmatter plus
   notes, and a receipt per verified close (`tasks/evidence/<ID>.toml`). Selection,

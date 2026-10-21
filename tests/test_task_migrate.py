@@ -92,7 +92,7 @@ class MigrateTests(unittest.TestCase):
             'worker slots in flight': lambda: self.slot('running'),
             'unfinished integration/closure': lambda: self.slot('integrating'),
             'claimed tasks': lambda: self.claim(),
-            'already converted': lambda: (self.repo / 'tasks').mkdir(),
+            'already converted': lambda: self.commit_store(),
         }
         for message, make in cases.items():
             with self.subTest(state=message):
@@ -106,6 +106,11 @@ class MigrateTests(unittest.TestCase):
                 for leftover in (self.repo / 'tasks', common / 'slots'):
                     if leftover.exists():
                         subprocess.run(['rm', '-rf', str(leftover)], check=True)
+
+    def commit_store(self):
+        (self.repo / 'tasks').mkdir()
+        (self.repo / 'tasks/notes.md').write_text('a committed tasks/ tree\n')
+        self.commit()
 
     def slot(self, state):
         folder = self.repo / '.git/autowork-execution/slots'

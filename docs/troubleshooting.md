@@ -154,9 +154,10 @@ By design: documentation and planning never start implementation. Run
 ### Autowork says `no tasks/ store: run autowork migrate`
 
 The repository still keeps its tasks in `TODO.md` and `goals.json`, which nothing reads.
-Commit or set aside planning edits, let running work finish, then run
-`autowork migrate <repo>` once: it converts the queue to `tasks/` in one local commit and
-refuses, writing nothing, while work is in flight. See
+Commit or set aside planning edits, let running work finish, then run `/docs_sync` in the
+repository (or `autowork tasks prepare <repo>`, or `autowork migrate <repo>`): it converts
+the queue to `tasks/` in one local commit and refuses, writing nothing, while work is in
+flight. A conversion that was interrupted resumes on the next run. See
 [Task Store v2](project.md#task-store-v2-2026-10-20).
 
 ### `autowork tasks validate` reports an error

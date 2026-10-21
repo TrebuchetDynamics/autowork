@@ -29,7 +29,10 @@
                                   edit task files in the working tree (never commits): an
                                   owner answer ("Owner decision", "Held by", "Blocker
                                   resolution" notes), a new section or rank (the priority)
-    autowork migrate [target] [--dry-run]
+    autowork tasks prepare [target] [--check|--no-commit]
+                                  detect, convert, recover and diagnose the store (Docs Sync's
+                                  first step; --check writes nothing)
+    autowork migrate [target] [--dry-run] [--no-commit]
                                   convert a repository to the tasks/ store once (one local commit)
     autowork scorecard [--days N] [--json] [target...]
                                   per runner: tasks closed, held share, start to merge, owner

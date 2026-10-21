@@ -1,13 +1,17 @@
 """`autowork tasks ...`: read and edit a repository's tasks/ store. Standard library only.
 
-Reads (list, show, why, validate) use a pinned commit, HEAD by default; validate
---worktree checks uncommitted edits. Writes (add, field, place, move, hold, release, done, supersede, goal)
-change task files in the working tree and never commit; each refuses a file that
-changed since it was read, and the whole would-be store is validated before the
-write is kept. A written file grants no authority beyond its typed fields, and a
-declared check still needs the existing approval to run.
+Reads (list, show, why, validate) use a pinned commit, HEAD by default; --worktree reads
+uncommitted edits. Writes (add, field, place, move, hold, release, done, supersede, goal)
+change task files in the working tree and never commit; each takes the repository's task
+lock, refuses a file that changed since it was read (or since the revision `--expect`
+names), refuses a contract change to a task a worker or lease holds, and validates the
+whole would-be store before the write is kept. A written file grants no authority beyond
+its typed fields, and a declared check still needs the existing approval to run.
+`prepare` brings a repository to a valid store (task_prepare.py).
 """
 import argparse
+from contextlib import contextmanager
+import fcntl
 import hashlib
 import json
 import os
@@ -24,6 +28,14 @@ import task_store  # noqa: E402
 from task_store import StoreError, TaskStore, WriteError  # noqa: E402
 
 STEP = 1000
+# Worker slot states with unfinished work: nothing converts under them.
+OCCUPYING = ('dispatched', 'running', 'reported', 'integrating', 'integrated', 'held', 'interrupted')
+# ...and those whose attempt is still live: its contract may not change under it. A held or
+# interrupted attempt is waiting for exactly that repair.
+ACTIVE = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
+# The fields a task's contract hash covers, plus its goal: what an admitted attempt ran against.
+CONTRACT = ('scope', 'acceptance', 'checks', 'depends_on', 'touches', 'resources', 'kind', 'ownership',
+            'live', 'exclusions', 'goal')
 
 
 class CommandError(Exception):
@@ -37,6 +49,64 @@ def _git(repo, *args, env=None):
     if result.returncode:
         raise CommandError(f'git {args[0]} failed: {result.stderr.strip()}')
     return result.stdout.strip()
+
+
+@contextmanager
+def locked(repo):
+    """The repository's task lock: one task-store writer per checkout at a time."""
+    git_dir = Path(_git(repo, 'rev-parse', '--absolute-git-dir'))
+    with open(git_dir / 'autowork-tasks.lock', 'a') as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+def in_flight(repo, states=OCCUPYING):
+    """(task IDs a worker slot in ``states`` or a live lease holds, problems reading that
+    state). Engine modules are imported here only: other commands need none of them."""
+    import parallel_state
+    import task_execution
+    held, problems = set(), []
+    common = parallel_state.common_dir(Path(repo))
+    try:
+        slots = parallel_state.slots(common) if (common / 'slots').is_dir() else []
+    except ValueError as exc:
+        problems.append(f'worker slots cannot be read ({exc})')
+        slots = []
+    held |= {s['task_id'] for s in slots if s['state'] in states}
+    try:
+        if parallel_state.live_coordinator(common):
+            problems.append('a live parallel coordinator lease')
+    except ValueError as exc:
+        problems.append(f'the coordinator lease cannot be read ({exc})')
+    try:
+        lease = task_execution.read(common / 'active.json') if (common / 'active.json').exists() else None
+        if lease and task_execution.active_owner(lease):
+            problems.append('a live sequential execution lease')
+            if isinstance(lease.get('task_id'), str):
+                held.add(lease['task_id'])
+    except ValueError as exc:
+        problems.append(f'the sequential execution lease cannot be read ({exc})')
+    return held, problems
+
+
+def _unheld(repo, tid):
+    """Refuse a contract change to a task an attempt holds: integration would set it aside."""
+    held, _ = in_flight(repo, ACTIVE)
+    if tid in held:
+        raise CommandError(f'{tid} is held by a worker slot or a live lease; its contract cannot change now')
+
+
+def revision(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
+
+
+def expect(repo, tid, rev, goal=False):
+    """Refuse when the record is no longer the revision the caller decided from."""
+    if rev and revision(_path(repo, tid, goal)) != rev:
+        raise CommandError(f'{tid} changed since revision {rev[:12]} was read; reread it; nothing written')
 
 
 def worktree_store(repo):
@@ -161,8 +231,12 @@ def _set(repo, tid, changes, note=None):
 
 # --- commands --------------------------------------------------------------------------
 
-def cmd_list(repo, rev='HEAD'):
-    store = TaskStore.at(repo, rev)
+def _read(repo, rev='HEAD', worktree=False):
+    return worktree_store(repo) if worktree else TaskStore.at(repo, rev)
+
+
+def cmd_list(repo, rev='HEAD', worktree=False):
+    store = _read(repo, rev, worktree)
     ready = {t.id: n + 1 for n, t in enumerate(task_select.order(store))}
     rows = []
     for t in sorted(store.tasks.values(), key=lambda t: (t.status != 'open', t.section or '', t.rank or 0, t.id)):
@@ -172,8 +246,8 @@ def cmd_list(repo, rev='HEAD'):
     return rows
 
 
-def cmd_show(repo, tid, rev='HEAD'):
-    store = TaskStore.at(repo, rev)
+def cmd_show(repo, tid, rev='HEAD', worktree=False):
+    store = _read(repo, rev, worktree)
     t = _task(store, tid)
     return dict(id=t.id, title=t.title, short=t.short, status=t.status, goal=t.goal, section=t.section,
                 rank=t.rank, depends_on=list(t.depends_on), touches=list(t.touches), resources=list(t.resources),
@@ -201,24 +275,38 @@ def cmd_new_id(repo, prefix=None):
     return new_id(repo, worktree_store(repo), prefix)
 
 
+def _same_title(title):
+    return ' '.join(title.lower().split())
+
+
 def cmd_add(repo, goal, title, short, section='Now', scope=None, acceptance=(), checks=(), touches=(),
-            depends_on=(), task_id=None, prefix=None):
+            depends_on=(), task_id=None, prefix=None, resources=(), exclusions=(), kind='implementation',
+            ownership='worker', sources=None):
+    """One complete record in one write. A task of the same goal with the same title, open or
+    done, is the same outcome: it is refused, naming that task, so a repeated pass adds nothing."""
     store = worktree_store(repo)
     if goal not in store.goals:
         raise CommandError(f'unknown goal {goal}')
+    same = sorted(t.id for t in store.tasks.values()
+                  if t.goal == goal and t.status != 'superseded' and _same_title(t.title) == _same_title(title))
+    if same:
+        raise CommandError(f'{same[0]} already records "{title}" under {goal}; change that task instead')
     tid = task_id or new_id(repo, store, prefix)
     if tid in store.tasks:
         raise CommandError(f'{tid} already exists')
     fields = dict(schema=1, id=tid, title=title, short=short, status='open', goal=goal, section=section,
                   rank=bottom_rank(store, section), depends_on=list(depends_on), touches=list(touches),
-                  resources=[], kind='implementation', ownership='worker', exclusions=[])
+                  resources=list(resources), kind=kind, ownership=ownership, exclusions=list(exclusions))
     if scope:
         fields['scope'] = scope
     if acceptance:
         fields['acceptance'] = list(acceptance)
     if checks:
         fields['checks'] = list(checks)
-    _write(repo, _path(repo, tid), None, task_store.render(fields, '\n'))
+    text = task_store.render(fields, '\n')
+    if sources:
+        text = task_store.set_note(text, 'Sources', ' '.join(sources.split()))
+    _write(repo, _path(repo, tid), None, text)
     return tid
 
 
@@ -231,7 +319,7 @@ def cmd_goal(repo, gid, title=None, source=None, priority=None, status=None, foc
         store = worktree_store(repo)
     else:  # no record yet: this goal starts tasks/ (Git keeps no empty folder)
         if any((Path(repo) / name).exists() for name in ('TODO.md', 'goals.json')):
-            raise CommandError(f'{repo} keeps its tasks in TODO.md and goals.json: run `autowork migrate` instead')
+            raise CommandError(f'{repo} keeps its tasks in TODO.md and goals.json: run `autowork tasks prepare` to convert it first')
         store = TaskStore(rev='', tasks={}, goals={})
         (Path(repo) / 'tasks' / 'goals').mkdir(parents=True, exist_ok=True)
         (Path(repo) / 'tasks' / 'items').mkdir(exist_ok=True)
@@ -282,6 +370,8 @@ def cmd_field(repo, tid, key, value):
     _task(worktree_store(repo), tid)
     if key in ('status', 'section', 'id', 'schema'):
         raise CommandError(f'use place or supersede to change {key}')
+    if key in CONTRACT:
+        _unheld(repo, tid)
     if key in TYPED:
         kind = TYPED[key]
         if kind is int:
@@ -307,6 +397,8 @@ def cmd_place(repo, tid, section, decision=None):
         raise CommandError(f'{tid} is {t.status}')
     if section not in ('Now', 'Next', 'Needs decision'):
         raise CommandError('section is Now, Next or Needs decision')
+    if section != t.section:
+        _unheld(repo, tid)
     note = ('Owner decision', ' '.join(decision.split())) if decision else None
     _set(repo, tid, {'section': section, 'rank': bottom_rank(store, section, without=tid)}, note)
 
@@ -361,6 +453,7 @@ def cmd_done(repo, tid, evidence):
         raise CommandError(f'{tid} is {t.status}')
     if not evidence.strip():
         raise CommandError('done needs --evidence naming why the acceptance is met')
+    _unheld(repo, tid)
     _set(repo, tid, {'status': 'done'}, ('Evidence', ' '.join(evidence.split())))
 
 
@@ -381,6 +474,7 @@ def cmd_supersede(repo, tid, by, reason):
     _task(store, tid)
     for other in by:
         _task(store, other)
+    _unheld(repo, tid)
     note = ('Superseded by', f'{", ".join(by)}; {" ".join(reason.split())}')
     _set(repo, tid, {'status': 'superseded'}, note)
 
@@ -393,8 +487,8 @@ def add_parser(sub):
     for name in ('list', 'validate', 'new-id'):
         p = verbs.add_parser(name)
         p.add_argument('repo', nargs='?', default='.')
-        if name == 'validate':
-            p.add_argument('--worktree', action='store_true', help='check uncommitted edits too')
+        if name in ('validate', 'list'):
+            p.add_argument('--worktree', action='store_true', help='read uncommitted edits too')
         if name == 'new-id':
             p.add_argument('--prefix')
         if name != 'new-id':
@@ -404,6 +498,14 @@ def add_parser(sub):
         p.add_argument('task')
         p.add_argument('repo', nargs='?', default='.')
         p.add_argument('--rev', default='HEAD')
+        if name == 'show':
+            p.add_argument('--worktree', action='store_true', help='read uncommitted edits too')
+    p = verbs.add_parser('prepare', help='detect, convert, recover and diagnose the store (Docs Sync runs it first)')
+    p.add_argument('repo', nargs='?', default='.')
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument('--check', action='store_true', help='read only: report the state and what would be done')
+    mode.add_argument('--no-commit', action='store_true',
+                      help='stage a conversion in the working tree and index; never move HEAD')
     p = verbs.add_parser('add')
     p.add_argument('repo', nargs='?', default='.')
     for flag in ('--goal', '--title', '--short'):
@@ -411,7 +513,10 @@ def add_parser(sub):
     p.add_argument('--section', default='Now', choices=('Now', 'Next', 'Needs decision'))
     p.add_argument('--id', dest='task_id')
     p.add_argument('--scope')
-    for flag in ('--acceptance', '--checks', '--touches', '--depends-on'):
+    p.add_argument('--kind', default='implementation', choices=('implementation', 'plan', 'inspection'))
+    p.add_argument('--ownership', default='worker', choices=('worker', 'coordinator', 'owner'))
+    p.add_argument('--sources', help='the accepted path#anchor it comes from, kept as its Sources note')
+    for flag in ('--acceptance', '--checks', '--touches', '--depends-on', '--resources', '--exclusions'):
         p.add_argument(flag, action='append', default=[])
     p = verbs.add_parser('field')
     p.add_argument('task'); p.add_argument('label'); p.add_argument('value')
@@ -445,51 +550,78 @@ def add_parser(sub):
                    help='the one goal whose tasks go first')
     p.add_argument('--depends-on', action='append', help='a goal that must be met first')
     p.add_argument('--evidence', help='for --status met: the executed, passing check')
+    for name in WRITES:
+        if name != 'add':
+            verbs.choices[name].add_argument('--expect', metavar='REVISION',
+                                             help='refuse unless the record is still this revision (show --worktree)')
     return tasks
 
 
+WRITES = ('add', 'field', 'place', 'move', 'hold', 'release', 'done', 'supersede', 'goal')
+
+
 def run(args, repo):
-    """Print the result as JSON (reads) or one line (writes); return the exit code."""
+    """Print the result as JSON (reads) or one line (writes); return the exit code. Writes
+    hold the repository's task lock, so two writers never interleave."""
     try:
-        verb = args.verb
-        if verb == 'list':
-            out = cmd_list(repo, args.rev)
-        elif verb == 'show':
-            out = cmd_show(repo, args.task, args.rev)
-        elif verb == 'why':
-            out = cmd_why(repo, args.task, args.rev)
-        elif verb == 'validate':
-            out = cmd_validate(repo, args.rev, args.worktree)
-        elif verb == 'new-id':
-            out = cmd_new_id(repo, args.prefix)
-        elif verb == 'add':
-            out = 'added ' + cmd_add(repo, args.goal, args.title, args.short, args.section, args.scope,
-                                     args.acceptance, args.checks, args.touches, args.depends_on, args.task_id)
-        elif verb == 'field':
-            cmd_field(repo, args.task, args.label, args.value)
-            out = f'ok {args.task} {args.label}'
-        elif verb == 'place':
-            cmd_place(repo, args.task, args.section, args.decision)
-            out = f'ok {args.task} -> {args.section}'
-        elif verb == 'move':
-            changes = cmd_move(repo, args.task, args.direction)
-            out = 'ok ' + ', '.join(f'{tid} rank {rank}' for tid, rank in changes.items())
-        elif verb == 'hold':
-            cmd_hold(repo, args.task, args.by, args.until)
-            out = f'ok {args.task} held'
-        elif verb == 'release':
-            cmd_release(repo, args.task)
-            out = f'ok {args.task} released'
-        elif verb == 'done':
-            cmd_done(repo, args.task, args.evidence)
-            out = f'ok {args.task} done'
-        elif verb == 'supersede':
-            cmd_supersede(repo, args.task, args.by, args.reason)
-            out = f'ok {args.task} superseded'
-        elif verb == 'goal':
-            out = f'{cmd_goal(repo, args.goal, args.title, args.source, args.priority, args.status, args.focus, args.depends_on, args.evidence)} goal {args.goal}'
+        if args.verb == 'prepare':
+            from pi_autowork import task_prepare
+            out = task_prepare.prepare(repo, 'check' if args.check else 'stage' if args.no_commit else 'commit')
+            print(json.dumps(out, indent=2))
+            return 0 if out['ok'] else 1
+        if args.verb in WRITES:
+            with locked(repo):
+                if getattr(args, 'expect', None):
+                    goal = args.verb == 'goal'
+                    expect(repo, args.goal if goal else args.task, args.expect, goal)
+                out = _run(args, repo)
+        else:
+            out = _run(args, repo)
     except (CommandError, StoreError, WriteError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     print(out if isinstance(out, str) else json.dumps(out, indent=2))
     return 0
+
+
+def _run(args, repo):
+    verb = args.verb
+    if verb == 'list':
+        out = cmd_list(repo, args.rev, args.worktree)
+    elif verb == 'show':
+        out = cmd_show(repo, args.task, args.rev, args.worktree)
+    elif verb == 'why':
+        out = cmd_why(repo, args.task, args.rev)
+    elif verb == 'validate':
+        out = cmd_validate(repo, args.rev, args.worktree)
+    elif verb == 'new-id':
+        out = cmd_new_id(repo, args.prefix)
+    elif verb == 'add':
+        out = 'added ' + cmd_add(repo, args.goal, args.title, args.short, args.section, args.scope,
+                                 args.acceptance, args.checks, args.touches, args.depends_on, args.task_id,
+                                 resources=args.resources, exclusions=args.exclusions, kind=args.kind,
+                                 ownership=args.ownership, sources=args.sources)
+    elif verb == 'field':
+        cmd_field(repo, args.task, args.label, args.value)
+        out = f'ok {args.task} {args.label}'
+    elif verb == 'place':
+        cmd_place(repo, args.task, args.section, args.decision)
+        out = f'ok {args.task} -> {args.section}'
+    elif verb == 'move':
+        changes = cmd_move(repo, args.task, args.direction)
+        out = 'ok ' + ', '.join(f'{tid} rank {rank}' for tid, rank in changes.items())
+    elif verb == 'hold':
+        cmd_hold(repo, args.task, args.by, args.until)
+        out = f'ok {args.task} held'
+    elif verb == 'release':
+        cmd_release(repo, args.task)
+        out = f'ok {args.task} released'
+    elif verb == 'done':
+        cmd_done(repo, args.task, args.evidence)
+        out = f'ok {args.task} done'
+    elif verb == 'supersede':
+        cmd_supersede(repo, args.task, args.by, args.reason)
+        out = f'ok {args.task} superseded'
+    elif verb == 'goal':
+        out = f'{cmd_goal(repo, args.goal, args.title, args.source, args.priority, args.status, args.focus, args.depends_on, args.evidence)} goal {args.goal}'
+    return out

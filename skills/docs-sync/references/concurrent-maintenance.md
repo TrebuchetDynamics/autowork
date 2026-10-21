@@ -17,8 +17,12 @@ requires reconciliation, not overwrite or automatic reinterpretation.
 ## How writes are guarded
 
 Every `autowork tasks` write changes only the working tree and never commits. It
-refuses a file that changed since it was read, and it is undone when the resulting
-store does not validate. `autowork tasks validate --worktree .` checks uncommitted
+waits for the checkout's task lock, so two CLI writers never interleave; refuses a
+file that changed since it was read, or since the `record_revision` you pass as
+`--expect REV` (read it with `show ID --worktree` before deciding); refuses
+contract, section and closing changes to a task whose attempt is live; and it is
+undone when the resulting store does not validate. A refused write is reread and
+reapplied, never forced. `autowork tasks validate --worktree .` checks uncommitted
 edits without touching the index or refs. This guards cooperating writers; a
 writer that edits task files directly can still race it, so use the CLI for every
 edit and commit the batch once it validates.
