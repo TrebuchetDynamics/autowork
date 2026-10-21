@@ -176,8 +176,8 @@ def build(repo):
     try:
         inputs = reader.inputs(repo)
         legacy = reader.order(repo, inputs)
-    except reader.Drift:
-        raise Refused('TODO.md order differs from the recorded priority; reconcile it first') from None
+    except reader.Drift as exc:
+        raise Refused(f'TODO.md order differs from the recorded priority ({exc}); reconcile it first') from None
     except (ValueError, SystemExit) as exc:
         raise Refused(f'the current queue does not validate: {exc}') from None
     ledger, bodies = inputs['ledger'], inputs['bodies']
@@ -190,6 +190,9 @@ def build(repo):
     human += [tid for tid in todo_order if tid not in human]
     human = sorted(human, key=lambda tid: (sections.index(tasks[tid]['section']), human.index(tid)))
     files = {}
+    duplicated = sorted(tid for tid in human if len(bodies[tid]) != 1)
+    if duplicated:
+        raise Refused('more than one TODO.md entry for ' + ', '.join(duplicated) + '; keep one, then convert')
     for index, tid in enumerate(human):
         body, _mark, _section = bodies[tid][0]
         fields = reader.task_fields(body)

@@ -66,7 +66,9 @@ def inputs(repo):
     data = ledger(repo)
     picks, priority = goals_queue.queue(data, text, allow_drift=True, bodies=bodies)
     if priority['state'] == 'drift':
-        raise Drift(priority['action'])
+        named = '; '.join(f'{key}: {", ".join(priority[key])}' for key in ('duplicates', 'moved', 'added', 'missing')
+                          if priority.get(key))
+        raise Drift(named or 'the order differs')
     return dict(bodies=bodies, ledger=data, ordered=[t['id'] for t, _ in picks],
                 indexed={t['id']: t for t in data['tasks']}, known=set(bodies) | {t['id'] for t in data['tasks']})
 

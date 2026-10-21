@@ -20,6 +20,8 @@ sys.path.insert(0, str(SCRIPTS))
 from offline_fixtures import fixture_runtime_root
 import parallel_dispatch as dispatch
 import parallel_state as state
+import store_fixture
+import task_queue
 import task_execution as execution
 
 FAKE = SCRIPTS / 'fixtures' / 'fake_worker.py'
@@ -58,7 +60,7 @@ class DispatchTests(unittest.TestCase):
         self.write_todo(task('A', 'a.txt'), task('B', 'b.txt'), task('C', 'c.txt', 'A'),
                         task('E', 'e.txt'), task('D', 'a.txt'))
         self.git('add', '.')
-        self.git('commit', '-qm', 'base')
+        self.commit_if_changed('base')
         self.owner = os.getppid()
         self.common = state.common_dir(self.repo)
         self.spec = self.root / 'spec.json'
@@ -82,7 +84,17 @@ class DispatchTests(unittest.TestCase):
         return execution.git(repo or self.repo, *args)
 
     def write_todo(self, *bodies):
-        (self.repo / 'TODO.md').write_text('# Work queue\n\n## Next\n\n' + '\n'.join(bodies))
+        """The queue as TODO-form text, converted to the tasks/ store and committed."""
+        self.todo = '# Work queue\n\n## Next\n\n' + '\n'.join(bodies)
+        self.git('add', '-A')
+        store_fixture.write_todo(self.repo, self.todo)
+
+    def commit_if_changed(self, message, repo=None):
+        """A test's own commit: everything staged, and nothing when write_todo already committed it."""
+        repo = repo or self.repo
+        self.git('add', '-A', repo=repo)
+        if subprocess.run(['git', '-C', str(repo), 'diff', '--cached', '--quiet']).returncode:
+            self.git('commit', '-qm', message, repo=repo)
 
     def set_spec(self, spec):
         self.spec.write_text(json.dumps(spec))
@@ -325,7 +337,7 @@ class DispatchTests(unittest.TestCase):
         self.assertNotEqual(times['A', 'start']['port_base'], times['B', 'start']['port_base'])
         self.assertTrue((self.common / 'cache').is_dir())
         prompt = (self.common / 'slot-data/A/attempt-1/prompt.md').read_text()
-        for text in ('Task: A', 'Touches: a.txt', 'Never edit TODO.md', 'Report file: ', '- Touches: a.txt'):
+        for text in ('Task: A', 'Touches: a.txt', 'Never edit tasks/', 'Report file: ', '- Touches: a.txt'):
             self.assertIn(text, prompt)
         self.assertEqual(self.git('status', '--porcelain'), '')  # canonical checkout untouched
         journal = [json.loads(line) for line in (self.common / 'journal.jsonl').read_text().splitlines()]
@@ -484,7 +496,7 @@ class DispatchTests(unittest.TestCase):
                 manifest.write_text('module example.invalid/component\n')
                 if tracked:
                     self.git('add', 'component/go.mod')
-                    self.git('commit', '-qm', 'protected manifest')
+                    self.commit_if_changed('protected manifest')
                 else:
                     self.git('rm', '--cached', 'component/go.mod')
                 self.assertEqual(dispatch.protected_files(self.repo), ['component/go.mod'])
@@ -495,8 +507,8 @@ class DispatchTests(unittest.TestCase):
 
     def test_eight_disjoint_directory_workers_launch_together(self):
         self.write_todo(*(task(f'T{i}', f'component{i}/') for i in range(8)))
-        self.git('add', 'TODO.md')
-        self.git('commit', '-qm', 'directory task scopes')
+        self.git('add', '-A')
+        self.commit_if_changed('directory task scopes')
         self.set_spec({f'T{i}': {'sleep': 60} for i in range(8)})
         code, result = self.apply('8', '--max-workers', '8')
         self.assertEqual((code, result['active_workers']), (0, 8), result)
@@ -558,7 +570,7 @@ class DispatchTests(unittest.TestCase):
                 self.git('config', 'user.name', 'Fixture')
                 self.write_todo(*(task(t, t.lower() + '.txt') for t in ('A', 'B', 'C', 'OLD', 'F')))
                 self.git('add', '.')
-                self.git('commit', '-qm', 'base')
+                self.commit_if_changed('base')
                 self.common = state.common_dir(self.repo)
                 baseline = self.git('rev-parse', 'HEAD')
                 now = time.time()
@@ -576,7 +588,7 @@ class DispatchTests(unittest.TestCase):
                         else:
                             (root / (tid.lower() + '.txt')).write_text(tid)
                             self.git('add', '.', repo=root)
-                            self.git('commit', '-qm', tid, repo=root)
+                            self.commit_if_changed(tid, repo=root)
                             commit = self.git('rev-parse', 'HEAD', repo=root)
                             slot = state.transition(self.repo, self.owner, tid, 'reported', commit=commit)
                             execution.save(dispatch.data_dir(self.common, slot) / 'report.json',
@@ -751,8 +763,7 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         base = self.root / 'base'
         if not base.exists():
             self.git('worktree', 'add', '-q', '-b', 'trunk', str(base), 'HEAD')
-        (base / 'TODO.md').write_text('# Work queue\n\n## Next\n\n' + '\n'.join(bodies))
-        self.git('commit', '-qam', 'close on the base', repo=base)
+        store_fixture.write_todo(base, '# Work queue\n\n## Next\n\n' + '\n'.join(bodies))
 
     def test_a_task_deleted_from_the_queue_is_stopped_and_set_aside(self):
         """After the owner reset the queue, eight finished commits of deleted tasks asked to
@@ -762,9 +773,8 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         _, first = self.apply()
         self.assertIn('A', [d['task'] for d in first['dispatched']])
         worker = next(s for s in state.slots(self.common) if s['task_id'] == 'A')
-        todo = self.repo / 'TODO.md'
-        todo.write_text(todo.read_text().replace(task('A', 'a.txt'), ''))
-        self.assertNotIn('- [ ] A ', todo.read_text())
+        store_fixture.write_todo(self.repo, self.todo.replace(task('A', 'a.txt'), ''))
+        self.assertIsNone(task_queue.record(self.repo, 'A'))
         _, freed = self.apply()
         self.assertEqual(freed['closed_on_base'], ['A'], freed)
         self.assertFalse(state.worker_live(worker))
@@ -912,7 +922,7 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
     def test_task_wait_frees_exclusive_work_and_resumes_only_after_all_land(self):
         a, b, e = task('A', 'a.txt'), task('B', 'b.txt') + '- Resources: exclusive\n', task('E', 'e.txt')
         self.write_todo(a, b, e)
-        self.git('commit', '-qam', 'task wait fixture')
+        self.commit_if_changed('task wait fixture')
         self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 0.1, 'commit': False,
                              'blockers': ['Needs B and E to land.'],
                              'then': {'files': {'a.txt': 'done'}, 'ready': str(self.root / 'ready'),
@@ -926,14 +936,13 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         from parallel_status import snapshot
         sys.path.insert(0, str(SCRIPTS.parents[1] / 'pi-autowork'))
         from pi_autowork import questions
-        self.assertEqual(questions.build(snapshot(self.repo), (self.repo / 'TODO.md').read_text(),
-                                         execution.goals_module()), [])
+        self.assertEqual(questions.build(snapshot(self.repo), self.repo), [])
         _, refill = self.apply()
         self.assertEqual([d['task'] for d in refill['dispatched']], ['B'])
         self.wait_until_idle()
         self.git('merge', '--no-ff', '-m', 'land B', 'autowork/B')
         self.write_todo(a, b.replace('- [ ] B', '- [x] B'), e)
-        self.git('commit', '-qam', 'close B locally')
+        self.commit_if_changed('close B locally')
         _, partial = self.apply()
         self.assertEqual([d['task'] for d in partial['dispatched']], ['E'])
         self.wait_until_idle()
@@ -941,7 +950,7 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         base = self.root / 'base'
         (base / 'e.txt').write_text('landed E')
         self.git('add', 'e.txt', repo=base)
-        self.git('commit', '-qm', 'prerequisite code on base', repo=base)
+        self.commit_if_changed('prerequisite code on base', repo=base)
         landed = self.git('rev-parse', 'trunk')
         _, resumed = self.apply('--base-ref', 'trunk')
         self.assertEqual((resumed['outcome'], resumed['task']), ('RESUMED', 'A'), resumed)
@@ -970,7 +979,7 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.addCleanup(lambda: libc.prctl(36, subreaper.value, 0, 0, 0))
         a, b = task('A', 'a.txt'), task('B', 'b.txt')
         self.write_todo(a, b)
-        self.git('commit', '-qam', 'committed wait fixture')
+        self.commit_if_changed('committed wait fixture')
         self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 0.1,
                              'blockers': ['Needs B to land.']}})
         self.apply('--tasks', 'A')
@@ -979,7 +988,7 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.assertEqual((held['cause'], held['waits_for']), ('task_wait', ['B']))
         original = state.slots(self.common)[0]
         self.write_todo(a, b.replace('- [ ] B', '- [x] B'))
-        self.git('commit', '-qam', 'close prerequisite')
+        self.commit_if_changed('close prerequisite')
         self.assertEqual(self.apply()[1]['outcome'], 'RESUMED')
         ready, release = self.root / 'ready', self.root / 'continue'
         self.set_spec({'A': {'files': {'a.txt': 'reconciling'}, 'ready': str(ready), 'release': str(release)}})
@@ -1007,46 +1016,10 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.assertEqual(integrated['outcome'], 'INTEGRATED', integrated)
         self.assertEqual((self.repo / 'a.txt').read_text(), 'reconciling')
 
-    def test_an_idle_claim_is_adopted_only_when_asked_and_names_its_prior_work(self):
-        """sierra: 28 of 36 tasks were in_progress claims of sessions idle for a day."""
-        self.write_todo(task('A', 'a.txt') + '- Status: in_progress\n')
-        self.git('commit', '-qam', 'A claimed elsewhere')
-        self.git('branch', 'agent/x/A-planning')
-        self.set_spec({'A': {'files': {'a.txt': 'done'}, 'sleep': 0.1}})
-        time.sleep(1.2)
-        _, plain = self.apply()
-        self.assertEqual(plain['dispatched'], [])
-        _, adopted = self.apply('--adopt-idle-claims', '1')
-        self.assertEqual([d['task'] for d in adopted['dispatched']], ['A'])
-        prompt = (dispatch.data_dir(self.common, state.slots(self.common)[0]) / 'prompt.md').read_text()
-        self.assertIn('marked in_progress by another session that has been idle', prompt)
-        self.assertIn('- branch agent/x/A-planning', prompt)
-        journal = [json.loads(line) for line in (self.common / 'journal.jsonl').read_text().splitlines()]
-        self.assertEqual([e['task_id'] for e in journal if e['event'] == 'claim_adopted'], ['A'])
-        self.wait_until_idle()
-
-    def test_a_dead_workers_task_marked_in_progress_restarts_once_idle(self):
-        """Its released slot kept it out of adoption, and admission held it as a claim."""
-        self.write_todo(task('A', 'a.txt'))
-        self.git('commit', '-qam', 'A')
-        self.set_spec({'A': {'sleep': 0.1, 'commit': False}})
-        self.apply()
-        self.wait_until_idle()
-        self.write_todo(task('A', 'a.txt') + '- Status: in_progress\n')
-        self.git('commit', '-qam', 'A marked in_progress')
-        self.set_spec({'A': {'files': {'a.txt': 'done'}, 'sleep': 0.1}})
-        time.sleep(1.2)
-        _, plain = self.apply()
-        self.assertEqual(plain['dispatched'], [])
-        self.assertEqual(state.slots(self.common)[0]['state'], 'released')  # the dead worker's
-        _, adopted = self.apply('--adopt-idle-claims', '1')
-        self.assertEqual([d['task'] for d in adopted['dispatched']], ['A'])
-        self.wait_until_idle()
-
     def test_an_answered_blocker_resumes_its_attempt_with_the_answer_twice_at_most(self):
         """Most blockers asked the runner for what it already provides and waited hours for a person."""
         self.write_todo(task('A', 'a.txt'))
-        self.git('commit', '-qam', 'A')
+        self.commit_if_changed('A')
         self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 0.1, 'commit': False,
                              'blockers': ['Coordinator must provide an exclusive port receipt']}})
         self.apply()
@@ -1072,7 +1045,7 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
     def test_a_report_that_nothing_needed_changing_is_held_not_rerun(self):
         """One task ran three times in an hour: each worker found nothing to change and said so."""
         self.write_todo(task('A', 'a.txt'))
-        self.git('commit', '-qam', 'A')
+        self.commit_if_changed('A')
         self.set_spec({'A': {'sleep': 0.1, 'nothing': 'the flaky test no longer fails'}})
         self.apply()
         self.wait_until_idle()
@@ -1088,7 +1061,7 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         own worktree on the same attempt, with no change to Touches."""
         self.write_todo(task('A', 'a.txt'))
         self.git('add', '.')
-        self.git('commit', '-qm', 'A')
+        self.commit_if_changed('A')
         self.set_spec({'A': {'files': {'a.txt': 'half', 'b.txt': 'needed'}, 'sleep': 0.1, 'commit': False,
                              'blockers': ['b.txt is outside Touches'], 'needs_touches': ['b.txt'],
                              'then': {'files': {'a.txt': 'done', 'b.txt': 'done'}, 'sleep': 0.1}}})
@@ -1121,7 +1094,7 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.addCleanup(lambda: libc.prctl(36, subreaper.value, 0, 0, 0))
         self.write_todo(task('A', '*a.txt'), task('B', 'b.txt'))
         self.git('add', '.')
-        self.git('commit', '-qm', 'A and B')
+        self.commit_if_changed('A and B')
         self.set_spec({'A': {'files': {' a.txt': 'half'}, 'sleep': 0.1,
                              'blockers': ['Which unit should the output use?']},
                        'B': {'files': {'b.txt': 'half'}, 'sleep': 0.1, 'commit': False,
@@ -1144,7 +1117,7 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.write_todo(task('A', '*a.txt').replace('- Acceptance: changed.',
                         '- Acceptance: keep the earlier candidate, in metres.'),
                         task('B', 'b.txt'))
-        self.git('commit', '-qam', 'owner answers A')
+        self.commit_if_changed('owner answers A')
         _, requeued = self.apply()
         self.assertEqual((requeued['outcome'], requeued['task'], requeued['requeued']), ('REQUEUED', 'A', True))
         self.assertIn('autowork/A-set-aside-1', self.git('branch', '--list', 'autowork/*'))
@@ -1193,12 +1166,12 @@ Path(report).write_text(json.dumps({'task': 'A', 'commit': git('rev-parse', 'HEA
     def test_a_held_task_whose_entry_is_removed_is_set_aside_without_requeue(self):
         self.write_todo(task('A', 'a.txt'), task('B', 'b.txt'))
         self.git('add', '.')
-        self.git('commit', '-qm', 'A and B')
+        self.commit_if_changed('A and B')
         self.set_spec({'A': {'files': {'a.txt': 'half'}, 'sleep': 0.1, 'commit': False, 'blockers': ['Drop this?']}})
         self.apply()
         self.wait_until_idle()
         self.write_todo(task('B', 'b.txt'))
-        self.git('commit', '-qam', 'owner drops A')
+        self.commit_if_changed('owner drops A')
         _, result = self.apply()
         self.assertEqual((result['outcome'], result['task'], result['requeued']), ('REQUEUED', 'A', False))
         self.assertNotIn('A', [s['task_id'] for s in state.slots(self.common)])
@@ -1373,7 +1346,7 @@ Path(report).write_text(json.dumps({'task': 'A', 'commit': git('rev-parse', 'HEA
         self.git('worktree', 'add', '-qb', 'autowork/A', str(folder))
         (folder / 'a.txt').write_text('earlier work')
         self.git('add', 'a.txt', repo=folder)
-        self.git('commit', '-qm', 'earlier work', repo=folder)
+        self.commit_if_changed('earlier work', repo=folder)
         tip = self.git('rev-parse', 'HEAD', repo=folder)
         self.set_spec({'A': {'sleep': 60}})
         code, result = self.apply()
@@ -1458,10 +1431,12 @@ Path(report).write_text(json.dumps({'task': 'A', 'commit': git('rev-parse', 'HEA
         self.assertIn('worker launch failed', slot['reason'])
 
     def test_malformed_queue_is_reported_not_treated_as_idle(self):
-        self.write_todo(task('A', 'a.txt'), task('A', 'b.txt'))
+        record = self.repo / 'tasks/items/A.md'
+        record.write_text(record.read_text().replace('rank = 1000', 'rank = ['))
+        self.commit_if_changed('a malformed record')
         code, result = self.apply()
         self.assertEqual((code, result['outcome']), (1, 'ACTION_REQUIRED'))
-        self.assertIn('duplicate TODO task IDs', result['reason'])
+        self.assertRegex(result['reason'], r'tasks/items/A.md:\d+: malformed TOML')
 
     def test_sequential_apply_is_unchanged_by_parallel_support(self):
         out = io.StringIO()
@@ -1569,7 +1544,7 @@ class AdmitTests(unittest.TestCase):
     def admit(self, candidates, running=(), restartable=(), occupying=(), parked=()):
         return dispatch.admit(list(candidates), list(running), {t: {} for t in restartable},
                               [{'task_id': t} for t in occupying], everything=list(candidates) + list(running)
-                              + list(parked), parked=list(parked), adopted=set(), protected=None)
+                              + list(parked), parked=list(parked), protected=None)
 
     def test_an_interrupted_candidate_resumes_first_beside_cold_overlap(self):
         """Resume priority is preserved without holding a two-task file overlap."""

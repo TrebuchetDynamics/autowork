@@ -176,6 +176,14 @@ class MigrateTests(unittest.TestCase):
         body = TaskStore.at(self.repo, 'HEAD').tasks['T-001'].body
         self.assertIn('- Evidence: first run\n- Evidence: second run', body)
 
+    def test_two_entries_for_one_task_refuse(self):
+        text = (self.repo / 'TODO.md').read_text()
+        (self.repo / 'TODO.md').write_text(text.replace('## Next', entry('T-001', 'Alpha again', 'G1') + '## Next'))
+        self.commit()
+        refused = self.migrate('--dry-run')
+        self.assertEqual(refused.returncode, 1)
+        self.assertIn('T-001', refused.stderr)
+
     def test_a_repeated_typed_field_refuses(self):
         text = (self.repo / 'TODO.md').read_text()
         (self.repo / 'TODO.md').write_text(text.replace('- Touches: src/a.py', '- Touches: src/a.py\n- Touches: src/z.py'))
