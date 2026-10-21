@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from offline_fixtures import fixture_runtime_root
 import parallel_dispatch as dispatch
 import parallel_state as state
+import store_fixture
 import task_execution as execution
 
 
@@ -43,13 +44,13 @@ class IntegrationTests(unittest.TestCase):
         self.git('init', '-q', '-b', 'main')
         self.git('config', 'user.email', 'fixture@example.invalid')
         self.git('config', 'user.name', 'Offline fixture')
-        self.repo.joinpath('TODO.md').write_text('# TODO\n\n## Next\n\n' + '\n'.join(
+        self.todo = '# TODO\n\n## Next\n\n' + '\n'.join(
             f'- [ ] {t} — Task {t}\n  Scope: {t}.txt\n  Touches: {t}.txt\n  Acceptance: offline fixture\n  Checks: true\n  Dependencies: None.\n  Status: open\n'
-            for t in ('A', 'B')))
+            for t in ('A', 'B'))
         for t in ('A', 'B'):
             self.repo.joinpath(t + '.txt').write_text('base\n')
         self.git('add', '.')
-        self.git('commit', '-qm', 'baseline')
+        store_fixture.write_todo(self.repo, self.todo)
         self.baseline = self.git('rev-parse', 'HEAD')
         self.owner = os.getppid()
         state.claim(self.repo, self.owner)
