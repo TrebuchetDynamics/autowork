@@ -22,10 +22,12 @@ runtime state out of Git. Do not edit or patch upstream Hermes Agent.
 ## Worktree location
 
 Interactive sessions (an agent working with the owner, a repository bot, the
-owner) work directly in the main checkout and do not create worktrees. Worktrees
-are only for Autowork runners and for parallel delegated agents that would
-otherwise write the same checkout at once. Keep one writer per checkout: do not
-edit files a live runner worker owns, and commit only your own changes.
+owner) work directly in the main checkout, one at a time. The first session to edit
+a file there holds the checkout until every file it edited is committed or reverted,
+or it ends; a second interactive session works in its own worktree meanwhile.
+Otherwise worktrees are only for Autowork runners and for parallel delegated agents
+that would otherwise write the same checkout at once. Keep one writer per checkout:
+do not edit files a live runner worker owns, and commit only your own changes.
 
 The user requires all new task worktrees under the **canonical repository's
 `.worktrees/` directory** (plural). This overrides skill defaults and examples.

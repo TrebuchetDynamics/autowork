@@ -26,6 +26,7 @@ PLANNING_DIRS = ('docs/tasks/',)
 LIMIT = 12
 PLAN_TASK_LIMIT = 8
 PLAN_ROUNDS = 10
+REPLAY_REFUSED = 'archive replay refused: '
 
 
 def triggers(rows, main=None, findings=None, reported_flakes=(), ledger_errors=(), limit=LIMIT):
@@ -79,6 +80,96 @@ def triggers(rows, main=None, findings=None, reported_flakes=(), ledger_errors=(
     return sorted(found)[:limit]
 
 
+def archive_closures(repo, execution):
+    """Replay only unique, explicitly done history, including archive-only IDs."""
+    repo = Path(repo)
+    ledger = execution.task_ledger(repo)
+    if not ledger:
+        return []
+    bodies = execution.task_bodies(repo / 'TODO.md')
+    done = execution.archived_done(repo)
+    return [(t['id'], 'archive close', f"ledger: {t['id']} is {t['status']} in goals.json but archived as done")
+            for t in ledger['tasks'] if t['status'] in ('open', 'in_progress') and t['id'] in done
+            and len(bodies.get(t['id'], [])) <= 1
+            and not any(re.search(r'^[ \t]*[-*] \[ \]', execution.goals_module().task_prose(body), re.M)
+                        for body, _, _ in bodies.get(t['id'], []))]
+
+
+def replay_archive(repo, names, execution, goals_cli):
+    """Mechanical work inside the maintainer checkout; no acceptance is inferred.
+
+    goals.py owns ledger mutation and archival. The exact live body is marked under
+    its coordination/atomic-write guard, just as the engine's verified close does.
+    The transaction caller discards the checkout if any step fails.
+    """
+    repo = Path(repo)
+    current = {task for task, _, _ in archive_closures(repo, execution)}
+    if not set(names) <= current:
+        return False, 'archive completion evidence changed'
+    goals = execution.goals_module()
+    try:
+        for task in names:
+            result = goals_cli('task', str(repo), task, 'done')
+            if result.returncode:
+                return False, result.stdout + result.stderr
+            with goals.coordination(repo):
+                todo = repo / 'TODO.md'
+                before = todo.read_bytes()
+                text = before.decode()
+                blocks = [b for b in goals.task_blocks(text) if b['id'] == task]
+                if len(blocks) > 1:
+                    return False, f'{task}: duplicate live entry'
+                if blocks:
+                    block = blocks[0]
+                    body = text[block['start']:block['end']]
+                    prose = goals.task_prose(body)
+                    marks = [m for m in re.finditer(goals.TASK_MARK, prose, re.M) if m[2] == task]
+                    statuses = list(re.finditer(
+                        r'(?m)^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?Status:(?:\*\*)?[ \t]*([^\r\n]*)', prose))
+                    if len(marks) != 1 or len(statuses) > 1:
+                        return False, f'{task}: ambiguous live checkbox or Status'
+                    replacements = [(marks[0].start(1), marks[0].end(1), 'x')]
+                    replacements += [(m.start(1), m.end(1), 'done') for m in statuses]
+                    for start, end, value in sorted(replacements, reverse=True):
+                        body = body[:start] + value + body[end:]
+                    goals.atomic_write(todo, text[:block['start']] + body + text[block['end']:], expected_bytes=before)
+        result = goals_cli('archive', str(repo))
+        if result.returncode:
+            return False, result.stdout + result.stderr
+        remaining = execution.task_bodies(repo / 'TODO.md')
+        if any(task in remaining for task in names):
+            return False, 'archive did not move the repaired live entries'
+        return True, ''
+    except (OSError, ValueError, SystemExit) as exc:
+        return False, str(exc)
+
+
+def archive_rejections(state, closures, *, entries, reasons):
+    """A failed mechanical replay becomes one substantive repair, even without a live row."""
+    run = last(state)
+    ids = set(run.get('task_ids', [])) | set(entries)
+    rejected = []
+    for item in closures:
+        receipt = run.get('items', {}).get(item_key(item), {})
+        if (matches(receipt, item, entries.get(item[0], {}), reasons, ids)
+                and receipt.get('outcome', '').startswith(REPLAY_REFUSED)):
+            rejected.append((item[0], 'archive close refused', receipt['outcome']))
+    return rejected
+
+
+def overlap(row):
+    """The dispatcher's wait for a file another task names (parallel_plan), or ''."""
+    reason = ' '.join(str(row.get('reason') or '').split())
+    shared = reason.startswith('shares ') or re.fullmatch(r'waits for \S+ \(shares hot file .+\)', reason)
+    return reason if row.get('state') == 'waiting' and shared else ''
+
+
+def overlaps(rows, limit=6):
+    """[(task, 'overlap', why)] for the highest-priority tasks waiting on another task's file:
+    re-cut before they run, a conflict costs no resolver run and no second review."""
+    return [(r['task'], 'overlap', why) for r in rows if r.get('task') and (why := overlap(r))][:limit]
+
+
 def key(found):
     """The set's identity. A red main is the same trigger while the same tests fail: tasks now
     land one by one, so its commits since the last green grow without anything new to repair."""
@@ -95,6 +186,9 @@ def planning_only(paths):
 PROMPT = (
     'You are the DOCS-MAINTAINER of {repo}: you repair task docs so that held and unrunnable tasks can '
     'run again, without the owner. The runner cannot run these tasks as they are written:\n{items}\n'
+    'For archive close refused: model-free replay of explicitly done history could not finish with a valid ledger. '
+    'Read the named task in the TODO archive and repair the exact reported invariant from source evidence; '
+    'a task close is not proof that its goal is met. Never invent passing evidence or check off remaining acceptance. '
     'For ledger edit: the task integrated, but its candidate\'s ledger edits (including resolver edits) '
     'were left out. Review the saved patch against the current ledger; the task may already be archived. '
     'Apply only justified changes through the docs-sync ledger tools, or drop the proposal. Never apply '
@@ -119,6 +213,16 @@ PROMPT = (
     'reporting any test result, so no test is known to fail. Never add a repair task for test names. Unless an open task '
     'covers it, add one task to make the full check run to its results (pin or provision the crashing tool from the '
     'repository\'s setup docs, or restate the repository\'s `Full check:` line), with the crash line as Evidence. '
+    'For overlap (the task waits because it names a file another task also names: one running, one whose '
+    'commit waits to land, or one ahead of it in the queue; started together they conflict at merge, which costs '
+    'a resolver run and a second review): you may add, remove, merge and split tasks that have not started, and '
+    'reorder them, so that what runs next has disjoint Touches. Prefer, in order: merge it into the other task '
+    'when that one has not started either (combine Scope, Touches, Acceptance and Checks into one entry and '
+    'supersede the other with python3 {goals} supersede); split the shared-file part into a follow-up task that '
+    'depends on the other task, so the rest starts now with Touches that no longer name that file; supersede it '
+    'when the other task already delivers it; otherwise make the order explicit in Dependencies. Never edit the '
+    'entry of a task that is running or whose commit waits to land; keep every Acceptance item in whichever task '
+    'now owns it; never widen product scope. '
     'For repeated quick hold: three consecutive attempts held within ten minutes on the same missing input. '
     'This blocker gets one repair, not repeated cosmetic entry edits. Restate the task so the named missing '
     'input is produced (add a producer task and dependency), or move it to Needs decision. Only when the '
@@ -309,7 +413,7 @@ def reason_class(why, task_ids=()):
 def item_key(item):
     if item[1] == 'repeated quick hold':
         return 'quick-hold:' + item[0] + ':' + item[2].split(';', 1)[0]
-    return key([item]) if item[0] in ('MAIN', 'LEDGER') or item[1] == 'ledger edit' else 'task:' + item[0]
+    return key([item]) if item[0] in ('MAIN', 'LEDGER') or item[1] in ('ledger edit', 'archive close', 'archive close refused') else 'task:' + item[0]
 
 
 def main_evidence(item):

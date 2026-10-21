@@ -26,9 +26,20 @@ class WorkflowCommands(unittest.TestCase):
                     self.assertIn('autowork:' + skill, prompt)
                     self.assertTrue(prompt.endswith(raw))
                     self.assertEqual(routing['origin']['chat_id'], 'fixture')
+                    if skill.startswith('plan-'):
+                        self.assertIn('../shared/RESEARCH-PLAN.md', prompt)
                     if command == 'plan_for_me':
                         self.assertIn('TODO.md is the central work queue', prompt)
-        self.assertIn('autoresearch-plan', self.ctx.commands)
+        for alias in ('autoresearch-plan', 'autoresearch:plan'):
+            raw = 'questions only\n$(literal); no push'
+            self.ctx.commands[alias](raw)
+            prompt, _ = self.ctx.messages[-1]
+            self.assertIn('Selected subcommand: plan', prompt)
+            self.assertIn('../shared/RESEARCH-PLAN.md', prompt)
+            self.assertTrue(prompt.endswith(raw))
+        self.ctx.commands['autoresearch']('plan ' + raw)
+        self.assertIn('../shared/RESEARCH-PLAN.md', self.ctx.messages[-1][0])
+        self.assertTrue(self.ctx.messages[-1][0].endswith('plan ' + raw))
         for retired in ('repo-docs', 'repo_docs', 'repo-interview', 'repo_interview'):
             self.assertNotIn(retired, self.ctx.commands)
 
@@ -137,7 +148,8 @@ class WorkflowCommands(unittest.TestCase):
         self.ctx.commands['grill-me']('challenge my cache plan')
         prompt, _ = self.ctx.messages[-1]
         self.assertIn('skill_view(name="autowork:plan-with-me")', prompt)
-        self.assertIn('../grill-me/SKILL.md', prompt)
+        self.assertIn('Selected mode: challenge', prompt)
+        self.assertIn('../shared/RESEARCH-PLAN.md', prompt)
         self.assertTrue(prompt.endswith('challenge my cache plan'))
 
     def test_foreign_namespace_keeps_its_own_skill_identity(self):

@@ -35,14 +35,25 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
 3. **Review the report.** Read `report.json` at
    `<git-common-dir>/autowork-execution/slot-data/<TASK>/attempt-N/report.json`
    (commit, changed files, checks, blockers, pending live checks, proposed
-   CHANGELOG line) and the commit itself. A report is a claim; integration verifies
+   CHANGELOG line and [doc-impact evidence](#documentation-impact-evidence)) and
+   the commit itself. A report is a claim; integration verifies
    it. `blockers` name what only a person can provide (credentials, devices, spending,
    third-party changes, open product or security decisions); a worker that reports any
    is held with `cause: blocker`, with or without a commit, and gets no fresh attempt.
    `--parallel-answer TASK --answer-file F` answers it instead: the attempt resumes in
    its own worktree with the answer in its prompt, at most twice per task. The Pi
    runner triages each new blocker this way and leaves only a person's part as a
-   question. `pending_live`
+   question. Exception: when every blocker is solely a wait for other open tasks, use
+   `Needs TASK-ID to land.` (multiple IDs may be joined with commas or `and`). The
+   [report classifier](../scripts/parallel_state.py) records `cause: task_wait`, `waits_for`
+   and `wait_since` before triage; the runner never triages a slot with `waits_for`.
+   Unknown wording, additional requests, self references and existing ledger dependencies
+   remain ordinary blockers for triage, not automatic owner questions. A task wait reserves
+   no files or resources, but still holds its dependents. Once every named task closes
+   locally or on the base, it resumes in place on the same attempt; the prompt names the
+   prerequisites and pins reachable landed source revisions for scoped reconciliation,
+   preserving retained work. An unresolved wait becomes one owner question after 24 hours,
+   never a triage. The engine never edits `Dependencies:` for this wait. `pending_live`
    lists device, production, hardware or human checks the worker could not run;
    they never hold the task. `unrelated_failures` lists test IDs that passed a single isolated
    rerun or also failed on the baseline; `environment_failures` lists command/summary strings
@@ -117,6 +128,47 @@ reason), `outside`, `cycle`, or moving work, with how many tasks it holds),
 completed/failed/integration-queue counts, and journal metrics (wall, worker,
 integration and waiting time, peak workers, conflicts, retries).
 
+## Documentation impact evidence
+
+Every worker assesses the final diff against task Acceptance and existing docs.
+Use `doc_impact` in `report.json`, for example (illustrative, not a receipt):
+
+```json
+{"status": "updated", "reason": "Guide now describes the changed command",
+ "paths": ["docs/guide.md"],
+ "checks": [{"command": "git diff --check", "result": "pass", "summary": "guide read back; diff whitespace checked"}]}
+```
+
+- `not_needed`: explain why inspected docs already cover the change or why
+  metadata-only work affects none. `paths` lists inspected docs (may be empty).
+- `updated`: name changed component docs and copy their passing readback/check
+  records from the report's top-level `checks`. Resolve bundled Docs Sync in the
+  actual host for scoped Maintain; no full bootstrap or global manifest.
+- `pending`: put the concrete gap in `reason`, inspected docs in `paths` (may be
+  empty), and the specific DOCS-MAINTAINER action in `resume`. Shared documents
+  remain with the coordinator; do not edit their policy, Acceptance or history.
+
+Integration retains the assessment in the slot's verified `report.doc_impact` and
+exposes it as `doc_impact` in the task snapshot, including after closure/restart.
+It adds `inputs` with exact `baseline`, worker `commit`, `task_contract_sha256` and
+`documents` mapping inspected paths to committed blob IDs (null for deletion).
+These are worker-source inputs, not a claim that merged/current docs are identical.
+Consumers must compare current source/docs and preserve foreign dirty work before
+reconciling; never make stale evidence current by repinning it. An existing
+mismatched `inputs` binding, missing/invalid assessment, missing path or unsupported
+update/check claim becomes `pending`, not an implementation retry or silent no-op.
+Older reports remain valid and need assessment. Raw reports remain available
+beside normalized slot evidence.
+
+DOCS-MAINTAINER owns the conditional closeout Maintain pass (TOOLSET-266-7a).
+These fields introduce no new trigger, model call, closure gate or second atomic-close
+authority. A worker assertion is not documentation acceptance; archive/index
+rendering alone is not Maintain. Sequential native/portable closeout uses the same
+[scoped assessment](../../shared/ENGINEERING-CYCLE.md#one-canonical-backlog-one-executor-one-closure-owner)
+in its authorized session. Required doc failure/interruption preserves code and
+pending evidence without replaying implementation. Stops/pauses/budget limits
+launch no new work; once/until-empty limits include needed closeout.
+
 ## Runner jobs versus outside sessions
 
 The [writer scan](../scripts/task_execution.py) excludes this repository's own
@@ -166,15 +218,27 @@ SDKs and package caches remain in `AUTOWORK_CACHE`, independently of temp cleanu
 
 ## Admission: Touches and Resources
 
-`Touches:` schedules work; it never holds it (TOOLSET-161-17):
+`Touches:` schedules work, and a shared hot file holds it:
 
 - `Touches:` is a comma-separated list of repository-relative paths or globs the
   task is expected to change; `*` also matches across `/`, and a trailing `/` covers a
-  directory. It is a hint: tasks whose `Touches:` overlap running or earlier-chosen work
-  are dispatched after independent tasks, never held. A worker may change whatever else
-  its task needs; the merge into the base, one candidate at a time in priority order,
-  settles overlap, and a real conflict goes to the merge resolver. A missing or invalid
-  `Touches:` is no hint (the task ranks after hinted ones).
+  directory. A literal file is **hot** when at least three unfinished tasks name it
+  explicitly, counting each task once across the whole queue, including tasks not yet
+  runnable. This is the task-count threshold shared with plan lint; lint's separate
+  file-length warning does not make a file serial. A task naming the same hot file as
+  running work or a commit awaiting integration waits with
+  `waits for <task> (shares hot file <path>)` until that task lands. Newly selected work
+  also reserves its hot files, so free slots cannot start two owners at once. A waiting
+  task or idle claim holds no files; a free hot file goes to the higher-priority task
+  first. Cold-file, directory and glob overlap only ranks work after independent tasks
+  (TOOLSET-161-17). A worker may change
+  whatever else its task needs; the merge into the base, in priority order, settles the
+  rest, and a real conflict goes to the merge resolver. A missing or invalid `Touches:`
+  is no hint (the task ranks after hinted ones).
+- While worker slots idle and tasks wait on a shared hot file, the DOCS-MAINTAINER re-cuts
+  those tasks before they run (`overlap` trigger): it may merge one into a task that has
+  not started, split off the shared-file part as a dependent follow-up, supersede a
+  duplicate or make the order explicit, without touching running tasks.
 - `Resources: live` or `Resources: exclusive` makes a task run alone. Other names
   (for example `Resources: port-8080, test-db`) keep tasks that share a name from
   running together.
@@ -197,8 +261,9 @@ SDKs and package caches remain in `AUTOWORK_CACHE`, independently of temp cleanu
   dispatch so the pool drains for it, once it has waited that way for
   `PI_AUTOWORK_DRAIN_AFTER` seconds (default 1800, counted from the journal); until then
   independent work backfills and it reserves only what it declares. A serial task never drains.
-- Slots that are `reported`, `integrated`, `held` or `interrupted` block only their
-  dependents and shared resources until closed. A `held` or `interrupted` slot whose task is now done
+- Slots that are `reported`, `integrating`, `integrated` or `interrupted` retain their
+  shared-hot-file and resource reservations until closed, even after their worker ends;
+  exhausted held slots block only their dependents. A `held` or `interrupted` slot whose task is now done
   or superseded (in goals.json, or checked off in TODO.md or its archive) blocks
   nothing; its worktree and record stay for inspection. An `in_progress` task with no live slot is a claim:
   it is never dispatched and blocks its dependents and tasks whose `Resources:` overlap
@@ -225,10 +290,12 @@ write authority.
 ### Shared admission path and history
 
 Fresh/resumed dispatch (`admit`) and held retries (`retry_plan`) in
-[`parallel_dispatch.py`](../scripts/parallel_dispatch.py#L778-L801) both use
-[`parallel_plan.plan`](../scripts/parallel_plan.py#L253). They supply the same
+[`parallel_dispatch.py`](../scripts/parallel_dispatch.py#L1028) both use
+[`parallel_plan.plan`](../scripts/parallel_plan.py#L271). They supply the same
 tracked/nonignored-untracked protected-file inventory to the planner's directory
-classification; these are callers of one policy, not alternative admission rules.
+classification and the full unfinished task context (including dependency- and
+decision-held tasks) for hot-file counts; these are callers of one policy, not
+alternative admission rules. Only runnable contracts are dispatch candidates.
 The [retry lifecycle guard](../scripts/parallel_state.py#L348-L355) also calls
 `retry_plan`. [Integration](../scripts/parallel_integrate.py#L220-L234) checks the
 original dispatched contract against the protected inventory at the slot baseline,
@@ -294,12 +361,14 @@ nothing parallel was claimed or started.
   blocker with uncommitted work: it resumes the same attempt once with an instruction to
   commit finished work using the advisory failure fields. A repeated such report becomes
   `timeout`, not an owner question; the coordinator resumes it when the resource gate allows.
-  Missing dependencies and other genuine inputs still wait for a person. Closing a
+  Task waits described above resume without spending a retry; other inputs go through
+  blocker triage, which leaves only a person's part as a question. Closing a
   retried task leaves the first attempt's worktree and branch for manual cleanup.
 - **Hold causes:** every held slot records a machine-readable `cause`: `scope` (with
   `outside`, the undeclared protected files), `report`, `conflict`,
-  `validation`, `contract_changed`, `moved`, `blocker`, `crash` (died twice),
-  `diverged` (the worker's HEAD does not descend from its baseline) or `launch`. Integration's `HELD` result carries `cause` and `outside` too.
+  `validation`, `contract_changed`, `moved`, `blocker`, `task_wait` (with `waits_for`),
+  `crash` (died twice), `diverged` (the worker's HEAD does not descend from its baseline)
+  or `launch`. Integration's `HELD` result carries `cause` and `outside` too.
 - **Holds from before TOOLSET-161-17:** a commit held for `overlap`, or for `scope` on
   files that are not protected (including coordinator-owned files), is offered again once
   (`REOFFERED`) in priority order and integrates by merge; a worker held with
@@ -322,9 +391,12 @@ nothing parallel was claimed or started.
   does and returns `REQUEUED`; the task then dispatches fresh. An entry that was
   removed is retired with `requeued: false`. An unchanged entry stays held. A new
   coordinator claims the lease before these checks, so a one-shot run sees them.
-- **Set aside:** `--parallel-set-aside TASK` retires a held slot with no attempt
-  left, or an integrated one whose TODO entry was rewritten after validation (its
-  merge stays in the main branch; the new entry is new work). Every attempt's
+- **Set aside:** `--parallel-set-aside TASK` retires a finished commit waiting to
+  merge (also one whose review a restart interrupted, unless that merge already
+  landed), a held slot with no attempt left, or an integrated one whose TODO entry
+  was rewritten after validation (its merge stays in the main branch; the new entry
+  is new work). The runner sets aside a commit at the merge adoption limit itself,
+  so its task runs fresh on current main. Every attempt's
   worktree and branch is kept, renamed with `-set-aside-N`, and the slot record and
   data move to `slot-history/TASK/N`; the next refill dispatches the task fresh.
 - **Earlier task work:** [the worker prompt](../scripts/parallel_dispatch.py) lists

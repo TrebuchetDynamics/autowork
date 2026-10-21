@@ -4,9 +4,19 @@ Paths use case-sensitive fnmatch globs (stars can cross '/'); a trailing slash
 means the whole directory. Glob intersection uses a finite product of the two
 patterns, not current files, so not-yet-created files are protected too.
 """
+from collections import Counter
 from fnmatch import fnmatchcase
 from functools import lru_cache
+import importlib.util
+from pathlib import Path
 import re
+
+# Load only the shared policy, not plan_lint (which itself imports this engine).
+_policy_spec = importlib.util.spec_from_file_location(
+    'hot_file_policy', Path(__file__).resolve().parents[2] / 'docs-sync/scripts/hot_file_policy.py')
+_policy = importlib.util.module_from_spec(_policy_spec)
+_policy_spec.loader.exec_module(_policy)
+HOT_TASKS = _policy.HOT_TASKS
 
 # Reversible built-in serial policy, including nested packages and CI files.
 SERIAL_NAMES = (
@@ -155,6 +165,14 @@ def _hint(task):
         return []
 
 
+def _files(task):
+    """Literal files a task declares (no directory, no glob), counted once per task.
+
+    Only a hot literal file can hold dispatch; wide or missing Touches stay hints.
+    """
+    return {p for p in _hint(task) if not p.endswith('/') and not GLOB.search(p)}
+
+
 def _resources(task):
     """The resource names a Resources line starts with, before its explanation.
 
@@ -262,8 +280,8 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
     An in_progress task without a live slot is a claim, not running work: the
     dispatcher only plans while it holds the repository lease, which excludes a
     live sequential Autowork owner. A claim is never dispatched and still blocks
-    its dependents and tasks whose declared Touches or Resources overlap it, but
-    its missing Touches does not force unrelated tasks to wait (sierra, 2026-10-15:
+    its dependents and tasks whose Resources or serial work overlap it, but its
+    files hold nothing, and missing Touches does not force unrelated tasks to wait (sierra, 2026-10-15:
     32 handed-off claims without Touches blocked every task).
     ``parked`` contains contracts of held slots no attempt can finish. Their work
     waits for a person, not for the pool, and only ever reruns fresh from the code
@@ -298,12 +316,29 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
         if id(task) not in hints:
             hints[id(task)] = _hint(task)
         return hints[id(task)]
+
+    file_sets = {}
+
+    def files(task):
+        if id(task) not in file_sets:
+            file_sets[id(task)] = _files(task)
+        return file_sets[id(task)]
+
+    def shared_file(a, b):
+        both = files(a) & files(b) & hot_files
+        return min(both) if both else ''
     # A serial file (manifest, lockfile, CI, migration) conflicts only with other serial
     # work: each worker has its own worktree, so it cannot break a neighbour's build
     # (TOOLSET-160-df). Only an exclusive task runs alone and stops lower dispatch.
     serial = lambda task: solo(task) == SERIAL_REASON
     exclusive = lambda task: '' if serial(task) else solo(task)
     known = {t['id']: t for t in [*all_tasks, *tasks, *running, *parked]}
+    # Count every unfinished contract once, including noncandidates supplied by the
+    # caller and live slots awaiting integration. Repeated paths/inputs add no heat.
+    counts = Counter(path for t in known.values()
+                     if re.split(r'[;.\s]', t.get('fields', {}).get('Status', 'open'))[0] != 'done'
+                     for path in files(t))
+    hot_files = {path for path, count in counts.items() if count >= HOT_TASKS}
     active = {t['id']: t for t in running}
     claims = {}
     for t in known.values():
@@ -332,8 +367,10 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
             return 'dependency: held ' + b['id'] if depends(a, b) else ''
         if depends(a, b) or depends(b, a):
             return 'dependency conflict with ' + b['id']
-        # Overlapping Touches never hold a task (TOOLSET-161-17): integration merges in priority
-        # order and settles a real conflict there. Resources, serial and exclusive rules stay.
+        # A hot file both name waits for the other to land. Cold files, directories and globs
+        # only rank (TOOLSET-161-17), and an idle claim holds nothing. A waiting task holds no files: it has
+        # no code to conflict with, and its own wait on an old commit held every lower task that
+        # shared a file with it, until no worker ran. Once a file is free it goes first anyway.
         if claim or reserved:  # idle claim or waiting task
             other = ('in_progress ' if claim else '') + b['id']
             if resources(a) & resources(b):
@@ -348,6 +385,8 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
             return 'serial path shared with ' + b['id']
         if resources(a) & resources(b):
             return 'shared resource with ' + b['id']
+        if file := shared_file(a, b):
+            return f'waits for {b["id"]} (shares hot file {file})'
         return ''
 
     # Backfill: a task may start past a waiting higher-priority one only when it shares
@@ -390,8 +429,8 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
             dispatch.append(task)
             if exclusive(task):
                 stopped = ('priority task ' + tid + ': ' + exclusive(task), tid)
-    # Likely-independent work first: a task whose declared Touches overlap running or
-    # earlier-chosen work ranks lower for the free slots, but is not held (TOOLSET-161-17).
+    # Likely-independent work first: a task whose cold files, directories or globs overlap running
+    # or earlier-chosen work ranks lower for the free slots, but is not held (TOOLSET-161-17).
     chosen, ranked = {path for t in running for path in hint(t)}, []
     for task in dispatch:
         ranked.append((bool(_shared(hint(task), chosen)) if hint(task) else True, task))

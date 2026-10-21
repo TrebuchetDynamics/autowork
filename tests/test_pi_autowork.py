@@ -718,7 +718,8 @@ class EngineTests(Fixture):
         self.assertEqual(self.runs(), [])
 
     def test_failed_review_holds_the_task_and_keeps_main_clean(self):
-        self.plan({'verify:A': ['fail', 'fail']})
+        # The first attempt, its fresh retry and its one rework after review (TOOLSET-285-29) all fail.
+        self.plan({'verify:A': ['fail', 'fail', 'fail']})
         result = self.run_runner('--until-empty', '--workers', '1')
         self.assertIn('A: failed', result.stdout)
         held = json.loads((self.repo / '.git/autowork-execution/slots/A.json').read_text())
@@ -818,6 +819,72 @@ class EngineTests(Fixture):
                     self.assertEqual(question.count('### Q-P —'), 1)
                     self.assertIn('PORT', question)
                 self.assertIn('/skill:plan-for-me', next(r['message'] for r in runs if r['role'] == 'maintainer'))
+
+    def test_archived_dependencies_replay_in_the_model_free_maintainer_transaction(self):
+        # A has a stale live entry; B exists only in history. Neither may rerun.
+        (self.repo / 'TODO.md').write_text(todo([('A', None), ('C', 'A, B')]) +
+            '\n## Needs decision\n\n- [ ] Z — ambiguous history\n  Status: open\n'
+            '- [ ] N — not closed\n  Status: open\n'
+            '- [ ] NEST — pending acceptance\n  Status: open\n'
+            '  - [ ] NEST-live — needs a device\n')
+        history = ('# Completed tasks\n- [x] A — accepted close\n  Status: done\n'
+                   '### B — accepted close\nStatus: done\n'
+                   '### Z — ambiguous history\n- [x] Z — first\n  Status: done\n'
+                   '- [ ] Z — second\n  Status: open\n'
+                   '\n## More history\n- [x] N — contradictory close\n  Status: open\n'
+                   '- [x] NEST — old close\n  Status: done\n'
+                   '- [x] E — old close\n  Status: done\n'
+                   '### Evidence — latest acceptance\n  Status: open\n'
+                   '- [x] F — old close\n  Status: done\n'
+                   '### Acceptance — remaining criteria\n  - [ ] device proof\n')
+        (self.repo / 'TODO.archive.md').write_text(history)
+        ids = ['A', 'B', 'C', 'Z', 'N', 'NEST', 'E', 'F']
+        data = {'version': 1, 'goals': [{'id': 'G', 'title': 'fixture', 'source': 'TODO.md',
+            'status': 'partial', 'priority': 1, 'depends_on': [], 'tasks': ids}],
+            'tasks': [dict(id=t, title=t, goal='G', status='open',
+                          section='Next' if t in ('A', 'B', 'C') else 'Needs decision',
+                          depends_on=['A', 'B'] if t == 'C' else []) for t in ids]}
+        (self.repo / 'goals.json').write_text(json.dumps(data))
+        self.git(self.repo, 'add', '-A')
+        self.git(self.repo, 'commit', '-qm', 'stale ledger after archival')
+        base = self.git(self.repo, 'rev-parse', 'HEAD')
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(self.done('C'), result.stdout)
+        self.assertEqual([r['task'] for r in self.runs('worker')], ['C'])
+        self.assertEqual(self.runs('maintainer'), [])
+        commits = self.git(self.repo, 'log', '--format=%H', '--reverse', base + '..HEAD', '--', 'goals.json').splitlines()
+        self.assertEqual(len(commits), 2)  # one replay commit, then C's verified close
+        repair = commits[0]
+        self.assertIn('A', self.git(self.repo, 'show', '-s', '--format=%s', repair))
+        self.assertIn('B', self.git(self.repo, 'show', '-s', '--format=%s', repair))
+        repaired = json.loads(self.git(self.repo, 'show', repair + ':goals.json'))
+        self.assertEqual({t['id']: t['status'] for t in repaired['tasks']},
+                         dict(A='done', B='done', C='open', Z='open', N='open', NEST='open', E='open', F='open'))
+        self.assertNotIn('- [ ] A', self.git(self.repo, 'show', repair + ':TODO.md'))
+        self.assertIn('  - [ ] NEST-live — needs a device', self.git(self.repo, 'show', repair + ':TODO.md'))
+        self.assertTrue(self.git(self.repo, 'show', repair + ':TODO.archive.md').startswith(history.rstrip()))
+        receipt = json.loads(next(self.state.glob('*/maintainer.json')).read_text())
+        self.assertEqual(receipt['outcome'], 'merged')
+        self.assertEqual(sorted(receipt['changed']), ['A', 'B'])
+
+    def test_a_refused_archive_only_close_reaches_the_maintainer_with_the_validation_error(self):
+        (self.repo / 'TODO.md').write_text(todo([]))
+        (self.repo / 'TODO.archive.md').write_text('## Done\n- [x] A — closed\n  Status: done\n')
+        data = {'version': 1, 'goals': [dict(id='G', title='fixture', source='TODO.md',
+            status='partial', priority=1, depends_on=[], tasks=['A'])],
+            'tasks': [dict(id='A', title='closed', goal='G', status='open', section='Next', depends_on=[])]}
+        (self.repo / 'goals.json').write_text(json.dumps(data))
+        self.git(self.repo, 'add', '-A')
+        self.git(self.repo, 'commit', '-qm', 'archive-only final task with remaining goal proof')
+        for _ in range(2):
+            result = self.run_runner('--until-empty')
+            self.assertNotIn('Traceback', result.stderr)
+        models = self.runs('maintainer')
+        self.assertEqual(len(models), 1, result.stdout)
+        self.assertIn('G: partial goal has no open task', models[0]['message'])
+        self.assertEqual(json.loads((self.repo / 'goals.json').read_text())['tasks'][0]['status'], 'open')
+        self.assertEqual(self.runs('worker'), [])
 
     def test_the_docs_maintainer_restates_a_task_that_is_not_runnable_as_written(self):
         """TOOLSET-164-f1: tasks the engine would not run waited hours for the owner."""
@@ -1521,6 +1588,38 @@ class EngineTests(Fixture):
         result = self.run_runner('--until-empty')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual([r['task'] for r in self.runs('worker')].count('A'), 1)  # adopted, not restarted
+        self.assertTrue(self.done('A', 'B', 'C'))
+
+    def test_a_one_shot_run_waits_a_bounded_time_for_a_held_execution_lock(self):
+        """TOOLSET-288-cf: a killed runner's engine helper still held the lock, and the restart
+        that should adopt its workers exited 4 at once under load."""
+        common = Path(self.git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir'))
+        lock = common / 'autowork-execution' / 'dispatch.lock'
+        lock.parent.mkdir(parents=True, exist_ok=True)
+
+        def hold(seconds):
+            holder = subprocess.Popen([sys.executable, '-c', (
+                'import fcntl, os, sys, time\n'
+                f'fd = os.open({str(lock)!r}, os.O_RDWR | os.O_CREAT, 0o600)\n'
+                'fcntl.flock(fd, fcntl.LOCK_EX)\n'
+                'print("held", flush=True)\n'
+                f'time.sleep({seconds})\n')], stdout=subprocess.PIPE, text=True)
+            self.addCleanup(holder.stdout.close)
+            self.addCleanup(holder.wait)
+            self.addCleanup(holder.kill)
+            self.assertEqual(holder.stdout.readline().strip(), 'held')
+            return holder
+
+        first = hold(60)
+        result = self.run_runner('--until-empty', env={**self.env, 'PI_AUTOWORK_BUSY_WAIT': '2'})
+        self.assertEqual(result.returncode, 4, result.stdout + result.stderr)  # past the bound: busy, as before
+        self.assertIn('Repository busy', result.stdout + result.stderr)
+        first.kill()
+        first.wait()
+        hold(4)
+        result = self.run_runner('--until-empty', env={**self.env, 'PI_AUTOWORK_BUSY_WAIT': '60'})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('waiting for it to finish', result.stdout)
         self.assertTrue(self.done('A', 'B', 'C'))
 
     def test_a_reload_keeps_the_runner_and_its_worker_and_applies_new_settings(self):
@@ -2253,7 +2352,7 @@ class EngineTests(Fixture):
                     ("verdict == 'fail'", "verdict != 'fail'", True),
                     ('command = main_check.full_check(checkout)', 'command = None', True),
                     ("'PI_AUTOWORK_VALIDATE_TIMEOUT', 3600", "'PI_AUTOWORK_VALIDATE_TIMEOUT', 3601", True),
-                    ('only=set(tests), workers=1', 'only=set(tests), workers=4', True)):
+                    ('only=set(only), workers=1', 'only=set(only), workers=4', True)):
                 with self.subTest(edit=before):
                     self.assertIn(before, source)
                     path.write_text(source.replace(before, after, 1))
@@ -2265,21 +2364,21 @@ class EngineTests(Fixture):
 
     def test_a_changed_reviewer_reviews_held_commits_again_by_itself(self):
         """flutter: three commits sat held after an older reviewer failed them; nobody should have to ask."""
-        self.plan({'verify:A': ['fail', 'fail']})
+        self.plan({'verify:A': ['fail', 'fail', 'fail']})
         first = self.run_runner('--until-empty')
         self.assertIn('A: failed', first.stdout)
         reviews = lambda: len([r for r in self.runs('verify') if r['task'] == 'A'])
-        self.assertEqual(reviews(), 2)  # the first attempt and its fresh retry
+        self.assertEqual(reviews(), 3)  # the first attempt, its fresh retry and its one rework
         same = self.run_runner('--until-empty')  # the same reviewer: nothing reviewed again
         self.assertNotIn('verifying it again', same.stdout)
-        self.assertEqual(reviews(), 2)
+        self.assertEqual(reviews(), 3)
         self.env['PI_AUTOWORK_VALIDATE'] = 'true'  # validation changed: a new reviewer version
         self.plan({'verify:A': ['pass']})
         changed = self.run_runner('--until-empty')
         self.assertEqual(changed.returncode, 0, changed.stdout + changed.stderr)
         self.assertIn('A: the reviewer changed since this commit was held; verifying it again', changed.stdout)
         self.assertTrue(self.done('A', 'B', 'C'))
-        self.assertEqual(reviews(), 3)
+        self.assertEqual(reviews(), 4)  # and one look by the changed reviewer
 
     def test_editing_a_held_tasks_entry_answers_it_and_the_runner_reruns_it(self):
         """TOOLSET-120-fc: the owner only answers; no --set-aside, no restart."""
@@ -2576,32 +2675,36 @@ class EngineTests(Fixture):
         self.assertIn('the merge could not be resolved; it waits for the owner', result.stdout)
 
     def test_a_refused_adoption_asks_the_owner_without_running_the_resolver(self):
-        self.plan({'verify:A': ['fail', 'fail']})
+        self.plan({'verify:A': ['fail', 'fail', 'fail']})  # with its one rework after review
         first = self.run_runner('--until-empty')
         self.assertEqual(first.returncode, 1, first.stdout + first.stderr)
         slot_path = self.repo / '.git/autowork-execution/slots/A.json'
         original = json.loads(slot_path.read_text())
-        self.assertEqual(original['cause'], 'validation')
+        self.assertEqual(original['cause'], 'reviewed_twice')
         original.update(cause='conflict', reason='merge conflict', conflict_files=['A.txt'])
         (self.repo / 'A.txt').write_text('conflicting session change\n')
         self.git(self.repo, 'commit', '-qam', 'session conflict')
         before = len(self.runs('merge'))
-        for count, moved in [(1, False), (3, True)]:
-            with self.subTest(count=count, moved=moved):
-                base = self.git(self.repo, 'rev-parse', 'HEAD')
-                slot = dict(original, attempt=1, merged_base=base, merged_count=count)
-                slot_path.write_text(json.dumps(slot))
-                if moved:
-                    (self.repo / 'A.txt').write_text('session advanced again\n')
-                    self.git(self.repo, 'commit', '-qam', 'another session move')
-                result = self.run_runner('--once')
-                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-                self.assertEqual(len(self.runs('merge')), before, result.stdout)
-                self.assertEqual(json.loads(slot_path.read_text())['state'], 'held')
-                question = (self.repo / 'BLOCKERS.md').read_text()
-                self.assertIn('Q-A', question)
-                self.assertIn('A.txt', question)
-                self.assertIn(f'{count} of 3', question)
+        base = self.git(self.repo, 'rev-parse', 'HEAD')
+        slot_path.write_text(json.dumps(dict(original, attempt=1, merged_base=base, merged_count=1)))
+        result = self.run_runner('--once')  # main has not moved past the adopted revision
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual(len(self.runs('merge')), before, result.stdout)
+        self.assertEqual(json.loads(slot_path.read_text())['state'], 'held')
+        question = (self.repo / 'BLOCKERS.md').read_text()
+        self.assertIn('Q-A', question)
+        self.assertIn('A.txt', question)
+        self.assertIn('1 of 3', question)
+        # At the limit, after other work moved main again, the commit is set aside and the task
+        # runs fresh instead of asking the owner.
+        slot_path.write_text(json.dumps(dict(original, attempt=1, merged_base=base, merged_count=3)))
+        (self.repo / 'A.txt').write_text('session advanced again\n')
+        self.git(self.repo, 'commit', '-qam', 'another session move')
+        result = self.run_runner('--once')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(len(self.runs('merge')), before, result.stdout)
+        self.assertIn('A: its commit conflicted with main after 3 merges; set aside as autowork/A-set-aside-', result.stdout)
+        self.assertIn('A: integrated', result.stdout)
 
     def test_a_waiting_runner_commits_the_owners_quiet_planning_without_a_merge(self):
         """TOOLSET-157-cd (5): answers to held tasks stayed uncommitted while nothing merged."""

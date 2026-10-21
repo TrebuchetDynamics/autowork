@@ -1,5 +1,6 @@
 """Real CLI concurrency and stale-write contracts (temporary local fixtures)."""
 import fcntl
+import importlib.util
 import json
 import os
 import shutil
@@ -66,6 +67,22 @@ class ConcurrencyTests(unittest.TestCase):
         worker = Path(self.tmp.name) / 'worker'
         self.git('worktree', 'add', '-q', '-b', 'worker', worker)
         return worker
+
+    def test_private_copies_keep_separate_stale_write_guards(self):
+        copies = []
+        for name in ('first_goals', 'second_goals'):
+            spec = importlib.util.spec_from_file_location(name, SCRIPT)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            copies.append(module)
+        first, second = copies
+        with first.coordination(self.repo):
+            (self.repo / 'TODO.md').write_text(self.body + '\nUncoordinated edit\n')
+            second.dump(self.repo, ledger())  # The other copy has no armed guard.
+            saved = (self.repo / 'goals.json').read_bytes()
+            with self.assertRaisesRegex(SystemExit, 'stale write'):
+                first.dump(self.repo, ledger())
+            self.assertEqual((self.repo / 'goals.json').read_bytes(), saved)
 
     def test_default_linked_target_ignores_native_binding_without_foreign_writes(self):
         worker = self.make_worktree()

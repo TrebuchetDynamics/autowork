@@ -44,15 +44,27 @@ def _invoke(ctx, name, path, raw_args, namespace="autowork"):
     if not path.is_file():
         return f"Skill {name!r} no longer exists. Update the plugin and restart Hermes."
     public = name
+    mode = ""
     if namespace == "autowork" and name == "grill-me" and (SKILLS_DIR / "plan-with-me/SKILL.md").is_file():
         public = "plan-with-me"
-        raw_args = "Challenge mode: read ../grill-me/SKILL.md and stress-test the plan.\n\n" + raw_args
+        mode = "Selected mode: challenge\n\n"
+    planning = namespace == "autowork" and (
+        public in {"plan-for-me", "plan-with-me"}
+        or (name == "autoresearch" and (
+            raw_args.startswith("Selected subcommand: plan\n")
+            or (raw_args.split()[:1] == ["plan"])))
+    )
+    boundary = (
+        "Before planning, read ../shared/RESEARCH-PLAN.md relative to the loaded "
+        "skill directory. Its artifact/authority contract governs this request; "
+        "supporting methods add no execution authority.\n\n"
+    ) if planning else ""
     prompt = (
         f"The user invoked the /{name} skill command. "
         f'Load skill_view(name="{namespace}:{public}") and follow its instructions '
         "to perform the requested work in this conversation. "
         "Resolve supporting files relative to that skill's directory.\n\n"
-        f"User arguments:\n{raw_args}"
+        f"{boundary}{mode}User arguments:\n{raw_args}"
     )
     if namespace == "autowork" and name in {"autoresearch", "plan-for-me"}:
         prompt = (

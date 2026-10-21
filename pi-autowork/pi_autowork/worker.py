@@ -8,6 +8,7 @@ The engine starts each in its own process group; a stop sent to the group reache
 Pi too. Exit 0 means a finished worker with a report, or a passing review.
 """
 from datetime import datetime
+import ast
 import hashlib
 import json
 import os
@@ -435,26 +436,39 @@ def quiet_reruns(state, task, log, checkout, rev, tests, limit):
         if time.monotonic() >= deadline:
             raise QuietWindowMissed
 
-    def rerun():
-        main_check.rerun_failures(str(log), checkout, str(receipt), rev, only=set(tests), workers=1)
+    def rerun(only):
+        main_check.rerun_failures(str(log), checkout, str(receipt), rev, only=set(only), workers=1)
+        quiet = json.loads(receipt.read_text())
+        if not isinstance(quiet, dict) or quiet.get('rev') != rev or not isinstance(quiet.get('flaky'), list):
+            raise ValueError('the rerun left no receipt for this revision')
+        return quiet['flaky']
+
+    def reruns():
+        # A sample first: 108 failures rerun one at a time, each to its 120 s limit, took three
+        # hours and every review's time limit with them. When no failure of the sample passes
+        # alone they are not flaky; the base comparison that follows says whose they are.
+        sample = max(1, setting('PI_AUTOWORK_QUIET_SAMPLE', 5))
+        flaky = rerun(tests[:sample])
+        if flaky and tests[sample:]:
+            flaky += rerun(tests[sample:])
+        elif tests[sample:]:
+            print(f'pi-autowork: none of {sample} failures of {task} passed alone; the other '
+                  f'{len(tests) - sample} are not rerun', file=sys.stderr)
+        return flaky
 
     try:
         try:
             with main_check.check_slot(waiting):
-                rerun()
+                return reruns()
         except QuietWindowMissed:
             print(f'pi-autowork: no quiet check slot for {task} within {wait:g} s; '
                   'rerunning its failures one at a time without one', file=sys.stderr)
-            rerun()
-        quiet = json.loads(receipt.read_text())
+            return reruns()
     except main_check.Stopped:
         raise
     except Exception as error:  # like the first reruns: without a receipt, none is excused
         print(f'pi-autowork: rerunning the failures of {task} alone failed: {error}', file=sys.stderr)
         return []
-    if not isinstance(quiet, dict) or quiet.get('rev') != rev or not isinstance(quiet.get('flaky'), list):
-        return []
-    return quiet['flaky']
 
 
 def run_gate(state, task, checkout, command, base_rev=None, *, evidence=None):
@@ -730,9 +744,147 @@ def batch_order(session, reported):
     parallel_dispatch, parallel_integrate, parallel_state = engine_modules()
     common = parallel_state.common_dir(Path(session))
     slots = {s['task_id']: s for s in parallel_state.slots(common)}
-    busy = {t for t, s in slots.items() if parallel_integrate.writers_busy(s)}
+    eligible = {t for t, s in slots.items() if s['state'] == 'reported'
+                and not parallel_integrate.writers_busy(s) and not parallel_state.worker_live(s)
+                and not parallel_state.missing_commit_report(common, s)}
     order = [t['id'] for t in parallel_dispatch.contracts(Path(session))]
-    return [t for t in order if t in reported and t not in busy], {t: slots[t] for t in reported if t in slots}
+    return [t for t in order if t in reported and t in eligible], {t: slots[t] for t in reported if t in eligible}
+
+
+def new_failures(state, checkout):
+    """The tests the recorded full check of ``checkout``'s tree failed that the base passes and
+    that did not pass when rerun alone; [] without a record that names them."""
+    tree = git(checkout, 'rev-parse', 'HEAD^{tree}')
+    try:
+        record = json.loads((Path(state) / 'full-check' / f'tree-{tree}.json').read_text())
+        failures = record['result']['failures']
+        excused = (record.get('baseline_equivalent') or []) + (record.get('isolated_rerun') or [])
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+    return [f for f in failures if isinstance(f, str) and f not in excused]
+
+
+def imported_files(checkout, start, index, limit=500):
+    """``start`` and every tracked Python file it imports, transitively, by module name. A name
+    matches every file of that basename (and a package's __init__.py): too many, never too few."""
+    found, todo = set(), [start]
+    while todo and len(found) < limit:
+        path = todo.pop()
+        if path in found:
+            continue
+        found.add(path)
+        try:
+            tree = ast.parse((Path(checkout) / path).read_text(errors='replace'))
+        except (OSError, SyntaxError, ValueError):
+            continue
+        names = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names.update(part for alias in node.names for part in alias.name.split('.'))
+            elif isinstance(node, ast.ImportFrom):
+                names.update((node.module or '').split('.'))
+                names.update(alias.name for alias in node.names)
+        todo += [p for name in names if name for p in index.get(name, ()) if p not in found]
+    return found
+
+
+FRAME = re.compile(r'^\s*File "([^"]+)", line (\d+), in ')
+
+
+def tracebacks(log):
+    """{test id: [(path, line)]}: the frames of each failure or error in unittest output."""
+    found, current = {}, None
+    for line in log.splitlines():
+        head = re.match(r'^(?:FAIL|ERROR): \S+ \(([^)]+)\)', line)
+        if head:
+            current = found.setdefault(head[1], [])
+        elif line.startswith(('-----', '=====')) and current is not None and current:
+            current = None
+        elif current is not None and (frame := FRAME.match(line)):
+            current.append((frame[1], int(frame[2])))
+    return found
+
+
+def traceback_blame(checkout, frames, tracked, owner):
+    """The candidates that wrote a line the failure ran through: `git blame` of each frame in a
+    tracked file, by its path inside the checkout (the log may name another chain's copy)."""
+    blamed = set()
+    for path, line in frames:
+        parts = Path(path).parts
+        relative = next(('/'.join(parts[i:]) for i in range(len(parts)) if '/'.join(parts[i:]) in tracked), None)
+        if relative is None:
+            continue  # the standard library or a temporary file
+        out = git(checkout, 'blame', '--porcelain', '-L', f'{line},{line}', 'HEAD', '--', relative) or ''
+        if task := owner(out.split(' ', 1)[0]):
+            blamed.add(task)
+    return blamed
+
+
+def batch_suspects(state, checkout, base, steps):
+    """The batch candidates a new failing test points at: those that wrote a line its traceback
+    ran through (`git blame`), else those whose changes it imports or reads by name. Halving a
+    failed batch cost a full check per round. Every failure must point at a candidate, and not
+    all of them may be suspects; otherwise [] and the batch is halved as before."""
+    failing = new_failures(state, checkout)
+    try:
+        tree = git(checkout, 'rev-parse', 'HEAD^{tree}')
+        record = json.loads((Path(state) / 'full-check' / f'tree-{tree}.json').read_text())
+        frames = tracebacks(Path(record['log']).read_text(errors='replace'))
+    except (OSError, ValueError, KeyError, TypeError):
+        frames = {}
+
+    def contains(commit, rev):
+        return subprocess.run(['git', '-C', str(checkout), 'merge-base', '--is-ancestor', commit, rev],
+                              capture_output=True).returncode == 0
+
+    def owner(commit):
+        """The first candidate whose step brought ``commit``; None for the base's own."""
+        if not re.fullmatch(r'[0-9a-f]{40}', commit) or contains(commit, base):
+            return None
+        return next((task for task, head in steps if contains(commit, head)), None)
+
+    files = (git(checkout, 'ls-files') or '').splitlines()
+    index = {}
+    for path in files:
+        if path.endswith('.py'):
+            name = Path(path).stem if Path(path).name != '__init__.py' else Path(path).parent.name
+            index.setdefault(name, []).append(path)
+    changed, before = {}, base
+    for task, head in steps:
+        changed[task] = set((git(checkout, 'diff', '--name-only', before, head) or '').splitlines())
+        before = head
+    suspects = set()
+    for test in failing:
+        blamed = traceback_blame(checkout, frames.get(test, ()), set(files), owner)
+        if blamed:
+            suspects |= blamed
+            continue
+        module = next((part for part in test.split('.') if part.startswith('test')), '')
+        reach = set()
+        for path in index.get(module, ()):
+            reach |= imported_files(checkout, path, index)
+        if not reach:
+            return []  # a failure no test file explains
+        text = ''
+        for path in reach:
+            try:
+                text += (Path(checkout) / path).read_text(errors='replace')
+            except OSError:
+                pass
+        # Imported modules, or a file the test reads by name: 'autowork/SKILL.md' anywhere, or just
+        # 'SKILL.md' beside the test (ROOT.joinpath('SKILL.md') in skills/autowork/scripts/).
+        homes = {'/'.join(Path(path).parent.parts[:2]) + '/' for path in index.get(module, ())}
+
+        def read(path):
+            return not path.endswith('.py') and ('/'.join(Path(path).parts[-2:]) in text or (
+                Path(path).name in text and any(path.startswith(home) for home in homes)))
+        blamed = {task for task, paths in changed.items() if paths & reach or any(read(p) for p in paths)}
+        if not blamed:
+            return []
+        suspects |= blamed
+    if not failing or len(suspects) >= len(steps):
+        return []
+    return [task for task, _ in steps if task in suspects]
 
 
 def verify_batch(state, session, script, tasks):
@@ -777,8 +929,9 @@ def verify_batch(state, session, script, tasks):
         lease = review_port_lease()  # held until this process exits
         ok, reason = full_suite_gate(state, 'batch', str(chain), base)
         if not ok:
-            # Which candidate broke it is not known yet: each goes through today's integration.
-            print(json.dumps(dict(result, outcome='BATCH_GATE_FAILED', reason=reason)))
+            # The candidates the failing tests point at, when they all do; else the batch is halved.
+            print(json.dumps(dict(result, outcome='BATCH_GATE_FAILED', reason=reason,
+                                  suspects=batch_suspects(state, str(chain), base, steps))))
             return 0
         # The same note a single review gets, with any failures the gate excused.
         gate = json.dumps({'note': gate_note(state, 'batch', str(chain))})

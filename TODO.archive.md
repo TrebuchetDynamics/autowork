@@ -5013,3 +5013,501 @@ Source section: Next
 - Exclusions: No new LLM judge, source-truth guarantee, semantic model benchmark, larger swarm, Obsidian export, runtime/service/profile changes, deployment, publication, test waiver, failure-history rewrite or resurrection of modules targeted by TOOLSET-202-9a. Research persistence does not dispatch implementation.
 - Planner's call: A narrow producer-evidence fidelity successor to delivered check reuse, not its reimplementation. Keep 130-15 as the read-model consumer and 118-68/228-0c as capacity owners. Diagnose from structured producing evidence before parsing task-local logs; preserve unsupported and unavailable distinctions.
 - Next action: Add a table-driven fake gate/record regression showing cached cross-task reuse with a missing current-task log and an exception-qualified producing run. Make the minimal existing gate-record/gate_note correction, then run the focused fixtures and mandatory offline/review gates. Do not run real model calls or increase worker count to verify this behavior.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-285-29"></a>
+
+### TOOLSET-285-29 — A task whose last attempt failed its review is reworked once with the findings, never left silently held
+
+- [x] TOOLSET-285-29 — A task whose last attempt failed its review is reworked once with the findings, never left silently held
+- Short: Review-failed last attempt is reworked
+- Status: done 2026-10-20 (interactive session): one rework with finding and kept tip after a last-attempt review failure; second failure held as reviewed_twice (owner question, re-reviewable by a changed reviewer); entry edits reset it; fixture and runner tests.
+- Goal: PI-RUNNER
+- Evidence: (2026-10-20, one fleet runner): a task's second attempt failed its review ('required scheduler and signed-execution acceptance evidence is missing'). The engine offers fresh retries only to first attempts, and the question list classes review failures as technical, so the task was neither retried nor asked about and appeared nowhere among the runner's roots or questions.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/test_parallel_integrate.py, pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_questions.py, tests/test_pi_autowork.py
+- Scope: (1) A held slot whose cause is a review failure (validation, not environment) on its last attempt gets one fresh rework attempt of the same task: the previous commit is kept on a -set-aside-N branch, and the new prompt names that tip and quotes the reviewer's findings as what to fix. (2) A second review failure of the rework becomes an owner question quoting both findings. (3) Until then, status, the TUI and BLOCKERS.md show such a task as 'reworking after review' or as the question, never as nothing: no held task may be neither retried nor asked.
+- Acceptance: In fixtures: a task whose second attempt fails review with a finding gets exactly one rework attempt whose prompt contains the finding and the kept tip; a rework that passes lands; a rework that fails again yields one owner question quoting both findings; a status snapshot never shows a held task with no retry, no question and no root.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 -m unittest discover -s pi-autowork/tests -p test_questions.py; python3 scripts/check.py tests/test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to review content, gates or the attempt limit for other causes; an environment hold keeps its provisioning path.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-289-71"></a>
+
+### TOOLSET-289-71 — Task status shows Active, Mergeable, Waiting or Blocker with a detail
+
+- [x] TOOLSET-289-71 — Task status shows Active, Mergeable, Waiting or Blocker with a detail
+- Short: Status reads Active/Mergeable/…
+- Status: done
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [accepted vocabulary](docs/project.md#task-status-vocabulary-2026-10-20) (owner, 2026-10-20); [fleet view](pi-autowork/pi_autowork/fleet_view.py) (`task_counts`, `QUEUED`, `PHASES`); [TUI](pi-autowork/pi_autowork/tui.py) (`RUNNER_COLUMNS` Run/Land/Wait/Held and the detail line "working · to land · waiting · held"); [health](pi-autowork/pi_autowork/health.py) (`NEEDS_PERSON`, "held for a person").
+- Evidence: the owner asked what Run, Land, Wait and Held mean and whether Held is a blocker. "Land" counts `implemented` commits (`QUEUED`) that have not been checked yet, so it is not "ready to merge"; "Held" covers both agent-repairable causes and real owner questions.
+- Touches: pi-autowork/pi_autowork/fleet_view.py, pi-autowork/pi_autowork/tui.py, pi-autowork/pi_autowork/health.py, pi-autowork/tests/test_fleet_view.py, pi-autowork/tests/test_health.py
+- Consumes: TOOLSET-129-c4's single Needs action (reason, audience, source) for a Blocker's "who resolves it".
+- Scope: (1) One pure function maps a slot and its evidence to (headline, detail, resolver): headline one of Active, Mergeable, Waiting, Blocker; Mergeable only when the recorded checks and review passed and only the merge remains; `held` becomes Blocker with its cause and resolver Agent repair, Needs you or External (Needs you only for causes the engine cannot repair, the `NEEDS_PERSON` set made explicit). (2) The runner table's columns become Active, Mergeable, Waiting, Blocker, Total; the detail line, task rows and `autowork status` use the same words and show `headline · detail`. (3) Every Waiting row names its reason. (4) Engine state names and runner-level states are unchanged; no alias keeps the old column names.
+- Acceptance: Given a reported commit without checks, the row reads `Waiting · Implemented`, never Mergeable (`test_fleet_view.py::test_implemented_is_waiting_not_mergeable`). Given checks and review passed, `Mergeable` (`test_mergeable_needs_passed_gates`). A conflict hold reads `Blocker · Conflict · Agent repair`; a blocker the worker reported for credentials reads `… · Needs you` (`test_blocker_names_its_resolver`). The runner table header is exactly Runner, State, Active, Mergeable, Waiting, Blocker, Total, Needs, Now (`test_runner_columns`).
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_fleet_view.py; python3 -m unittest discover -s pi-autowork/tests -p test_health.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to engine slot states, hold causes or retry behaviour; TOOLSET-276-a9 owns the hold-cause table.
+- Planner's call: after 129-c4 because both rewrite the Needs cell and the runner table in the same files.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-146-bc"></a>
+
+### TOOLSET-146-bc — Run conditional Docs Sync during verified Autowork closeout
+
+- [x] TOOLSET-146-bc — Run conditional Docs Sync during verified Autowork closeout
+- Short: Conditional Docs Sync at closeout
+- Status: done
+- Goal: DOCS-COMPLETENESS — Make core-document completeness and drift machine-checkable.
+- Sources: [accepted recovery and closeout plan](docs/plans/2026-10-16-pi-autowork-coordinator.md#automatic-stall-recovery-and-conditional-docs-sync), [existing closeout guidance](skills/shared/ENGINEERING-CYCLE.md), [Docs Sync](adapters/skills/docs-sync/SKILL.md), [parallel close](skills/autowork/scripts/parallel_integrate.py).
+- Touches: skills/autowork/SKILL.md, adapters/skills/autowork/SKILL.md, skills/shared/ENGINEERING-CYCLE.md, skills/autowork/references/parallel-workers.md, skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/test_parallel_dispatch.py, skills/autowork/scripts/test_parallel_integrate.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/worker.py, tests/test_pi_autowork.py, tests/fixtures/autowork-closeout/, docs/cross-host.md, docs/workflows.md
+- Skills: Required: bundled Docs Sync, resolved in the actual host, for scoped Maintain when a verified change leaves a concrete documentation delta. Expected result is affected docs reconciled with source and readback/checks, or a justified not_needed disposition. Archive-only rendering is not equivalent. Use its existing helper path for deterministic task/index/archive changes; no repository-wide bootstrap.
+- Scope: Assess doc impact at each task closeout from verified changes, task acceptance and actual docs. Update component docs inside authorized worker Touches; route shared docs through the coordinator. Add source-bound not_needed/updated/pending evidence with backward-compatible assessment of older reports. Prepare a narrow Docs Sync pass outside atomic-close locks; integrate/validate the actual doc candidate before final closure. Coalesce compatible completions in one settlement pass without waiting for fleet idleness. Preserve current atomic closure, exact evidence binding and history ownership. Align native/portable sequential guidance with the runtime path. Reconcile known newer origin atomic-close changes before editing; no second closeout authority.
+- Acceptance: Behavioral fixtures show relevant docs updated for a changed interface; already-correct or metadata-only work produces a justified no-op; two compatible completions share one pass with per-task evidence. Foreign dirty docs and moved source hold/reconcile safely. Failure or interruption preserves integrated code and pending doc closeout without marking done or replaying implementation; restart resumes once. Legacy reports lacking doc fields are assessed instead of rejected. TODO-only and indexed archive history is preserved. Once/until-empty finish needed closeout within scope; stops/pauses/budget limits do not launch new work. Scoped Docs Sync changes no unrelated policy or acceptance and no global manifest is required.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py; python3 scripts/check.py skills/autowork/scripts/test_parallel_integrate.py; python3 scripts/check.py tests/test_pi_autowork.py; bounded native/portable closeout behavioral scenarios (new, unrun); python3 scripts/check.py at combined runtime integration; git diff --check. Reuse compact fake-worker/disposable-Git fixtures; no test per wording rule.
+- Dependencies: None. Serialize overlapping lifecycle/closeout edits after active TOOLSET-115-bf work; reuse TOOLSET-120-fc/141-c4 recovery facilities where present, without making all stall handlers prerequisites for doc closeout.
+- Ownership: Toolset coordinator. Source/offline delivery here; installed fleet qualification remains TOOLSET-096-7e.
+- Owner decision (2026-10-17): the conditional Docs Sync pass at closeout runs in the DOCS-MAINTAINER worker (TOOLSET-164-f1, [plan](docs/plans/2026-10-17-docs-maintainer.md#docs-maintainer-worker) decision 5). This task keeps the per-task doc-impact assessment and its not_needed/updated/pending evidence in worker reports, which the maintainer consumes.
+- Exclusions: No full-doc bootstrap per task, new product work at closeout, infinite model retries, automatic installation/service restart, paused-job resumption, direct fleet-repository edits, publication or invented live checks. This planning pass dispatches nothing.
+- Planner's call: Always assess, run scoped Maintain only when needed; bind disposition to actual source/doc inputs and retain pending status on required doc failure. A code integration is not complete task closeout.
+- Planner's call (2026-10-19 audit; where this differs from the Scope above, this wins): Only the `not_needed`, `updated` or `pending` doc-impact fields in worker reports remain. The closeout Docs Sync pass itself belongs to the docs maintainer (266-7a).
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-252-4c"></a>
+
+### TOOLSET-252-4c — A worker blocker that names another open task waits for that task, occupies nothing meanwhile, and resumes when it lands
+
+- [x] TOOLSET-252-4c — A worker blocker that names another open task waits for that task, occupies nothing meanwhile, and resumes when it lands
+- Short: Blocker on a task waits for that task
+- Status: done
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [integration](skills/autowork/scripts/parallel_integrate.py) (a worker's `blockers` become a `Hold('blocker')`, a person's question); [dispatch](skills/autowork/scripts/parallel_dispatch.py) (`dispatch_locked`: held slots stay `occupying` unless exhausted or overlap-held); [admission](skills/autowork/scripts/parallel_plan.py) (an exclusive task waits `must run alone (beside <task>)` for every occupying slot).
+- Evidence (2026-10-18 21:23-23:34, one fleet runner): an exclusive task waited more than 70 minutes `must run alone (beside <A>)` while A was reviewed, draining all lower dispatch. A's worker then stopped with a blocker naming that exclusive task: "The existing <exclusive task> owner/coordinator must supply the retained parser repair in the combined baseline". A became a held slot that still occupied, so the exclusive task kept waiting beside it while A waited for the exclusive task. The runner sat at 0 workers with 3 tasks behind A; only a person or the docs maintainer could break it.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, skills/autowork/scripts/parallel_state.py, pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_questions.py
+- Scope: (1) When every blocker of a report names, by ID, an open task other than its own that the ledger does not already make a dependency, the hold records `waits_for: [<ids>]` (a new slot field) and is not a person's question. (2) A slot with `waits_for` occupies nothing. Admission treats it like a dependency of its task: it never starts beside, or ahead of, a task it waits for. (3) Once every task in `waits_for` is closed (here or on the base, TOOLSET-218-d0), the slot resumes on the same attempt, with a prompt line naming the landed tasks. (4) A blocker naming no task, or also asking for something else, stays a question as today. A `waits_for` that has not resolved after 24 h becomes one question too.
+- Acceptance: In fixtures: a report whose only blocker names open task B gives a held slot with `waits_for: [B]` and no BLOCKERS question; an exclusive B starts although that slot exists; after B closes, the slot resumes the same attempt and its prompt names B; a blocker naming no task still goes to the blocker triage.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py; python3 -m unittest discover -s pi-autowork/tests -p test_questions.py; python3 scripts/check.py
+- Dependencies: TOOLSET-229-d0.
+- Ownership: Toolset coordinator.
+- Exclusions: No editing of the task's `Dependencies:` line by the engine; the docs maintainer may still record it.
+- Planner's call: Now, after TOOLSET-251-c4. A worker that has found the order the plan missed has told the runner exactly what to wait for; turning that into a wait, rather than a question and a slot that still blocks, removes a whole class of deadlocks between exclusive work and its dependents.
+- Owner decision (2026-10-19): Preserve the code; separate coordinator-owned queue edits and reverify this retained implementation. Keep candidate 48070c51f0c65ba28d8ad7542670e69444c926bb and its recorded checks/history; no fresh reimplementation or waiver of mandatory checks.
+- Next action: Existing execution owner: continue from retained candidate 48070c51f0c65ba28d8ad7542670e69444c926bb, preserving its code and tests. Prepare the smallest descendant/reconciled candidate that excludes only attributable worker changes to protected TODO.md/goals.json; any necessary planning repair goes through the coordinator/Docs Sync, never a worker-file guard bypass or restoration of stale queue snapshots. Reverify the exact integrated code with original required checks and review; reuse only still-valid evidence. Keep the same task and cumulative accounting, preserve unrelated work and do not clear slots/leases manually. A saved answer is not verified delivery.
+- Planner's call (2026-10-19 audit; where this differs from the Scope above, this wins): The hold records `waits_for` before the blocker triage runs, and `triage_blocker` skips slots that have one. A blocker naming no task goes to the triage (4a82801), not to a question. Drop the acceptance clause "an exclusive B starts although that slot exists": 1fcf0a3 already lets a must-run-alone task start beside held slots whose worker has ended.
+- Planner's call (2026-10-19 builder check): A `waits_for` that has not resolved after 24 h becomes one question for the owner, not a triage: the task it waits for is stuck. Reuse the waits_for code of the retained candidate (now on `autowork/TOOLSET-252-4c-set-aside-1`) where it still fits, and drop its path that sends task-less blockers to the owner, since the triage handles those: that keeps the owner decision's intent of not reimplementing what exists. Depends on 229-d0.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-242-d5"></a>
+
+### TOOLSET-242-d5 — A task archived as done is done in the ledger too, and a not-runnable reason names what blocks it
+
+- [x] TOOLSET-242-d5 — A task archived as done is done in the ledger too, and a not-runnable reason names what blocks it
+- Short: Archived done means done in the ledger
+- Status: done
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [contract rules](skills/autowork/scripts/task_execution.py) (`contract_reason`, the `ledger dependency or disposition holds execution` reason, `dependency_done`, `archived_done`, `_queue_inputs`), [ledger commands](skills/docs-sync/scripts/goals.py) (`task`, `archive`), [docs maintainer](pi-autowork/pi_autowork/maintainer.py) (the `not runnable` trigger).
+- Evidence (2026-10-18, a fleet runner): three tasks and two behind them waited for hours as `not runnable: ledger dependency or disposition holds execution`; their dependencies were checked done in the TODO archive but still `open` in `goals.json` and unchecked in TODO.md. The reason named neither the dependency nor the disagreement, the maintainer made no change, and the runner asked the owner.
+- Touches: skills/autowork/scripts/task_execution.py, skills/autowork/scripts/test_parallel_plan.py, pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
+- Scope: (1) The reason names what holds the task and why: `ledger: <ID> is open in goals.json but archived as done` (or the ID missing from the ledger, or a ledger dependency outside Now/Next). (2) The runner repairs the archived-done case itself, without a model, through `goals.py` (the task `done` in the ledger, its open TODO entry archived), in one planning commit that names the IDs; it never marks a task done that the archive does not show as done. (3) Any other ledger disagreement goes to the maintainer with that exact reason, which it can act on.
+- Acceptance: In fixtures, a dependency archived done but open in the ledger is repaired in one planning commit and its dependents run; the reason for every other case names the ID and the disagreement; nothing that is not archived as done is ever marked done.
+- Checks: python3 scripts/check.py skills/autowork/scripts/test_parallel_plan.py tests/test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator. Runs after TOOLSET-197-4f, which edits coordinator.py.
+- Exclusions: No change to which tasks the engine runs once the files agree.
+- Planner's call: the archive records a close; a ledger that lags it is bookkeeping the runner can fix deterministically, so it needs neither a model nor the owner (owner, 2026-10-18: autowork "must be able to fix these issues easily").
+- Planner's call (2026-10-19 audit; where this differs from the Scope above, this wins): Scope (2) is a repair inside the docs maintainer's transaction (265-16) that calls no model, not a new coordinator planning commit.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-133-f5"></a>
+
+### TOOLSET-133-f5 — Define minimum-sufficient regression protection and test budgets
+
+- [x] TOOLSET-133-f5 — Define minimum-sufficient regression protection and test budgets
+- Short: Define minimum regression protection
+- Status: done
+- Goal: TEST-SUITE — Keep test execution efficient without losing regression protection.
+- Sources: [accepted skill plan](docs/project.md#discoverable-test-optimization-suite-skill), [existing method](skills/engineering/local/test-suite-optimization/PROTOCOL.md), [shared budget](skills/shared/ENGINEERING-CYCLE.md#test-budget), [current suite audit](docs/test-suite-audit.md).
+- Touches: skills/engineering/local/test-suite-optimization/PROTOCOL.md, skills/shared/ENGINEERING-CYCLE.md, skills/engineering/SKILL.md, adapters/skills/engineering/SKILL.md
+- Scope: Strengthen the one existing protocol: behavior/risk matrix, proportional timing/flake/history/diff-coverage evidence, critical-module mutant detection and uncertainty, removal-to-retained-oracle mapping, consolidation, repository-specific runtime/new-case budgets, bounded quarantine, review rules and sound optional impact selection. Default to audit; explicit apply or existing implementation authority permits bounded verified edits without another ceremony. Preserve legacy selector and upstream pins. Supersede count-driven or blanket one-test/no-config-test rules with minimum sufficient detection and justified unique-risk exceptions; do not weaken safety obligations.
+- Acceptance: Canonical guidance covers all accepted method decisions without requiring all tools/history to exist, manufacturing measurements or forcing whole-suite experiments for every audit. It distinguishes mutant outcomes, equal coverage from equal behavior, stable never-failed regressions from valueless tests, and assertless smoke/contractual interactions from meaningless checks. Each deletion retains its risk or documents its retirement; named bug traceability survives consolidation. Quarantines have owner/expiry/risk; CI selection retains a fallback/full gate. Independent fixture review includes missing evidence and read-only scope; failures become narrow corrections, not more prose tests.
+- Checks: Existing engineering protocol routing check; review the compact behavior scenarios named in the accepted plan; verify relative references and unchanged upstream hashes; git diff --check. No full runtime suite for instruction-only edits and no new heading/phrase assertions.
+- Dependencies: None.
+- Ownership: Toolset coordinator; preserve active writers and existing suite-audit IDs.
+- Exclusions: No test deletions in consumer repositories, automatic all-repository scan, required mutation/coverage dependency, new scheduler, CI weakening, upstream skill edits, commit or publication from this planning invocation.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-278-91"></a>
+
+### TOOLSET-278-91 — A commit kept without its worker's report resumes that worker, not a batch or the merge resolver
+
+- [x] TOOLSET-278-91 — A commit kept without its worker's report resumes that worker, not a batch or the merge resolver
+- Short: Retained commits resume their worker
+- Status: done
+- Goal: PI-RUNNER
+- Priority reason (2026-10-19 monitor pass): a stranded commit of this kind (TOOLSET-120-fc) holds its serial path, so TOOLSET-119-2b, TOOLSET-122-27 and TOOLSET-144-c0 cannot start until it recovers.
+- Evidence (2026-10-19 monitor pass): a runner stop marks a dead worker's commit `reported` ("commit retained") although the worker wrote no `report.json`. Batches merge such commits without reading reports, so three were held for a conflict; Pi resolved the conflicts, and `--parallel-merged` then refused each with "merged needs the held commit's report.json" every cycle. Writing a stand-in report is not the fix: `test_a_paused_attempt_resumes_without_its_earlier_report` and `test_a_late_report_from_a_superseded_attempt_never_completes_the_retry` require that a commit without its own worker's report never lands.
+- Touches: skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/parallel_dispatch.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/worker.py, skills/autowork/scripts/test_parallel_state.py, skills/autowork/scripts/test_parallel_integrate.py, pi-autowork/tests/
+- Scope: A slot whose commit has no report of its current attempt is not a batch candidate and is not sent to the merge resolver; its worker resumes on the same attempt with an instruction to write the report for the commit it already made (no reimplementation), or it is held with cause `report` naming what is missing. Already-stranded conflict holds of that kind recover the same way.
+- Acceptance: A focused test shows a retained commit without a report is left out of `batch_order` and conflict resolution and resumes its worker once on the same attempt; after the worker writes a matching report it integrates normally. The two adversarial tests above still pass. No report is ever written by the runner on a worker's behalf.
+- Checks: `python3 scripts/check.py skills/autowork/scripts pi-autowork/tests`; `python3 scripts/check.py`.
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Next action: Reproduce with a stopped worker that committed without a report, then route it to a same-attempt resume before batching.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-290-12"></a>
+
+### TOOLSET-290-12 — One interactive session writes the main checkout at a time
+
+- [x] TOOLSET-290-12 — One interactive session writes the main checkout at a time
+- Short: One interactive writer per checkout
+- Status: done
+- Goal: CLAUDE-CODE
+- Payoff: Install the portable workflows in Claude Code.
+- Sources: [owner decision](docs/project.md#interactive-checkout-writer-2026-10-20) (2026-10-20); [reliability research](docs/research/orchestrator-reliability.md) (root cause 1: many writers to main and its checkout, 30 fixes); [worktree hook](skills/autowork/scripts/worktree_paths.py) (`hook`, installed as `~/.claude/hooks/worktree-policy.py`); [placement doc](docs/worktree-placement.md); [AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md) ("Interactive sessions work directly in the main checkout").
+- Evidence: on 2026-10-20 one interactive session parked its own work by taking the file list from `git status`, which swept a second session's uncommitted `fleet_view.py` and `tui.py` into its wip branch and reset them in the checkout; the second session found its edits gone and re-applied them. Both conflict-marker regressions on main (b69b2d2, 34b7f31) also came from several writers to one checkout.
+- Touches: skills/autowork/scripts/checkout_lock.py, skills/autowork/scripts/test_checkout_lock.py, docs/worktree-placement.md, AGENTS.md, CLAUDE.md
+- Produces: `checkout_lock.py` as a Claude Code hook (PreToolUse for Edit, Write, MultiEdit and NotebookEdit; SessionEnd) and a CLI `python3 checkout_lock.py status|release [REPO]`.
+- Scope: (1) A session's first file edit inside a canonical checkout (not under `.worktrees/`) takes the checkout's interactive-writer lock, recorded under the Git common directory with the session id, its transcript path and the files it has edited; later edits add to that list. (2) Another session's edit there is denied with a reason that names the holder, its edited files and the way out: `EnterWorktree`, or wait for the holder to commit. Reads are never blocked. (3) The lock passes to the next session at once when every file the holder edited is clean (committed or reverted), on the holder's SessionEnd, or when the holder's transcript has been idle for 30 minutes and its files are clean; a holder with dirty files is never released automatically. (4) `release` frees a lock by hand and says whose files stay dirty. (5) Edits inside `.worktrees/` and runner worktrees are not locked; Autowork runners keep their own checks. (6) AGENTS.md, CLAUDE.md and docs/worktree-placement.md say: one interactive writer per checkout; a second session works in `.worktrees/` through `EnterWorktree` until the first commits, and how to install the hook.
+- Acceptance: Given session S1 edited `a.py` in the main checkout, when S2 edits `b.py` there, then S2 is denied with a reason naming S1 and `a.py` (`test_checkout_lock.py::test_a_second_session_is_denied_and_told_why`). Given S1 commits `a.py`, S2's next edit takes the lock (`test_the_lock_passes_once_the_holder_is_clean`). Given S1's transcript idle 31 minutes with `a.py` still dirty, S2 is still denied (`test_a_dirty_holder_is_never_released_automatically`); `release` frees it (`test_release_names_the_dirty_files`). An edit under `.worktrees/` is never denied (`test_task_worktrees_are_not_locked`).
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_checkout_lock.py; python3 -m unittest discover -s skills/autowork/scripts -p test_worktree_paths.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: Bash commands that write files are not detected (a workflow guard, like the existing Bash worktree guard, not a sandbox). Pi, Codex and Hermes sessions are out of scope. The user's private `~/.claude/CLAUDE.md` and `~/.claude/settings.json` are the owner's to update by hand from docs/worktree-placement.md. No change to how runners write main.
+- Planner's call: a separate hook file beside `worktree_paths.py`, not more branches in it, so the worktree policy stays as small as it is; the lock lives under the Git common directory so every linked checkout of one repository sees one lock.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-117-cb"></a>
+
+### TOOLSET-117-cb — Compare the Pi CLI worker adapter with AgwaB pi-subagent runSubagent on identical fixtures
+
+- [x] TOOLSET-117-cb — Compare the Pi CLI worker adapter with AgwaB pi-subagent runSubagent on identical fixtures
+- Short: Compare Pi worker adapter with AgwaB
+- Status: done
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [research: runtime adapter](docs/research/pi-autowork-reference-architectures.md#runtime-adapter-overstory--agwab), [Kyle Boas live workers](docs/research/pi-autowork-reference-architectures.md#kyle-boas-reusable-live-rpc-workers), [follow-up boundaries](docs/research/pi-autowork-reference-architectures.md#proposed-follow-up-boundaries), [pi-durable](https://github.com/earendil-works/pi/blob/main/packages/durable/README.md).
+- Touches: pi-autowork/, docs/research/pi-autowork-reference-architectures.md
+- Scope: Define the small worker-runtime boundary the research proposes (after Overstory's `AgentRuntime`): `launch`, `observe`, `stop`, `resume`, a capability record (live-process reuse, persistent transcripts, reload survival, crash/restart adoption) and normalized events. Implement it for the current Pi CLI path and, in a spike, for AgwaB's `runSubagent` headless backend with a Toolset-owned worktree as its CWD. Owner addition (2026-10-16): also spike `@earendil-works/pi-durable`, first-party and built for crash recovery (commit before showing; `Harness.open`/`resume`; idempotent `requestId` submissions); note it is marked experimental and allows one process per storage. Add per-tool replay safety to the capability record, after pi-durable's `replay: "safe"`: a tool or check that is not replay-safe is not rerun after a crash, the worker is told it was interrupted. Run both against the same fixtures: cancellation, restart adoption, stale results, out-of-order completion, combined-tree verification, cleanup retention, process-group TERM-to-KILL. Qualify `agent_end`/`agent_settled` against the pinned Pi version.
+- Acceptance: A written comparison with measured results per fixture and a recommendation; compatibility failures are recorded, not worked around by weakening the contract; the CLI path stays the default.
+- Checks: `python3 scripts/check.py`; the comparison fixtures.
+- Dependencies: None.
+- Ownership: Toolset coordinator under the owner's request.
+- Exclusions: No dependency installed into services or the fleet; no change to the default worker; adoption needs an owner decision.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-288-cf"></a>
+
+### TOOLSET-288-cf — Two runner tests fail only under full-check load
+
+- [x] TOOLSET-288-cf — Two runner tests fail only under full-check load
+- Short: Two runner tests fail under load
+- Status: done
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [check](scripts/check.py); [runner tests](tests/test_pi_autowork.py) (`test_a_killed_coordinator_restarts_at_once_and_adopts_live_workers`); [integration tests](skills/autowork/scripts/test_parallel_integrate.py) (`test_retry_runs_beside_an_overlapping_worker`); [coordinator](pi-autowork/pi_autowork/coordinator.py) (the `BUSY` outcome); [retry](skills/autowork/scripts/parallel_integrate.py) (`retry_held`).
+- Evidence: a full `python3 scripts/check.py` on 2147c130, run while a live runner worked the same host, failed both tests: the restart after `kill` exited 4 with "Repository busy: Repository execution lock is held by a live operation." (the killed runner's engine helper still held the execution lock), and `retry_held` returned `IDLE` instead of `RETRIED`. Each passed alone twice; the retry test passed 12 times in parallel and inside its whole module (146 tests).
+- Touches: pi-autowork/pi_autowork/coordinator.py, skills/autowork/scripts/parallel_integrate.py, tests/test_pi_autowork.py, skills/autowork/scripts/test_parallel_integrate.py
+- Scope: (1) Find why each fails under load: for the restart, whether `until-empty` treats `BUSY` from a dead runner's helper as final before the helper exits; for the retry, which `IDLE` branch of `retry_held` is taken (capacity, an empty held set, or the plan) and why. (2) Fix the product race if there is one (a restart waits for a dead runner's helper within a bound instead of exiting 4); otherwise make the fixture wait on the state it needs instead of on timing. (3) Record the `IDLE` branch taken in the result so the next such failure names it.
+- Acceptance: Given a killed runner whose engine helper still holds the execution lock, when the runner restarts with `--until-empty`, then it waits for the helper and exits 0 (`test_a_killed_coordinator_restarts_at_once_and_adopts_live_workers`, also with the helper delayed on purpose). `retry_held` results for `IDLE` name their branch (`test_retry_runs_beside_an_overlapping_worker` asserts it). Both tests pass in three consecutive full checks.
+- Checks: python3 -m unittest discover -s tests -p test_pi_autowork.py -k killed_coordinator; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py -k retry; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No retries or longer sleeps added to the tests to hide the failure.
+- Planner's call: queued rather than fixed by hand because live runner workers own all four files.
+- Outcome (2026-10-20): the restart flake was the one-shot run treating the killed runner's helper's execution lock as final; it now waits up to `PI_AUTOWORK_BUSY_WAIT` (429eb87a, a test that holds the lock fails on the old code). The retry test was superseded the same day by 5ca0bc35, under which an overlapping retry waits by design (the test now expects IDLE); the failing run predated it.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-277-52"></a>
+
+### TOOLSET-277-52 — Restore the offline gate for the picker-policy failures at 171b26b
+
+- [x] TOOLSET-277-52 — Restore the offline gate for the picker-policy failures at 171b26b
+- Short: Restore the picker-policy offline gate
+- Status: done
+- Goal: PI-RUNNER
+- Payoff: Restore the offline gate without changing accepted execution policy.
+- Sources: [accepted runner contract](docs/project.md#continuous-pi-runner-2026-10-15); [repair evidence and boundary](docs/tasks/TOOLSET-277-52-picker-policy-main-red.md#repair-boundary); [picker policy tests](skills/autowork/scripts/test_picker_policy.py); [Autowork core](skills/autowork/SKILL.md).
+- Evidence: MAIN red at 171b26b after last green 3a00a05: `test_picker_policy.PickerPolicyTests.test_core_stays_lean_and_points_to_every_reference` and `test_picker_policy.PickerPolicyTests.test_no_early_exit_and_terminal_results_continue`. Supplied commit window: 171b26b, f057d64, 24748e1, 653998e, ce092d9, 5cfb7f8, 1f6364d, a41e3f0, 42f257a, 07b0338 (the trigger truncated the last to `07b03`). The [receipt and focused reproduction](docs/tasks/TOOLSET-277-52-picker-policy-main-red.md#focused-reproduction) record the full window, exact assertions and six-test exit-1 reproduction at 2c4bf2c: core is 16076 bytes against a strict 16000 limit; test expects version 0.28.1 while core declares 0.28.2. All references are currently linked. No flaky classification is reported for these failures.
+- Touches: skills/autowork/SKILL.md, skills/autowork/references/, skills/autowork/scripts/test_picker_policy.py
+- Scope: Reconcile the lean-core and stale-version assertions with the current accepted policy. Move detail to existing references as needed, retain all reference links, and preserve meaningful continuation, caller-stop, authority and no-busywork regression coverage. Inspect the cited change window; unrelated fleet, coordinator, state-machine and plan-lint changes are evidence context, not permission to rewrite them.
+- Acceptance: The two named failures pass, the core remains strictly below 16000 bytes and links every reference, and coverage no longer rejects a valid policy solely for its incidental patch version. Existing continuation, caller-stop, authority and no-busywork semantics remain intact; no size-limit increase or wholesale assertion removal. The full offline check passes with skips and exclusions reported separately, not counted as passes.
+- Checks: `python3 -m unittest discover -s skills/autowork/scripts -p test_picker_policy.py -v`; `python3 scripts/check.py`.
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No product/runtime redesign, live qualification, publication or coordinator-owned planning edits by the code worker. Do not reopen TOOLSET-184-b3 or replay its older candidate.
+- Next action: Reproduce the two assertions using repository files, make the smallest policy-preserving repair, then run the focused and full checks. The original runner bundle is not a prerequisite; TOOLSET-234-d4 owns its delivery and the failures reproduce locally.
+- Priority reason: The current DOCS-MAINTAINER instruction explicitly puts an uncovered main-red repair first in Now. Preserve every pre-existing task's relative order.
+
+
+## Retired reporting qualification — 2026-10-20
+
+Owner disposition: retire TOOLSET-011 without claiming qualification. The following original unchecked contract is retained verbatim as history, not executable work or a passing result.
+
+### TOOLSET-011 — Qualify the updated reporting workflow on the affected profile
+
+- [ ] TOOLSET-011 — Qualify the updated reporting workflow on the affected profile
+- Short: Qualify the updated reporting workflow
+- Status: open; original target environment unavailable.
+- Goal: CRON-REPORTING — Verify setup confirmation and scheduled Telegram delivery separately.
+- Sources: [accepted reporting qualification](docs/workflows.md#telegram-reporting-qualification), [reporting contract](skills/cron-autowork/SKILL.md), [verification boundaries](docs/workflows.md), archived TOOLSET-010 source delivery.
+- Scope: On the original host/profile, install the updated bundle through its supported path. Identify the existing job, preserve its state/scope, verify its requested Telegram route, then inspect the next scheduled result.
+- Acceptance: A setup request from another surface confirms once in the intended chat/topic; a scheduled occurrence has attributable execution and Telegram message receipts. Report failed, queued or unverified delivery honestly.
+- Checks: Read back installed source and saved route/state; verify the actual setup message and scheduled result/delivery. These live checks are not run.
+- Exclusions: No duplicate job, implicit resume, immediate development run, budget reset, push/deployment, USB formatting or real-PC changes. Never substitute another profile.
+- Dependencies: TOOLSET-010.
+- Environment prerequisite: Original host, affected profile/job and authorized Telegram transport.
+- Ownership: Coordinator with that access; no active claim.
+- Current evidence: Exact original profile directory and original job ID are absent from this host's root and existing-profile job stores. No replacement job, profile or message was created.
+- Next action: Restore access to the original host/profile/job and its authorized Telegram route, then inspect the setup and scheduled delivery receipts.
+
+
+Retirement disposition: cancelled, not completed; original acceptance remains unmet.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-285-47"></a>
+
+### TOOLSET-285-47 — Harden release-retention and pruning test isolation under concurrent checks
+
+- [x] TOOLSET-285-47 — Harden release-retention and pruning test isolation under concurrent checks
+- Coordination: TOOLSET-127-b1 owns broader fixture thinning, not this reported pruning flake. This task has no prerequisite on thinning, main-evidence delivery or product changes; preserve existing Now priority.
+- Next action: Start with the named focused test and inspect the existing child ready/input handshake, fixture environment and release .git timestamp ordering; reproduce under isolated and normal concurrent-check conditions, then make a test-only change supported by those observations. Use repository source and saved reports without requiring an owner-supplied receipt.
+- Exclusions: No runtime/product-code repair, altered release-retention policy, global /proc suppression, weakened full-check classification, live/model run, publication or coordinator-owned planning edits by the worker.
+- Ownership: Toolset coordinator; one writer per affected workspace.
+- Touches: pi-autowork/tests/test_release.py
+- Evidence: DOCS-MAINTAINER MAIN (flaky test): the full check failed but the named test passed alone on 1f054477d18c7f9af6165c269775267ba99b4ca8, fc3e2f7fe9123273c015cdb47e5fb838c38138be and d575046eed5bcffcd73c8420b3e1c068c28cd65c. Saved reports in the Git common directory: autowork-execution/slot-data/TOOLSET-173-94/attempt-1/report.json records the unrelated pruning failure followed by isolated and component passes; TOOLSET-118-68/attempt-1/report.json records a pruning assertion failure under concurrent runs followed by isolated and component passes. These historical reports do not establish a root cause or current stability. Main is not red for this flaky test.
+- Sources: [accepted runner contract](docs/project.md#continuous-pi-runner-2026-10-15); [release regression](pi-autowork/tests/test_release.py); [release retention/pruning implementation](pi-autowork/pi_autowork/release.py).
+- Short: Stable release-retention fixture
+- Status: done
+- Goal: PI-RUNNER
+- Scope: Investigate isolation, resource load and fixture timing in test_release.ReleaseCheckTests.test_late_imports_keep_the_selected_release_while_unused_releases_are_pruned. Harden only its test-owned setup, child synchronization, release ordering and cleanup as evidence warrants. Keep a real child importing from its selected old release while newer releases are prepared; do not repair product code.
+- Acceptance: `test_release.ReleaseCheckTests.test_late_imports_keep_the_selected_release_while_unused_releases_are_pruned` still proves that a live child keeps its selected release, its late import returns the old API, and unused releases are pruned after the child exits while the newest two remain. Diagnose environment leakage, /proc visibility, filesystem timestamp ordering and concurrent process load as hypotheses, not established causes. Repeated isolated runs, the component module and the full offline gate retain these assertions without intermittent fixture failures; report commands, repetitions and outcomes, including any remaining flake. Preserve conservative production behavior when process usage is unknown; do not weaken assertions, skip cases, inflate timeouts or introduce production test hooks. Reap the child and close its pipes on success and failure.
+- Checks: `for run in 1 2 3; do python3 scripts/check.py pi-autowork/tests/test_release.py -k test_late_imports_keep_the_selected_release_while_unused_releases_are_pruned || exit; done`; `python3 scripts/check.py pi-autowork/tests/test_release.py`; `python3 scripts/check.py`; `git diff --check`. Use a fresh short TMPDIR for check runs; these are required checks, not executed evidence.
+- Dependencies: None.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-172-92"></a>
+
+### TOOLSET-172-92 — Recover verified managed Hermes checkouts when updates cannot fast-forward
+
+- [x] TOOLSET-172-92 — Recover verified managed Hermes checkouts when updates cannot fast-forward
+- Short: Recover managed Hermes checkouts
+- Status: done
+- Goal: PORTABLE
+- Sources: Owner's full-suite failure report and selected automatic-safe-recovery policy; [managed checkout recovery](docs/project.md#managed-hermes-checkout-recovery); update_bundle.py prepare/git and scripts/install_menu.py command-result reporting.
+- Touches: update_bundle.py, scripts/install_menu.py, tests/test_update_bundle.py, tests/test_install_menu.py, docs/installation.md, docs/cross-host.md
+- Resources: install-transaction — source/profile transaction and installer reporting changes; integration already has one owner and lands one task at a time (TOOLSET-161-17), so this need not run alone. Changed from exclusive by the owner session on 2026-10-18: it had drained the pool for over 12 hours with 17 tasks waiting. Tests use disposable homes only.
+- Scope: Implement the cited automatic recovery for verified clean managed Hermes plugin checkouts whose ancestry check fails, using the existing updater's native admission, source binding, profile merge, backup, journal and read-back machinery. Distinguish negative ancestry from actual Git failure and incomplete history; retain the complete old checkout and native profile edits. Dirty, locally advanced, unknown/shared-active or unproven sources defer safely. Improve full-suite summaries to show the updater's structured cause/action, not a closing JSON brace, while keeping successful components and aggregate partial-failure behavior.
+- Acceptance: Disposable real-Git fixtures exercise equal/fast-forward and verified rewritten history, shallow ancestry, ahead/diverged local work, unrecognized/dirty/untracked sources, shared live consumers, profile customizations and scan denial. Recovery stages exact trusted main, preserves source/base and user data, verifies publication and reuses the same backups on resume; stale or interrupted writes cannot discard foreign edits or manufacture success. No reset/clean, forced merge/push, active-runtime restart, scanner bypass or unselected scope expansion. Mixed component results retain five successes plus an actionable Hermes error; malformed/non-JSON output has a useful bounded fallback. An unchanged retry is a no-op; preview/skip performs no network/recovery mutation.
+- Checks: Planned after implementation: `python3 -m unittest discover -s tests -p test_update_bundle.py`; `python3 -m unittest discover -s tests -p test_install_menu.py`; `python3 scripts/check.py`; `git diff --check`. Extend existing focused fixtures with failure-injection and preservation assertions; new recovery cases have not run.
+- Dependencies: None.
+- Ownership: Assigned Autowork worker and integration coordinator under normal independent review and canonical delivery gates; do not deploy from the implementation task.
+- Context: Existing missing-Pi bootstrap and live reinstall tasks retain their scope and dependencies; this is a distinct updater recovery gap, not a repeat of successful installations.
+- Exclusions: No live changes to the reported host or any Hermes profile, credentials, jobs, gateways, services, host plugins or remote branches. Actual installation/adoption needs its own authorized invocation. User-provided paths/logs are evidence, not local-target identity.
+- Next action: Add the exact non-ancestor/structured-summary regression and preservation fixture, then implement the supported classified recovery path.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-125-e6"></a>
+
+### TOOLSET-125-e6 — Run inherited execution regressions once
+
+- [x] TOOLSET-125-e6 — Run inherited execution regressions once
+- Short: Run inherited regressions once
+- Status: done
+- Goal: TEST-SUITE — Optimize test suites without losing defect detection.
+- Sources: [accepted thinning plan](docs/test-suite-audit.md#suite-thinning-plan-2026-10-16), [test budget](skills/shared/ENGINEERING-CYCLE.md#test-budget).
+- Touches: skills/autowork/scripts/test_task_execution.py, docs/test-suite-audit.md
+- Scope: Replace RecoveryTests inheriting a concrete test class with a fixture-only mixin or helper. DirectExecutionTests retains its 11 named cases and RecoveryTests retains its 25 unique cases. Do not rename or weaken original safety regressions; remove only the 11 duplicate inherited executions.
+- Acceptance: Collection changes from 11 + 36 = 47 executions to 36 unique executions; every removed child-class ID maps to its identical retained parent method; setup, action, assertions and branch protection remain equivalent; focused tests and normal gate pass. Record before/after focused timing without promising a suite speedup.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_task_execution.py; python3 scripts/check.py; git diff --check
+- Dependencies: None.
+- Ownership: Toolset coordinator; one writer per affected workspace.
+- Exclusions: No live/model runs, new test framework/dependency, publication, hidden test skips, weakened safety cases or changes outside the named batch.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-135-16"></a>
+
+### TOOLSET-135-16 — Keep bulk planning within its artifact and execution boundaries
+
+- [x] TOOLSET-135-16 — Keep bulk planning within its artifact and execution boundaries
+- Short: Keep bulk planning within its bounds
+- Status: done
+- Goal: BACKLOG — Produce a usable repository backlog for Autowork.
+- Sources: [accepted planning handoff plan](docs/workflows.md#planning-only-bulk-handoff-and-skill-recommendations), [shared planning method](skills/shared/RESEARCH-PLAN.md), [handoff contract](skills/shared/PLAN-HANDOFF.md).
+- Touches: skills/plan-for-me/SKILL.md, skills/plan-with-me/SKILL.md, adapters/skills/plan-for-me/SKILL.md, adapters/skills/plan-with-me/SKILL.md, skills/shared/RESEARCH-PLAN.md, skills/shared/PLAN-HANDOFF.md, skills/shared/PLANNING-CRAFT.md, __init__.py, adapters/pi.mjs, tests/test_workflow_commands.py, tests/test_portable_package.py, tests/portable_pi.test.mjs, tests/fixtures/planning/, docs/workflows.md
+- Skills: None beyond the applicable planning/skill-maintenance workflow; do not load unrelated methods.
+- Scope: Make all planner routes load one unambiguous planning artifact/authority contract and produce the full requested batch. Explicit standalone planning narrows the current request despite earlier unrelated implementation authority; an Autowork-owned planning substep returns to its same coordinator. Classify writes by artifact role, including executable Markdown skills. Preserve no-write scopes. Keep complete TODO task bodies, real dependencies, bounded Touches and independent ready lanes; do not start execution when the first task becomes clear. Add the scoped Skills convention reference for later handoff without a new required field. Fix wrapper inconsistencies where inspection demonstrates them; do not claim a hard tool sandbox where the host supplies only instructions.
+- Acceptance: Native/portable/compatibility routes preserve request and mode. Disposable behavioral runs for easy fix, bulk request, old unrelated implementation authorization, supporting skill urging coding, questions-only and explicit later execution distinguish their allowed actions. Planning modifies only authorized docs/queue artifacts, represents every requested outcome and leaves unresolved choices scoped. Autowork-owned planning returns without competing workers. Evaluate actual loaded source and tool/change traces; command registration alone cannot close behavior acceptance.
+- Checks: python3 -m unittest discover -s tests -p test_workflow_commands.py; python3 -m unittest discover -s tests -p test_portable_package.py; node --test tests/portable_pi.test.mjs; bounded planning behavioral scenarios from the source plan (new, unrun); git diff --check. Use existing fixture cases, no rule-per-phrase tests.
+- Dependencies: None.
+- Ownership: Toolset coordinator; preserve active worker contracts and unrelated planning batches.
+- Exclusions: No implementation in consumer repositories during planning, automatic plugin installation, external execution, paid evaluation, CI weakening, scheduler/service changes, publication, or new mandatory task schema. No dispatch from this planning invocation.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-096-7e"></a>
+
+### TOOLSET-096-7e — Qualify the worktree runner live on a fleet repository
+
+- [x] TOOLSET-096-7e — Qualify the worktree runner live on a fleet repository
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Blocker resolution: Repository choice is answered. Remaining work is live qualification through the existing authorized execution workflow with exclusive ownership, not another product decision or permission to escape a worker sandbox.
+- Target: The canonical checkout of the current Autowork repository; resolve it from git worktree list, not the assigned task worktree.
+- Owner decision: 2026-10-20: Owner selected the canonical Autowork repository, with an alternate fleet test repository also permitted in the private owner record. Use this repository first. Preserve no-push and no-Hermes-job-change exclusions; do not launch a competing runner.
+- Short: Qualify the worktree runner live
+- Status: done
+- Goal: PI-RUNNER
+- Sources: [usage](docs/cross-host.md#run-autowork-continuously).
+- Scope: Run the released runner on a fleet repository alongside its Hermes jobs (owner's choice) until it ends a session, and record what it completed and how the end-of-session merge went.
+- Acceptance: `runs.jsonl` and the repository's main branch show completed tasks merged at the end of a session, or a `Merge pending` with the exact reason and the branch kept; no push by the runner; the repository's uncommitted changes untouched.
+- Checks: `runs.jsonl`, runner output, `git -C <fleet-repo> log` and `worktree list`.
+- Dependencies: TOOLSET-095-48.
+- Ownership: Toolset coordinator on the owner's request.
+- Exclusions: No push; no change to the repository's Hermes jobs.
+- Outcome (2026-10-20, closed by the owner): qualified by this repository's own released runner, which ran continuously for 54 hours, ended sessions and merged them into main (100 session merges in its runner.log; completed tasks in runs.jsonl). A fresh worker found nothing left to change. The "no push" exclusion no longer applies: the runner pushes main by design since then.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-154-d3"></a>
+
+### TOOLSET-154-d3 — Question IDs are single-line and stable, so BLOCKERS.md changes only when questions do
+
+- [x] TOOLSET-154-d3 — Question IDs are single-line and stable, so BLOCKERS.md changes only when questions do
+- Short: Stable single-line question IDs
+- Status: done
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [monitor findings](docs/plans/2026-10-16-pi-autowork-coordinator.md#fleet-monitor-findings-delivery-environment-and-stall-repair), [questions](pi-autowork/pi_autowork/questions.py) (`build`, `render`, `previous_since`, `update`).
+- Evidence (2026-10-17 00:19 monitor pass): runner B's session branch gets a `docs(blockers): questions for the owner` commit every ~2 minutes (<commit> 00:14:51, <commit> 00:16:54, <commit> 00:18:39). Each changes only `- Since:` lines, and the log repeats `Questions for the owner in BLOCKERS.md: 27 open` each time. The cause is question IDs taken from wrapped prose dependencies, which contain a newline. `render` writes them as a broken heading (`### Q-owned target and` followed by a continuation line). `previous_since` never matches that heading, so the question gets a fresh stamp every cycle. The `current` id also carries over to the next `- Since:` line, so a healthy neighbour (a fleet task) is mis-stamped too.
+- Escalation (2026-10-17 09:09 monitor pass): with landing enabled, the churn now reaches the runner's main branch. One runner merged a BLOCKERS.md-only session commit into main every ~2 minutes (`Merged … into main (1 commit(s))` at 09:07 and 09:09), each pushed. Main's history fills with noise commits, and every other worker sees main move.
+- Touches: pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_questions.py
+- Scope: Normalize every question ID and every rendered field to one line by collapsing whitespace. Give prose-condition questions a stable short ID: `COND-` plus 8 hex characters of the SHA-1 of the normalized text, with the readable text kept in `- Task:`. Make `previous_since` reset `current` on every `### ` heading and match on the normalized ID. Legacy blocks with broken headings are read leniently, by joining a heading with its continuation lines, so their first `Since` survives the migration. `update` returns the same text when only timestamps would change.
+- Acceptance: In fixtures, a dependency wrapped across lines yields one single-line heading with a `COND-` ID. Rewriting with the same question set is byte-identical and causes no commit or log line. A neighbour's `Since` is never overwritten. A legacy broken block keeps its first `Since`. Twenty consecutive cycles with an unchanged queue produce zero BLOCKERS.md commits.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_questions.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator; preserve TOOLSET-120-fc's block format, the Q-<id> headings that `/blockers` reads, and the markers.
+- Exclusions: No change to which conditions become questions (TOOLSET-129-c4 and TOOLSET-141-c4 own classification and repair); no fleet BLOCKERS.md edits by hand.
+- Planner's call: a hashed `COND-` ID rather than a truncated slug. It is stable, short, single-line and unaffected by rewrapping.
+- Planner answer (2026-10-17 09:15): run the offline inventory with `TMPDIR` set to a fresh short private directory made by `mktemp -d /tmp/aw-XXXXXX` and removed afterwards. Fixture-local Git transport inside it is allowed. This is the interim answer until TOOLSET-140-f4 makes it the default, and the same applies to every toolset task whose checks need AF_UNIX sockets.
+- Next action: Retain candidate 9074127f24cc423da758c0e7b070158a601d80db and its reports/check evidence. The prior integration tree is ambiguous and currently reused by another integration; do not reset, clean, adopt or overwrite it. After the current owner releases the integration workspace, use the supported recovery path to prepare a fresh isolated integration of this candidate, preserve old diagnostic state and rerun checks invalidated by the new tree. Candidate report passes are not a current integration pass; this is integration recovery, not a product/acceptance decision.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-293-25"></a>
+
+### TOOLSET-293-25 — Split goals.py once its private copies and the runner's parse cache allow it
+
+- [x] TOOLSET-293-25 — Split goals.py once its private copies and the runner's parse cache allow it
+- Short: Split goals.py after its loaders change
+- Status: done
+- Goal: DOCS-COMPLETENESS
+- Payoff: Make core-document completeness and drift machine-checkable.
+- Sources: [goals](skills/docs-sync/scripts/goals.py) (1,939 lines; `TRANSACTION`, `coordination`, `atomic_write`; `redact` calls `render_text`/`render`; `backlog_receipt` calls `queue`); [task execution](skills/autowork/scripts/task_execution.py) (`goals_module()` loads a private copy and wraps its `task_bodies` in an `lru_cache` so `queue()` reuses one parse); private loads as `retry_goals`, `todo_goals`, `pass_goals`; [owner unblock](skills/autowork/scripts/owner_unblock.py) (mixes a private copy with the plain `goals` module in one process).
+- Evidence: a pure-move split attempted on 2026-10-20 stopped before editing: (1) the backlog and redaction code calls render and queue code, so three modules cycle; (2) moving `queue`/`priority_status` out of goals.py silently drops the runner's `task_bodies` cache, because it is patched on the private copy's namespace; (3) moving the stale-write guard into a shared module makes one private copy's `coordination()` arm stale-write checks for another copy's writes, a new failure. 11 fixes in 14 days.
+- Touches: skills/docs-sync/scripts/goals.py, skills/docs-sync/scripts/goals_ledger.py, skills/docs-sync/scripts/goals_todo.py, skills/docs-sync/scripts/goals_queue.py, skills/docs-sync/scripts/goals_backlog.py, skills/autowork/scripts/task_execution.py
+- Scope: (1) First make the loaders independent of goals.py's internal layout: the runner's parse cache wraps the `task_bodies` that `queue` calls wherever it lives, and per-copy write state either becomes per-call (passed in) or the private copies are replaced by one shared module; say which, with the reason. (2) Then split by concern into ledger, TODO.md text (with render), queue/priority and backlog modules, goals.py keeping redaction, the two error checks and the CLI; each module at most 750 lines; functions move verbatim. (3) Callers keep `import goals`; goals.py imports, in one commented block, only the moved names callers use as `goals.<name>`.
+- Acceptance: Given two private copies of goals.py in one process, a write through one copy after the other's `coordination()` behaves as before (`skills/docs-sync/scripts/test_goal_concurrency.py::test_private_copies_keep_separate_stale_write_guards`); a selection parses TODO.md once per cycle (`skills/autowork/scripts/test_task_execution.py::test_one_selection_parses_todo_once`); no module exceeds 750 lines and every former top-level name is defined once.
+- Checks: cd skills/docs-sync/scripts && python3 -m unittest discover -p 'test_*.py'; python3 -m unittest discover -s skills/autowork/scripts -p 'test_task_execution*.py'; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No CLI or file-format change.
+- Planner's call: write the two acceptance tests against today's goals.py first, so step (1) is proven behaviour-neutral before anything moves; task_execution.py has open tasks, so the shared-file rule holds this until they land.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-276-3f"></a>
+
+### TOOLSET-276-3f — Tasks that share a hot file never run at the same time
+
+- [x] TOOLSET-276-3f — Tasks that share a hot file never run at the same time
+- Short: Hot-file tasks never run at once
+- Status: done
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [reliability research](docs/research/orchestrator-reliability.md) (root cause 6); [planner](skills/autowork/scripts/parallel_plan.py) (`hint`, `_shared`, the "likely-independent work first" ranking); [plan lint](skills/docs-sync/scripts/plan_lint.py) (`hot-file` rule); NP-Bench ([arXiv 2610.07261](https://arxiv.org/abs/2610.07261)).
+- Evidence (2026-10-19): nine of this repository's tasks held at once for merge conflicts; `coordinator.py` and `tests/test_pi_autowork.py` are each in about 38 open tasks' `Touches:`. Ranking an overlapping task later does not stop it starting when slots are free.
+- Touches: skills/autowork/scripts/parallel_plan.py, skills/autowork/scripts/test_parallel_plan_hot.py, skills/autowork/references/parallel-workers.md
+- Consumes: the plan lint's hot-file threshold (a file named by three or more open tasks); reuse one constant, do not copy it.
+- Scope: (1) A file is hot when three or more open tasks name it in `Touches:`. (2) A task is not dispatched while a running or integrating task names the same hot file; it waits with reason `waits for <task> (shares hot file <path>)`. (3) Overlap on files that are not hot keeps today's ranking.
+- Acceptance: Given three open tasks naming `a.py` and one of them running, when the planner picks work for free slots, then the other two wait with that reason and a task on `b.py` dispatches (`skills/autowork/scripts/test_parallel_plan_hot.py::test_hot_file_serializes`). Given two tasks sharing a file only they name, both dispatch, the second ranked later (`test_cold_overlap_keeps_ranking`).
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_plan_hot.py; python3 scripts/check.py skills/autowork/scripts/test_parallel_plan.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No return to holding tasks for edits outside `Touches:` (TOOLSET-161-17 stays).
+- Planner's call: a conflict costs a resolver run and often an owner question; one more wait on a shared hot file costs less.

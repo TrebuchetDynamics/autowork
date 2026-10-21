@@ -12,7 +12,8 @@ from unittest.mock import patch
 
 SCRIPT=Path(__file__).with_name('owner_cycle.py')
 
-class DirectExecutionTests(unittest.TestCase):
+class ExecutionFixtureMixin:
+    """Shared setup and command helper only; no discoverable regression cases."""
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.repo=Path(self.tmp.name)/'repo';self.repo.mkdir()
@@ -44,6 +45,8 @@ class DirectExecutionTests(unittest.TestCase):
                          env=self.env,capture_output=True,text=True,timeout=15)
         self.assertTrue(p.stdout,p.stderr)
         return p,json.loads(p.stdout)
+
+class DirectExecutionTests(ExecutionFixtureMixin, unittest.TestCase):
     def test_todo_only_default_needs_no_profile_board_or_registration(self):
         for value in ('broken JSON',json.dumps({'task_id':'old','status':'blocked'}),json.dumps({'status':'done'})):
             (self.state/'goal-handoff.json').write_text(value)
@@ -129,7 +132,7 @@ class DirectExecutionTests(unittest.TestCase):
         self.assertEqual(r['outcome'],'OWNER_REQUIRED')
         self.assertFalse((self.repo/'worked').exists())
 
-class RecoveryTests(DirectExecutionTests):
+class RecoveryTests(ExecutionFixtureMixin, unittest.TestCase):
     def ledger(self):
         data = {'version': 1, 'goals': [{'id': 'G', 'title': 'fixture', 'source': 'TODO.md',
             'status': 'partial', 'tasks': ['T1', 'T2'], 'priority': 1, 'depends_on': []}],
@@ -160,7 +163,8 @@ class RecoveryTests(DirectExecutionTests):
     def test_archive_satisfies_todo_only_dependency(self):
         original = self.todo.read_text()
         self.todo.write_text('# Work\n## Now\n' + original.split('## Next\n')[1])
-        (self.repo / 'TODO.archive.md').write_text(original.split('## Next')[0].replace('[ ] T1', '[x] T1'))
+        (self.repo / 'TODO.archive.md').write_text(original.split('## Next')[0].replace(
+            '[ ] T1', '[x] T1').replace('Status: open', 'Status: done'))
         self.assertEqual(self.call('--tasks', 'T2')[1]['outcome'], 'READY')
 
     def test_actual_git_worktrees_share_writer_lease(self):
@@ -519,6 +523,32 @@ class RecoveryTests(DirectExecutionTests):
         self.assertEqual(result['outcome'], 'CHILDREN_TERMINATED')
 
 class SelectionCacheTests(unittest.TestCase):
+    def test_one_selection_parses_todo_once(self):
+        import task_execution as execution
+        with tempfile.TemporaryDirectory() as folder:
+            repo = Path(folder)
+            (repo / 'TODO.md').write_text('## Now\n- [ ] A — parse once\n  Scope: a\n'
+                                        '  Acceptance: works\n  Checks: test a\n  Dependencies: None.\n')
+            (repo / 'goals.json').write_text(json.dumps({
+                'version': 1, 'priority_order': {'schema': 1, 'tasks': ['A']},
+                'goals': [{'id': 'G', 'title': 'fixture', 'source': 'TODO.md',
+                           'status': 'partial', 'tasks': ['A'], 'priority': 1}],
+                'tasks': [{'id': 'A', 'title': 'parse once', 'goal': 'G',
+                           'status': 'open', 'section': 'Now'}]}))
+            parses = []
+            scripts = SCRIPT.parents[2] / 'docs-sync/scripts'
+            def observe(frame, event, arg):
+                if (event == 'call' and frame.f_code.co_name == 'task_bodies'
+                        and Path(frame.f_code.co_filename).parent == scripts):
+                    parses.append(frame.f_locals['text'])
+            previous = sys.getprofile()
+            sys.setprofile(observe)
+            try:
+                self.assertEqual(execution.select(repo, None, None)['id'], 'A')
+            finally:
+                sys.setprofile(previous)
+            self.assertEqual(parses, [(repo / 'TODO.md').read_text()])
+
     def test_selection_reuses_parsing_without_hiding_content_changes_or_caller_mutation(self):
         import task_execution as execution
         import parallel_status

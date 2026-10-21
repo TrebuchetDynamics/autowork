@@ -220,7 +220,8 @@ def check_failure_resumed(slot):
     return any(s.get('check_failure_resumed') for s in [slot, *slot.get('previous_attempts', [])])
 
 
-def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None, commit_finished=False, answers=''):
+def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None, commit_finished=False, answers='',
+           retained_commit=None, landed_tasks=(), landed_revisions=(), rework=None):
     touches = task['fields'].get('Touches', '(none declared)')
     earlier = earlier_task_work(worktree, task['id'], branch, baseline)
     lines = [
@@ -282,7 +283,19 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None,
         '- Finally write JSON to the report file: {"task": ID, "commit": SHA or null,',
         '  "changed_files": [...], "checks": [{"command": ..., "result": "pass"|"fail", "summary": ...}],',
         '  "blockers": [...], "pending_live": [...], "unrelated_failures": [...],',
-        '  "environment_failures": [...], "changelog": "..."}.',
+        '  "environment_failures": [...], "changelog": "...",',
+        '  "doc_impact": {"status": "not_needed"|"updated"|"pending", "reason": "...",',
+        '    "paths": [...], "checks": [...], "resume": "..."}}.',
+        '- Always assess doc impact from the final diff, task Acceptance and actual affected docs.',
+        '  "paths" lists repository-relative docs inspected/updated (empty for metadata-only work).',
+        '  "not_needed" explains why existing docs already cover the change or no docs are affected.',
+        '  For a concrete component-doc delta in scope, resolve the bundled Docs Sync skill in this',
+        '  host and run scoped Maintain, not a repository-wide bootstrap. "updated" names changed docs',
+        '  and copies their passing readback/check records from "checks" above.',
+        '  Shared/coordinator docs or an unfinished required doc update are "pending": give the exact',
+        '  gap in "reason" and a DOCS-MAINTAINER resume action in "resume"; never edit shared history',
+        '  or change policy/Acceptance to close a gap. The docs maintainer owns the closeout Docs Sync',
+        '  pass. Archive rendering alone is not Maintain. Report claims remain subject to verification.',
         '- "blockers" is only for what a person alone can provide: credentials or an account, a',
         '  physical device or operator access, spending, a change to third-party software, or a',
         '  product, security or scope decision the task and its sources leave open. Everything else',
@@ -293,6 +306,8 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None,
         '  a missing fixture) is yours to repair, as a separate commit on this branch. A missing input',
         '  the task\'s sources say how to make, you make. If blocked, report commit null with',
         '  blockers and stop.',
+        '  When the ONLY missing input is another open task landing, write "Needs TASK-ID to land."',
+        '  List any additional owner input as a separate blocker; never hide it in a task wait.',
         '- For a task repairing red or flaky main, read $AUTOWORK_MAIN_EVIDENCE/<revision>/:',
         '  the runner provides main_check.json (revision, last green, failures and commits),',
         '  main-check.log, main-check.exit, main-check-reruns.log (isolated commands, exit codes',
@@ -323,18 +338,46 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None,
                   for w in adopted['prior_work']] or ['- none found']
         lines += ['Inspect it and reuse attributable in-scope work in your own worktree; never modify',
                   'those branches or worktrees.']
-    if resume:
+    if retained_commit:
+        lines += ['', f'Your commit {retained_commit} is retained on this branch, but this attempt has no matching report.',
+                  'Resume this same attempt only to write report.json for the commit already made.',
+                  'Do not reimplement the task or make another commit. Inspect the retained commit and existing',
+                  'check evidence, run only missing focused checks, and write your own matching report at Report file.',
+                  'Preserve any uncommitted work; it is not permission to start over.']
+    elif resume:
         lines += ['', 'A previous attempt was interrupted. Its uncommitted changes are still in the',
                   'worktree: inspect git status and continue from them rather than starting over.']
+    if landed_tasks:
+        lines += ['', 'Landed prerequisites: ' + ', '.join(landed_tasks) + '.',
+                  'Their landed source is reachable here at these immutable revisions:',
+                  *['- ' + revision for revision in landed_revisions],
+                  'Inspect with git show REVISION:path or git diff BASELINE REVISION -- path.',
+                  'Reconcile only prerequisite code needed by this task into this retained worktree,',
+                  'preserving its committed and uncommitted work. Do not import coordinator-owned files,',
+                  'reset, clean, or merge an entire revision. Re-run checks affected by the combined code.']
     if commit_finished:
         lines += ['', 'Your host/check-only blocker is not a question for a person: commit the finished work',
                   'under the unrelated_failures/environment_failures rules above; preserve the existing changes.',
                   'Do not report host load, a quiet window, resource-gate skips or flaky/unrelated tests as blockers.']
+    if rework:
+        lines += ['', 'Rework after review: the last attempt at this task failed its review. Its commit',
+                  f'{rework.get("tip") or "(none recorded)"} is kept on a -set-aside branch listed above. Restore it',
+                  'instead of reimplementing, fix exactly what the review found, and rerun the task\'s Checks:',
+                  str(rework.get('finding') or '').strip()]
     if answers:
         lines += ['', 'You stopped on a blocker, and the runner answered it. Act on the answer and finish the',
                   'task; do not report the same blocker again. A blocker that remains after this answer must',
                   'name what only a person can provide.', answers.strip()]
     return '\n'.join(lines + ['', 'Task contract from TODO.md:', '', task['contract'], ''])
+
+
+def rework_record(common, task):
+    """The finding and kept commit of a review failure this attempt reworks (TOOLSET-285-29), or None."""
+    try:
+        record = execution.read(common / 'review-rework' / (re.sub(r'[^A-Za-z0-9._-]+', '-', task) + '.json'))
+    except (OSError, ValueError):
+        return None
+    return record if isinstance(record, dict) else None
 
 
 def answers_text(common, task):
@@ -739,8 +782,20 @@ def enforce_timeouts(repo, owner_pid, common, default_timeout):
                     repo, owner_pid, slot['task_id'], 'reported', commit=commit,
                     reason=f'its worker kept running after reporting this commit; stopped at the {limit:g} s timeout'))
                 continue
-            stopped.append(state.transition(repo, owner_pid, slot['task_id'], 'interrupted',
-                                            reason=f'worker timeout after {limit:g} s' + activity))
+            # A timeout can stop the worker between commit and report too. Preserve that
+            # HEAD for report-only recovery, rather than treating it as unfinished implementation.
+            root = Path(slot['worktree'])
+            head = execution.git(root, 'rev-parse', 'HEAD')
+            try:
+                descends = head != slot['baseline'] and execution.git(root, 'merge-base', slot['baseline'], head) == slot['baseline']
+            except ValueError:  # unrelated history has no merge-base; still record the stopped worker
+                descends = False
+            if slot.get('report_resume_attempt') != slot['attempt'] and descends:
+                stopped.append(state.transition(repo, owner_pid, slot['task_id'], 'reported', commit=head,
+                                                reason=f'worker timeout after committing, before its report ({limit:g} s)'))
+            else:
+                stopped.append(state.transition(repo, owner_pid, slot['task_id'], 'interrupted',
+                                                reason=f'worker timeout after {limit:g} s' + activity))
     return stopped
 
 
@@ -837,6 +892,25 @@ def contracts(repo, requested=None, plan=None):
         return []  # Malformed queues still raise and report ACTION_REQUIRED.
 
 
+def task_context(repo):
+    """All unfinished TODO contracts for planning, including nonrunnable tasks.
+
+    Selection still uses contracts(); a decision or dependency must not hide a
+    third declaration of a hot file (or a running slot's declared files).
+    """
+    inputs = execution.selection_inputs(repo)
+    result = []
+    for tid, bodies in inputs['bodies'].items():
+        if len(bodies) != 1:
+            continue  # ambiguous declarations cannot supply a reliable hint
+        body, mark, _ = bodies[0]
+        fields = execution.contract_fields(body)
+        status = inputs['indexed'].get(tid, {}).get('status', fields.get('Status', 'open'))
+        if mark.lower() != 'x' and status != 'done':
+            result.append({'id': tid, 'fields': dict(fields, Status=status)})
+    return result
+
+
 def protected_files(repo, revision=None):
     """Inventory shared build/schema/CI files without interpreting names as globs."""
     args = ('ls-tree', '-rz', '--name-only', revision) if revision else (
@@ -850,7 +924,8 @@ def retry_plan(repo, current, requested=None, plan_path=None):
     held = {s['task_id'] for s in current if s['state'] == 'held' and s['attempt'] == 1
             and not state.exhausted(s) and not state.worker_live(s)}
     everything = contracts(repo)
-    by_id = {t['id']: t for t in everything}
+    context = task_context(repo)
+    by_id = {t['id']: t for t in context}
     tasks = contracts(repo, requested, plan_path) if (requested or plan_path) else everything
     contract = lambda s: by_id.get(s['task_id'], {'id': s['task_id'], 'fields': {}})
     occupying = [s for s in current if s['state'] in OCCUPYING and s['task_id'] not in held]
@@ -859,7 +934,7 @@ def retry_plan(repo, current, requested=None, plan_path=None):
     # holds reserve only dependencies, just as they do for ordinary dispatch.
     return parallel_plan.plan([t for t in tasks if t['id'] in held],
                               [contract(s) for s in occupying if s not in parked],
-                              all_tasks=everything, parked=[contract(s) for s in parked], adopted=held,
+                              all_tasks=context, parked=[contract(s) for s in parked], adopted=held,
                               protected_files=protected_files(repo))
 
 
@@ -991,9 +1066,13 @@ def dispatch(args):
 def dispatch_locked(args, repo, common, count, template, host):
     timeouts = enforce_timeouts(repo, args.owner_pid, common, args.worker_timeout)
     current = state.reconcile(repo, args.owner_pid)
+    with execution.lock(common / 'writer.lock'):
+        state.require_owner(common, args.owner_pid)
+        current = state.recover_reports(common, current)
     sweep_retired_tmp(common, current)
     everything = contracts(repo)
-    by_id = {t['id']: t for t in everything}
+    context = task_context(repo)
+    by_id = {t['id']: t for t in context}
     candidates = contracts(repo, args.tasks, args.plan) if (args.tasks or args.plan) else everything
     closed = retired(repo, getattr(args, 'base_ref', None))
     candidates = [t for t in candidates if t['id'] not in closed]  # closed work never starts
@@ -1017,7 +1096,7 @@ def dispatch_locked(args, repo, common, count, template, host):
                and re.split(r'[;.\s]', t['fields'].get('Status', 'open'))[0] == 'in_progress']
     idle = parallel_claims.idle_claims(repo, claimed, getattr(args, 'adopt_idle_claims', 0)) if claimed else {}
     backlog = merge_backlog(common, occupying, workers=count)
-    planned = admit(candidates, running, restartable, occupying, everything=everything,
+    planned = admit(candidates, running, restartable, occupying, everything=context,
                     parked=[contract(s) for s in parked], adopted=set(idle), protected=protected_files(repo),
                     drain_after=drain_after(), waited=waiting_streaks(common),
                     finished={s['task_id'] for s in occupying if s['state'] in FINISHED and not state.worker_live(s)},
@@ -1055,9 +1134,14 @@ def dispatch_locked(args, repo, common, count, template, host):
         (data / 'contract.txt').write_text(task['contract'].strip() + '\n')  # what an answer is compared with
         prompt_file.write_text(prompt(task, worktree, branch, base, report, resume=bool(previous),
                                       adopted=idle.get(task['id']),
+                                      retained_commit=(previous.get('commit') if previous and
+                                                       previous.get('report_resume_attempt') == previous['attempt']
+                                                       else None),
+                                      landed_tasks=(previous or {}).get('landed_tasks', ()),
+                                      landed_revisions=(previous or {}).get('landed_revisions', ()),
                                       commit_finished=bool(previous and check_failure_resumed(previous)),
                                       answers=answers_text(common, task['id']) if previous and previous.get('answered')
-                                      else ''))
+                                      else '', rework=rework_record(common, task['id'])))
         if task['id'] in idle:
             with execution.lock(common / 'writer.lock'):
                 state.event(common, 'claim_adopted', task_id=task['id'], evidence=idle[task['id']])

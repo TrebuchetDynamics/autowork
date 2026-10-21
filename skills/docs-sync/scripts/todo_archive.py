@@ -107,6 +107,14 @@ def entries(text, prose, known_ids):
             continue
         end = next((h.start() for h in headings[index + 1:] if len(h[1]) <= len(match[1])), len(text))
         first_box = next((b for b in boxes if match.start() < b.start() < end), None)
+        if first_box is not None and first_box[2] == task[1]:
+            # A heading paired with its own checkbox (the add-task form) ends at the next known
+            # task's checkbox. Among checkbox-only tasks it ran to the next heading: every task it
+            # swallowed overlapped it, none could be archived, and their closes failed each cycle.
+            following = next((b for b in boxes if first_box.start() < b.start() < end
+                              and b[2] != task[1] and b[2] in known_ids), None)
+            if following is not None:
+                end = following.start()
         # A separately closed heading-only task can precede an independent
         # checkbox task. An empty/mismatched wrapper cannot use this exception.
         if (first_box is not None and first_box[2] != task[1]

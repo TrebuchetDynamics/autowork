@@ -13,6 +13,29 @@ Supporting protocols are bundled and loaded only when needed. Hermes profile
 creation, Telegram routing,
 Kanban workers, fleet setup, memory and speech integrations remain Hermes-only.
 
+## Full-suite partial failures
+
+From a checkout, `./install.sh` reports each component independently. A failed
+Hermes update does not undo successful Pi, command/TUI, tx, Claude Code or Codex
+installation; the aggregate exit remains nonzero. Its summary extracts the updater's
+structured cause and next action, including per-profile recovery errors. Truncated
+or non-JSON output gets a bounded text fallback.
+
+Fix the reported cause, then retry only that component:
+
+```sh
+./install.sh --only hermes --dry-run
+./install.sh --only hermes
+```
+
+Keep the original `--hermes-home` when using an alternate root. Verified clean
+managed Hermes checkouts can recover from rewritten upstream history through the
+[backed-up native transaction](installation.md#managed-checkout-recovery); unknown,
+dirty, locally advanced or active/shared-unsafe sources defer. Recovery preserves
+compatible native skill edits and requests no runtime restart. `--skip hermes`
+leaves Hermes out; preview runs no updater or recovery network operation. This
+Hermes-specific path does not replace portable hosts' own update commands below.
+
 ## Claude Code
 
 Requires Claude Code with plugin marketplaces. From this checkout:
@@ -280,8 +303,10 @@ test that passes when rerun alone counts as flaky. The rejection names the new f
 retry's prompt quotes them. The same command is main's check when `PI_AUTOWORK_MAIN_CHECK` is
 unset; a repository with neither gets one `FULL-CHECK` question in BLOCKERS.md.
 
-`Touches:` only schedules work (TOOLSET-161-17): tasks whose declared files overlap are
-dispatched after independent ones, never held, and a worker may change whatever its task
+`Touches:` schedules work: a task naming a file that running work or an unlanded commit
+also names waits until that one lands (a waiting task holds no files); directory and glob
+overlap only ranks it after independent work (TOOLSET-161-17). While slots idle on such
+waits, the DOCS-MAINTAINER re-cuts the waiting tasks, at most every 30 minutes. A worker may change whatever its task
 needs. Finished work integrates one task at a time in priority order; the merge settles
 overlap, and a real conflict goes to the merge resolver. Only coordinator-owned files and
 undeclared protected files (manifests, lock files, schema, migration and CI files) hold a
@@ -399,6 +424,14 @@ How it works:
   explicit provider and model, `--no-approve`, the engine's one-task prompt and a
   session per task attempt. Workers never pick tasks or edit `TODO.md`,
   `TODO.archive.md`, `goals.json` or `CHANGELOG.md`; only the coordinator does.
+- **Doc-impact evidence.** Worker reports assess `doc_impact` as `not_needed`
+  (reason), `updated` (paths/readback/checks), or `pending` (gap/resume action).
+  The shared engine binds this to verified source, task and doc blobs and retains
+  it in slot reports/task snapshots after restart or closure. Older reports need
+  assessment, not rejection or an assumed no-op. In-scope component docs use bundled
+  Docs Sync scoped Maintain; shared-doc closeout belongs to DOCS-MAINTAINER
+  (TOOLSET-266-7a), not another atomic-close authority or model call added here.
+  See the [report contract](../skills/autowork/references/parallel-workers.md#documentation-impact-evidence).
 - **Verified integration.** A worker's commit and report are claims. The engine
   merges each reported task into the session branch one at a time and runs
   `pi-autowork.sh --verify`: `PI_AUTOWORK_VALIDATE` if set, then a separate read-only

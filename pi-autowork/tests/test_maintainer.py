@@ -1,5 +1,6 @@
 """DOCS-MAINTAINER triggers, trigger-set key and run record (TOOLSET-164-f1)."""
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -13,6 +14,32 @@ import goals  # noqa: E402
 
 
 class MaintainerTests(unittest.TestCase):
+    def test_tasks_waiting_on_a_shared_file_are_re_cut_while_worker_slots_idle(self):
+        """Tasks naming one file collided at merge all afternoon; the dispatcher now holds them,
+        and with slots idle the maintainer may merge, split or supersede them before they run."""
+        rows = [{'task': 'A', 'state': 'running'},
+                {'task': 'B', 'state': 'waiting', 'reason': 'waits for A (shares hot file x.py)'},  # current
+                {'task': 'C', 'state': 'waiting', 'reason': 'shares y.py with B, which goes first'},  # old journal
+                {'task': 'D', 'state': 'waiting', 'reason': 'all 8 worker slots busy'}]
+        found = maintainer.overlaps(rows)
+        self.assertEqual([(t, k) for t, k, _ in found], [('B', 'overlap'), ('C', 'overlap')])
+        text = maintainer.prompt(found, '/repo', 'goals.py')
+        for phrase in ('merge it into the other task', 'split the shared-file part', 'never widen product scope',
+                       'Never edit the entry of a task that is running'):
+            self.assertIn(phrase, text)
+        from pi_autowork.coordinator import Coordinator
+        runner = Coordinator.__new__(Coordinator)
+        runner.workers, runner.seen = '2', {}
+        runner.tasks = lambda: rows
+        os.environ['PI_AUTOWORK_OVERLAP_EVERY'] = '0'  # these checks are about idle slots, not the interval
+        self.addCleanup(os.environ.pop, 'PI_AUTOWORK_OVERLAP_EVERY', None)
+        self.assertTrue(runner.overlap_idles())  # one of two slots runs
+        runner.workers = '1'
+        self.assertFalse(runner.overlap_idles())  # every slot busy: the pool limits, not the queue
+        runner.workers = '2'
+        runner.tasks = lambda: [r for r in rows if not maintainer.overlap(r)]
+        self.assertFalse(runner.overlap_idles())
+
     def test_planning_holds_and_unrunnable_tasks_trigger_and_nothing_else_does(self):
         rows = [
             {'task': 'A', 'state': 'held', 'cause': 'scope', 'reason': 'changed files violate Touches'},

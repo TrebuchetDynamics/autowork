@@ -396,8 +396,11 @@ and [reporting contract](skills/autowork/references/dispatch-and-reporting.md):
 
 **Hermes:** `/autowork update` in chat updates every live profile; the terminal form
 is `hermes autowork update`. Use `/autowork update --check` in chat to preview. Updates
-are fast-forward-only, refuse dirty plugin checkouts, preserve compatible installed-skill
-edits and reapply runtime/menu defaults except where opted out. Conflicts stop preflight.
+normally fast-forward clean plugin checkouts. Verified managed checkouts can recover
+from rewritten upstream history through a backed-up native transaction that preserves
+compatible installed-skill edits and requests no runtime restart. Dirty or unproven
+sources defer. Ordinary updates reapply runtime/menu defaults except where opted out;
+recovery does not. Conflicts stop preflight.
 
 **Files updated does not mean the gateway is running updated code.** A busy root
 gateway can defer its restart for up to six hours, then expire without restarting.

@@ -111,6 +111,71 @@ class AdversarialWorkerTests(unittest.TestCase):
         self.assertEqual(self.slot()['state'], 'reported')  # not held on the stale blocker
         self.assertEqual(self.land('A')['outcome'], 'HELD')  # and no report of its own: not landed
 
+    def test_retained_commit_resumes_only_its_report_before_batching_or_conflict_resolution(self):
+        """A stopped worker's commit is not evidence until that attempt writes its report."""
+        sys.path.insert(0, str(SCRIPTS.parents[2] / 'pi-autowork'))
+        from pi_autowork import worker
+        self.commit_todo(task('A', 'a.txt'), task('B', 'b.txt'))
+        self.set_spec({'A': {'files': {'a.txt': 'done'}, 'sleep': 0.1},
+                       'B': {'files': {'b.txt': 'done'}, 'sleep': 0.1, 'report': False}})
+        self.apply()
+        self.wait_until_idle()
+        kept = self.slot('B')
+        report = dispatch.data_dir(self.common, kept) / 'report.json'
+        self.assertEqual(worker.batch_order(self.repo, {'A', 'B'})[0], ['A'])
+        # Even the lower-priority conflict shortcut must check the report first.
+        (self.repo / 'b.txt').write_text('session change')
+        self.git('add', 'b.txt')
+        self.git('commit', '-qm', 'session change')
+        result = self.land('B')
+        self.assertEqual((result['outcome'], result['cause']), ('HELD', 'report'))
+        # Recover a conflict hold stranded by an earlier runner as well.
+        self.assertEqual(self.land('A')['outcome'], 'INTEGRATED')
+        state_slot = self.slot('B')
+        state_slot.update(cause='conflict')
+        base.execution.save(state.slot_path(self.common, 'B'), state_slot)
+        self.assertFalse(state.merge_adoption(self.repo, self.slot('B'))['allowed'])
+        # Settling must prepare recovery even in --once/budget draining, which skips ordinary refill.
+        from pi_autowork.coordinator import Coordinator
+        runner = Coordinator.__new__(Coordinator)
+        runner.integ = self.repo
+        runner.engine = lambda *args: self.run_cli(*args, worker=False)[1]
+        self.assertTrue(runner.resume_report({'task': 'B'}))
+        self.assertEqual((self.slot('B')['state'], self.slot('B')['paused']), ('interrupted', True))
+        # A report-only worker: it records the retained HEAD, never implements or commits.
+        script = self.root / 'report_only.py'
+        script.write_text('import json,pathlib,re,subprocess,sys,time\n'
+                          'p=pathlib.Path(sys.argv[1]).read_text()\n'
+                          'assert "Do not reimplement" in p\n'
+                          'time.sleep(0.2)\n'
+                          'head=subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip()\n'
+                          'path=pathlib.Path(re.search(r"^Report file: (.+)$",p,re.M)[1])\n'
+                          'path.write_text(json.dumps(dict(task="B",commit=head,changed_files=["b.txt"],'
+                          'checks=[],blockers=[],changelog="fixture")))\n')
+        argv = json.dumps([sys.executable, str(script), '{prompt_file}'])
+        _, resumed = self.run_cli('--apply', '--parallel', '--tasks', 'B',
+                                  '--worker-command', argv, worker=False)
+        self.assertEqual([(d['task'], d['attempt']) for d in resumed['dispatched']], [('B', 1)])
+        self.assertEqual(self.slot('B')['branch'], kept['branch'])
+        self.wait_until_idle()
+        self.assertEqual(self.git('rev-parse', kept['branch']), kept['commit'])
+        self.assertTrue(report.exists())
+        self.assertEqual(worker.batch_order(self.repo, {'B'})[0], ['B'])
+        # Losing the resumed worker's report must not launch it repeatedly or invent evidence.
+        evidence = report.read_bytes()
+        report.unlink()
+        _, again = self.apply('--tasks', 'B')
+        self.assertEqual(again.get('dispatched', []), [])
+        self.assertEqual((self.slot('B')['state'], self.slot('B')['cause']), ('held', 'report'))
+        self.assertFalse(report.exists())
+        report.write_bytes(evidence)  # restore exactly what the real report-only worker wrote
+        self.apply('--tasks', 'B')
+        # The session conflict is now legitimate; after it is removed, normal integration works.
+        (self.repo / 'b.txt').unlink()
+        self.git('add', 'b.txt')
+        self.git('commit', '-qm', 'remove session-only file')
+        self.assertEqual(self.land('B')['outcome'], 'INTEGRATED')
+
     def test_launch_with_a_lost_receipt_is_still_seen_as_running(self):
         """Gas Town `RunPlan`: a launch that happened while its receipt write failed must
         become reconciliation, not a blind second dispatch into the same worktree."""

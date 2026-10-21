@@ -154,7 +154,7 @@ class DispatchTests(unittest.TestCase):
         code, result = self.apply()
         self.assertEqual((code, result['outcome']), (0, 'DISPATCHED'), result)
         self.assertEqual([s['task'] for s in result['dispatched']], ['A', 'B'])
-        # D shares a.txt with A: Touches only rank it, so it waits for a free slot (TOOLSET-161-17).
+        # Only A and D name a.txt: cold overlap ranks D later, but capacity holds it.
         self.assertIn('all 2 worker slots busy', {w['id']: w['reason'] for w in result['waiting']}['D'])
         self.assertIn('all 2 worker slots busy', {w['id']: w['reason'] for w in result['waiting']}['E'])
         self.assertNotIn('C', [w['id'] for w in result['waiting']])  # C's dependency is unfinished
@@ -666,6 +666,7 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
                            task('E', 'e.txt').replace('- [ ] E', '- [x] E'), task('D', 'a.txt'))
         _, result = self.apply('4', '--base-ref', 'trunk')
         self.assertEqual(sorted(d['task'] for d in result['dispatched']), ['A', 'B', 'D'])
+        self.assertNotIn('D', [w['id'] for w in result['waiting']])  # cold overlap can use a free slot
         self.assertNotIn('E', [w['id'] for w in result['waiting']])
 
     def test_an_unreadable_base_falls_back_to_the_session_ledger(self):
@@ -746,6 +747,104 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.wait_until_idle()
         slot = state.slots(self.common)[0]
         self.assertEqual((slot['state'], slot['attempt'], slot['branch']), ('reported', 1, 'autowork/A'))
+
+    def test_task_wait_frees_exclusive_work_and_resumes_only_after_all_land(self):
+        a, b, e = task('A', 'a.txt'), task('B', 'b.txt') + '- Resources: exclusive\n', task('E', 'e.txt')
+        self.write_todo(a, b, e)
+        self.git('commit', '-qam', 'task wait fixture')
+        self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 0.1, 'commit': False,
+                             'blockers': ['Needs B and E to land.'],
+                             'then': {'files': {'a.txt': 'done'}, 'ready': str(self.root / 'ready'),
+                                      'release': str(self.root / 'continue')}},
+                       'B': {'files': {'b.txt': 'landed B'}, 'sleep': 0.1},
+                       'E': {'files': {'e.txt': 'landed E'}, 'sleep': 0.1}})
+        self.apply('--tasks', 'A')
+        self.wait_until_idle()
+        original = state.slots(self.common)[0]
+        self.assertEqual(original.get('waits_for'), ['B', 'E'])
+        from parallel_status import snapshot
+        sys.path.insert(0, str(SCRIPTS.parents[2] / 'pi-autowork'))
+        from pi_autowork import questions
+        self.assertEqual(questions.build(snapshot(self.repo), (self.repo / 'TODO.md').read_text(),
+                                         execution.goals_module()), [])
+        _, refill = self.apply()
+        self.assertEqual([d['task'] for d in refill['dispatched']], ['B'])
+        self.wait_until_idle()
+        self.git('merge', '--no-ff', '-m', 'land B', 'autowork/B')
+        self.write_todo(a, b.replace('- [ ] B', '- [x] B'), e)
+        self.git('commit', '-qam', 'close B locally')
+        _, partial = self.apply()
+        self.assertEqual([d['task'] for d in partial['dispatched']], ['E'])
+        self.wait_until_idle()
+        self.close_on_base(a, b.replace('- [ ] B', '- [x] B'), e.replace('- [ ] E', '- [x] E'))
+        base = self.root / 'base'
+        (base / 'e.txt').write_text('landed E')
+        self.git('add', 'e.txt', repo=base)
+        self.git('commit', '-qm', 'prerequisite code on base', repo=base)
+        landed = self.git('rev-parse', 'trunk')
+        _, resumed = self.apply('--base-ref', 'trunk')
+        self.assertEqual((resumed['outcome'], resumed['task']), ('RESUMED', 'A'), resumed)
+        _, restarted = self.apply('--base-ref', 'trunk')
+        self.assertEqual([(d['task'], d['attempt']) for d in restarted['dispatched']], [('A', 1)])
+        self.assertEqual(self.pause_and_stop(), ['A'])
+        self.wait_until_idle()
+        (self.root / 'continue').touch()
+        _, restarted = self.apply('--base-ref', 'trunk')
+        self.assertEqual([(d['task'], d['attempt']) for d in restarted['dispatched']], [('A', 1)])
+        self.wait_until_idle()
+        slot = next(s for s in state.slots(self.common) if s['task_id'] == 'A')
+        self.assertEqual((slot['worktree'], slot['branch'], slot['baseline']),
+                         (original['worktree'], original['branch'], original['baseline']))
+        prompt = (dispatch.data_dir(self.common, slot) / 'prompt.md').read_text()
+        self.assertIn('Landed prerequisites: B, E', prompt)
+        self.assertIn(landed, prompt)
+        self.assertEqual(self.git('show', f'{landed}:e.txt', repo=slot['worktree']), 'landed E')
+        self.assertNotIn('waits_for', slot)
+
+    def test_a_paused_committed_task_wait_resumes_without_a_fresh_report(self):
+        # As in the answered-question fixture, restore integration's process-wide subreaper.
+        import ctypes
+        libc, subreaper = ctypes.CDLL(None), ctypes.c_int()
+        self.assertEqual(libc.prctl(37, ctypes.byref(subreaper), 0, 0, 0), 0)
+        self.addCleanup(lambda: libc.prctl(36, subreaper.value, 0, 0, 0))
+        a, b = task('A', 'a.txt'), task('B', 'b.txt')
+        self.write_todo(a, b)
+        self.git('commit', '-qam', 'committed wait fixture')
+        self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 0.1,
+                             'blockers': ['Needs B to land.']}})
+        self.apply('--tasks', 'A')
+        self.wait_until_idle()
+        _, held = self.run_cli('--integrate', 'A', '--timeout', '10', '--run', 'true', worker=False)
+        self.assertEqual((held['cause'], held['waits_for']), ('task_wait', ['B']))
+        original = state.slots(self.common)[0]
+        self.write_todo(a, b.replace('- [ ] B', '- [x] B'))
+        self.git('commit', '-qam', 'close prerequisite')
+        self.assertEqual(self.apply()[1]['outcome'], 'RESUMED')
+        ready, release = self.root / 'ready', self.root / 'continue'
+        self.set_spec({'A': {'files': {'a.txt': 'reconciling'}, 'ready': str(ready), 'release': str(release)}})
+        self.apply()
+        slot = state.slots(self.common)[0]
+        prompt = (dispatch.data_dir(self.common, slot) / 'prompt.md').read_text()
+        self.assertIn('Landed prerequisites: B', prompt)
+        self.assertNotIn('Do not reimplement the task or make another commit', prompt)
+        deadline = time.monotonic() + 5
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertTrue(ready.exists())
+        self.assertEqual(self.pause_and_stop(), ['A'])
+        self.wait_until_idle()
+        slot = state.slots(self.common)[0]
+        self.assertEqual((slot['state'], slot['attempt'], slot.get('paused')), ('interrupted', 1, True))
+        release.touch()
+        _, restarted = self.apply()
+        self.assertEqual([(d['task'], d['attempt']) for d in restarted['dispatched']], [('A', 1)])
+        self.wait_until_idle()
+        slot = state.slots(self.common)[0]
+        self.assertEqual((slot['worktree'], slot['baseline']), (original['worktree'], original['baseline']))
+        self.assertIn('Landed prerequisites: B', (dispatch.data_dir(self.common, slot) / 'prompt.md').read_text())
+        _, integrated = self.run_cli('--integrate', 'A', '--timeout', '10', '--run', 'true', worker=False)
+        self.assertEqual(integrated['outcome'], 'INTEGRATED', integrated)
+        self.assertEqual((self.repo / 'a.txt').read_text(), 'reconciling')
 
     def test_an_idle_claim_is_adopted_only_when_asked_and_names_its_prior_work(self):
         """sierra: 28 of 36 tasks were in_progress claims of sessions idle for a day."""
@@ -1299,8 +1398,8 @@ class AdmitTests(unittest.TestCase):
                               [{'task_id': t} for t in occupying], everything=list(candidates) + list(running)
                               + list(parked), parked=list(parked), adopted=set(), protected=None)
 
-    def test_an_interrupted_candidate_resumes_before_fresh_work_on_its_files(self):
-        """TOOLSET-161-17: fresh work on the same files is not held; it starts after the resume."""
+    def test_an_interrupted_candidate_resumes_first_beside_cold_overlap(self):
+        """Resume priority is preserved without holding a two-task file overlap."""
         fresh, interrupted = contract('FRESH', 'lib/x.dart'), contract('OLD', 'lib/x.dart, test/x_test.dart')
         result = self.admit([fresh, interrupted], restartable={'OLD'}, occupying={'OLD'})
         self.assertEqual([t['id'] for t in result['dispatch']], ['OLD', 'FRESH'])

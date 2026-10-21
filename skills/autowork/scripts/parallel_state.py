@@ -30,7 +30,8 @@ STATE_SCHEMA = 1
 STATE_SCHEMA_READS = (1,)
 FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_path', 'paused', 'paused_claim', 'cause',
           'outside', 'requested', 'reviewed_by', 'check_failure_resumed', 'answered', 'merged_base',
-          'merged_count', 'merged_authored_planning', 'conflict_files', 'closing', 'tip'}
+          'merged_count', 'merged_authored_planning', 'conflict_files', 'closing', 'tip', 'waits_for', 'wait_since',
+          'landed_tasks', 'landed_revisions'}
 # Hold causes no fresh attempt can fix: the worker itself reported what it needs
 # (scope_request: files outside Touches, listed in `requested`).
 # scope: a commit changed files outside Touches the runner could not widen; a fresh retry
@@ -39,7 +40,7 @@ FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_
 # reviews the same commit again with a longer limit (TOOLSET-196-fb).
 # 'no_change': the worker reported, cleanly, that nothing needed changing; a fresh attempt would only
 # say so again, so the docs maintainer closes or restates the task.
-NEEDS_PERSON = ('blocker', 'scope_request', 'scope', 'timeout', 'no_change')
+NEEDS_PERSON = ('blocker', 'scope_request', 'scope', 'timeout', 'no_change', 'reviewed_twice')
 COORDINATOR_FILES = ('TODO.md', 'TODO.archive.md', 'goals.json', 'CHANGELOG.md')
 
 
@@ -377,12 +378,21 @@ def change(common, old, target, updates):
             raise ValueError('interrupted/released retry must reuse its worktree and branch')
         value['previous_attempts'] = old.get('previous_attempts', []) + [
             {k: v for k, v in old.items() if k != 'previous_attempts'}]
-        for key in FIELDS:
+        # A pause or crash can precede reconciliation of landed prerequisite code.
+        # Keep the immutable source guidance until the slot is retired, not just one launch.
+        for key in FIELDS - {'landed_tasks', 'landed_revisions'}:
             value.pop(key, None)
         if not resume:  # A fresh worker commit is not a re-review of the held attempt.
             for key in ('reverified', 'reverify_verdict', 'runtime_seconds', 'runtime_started_at', 'held_at', 'held_seconds'):
                 value.pop(key, None)
         value.update(attempt=old['attempt'] if resume else 2, worker=None, started_at=time.time())
+        if resume and old.get('report_resume_attempt') == old['attempt'] and old.get('commit'):
+            value['commit'] = old['commit']  # report-only identity survives launch failure and timeout
+    if (target in ('held', 'interrupted', 'released') and old.get('report_resume_attempt') == old['attempt']
+            and old.get('commit') and (missing := missing_commit_report(common, old))):
+        target = 'held'
+        updates.update(cause='report', paused=False,
+                       reason=missing + '; report-only resume stopped: ' + str(updates.get('reason') or target))
     if updates.get('worker') is not None:
         execution.active_owner({'owner': updates['worker']})
     if target in ('interrupted', 'released') and old['attempt'] == 2 and not updates.get('paused', old.get('paused')):
@@ -413,7 +423,7 @@ def readoptable(slot):
     """
     first = held_first_attempt(slot)
     return (slot['state'] == 'held' and slot['attempt'] == 2 and not slot.get('commit')
-            and not slot.get('readopted') and not worker_live(slot)
+            and not slot.get('readopted') and not slot.get('waits_for') and not worker_live(slot)
             and first.get('state') == 'held' and bool(first.get('commit'))
             and str(first.get('reason', '')).startswith(SCOPE_HOLD))
 
@@ -479,6 +489,8 @@ def merge_adoption(repo, slot):
     if (slot['state'] != 'held' or slot.get('cause') != 'conflict' or not slot.get('commit')
             or worker_live(slot)):
         reason = 'merged is only for an idle conflict-held commit'
+    elif missing := missing_commit_report(common_dir(repo), slot):
+        reason = missing
     elif count >= 3:
         reason = 'merge adoption limit reached'
     elif previous and (previous == base or execution.git(repo, 'merge-base', previous, base) != previous):
@@ -494,9 +506,53 @@ def merge_adoption(repo, slot):
 
 def exhausted(slot):
     """A held slot no fresh attempt should replace; a resolver can still adopt its commit."""
-    return (slot['state'] == 'held' and (slot['attempt'] >= 2 or slot.get('cause') in NEEDS_PERSON
+    return (slot['state'] == 'held' and (slot.get('waits_for') or slot['attempt'] >= 2
+            or slot.get('cause') in NEEDS_PERSON
+            or (slot.get('cause') == 'report' and slot.get('report_resume_attempt') == slot['attempt'])
             or (slot.get('cause') == 'conflict' and bool(slot.get('merged_base'))))
             and not readoptable(slot))
+
+
+def missing_commit_report(common, slot):
+    """Report provenance only; integration still validates files, checks and blockers."""
+    data = common / 'slot-data' / slot['task_id'] / f'attempt-{slot.get("data_attempt", slot["attempt"])}'
+    path = data / 'report.json'
+    try:
+        report = execution.read(execution.safe_path(path))
+    except (ValueError, OSError):
+        report = None
+    named = report.get('commit') if isinstance(report, dict) else None
+    if (isinstance(report, dict) and report.get('task') == slot['task_id']
+            and isinstance(named, str) and re.fullmatch(r'[0-9a-fA-F]{7,40}', named)
+            and (slot.get('commit') or '').startswith(named.lower())):
+        return ''
+    if not isinstance(report, dict):
+        return f'the worker wrote no report.json: {path}'
+    return (f'the worker wrote no matching report.json (task is {report.get("task")!r}; '
+            f'commit is {named!r}, the branch is at {(slot.get("commit") or "")[:12]}): {path}')
+
+
+def recover_reports(common, current):
+    """Prepare one report-only, same-attempt resume; never manufacture a worker report.
+
+    Caller holds writer.lock. Also repairs pre-upgrade conflict holds before any
+    resolver or fresh retry can take ownership of the retained work.
+    """
+    result = []
+    for slot in current:
+        eligible = (slot['state'] == 'reported' or
+                    (slot['state'] == 'held' and slot.get('cause') in ('report', 'conflict')))
+        if eligible and slot.get('commit') and not worker_live(slot) and (missing := missing_commit_report(common, slot)):
+            repeated = slot.get('report_resume_attempt') == slot['attempt']
+            value = {k: v for k, v in slot.items() if k not in ('cause', 'reason', 'data_attempt')}
+            value.update(state='held' if repeated else 'interrupted', paused=not repeated,
+                         report_resume_attempt=slot['attempt'], reason=missing)
+            if repeated:
+                value.update(cause='report', reason=missing + '; report-only resume already used')
+            if value != slot:
+                slot = write_slot(common, value, slot)
+        result.append(slot)
+    return result
 
 
 def report_blockers(common, slot):
@@ -510,6 +566,56 @@ def report_blockers(common, slot):
     if not isinstance(blockers, list) or not all(isinstance(b, str) for b in blockers):
         return None
     return [b.strip() for b in blockers if b.strip()]
+
+
+def blocker_updates(repo, slot, blockers):
+    """Fail closed: only complete task-wait statements are machine dependencies.
+
+    dependency_ids deliberately discards prose; doing that here would hide additional
+    owner requests. Unknown wording stays with blocker triage. Workers are given a
+    canonical form; the observed parser-repair wording is a narrow compatibility case.
+    """
+    import parallel_plan
+    updates = {'reason': blocker_reason(blockers), 'cause': 'blocker'}
+    inputs = execution.selection_inputs(Path(repo))
+    indexed, bodies = inputs['indexed'], inputs['bodies']
+    known = inputs['known']
+    own = slot['task_id']
+    fields = execution.goals_module().task_fields(bodies[own][0][0]) if own in bodies else {}
+    declared = parallel_plan.dependency_ids(fields.get('Dependencies', 'None.'), known)
+    declared |= set(indexed.get(own, {}).get('depends_on', []))
+    open_ids = {tid for tid, items in bodies.items() if items[0][1].lower() != 'x'
+                and re.split(r'[;.\s]', execution.goals_module().task_fields(items[0][0]).get(
+                    'Status', indexed.get(tid, {}).get('status', 'open')))[0] in ('open', 'in_progress')
+                and indexed.get(tid, {}).get('status', 'open') in ('open', 'in_progress')}
+    eligible = open_ids - declared - {own}
+    # Match exact IDs (including paired backticks), never ID substrings or prose.
+    ident = r'(?:`[A-Za-z0-9][A-Za-z0-9._-]*`|[A-Za-z0-9][A-Za-z0-9._-]*)'
+    task_list = ident + r'(?:(?:,\s*(?:and\s+)?|\s+and\s+)' + ident + r')*'
+    patterns = [r'(?:Waiting for|Wait for|Awaiting|Blocked on|Blocked by|Depends on) (' + task_list + r')',
+                r'Needs? (' + task_list + r') to land',
+                r'The existing (' + ident + r') owner/coordinator must supply the retained parser repair '
+                r'in the combined baseline']
+    waits = set()
+    for blocker in blockers:
+        text = ' '.join(blocker.split()).removesuffix('.')
+        match = next((m for pattern in patterns if (m := re.fullmatch(pattern, text, re.I))), None)
+        if match is None:
+            return updates
+        ids = {token.strip('`') for token in re.split(r',\s*(?:and\s+)?|\s+and\s+', match[1], flags=re.I)}
+        if not ids or not ids <= eligible:
+            return updates
+        waits.update(ids)
+    if waits:
+        updates.update(cause='task_wait', waits_for=sorted(waits), wait_since=time.time())
+    return updates
+
+
+def resume_waited(common, old, revisions):
+    """Keep the candidate and attempt; pin landed source for safe worker reconciliation."""
+    value = {k: v for k, v in old.items() if k not in ('reason', 'cause', 'waits_for', 'wait_since')}
+    value.update(state='interrupted', paused=True, landed_tasks=old['waits_for'], landed_revisions=revisions)
+    return write_slot(common, value, old)
 
 
 def resume_widened(common, old):
@@ -622,6 +728,12 @@ def reconcile(repo, owner_pid):
                     if not descends:
                         target, updates = 'held', {'reason': 'worker HEAD does not descend from baseline',
                                                    'cause': 'diverged'}
+                    elif slot.get('paused') and slot.get('landed_tasks') and report_blockers(common, slot) is None:
+                        # Resuming a task wait discards its old report, not its commit.
+                        # A pause before the fresh report must continue reconciliation,
+                        # not offer that retained commit as newly finished work.
+                        target, updates = 'interrupted', {
+                            'reason': f'stopped while reconciling landed tasks; resumes on attempt {slot["attempt"]}'}
                     else:
                         target, updates = 'reported', {'commit': head}
                         if dirty:
@@ -640,8 +752,8 @@ def reconcile(repo, owner_pid):
                             result.append(slot)
                             continue
                     else:
-                        # A genuine missing input still waits for a person; preserve its work.
-                        target, updates = 'held', {'reason': blocker_reason(blockers), 'cause': 'blocker'}
+                        # Record task waits before the coordinator considers blocker triage.
+                        target, updates = 'held', blocker_updates(repo, slot, blockers)
                 elif blockers == [] and not dirty and not slot.get('paused'):
                     # A report with no commit and no blockers says nothing needed changing: rerun, it
                     # said so again, three times in an hour for one task.

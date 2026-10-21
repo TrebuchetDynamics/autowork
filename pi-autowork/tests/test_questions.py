@@ -56,7 +56,7 @@ class QuestionTests(unittest.TestCase):
     def test_questions_are_built_easiest_first_without_a_model(self):
         found = questions.build(snapshot(), TODO, goals)
         self.assertEqual([(q['id'], q['effort'], q['type'], q['unblocks']) for q in found], [
-            ('T-2', 'quick', 'USER_DECISION', 3), ('G1 gate review', 'decision', 'USER_DECISION', 2),
+            ('T-2', 'quick', 'USER_DECISION', 3), ('COND-f8d0a75d', 'decision', 'USER_DECISION', 2),
             ('T-1', 'input', 'USER_INPUT', 1)])
         self.assertNotIn('T-3', [q['id'] for q in found])  # a validation hold is the engine's to recover
         self.assertEqual(found[2]['task'], 'T-1 — Port the tuner')
@@ -76,6 +76,37 @@ class QuestionTests(unittest.TestCase):
         # A genuine owner-input hold with no attempt left is still a question.
         self.assertTrue(questions.exhausted(
             {'state': 'held', 'attempt': 2, 'cause': None, 'reason': 'held with no attempt left'}))
+
+    def test_task_wait_becomes_one_question_only_after_24_hours(self):
+        status = {'tasks': [{'task': 'T-1', 'state': 'held', 'attempt': 2, 'cause': 'task_wait',
+                             'waits_for': ['T-2'], 'wait_since': 1000,
+                             'reason': 'worker waits for T-2'}]}
+        self.assertEqual(questions.build(status, TODO, goals, now=1000 + 24 * 3600 - 1), [])
+        found = questions.build(status, TODO, goals, now=1000 + 24 * 3600)
+        self.assertEqual([(q['id'], q['effort']) for q in found], [('T-1', 'input')])
+        self.assertIn('T-2', found[0]['needs'])
+        self.assertIn('24', found[0]['needs'])
+        text = questions.update(None, found, now=NOW)
+        self.assertEqual(text.count('### Q-'), 1)
+
+    def test_a_conflict_the_resolver_still_settles_is_not_asked(self):
+        """Seven conflict holds were posted as owner questions while three resolvers cleared them."""
+        held = {'task': 'T-1', 'state': 'held', 'attempt': 2, 'cause': 'conflict', 'commit': 'c',
+                'reason': 'merge conflict', 'merge_adoption': {'allowed': True, 'merged_count': 1}}
+        status = {'tasks': [held], 'roots': []}
+        self.assertEqual([q['id'] for q in questions.build(status, TODO, goals)], ['T-1'])
+        self.assertEqual(questions.build(status, TODO, goals, resolving={'T-1'}), [])
+        from pi_autowork.coordinator import Coordinator
+        runner = Coordinator.__new__(Coordinator)
+        runner.seen = {}
+        self.assertEqual(runner.resolving([held]), {'T-1'})
+        runner.seen['unresolved-T-1'] = 'c'  # its resolution failed: the owner answers it
+        self.assertEqual(runner.resolving([held]), set())
+        spent = dict(held, merge_adoption={'allowed': False, 'merged_count': 3})  # merges ran out
+        runner.seen = {}
+        self.assertEqual(runner.resolving([spent]), set())
+        runner.resolvers['T-1'] = {}
+        self.assertEqual(runner.resolving([spent]), {'T-1'})  # running now
 
     def test_live_authorization_becomes_one_owner_question_in_blockers(self):
         condition = 'Live authorization: T-1'
@@ -169,14 +200,24 @@ class QuestionTests(unittest.TestCase):
         self.assertEqual(text[:start] + text[end:], OWNER.replace('## Active\n', '## Active\n\n\n', 1))
         self.assertIn('### Q-T-1 — USER_INPUT — effort input — unblocks 1\n\n- Task: T-1 — Port the tuner\n', text)
         self.assertIn('- Since: 2026-10-16T20:00:00Z\n- Answer: Answer in T-1\'s TODO.md entry', text)
-        self.assertLess(text.index('Q-T-2'), text.index('Q-G1 gate review'))
+        self.assertLess(text.index('Q-T-2'), text.index('Q-COND-f8d0a75d'))
         self.assertNotIn('Q-T-3', text)  # a validation hold is not a question
 
     def test_rewrites_keep_first_times_and_drop_answered_questions(self):
-        first = questions.update(OWNER, questions.build(snapshot(), TODO, goals), now=NOW)
+        queue = snapshot()
+        queue['roots'][1]['id'] = 'owned target and\n  capture consent'
+        found = questions.build(queue, TODO, goals)
+        condition = next(q for q in found if q['kind'] == 'outside')
+        self.assertEqual(condition['id'], 'COND-fb37fe1a')
+        self.assertEqual(condition['task'], 'owned target and capture consent')
+        first = questions.update(OWNER, found, now=NOW)
+        self.assertIn('### Q-COND-fb37fe1a — USER_DECISION — effort decision — unblocks 2\n', first)
         later = datetime(2026, 10, 17, 8, 0, tzinfo=timezone.utc)
-        again = questions.update(first, questions.build(snapshot(), TODO, goals), now=later)
-        self.assertEqual(again, first)  # unchanged questions: unchanged bytes, so no commit
+        for cycle in range(20):
+            queue['roots'][1]['id'] = ('owned target\tand capture consent' if cycle % 2
+                                     else 'owned target and\n  capture consent')
+            again = questions.update(first, questions.build(queue, TODO, goals), now=later.replace(minute=cycle))
+            self.assertEqual(again, first)  # unchanged bytes: no coordinator commit or log
         answered = snapshot()
         answered['tasks'] = [t for t in answered['tasks'] if t['task'] != 'T-1']
         answered['roots'] = [r for r in answered['roots'] if r['id'] != 'T-1']
@@ -184,6 +225,47 @@ class QuestionTests(unittest.TestCase):
         self.assertNotIn('Q-T-1', after)
         self.assertIn('### Q-T-2', after)
         self.assertIn('- Since: 2026-10-16T20:00:00Z', after)  # T-2 kept its first time
+
+    def test_legacy_broken_headings_keep_first_times_without_stealing_a_neighbours(self):
+        for prose, qid in [('owned target and\n  capture consent', 'COND-fb37fe1a'),
+                           ('owned target and\n- capture consent', 'COND-cb187cdc'),
+                           ('owned target —\n capture consent', 'COND-6bd3acf5')]:
+            with self.subTest(prose=prose):
+                legacy = questions.START + f'''
+### Q-T-2 — USER_DECISION — effort quick — unblocks 3
+
+- Since: 2026-10-15T09:00:00Z
+### Q-{prose} — USER_DECISION — effort decision — unblocks 2
+
+- Since: 2026-10-15T10:00:00Z
+- Since: 2026-10-16T10:00:00Z
+### An unrecognized heading
+
+- Since: 2026-10-16T11:00:00Z
+''' + questions.END
+                queue = snapshot()
+                queue['roots'][1]['id'] = prose
+                migrated = questions.update(legacy, questions.build(queue, TODO, goals), now=NOW)
+                self.assertEqual(questions.previous_since(migrated), {
+                    'T-2': '2026-10-15T09:00:00Z', qid: '2026-10-15T10:00:00Z',
+                    'T-1': '2026-10-16T20:00:00Z'})
+
+    def test_render_collapses_whitespace_in_every_field(self):
+        q = dict(id=' T-1\n ', type=' USER_INPUT\n ', effort=' input\t ', unblocks=' 1\n ',
+                 task=' Port\n the\ttuner ', needs=' needs\n a\tdecision ', answer=' Answer\n here ',
+                 kind=' held\n ')
+        self.assertEqual(questions.render([q], {'T-1': ' 2026-10-16T20:00:00Z\n '}),
+                         questions.START + '''
+
+### Q-T-1 — USER_INPUT — effort input — unblocks 1
+
+- Task: Port the tuner
+- Needs: needs a decision
+- Since: 2026-10-16T20:00:00Z
+- Answer: Answer here
+- Kind: held
+
+''' + questions.END)
 
     def test_no_questions_leaves_a_file_without_a_block_alone(self):
         self.assertEqual(questions.update(OWNER, [], now=NOW), OWNER)

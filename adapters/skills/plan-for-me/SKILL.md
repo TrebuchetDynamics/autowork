@@ -6,8 +6,11 @@ disable-model-invocation: true
 
 # Plan For Me
 
-Read the [host contract](../COMMON.md) and the
-[planning craft](../../../skills/shared/PLANNING-CRAFT.md). Size the work first.
+First read the [planning artifact and authority contract](../../../skills/shared/RESEARCH-PLAN.md),
+then the [host contract](../COMMON.md) and
+[planning craft](../../../skills/shared/PLANNING-CRAFT.md). Size the work first;
+a clear task still needs a complete saved body. Finish the full requested batch,
+with real dependencies, independent ready lanes and scoped unresolved choices.
 Investigate relevant source, tests and existing decisions. Compare practical options, choose a supported approach and
 record material reasoning. Ask only for consequential missing intent or authority;
 continue independent planning. Do not reopen settled choices or invent requirements.
@@ -26,5 +29,8 @@ planner's calls and the next executable task, distinguishing proposals from read
 Use the [single-pass handoff](../../../skills/shared/PLAN-HANDOFF.md#one-planning-pass-one-handoff):
 resume accepted decisions and existing task IDs, investigate only missing evidence,
 persist one affected batch, and reuse input-bound checks. Unchanged findings need
-no new docs pass. Follow this host adapter for execution authority; the shared
-contract does not require Hermes-native tooling on this host.
+no new docs pass. Standalone planning stops here despite earlier unrelated
+implementation permission. An Autowork-owned substep returns to that same
+coordinator; no competing worker or execution inside planning. A later explicit
+implementation instruction enters the execution workflow. The shared contract
+does not require Hermes-native tooling or promise a hard sandbox on this host.

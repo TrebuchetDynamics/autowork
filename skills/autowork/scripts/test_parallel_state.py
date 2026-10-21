@@ -144,6 +144,63 @@ class StateTests(unittest.TestCase):
                     # Retire the fixture before pausing the next worker.
                     state.transition(self.repo, self.owner, task, 'held')
 
+    def test_report_only_resume_failures_keep_the_commit_and_never_start_a_fresh_attempt(self):
+        import parallel_dispatch as dispatch
+        self.claim()
+
+        def time_out(task):
+            proc = subprocess.Popen(['sleep', '30'], start_new_session=True)
+            self.addCleanup(lambda p=proc: (p.kill(), p.wait()) if p.poll() is None else None)
+            running = state.transition(self.repo, self.owner, task, 'running', worker=execution.identity(proc.pid))
+            with patch.object(dispatch.time, 'time', return_value=running['started_at'] + 100):
+                dispatch.enforce_timeouts(self.repo, self.owner, self.common, 1)
+
+        for attempt in (1, 2):
+            for failure in ('timeout', 'launch'):
+                with self.subTest(attempt=attempt, failure=failure):
+                    task = f'REPORT-{attempt}-{failure}'
+                    slot = self.slot(task)
+                    if attempt == 2:
+                        state.transition(self.repo, self.owner, task, 'interrupted')
+                        state.transition(self.repo, self.owner, task, 'dispatched')
+                    root = Path(slot['worktree'])
+                    (root / 'file').write_text('finished')
+                    self.git('commit', '-qam', 'finished', repo=root)
+                    commit = self.git('rev-parse', 'HEAD', repo=root)
+                    if failure == 'timeout':
+                        time_out(task)  # the original worker timed out after its commit, before its report
+                    state.reconcile(self.repo, self.owner)
+                    with execution.lock(self.common / 'writer.lock'):
+                        state.recover_reports(self.common, state.slots(self.common))
+                    resumed = state.transition(self.repo, self.owner, task, 'dispatched')
+                    self.assertEqual((resumed['attempt'], resumed.get('commit')), (attempt, commit))
+                    if failure == 'launch':
+                        state.transition(self.repo, self.owner, task, 'held', cause='launch', reason='cannot launch')
+                    else:
+                        time_out(task)  # its bounded report-only resume timed out too
+                    held = next(s for s in state.reconcile(self.repo, self.owner) if s['task_id'] == task)
+                    self.assertEqual((held['state'], held['cause'], held['commit']), ('held', 'report', commit))
+                    self.assertTrue(state.exhausted(held))
+                    self.assertIn('report.json', held['reason'])
+                    self.assertFalse((dispatch.data_dir(self.common, held) / 'report.json').exists())
+
+    def test_timeout_of_an_unrelated_head_records_the_stopped_worker(self):
+        import parallel_dispatch as dispatch
+        self.claim()
+        slot = self.slot()
+        root = Path(slot['worktree'])
+        tree = self.git('rev-parse', 'HEAD^{tree}', repo=root)
+        orphan = self.git('commit-tree', tree, '-m', 'unrelated history', repo=root)
+        self.git('update-ref', 'HEAD', orphan, repo=root)
+        proc = subprocess.Popen(['sleep', '30'], start_new_session=True)
+        self.addCleanup(lambda: (proc.kill(), proc.wait()) if proc.poll() is None else None)
+        running = state.transition(self.repo, self.owner, 'A', 'running', worker=execution.identity(proc.pid))
+        with patch.object(dispatch.time, 'time', return_value=running['started_at'] + 100):
+            stopped = dispatch.enforce_timeouts(self.repo, self.owner, self.common, 1)
+        self.assertEqual(stopped[0]['state'], 'interrupted')
+        self.assertFalse(state.worker_live(stopped[0]))
+        self.assertEqual(state.slots(self.common)[0]['state'], 'interrupted')
+
     def test_paused_status_keeps_one_row_with_its_waiting_reason_and_no_failure(self):
         self.claim()
         reason = 'stopped by a runner restart; resumes on attempt 1'

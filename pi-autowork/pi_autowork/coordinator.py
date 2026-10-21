@@ -172,6 +172,14 @@ def reread_settings(path, started_with):
     os.environ.update(now)
 
 
+def batchable(rows, handled=()):
+    """(task, commit) of each candidate a batch may take: reported, or integrating with no review
+    running (one runs only while the session is busy, and no batch starts then). Reported alone,
+    a review a restart cut short waited behind every later batch: 16 hours for one of them."""
+    return [(r['task'], r.get('commit')) for r in rows
+            if r.get('state') in ('reported', 'integrating') and r['task'] not in handled]
+
+
 class Coordinator:
     def __init__(self, cfg):
         self.cfg = cfg
@@ -263,6 +271,10 @@ class Coordinator:
                  and f'{t}@{commit}' not in failed]
         if size < 2 or len(fresh) < 2 or self.reexec_due() or self.batch_pending():
             return []  # land the last batch first: a new one would be built on another tree
+        if self.seen.pop('batched', None) and any(f'{t}@{commit}' in failed for t, commit in reported):
+            # One review alone between two batches: while resolutions kept the batch fresh, nine
+            # commits whose batch had failed never got a review of their own, one for 15 hours.
+            return []
         half = self.batch_half({f'{t}@{commit}' for t, commit in fresh})
         if half:
             fresh = [(t, commit) for t, commit in fresh if f'{t}@{commit}' in half]
@@ -270,6 +282,7 @@ class Coordinator:
         if self.seen.get('batch-tried') == key:
             return []
         self.seen['batch-tried'] = key
+        self.seen['batched'] = True
         self.batch_revisions = [f'{t}@{commit}' for t, commit in fresh]
         return [t for t, _ in fresh]
 
@@ -327,6 +340,17 @@ class Coordinator:
             failure = f'Batch: the full check failed on the merged tree ({str(result.get("reason") or "")[:300]}); '
             revisions = {r.split('@')[0]: r for r in getattr(self, 'batch_revisions', [])}
             checked = [revisions[t] for t in result.get('tasks') or [] if t in revisions]
+            suspects = [revisions[t] for t in result.get('suspects') or [] if t in revisions]
+            if suspects and 2 * len(suspects) <= len(checked):
+                # The failing tests import or name only these candidates' changes: they integrate
+                # one at a time, and the rest batch again at once instead of in halves. Suspects
+                # past half the batch tell little: a test of the CLI imports nearly everything, it
+                # named five of six, and each waited its own review while halving finds the one.
+                failed = self.batch_failed() | set(suspects)
+                (self.state / 'batch-failed.json').write_text(json.dumps(sorted(failed)) + '\n')
+                LOG.say(failure + f'the failing tests point at {", ".join(r.split("@")[0] for r in suspects)}, '
+                        f'which integrate one at a time; the other {len(checked) - len(suspects)} batch again')
+                return
             if len(checked) >= 4:
                 middle = len(checked) // 2
                 path = self.state / 'batch-split.json'
@@ -1457,7 +1481,10 @@ class Coordinator:
         one `No task can start now` line covers them), and states already reached when the
         runner started are not replayed (quiet)."""
         word = lifecycle(state, paused=paused)
-        if self.seen.get(task) == word:
+        waiting = self.seen.get(task) == 'landing' or (self.seen.get(task) == 'verifying' and 'busy-' + task in self.seen)
+        if self.seen.get(task) == word or (waiting and word == 'implemented'):
+            # A candidate waiting out a busy checkout is still landing or verifying: the two lines
+            # alternated every 30 s, 66 times for one task.
             return
         self.seen[task] = word
         if quiet or word == 'pending':
@@ -1523,9 +1550,16 @@ class Coordinator:
         self.finish_resolvers()
         snapshot = self.status()
         rows = self.tasks(snapshot)
+        if self.set_aside_stale(rows):
+            rows = self.tasks(self.status())
         for row in rows:
             task, state, reason = row.get('task'), row.get('state') or '', row.get('reason') or ''
             before = self.seen.get(task)
+            if (not self.stop and (state == 'reported' or
+                                  (state == 'held' and row.get('cause') in ('report', 'conflict')))
+                    and row.get('commit') and self.resume_report(row)):
+                self.settled = True
+                continue  # also while draining: it is unfinished work on the same attempt
             if state == 'held' and row.get('cause') == 'conflict' and not self.session_busy():
                 if self.resolve_task_conflict(row):
                     self.settled = True
@@ -1577,8 +1611,7 @@ class Coordinator:
         conflicts = [t for t in self.batch_conflicts() if t in queue and t not in chain]
         # Verified together: they land first, in order; then the batch's conflicts are held for the resolver.
         queue = chain + conflicts + [t for t in queue if t not in chain and t not in conflicts]
-        batch = self.batch_due([(r['task'], r.get('commit')) for r in rows
-                                if r.get('state') == 'reported' and r['task'] not in handled])
+        batch = self.batch_due(batchable(rows, handled))
         if batch:
             self.start_batch(batch)
             return  # it runs beside the loop; its candidates land when it ends
@@ -1623,6 +1656,11 @@ class Coordinator:
             self.integrated(*finished, resolve_conflicts=False)
             if finished[1].get('cause') == 'conflict':
                 deferred.append(task)
+            if finished[1].get('outcome') == 'BUSY':
+                # The next candidate meets the same busy checkout, or lands out of its batch's order:
+                # a session in the checkout sent the second of three batch-passed candidates first,
+                # and both it and the first were reviewed again (19 min) instead of landing.
+                break
         self.resolve_deferred(deferred)
 
     def note_integrating(self, task, chain):
@@ -1632,6 +1670,37 @@ class Coordinator:
             self.note_state(task, 'landing', 'passed in its batch; not reviewed again')
         else:
             self.note_state(task, 'integrating')
+
+    def set_aside_stale(self, rows):
+        """Finished commits older than PI_AUTOWORK_STALE_HOURS (24; 0: never) are set aside and their
+        tasks run fresh on current main, the new worker shown the earlier work. Twenty commits a day
+        old, written against code main had since redesigned, conflicted with each other at every
+        landing and held back every task that shared their files. Never beside a review or a batch,
+        whose verdicts hold for the trees they were reached on. Its age is this slot's, from its
+        dispatch: counted from the task's first event, a fresh rerun of a set-aside task was a day
+        old as it finished and was set aside again, round after round."""
+        hours = float(os.environ.get('PI_AUTOWORK_STALE_HOURS') or 24)
+        now = time.time()
+        if hours <= 0 or self.stop or self.integration or self.batch_landing():
+            return False
+        changed = False
+        for row in rows:
+            task, age = row.get('task'), now - float(row.get('started_at') or now)
+            if row.get('state') not in ('reported', 'integrating') or task in self.resolvers or age < hours * 3600:
+                continue
+            result = self.engine('--parallel-set-aside', task)
+            if result.get('outcome') != 'SET_ASIDE':
+                reason = result.get('reason') or result.get('outcome')
+                if self.seen.get('stale-' + task) != reason:
+                    LOG.say(f'{task}: could not set aside its day-old commit: {reason}')
+                self.seen['stale-' + task] = reason
+                continue
+            kept = ', '.join(r['branch_now'] for r in result.get('renamed') or [] if r.get('branch_now'))
+            LOG.say(f'{task}: its commit waited {age / 3600:.0f} h to merge; set aside as '
+                    f'{kept}, and the task runs fresh on current main')
+            self.seen[task] = 'pending'
+            self.settled = changed = True
+        return changed
 
     def resolve_deferred(self, deferred):
         """Resolve the conflicts this pass held back, then batch their merged revisions so they
@@ -1644,7 +1713,7 @@ class Coordinator:
             if row and row.get('state') == 'held' and row.get('cause') == 'conflict':
                 self.resolve_task_conflict(row)
         rows = self.tasks(self.status())
-        batch = self.batch_due([(r['task'], r.get('commit')) for r in rows if r.get('state') == 'reported'])
+        batch = self.batch_due(batchable(rows))
         if batch:
             self.start_batch(batch)
             return True
@@ -1731,7 +1800,7 @@ class Coordinator:
                 self.reverify_after_timeout(task, version)
                 continue
             held_by_validation = row.get('state') == 'held' and (
-                row.get('cause') == 'validation'
+                row.get('cause') in ('validation', 'reviewed_twice')
                 or (not row.get('cause') and str(row.get('reason') or '').startswith('integration validation failed')))
             if not held_by_validation or self.stop:
                 continue
@@ -1953,7 +2022,22 @@ class Coordinator:
             return sorted(set(reason.removeprefix('invalid goals.json').lstrip(': ').split('; ')))
         return []
 
-    def maintain(self, main_only=False, ledger_errors=None, ledger_edits_only=False):
+    def overlap_idles(self):
+        """Worker slots idle while a task waits for another one's file: the queue, not the pool,
+        is what limits the runner, so the DOCS-MAINTAINER re-cuts those tasks. At most once per
+        PI_AUTOWORK_OVERLAP_EVERY seconds (1800): its Pi job holds the loop, and back-to-back
+        re-cuts of six tasks each left no review, landing or dispatch running for half an hour."""
+        every = float(os.environ.get('PI_AUTOWORK_OVERLAP_EVERY') or 1800)
+        if time.monotonic() - self.seen.get('overlap-at', -every) < every:
+            return False
+        rows = self.tasks()
+        busy = sum(1 for r in rows if r.get('state') in ('dispatched', 'running'))
+        if busy < int(self.workers) and any(maintainer.overlap(r) for r in rows):
+            self.seen['overlap-at'] = time.monotonic()
+            return True
+        return False
+
+    def maintain(self, main_only=False, ledger_errors=None, ledger_edits_only=False, overlap=False):
         """DOCS-MAINTAINER (TOOLSET-164-f1): when nothing runs and tasks are held for a planning
         cause or are not runnable as written, one Pi job restates them from the repository's own
         evidence in a disposable checkout. Its commit merges into the session only if it changed
@@ -1967,8 +2051,10 @@ class Coordinator:
         # those slots cannot settle until the ledger is valid. Never move the session
         # under an active review, a merge resolution (its merge is adopted only onto the
         # revision it merged) or another writer.
+        # A re-cut of tasks waiting on a shared file writes planning files only: it runs beside
+        # workers, which is when idle slots make it worth a model run.
         if (dirty(self.integ) or self.session_busy() or self.resolvers
-                or (self.in_flight() and not main_only and not self.ledger_errors)):
+                or (self.in_flight() and not main_only and not self.ledger_errors and not overlap)):
             return False
         rows = [] if main_only or self.ledger_errors else self.tasks()
         if ledger_edits_only:
@@ -1977,13 +2063,22 @@ class Coordinator:
         findings = {r['task']: worker.review_findings(self.state, r['task']) for r in rows
                     if r.get('state') == 'held' and r.get('cause') == 'validation' and r.get('task')}
         main = {} if ledger_edits_only else main_check.read(self.state)
-        found = maintainer.triggers(rows, main, findings, ledger_errors=self.ledger_errors, limit=None,
-                                    reported_flakes=maintainer.last(self.state).get('flaky_tests', []))
+        found = (maintainer.overlaps(rows) if overlap and not self.ledger_errors else
+                 maintainer.triggers(rows, main, findings, ledger_errors=self.ledger_errors, limit=None,
+                                     reported_flakes=maintainer.last(self.state).get('flaky_tests', [])))
+        goals = dispatch = None
+        closures = []
+        if not main_only and not ledger_edits_only and not self.ledger_errors:
+            goals, dispatch = touches_inference.modules(self.toolset)
+            closures = maintainer.archive_closures(self.integ, dispatch.execution)
+        found = closures + found
         before = {}
         if any(task not in ('MAIN', 'LEDGER') for task, _, _ in found):
-            goals, dispatch = touches_inference.modules(self.toolset)
+            if goals is None:
+                goals, dispatch = touches_inference.modules(self.toolset)
             before = maintainer.entries((Path(self.integ) / 'TODO.md').read_text(), goals)
         reasons = {r['task']: r.get('reason') or '' for r in rows if r.get('task')}
+        found += maintainer.archive_rejections(self.state, closures, entries=before, reasons=reasons)
         history = maintainer.last(self.state)
         found = [item for item in found if not maintainer.own_main_refresh(
             self.repo, item, history.get('items', {}).get(maintainer.item_key(item), {}),
@@ -1991,6 +2086,10 @@ class Coordinator:
         found = maintainer.pending(self.state, found, entries=before, reasons=reasons)
         if not found:
             return False
+        # Mechanical replay is its own model-free batch in the same transaction.
+        # Failed replay receipts are filtered above, so other repairs still proceed.
+        replay = [item for item in found if item[1] == 'archive close']
+        found = replay or found
         trigger_key = maintainer.key(found)
         rolling = any(kind == 'plan' for _, kind, _ in found)
         plan_before = maintainer.plan_entries(self.integ, goals, dispatch.execution.archive_file(Path(self.integ))) \
@@ -2003,12 +2102,18 @@ class Coordinator:
         outcome, changed = 'no change', []
         try:
             base = git(scratch, 'rev-parse', 'HEAD')
-            message = maintainer.prompt(found, self.repo, self.goals)
-            if rolling:
-                message += f'\nFinished batch reports: {Path(self.cfg["git_common"]) / "autowork-execution/slot-data"}.'
-            ok, text = self.pi_job('maintainer', maintainer.ROLE, scratch,
-                                   message,
-                                   f'pi-autowork-maintainer-{datetime.now():%Y%m%d%H%M%S}', self.verify_timeout)
+            if replay:
+                ok, text = maintainer.replay_archive(scratch, names, dispatch.execution, self.goals_cli)
+                if ok:
+                    ok = git_ok(scratch, 'add', '-A') and git_ok(scratch, 'commit', '-qm',
+                        'docs(tasks): replay archived completion of ' + ', '.join(names))
+            else:
+                message = maintainer.prompt(found, self.repo, self.goals)
+                if rolling:
+                    message += f'\nFinished batch reports: {Path(self.cfg["git_common"]) / "autowork-execution/slot-data"}.'
+                ok, text = self.pi_job('maintainer', maintainer.ROLE, scratch,
+                                       message,
+                                       f'pi-autowork-maintainer-{datetime.now():%Y%m%d%H%M%S}', self.verify_timeout)
             head = git(scratch, 'rev-parse', 'HEAD')
             paths = (git(scratch, 'diff', '--name-only', base, head) or '').split() if head and head != base else []
             diff = git(scratch, 'diff', base, head) or '' if paths else ''
@@ -2025,13 +2130,19 @@ class Coordinator:
                     plan_error = 'planning must finish successfully in one commit'
             if rolling and plan_error:
                 outcome = 'planning failed: ' + plan_error
+            elif replay and not ok:
+                outcome = maintainer.REPLAY_REFUSED + text.strip()
             elif not paths:
                 outcome = 'no change' if ok else 'failed'
-            elif not maintainer.planning_only(paths) or dirty(scratch):
+            elif (not (maintainer.planning_only(paths) or (replay and all(
+                    maintainer.planning_only([p]) or
+                    p == dispatch.execution.archive_file(Path(scratch)).relative_to(scratch).as_posix()
+                    for p in paths))) or dirty(scratch)):
                 outcome = 'refused: it changed more than planning files'
-            elif (self.ledger_errors or (Path(scratch) / 'goals.json').exists()) and subprocess.run(
-                    [sys.executable, str(self.goals), 'validate', scratch], capture_output=True).returncode:
-                outcome = 'refused: goals.py validate failed'
+            elif (self.ledger_errors or (Path(scratch) / 'goals.json').exists()) and (
+                    validation := self.goals_cli('validate', scratch)).returncode:
+                outcome = (maintainer.REPLAY_REFUSED + (validation.stdout + validation.stderr).strip()
+                           if replay else 'refused: goals.py validate failed')
             elif git_ok(self.integ, 'merge', '-q', '--no-edit', head):
                 outcome = 'merged'
                 self.settled = self.land_soon = True
@@ -2041,9 +2152,9 @@ class Coordinator:
         finally:
             self.drop_scratch(scratch)
         after = before
-        if outcome == 'merged' and before:
+        if outcome == 'merged' and (before or replay):
             after = maintainer.entries((Path(self.integ) / 'TODO.md').read_text(), goals)
-            changed = [task for task in names if before.get(task) != after.get(task)
+            changed = names if replay else [task for task in names if before.get(task) != after.get(task)
                        or (task in ('MAIN', 'LEDGER') and task in changed)]
             self.snapshot = None  # waiting reasons must be reread against the repaired entries
         maintainer.remember(self.state, trigger_key=trigger_key, found=found, outcome=outcome, changed=changed,
@@ -2058,7 +2169,8 @@ class Coordinator:
                 LOG.say('The engine needs attention: invalid goals.json: ' + '; '.join(self.ledger_errors)
                         + f'; {maintainer.ROLE} {outcome}; see BLOCKERS.md')
         proposals = [item for item in maintainer.triggers(rows, limit=None) if item[1] == 'ledger edit']
-        return outcome == 'merged' or bool(maintainer.pending(self.state, proposals, entries=after, reasons=reasons))
+        return (outcome == 'merged' or (bool(replay) and outcome.startswith(maintainer.REPLAY_REFUSED))
+                or bool(maintainer.pending(self.state, proposals, entries=after, reasons=reasons)))
 
     def environment_hold(self, task):
         """What a review of the held commit could not run without, or None (TOOLSET-173-94)."""
@@ -2121,8 +2233,8 @@ class Coordinator:
         person can resolve it: most blockers asked for what the runner already provides, or for a repair
         the worker may make itself, and waited hours for the owner. Once per task and reason."""
         task, root, reason = row.get('task'), row.get('worktree'), ' '.join(str(row.get('reason') or '').split())
-        if (self.stop or row.get('quick_hold') or row.get('worker_live') or int(row.get('answered') or 0) >= 2 or not root
-                or not Path(root).is_dir()):
+        if (self.stop or row.get('waits_for') or row.get('quick_hold') or row.get('worker_live')
+                or int(row.get('answered') or 0) >= 2 or not root or not Path(root).is_dir()):
             return False
         record = self.state / 'triage.json'
         try:
@@ -2159,18 +2271,54 @@ class Coordinator:
         LOG.say(f'{task}: the runner answered its blocker; resuming its attempt ({fleet_view.short(verdict[1], 160)})')
         return True
 
+    def resume_report(self, row):
+        """Reportless commits belong to their worker, including legacy conflict holds.
+
+        Prepare recovery through the engine even when --once/budget draining skips
+        refill; the usual paused-attempt admission then launches only this attempt.
+        """
+        _, _, state = worker.engine_modules()
+        common = state.common_dir(self.integ)
+        slot = next((s for s in state.slots(common) if s['task_id'] == row['task']), None)
+        if (not slot or slot.get('report_resume_attempt') == slot['attempt'] or state.worker_live(slot)
+                or not state.missing_commit_report(common, slot)):
+            return False
+        result = self.engine('--parallel-reverify', row['task'], '--reviewer-version', 'report-only')
+        if result.get('report_only'):
+            LOG.say(f'{row["task"]}: resuming its worker on the same attempt to report its retained commit')
+            return True
+        return False
+
     def resolve_task_conflict(self, row):
         """A commit held for a merge conflict with the session is merged with it in its own
         worktree, Pi resolving the conflict beside the loop, and the engine judges the merge from
         there (TOOLSET-157-cd): once per session revision, instead of reimplementing the task.
         Up to PI_AUTOWORK_RESOLVERS (3) run at once; one at a time inside the loop, nine held
-        conflicts took about twenty minutes each while nothing else moved."""
+        conflicts took about twenty minutes each while nothing else moved. At the engine's limit of
+        three merges the commit is set aside and the task runs fresh on current main, the new worker
+        shown the earlier work: other tasks landing in the same files had used up the merges, and
+        the owner question it became had no answer."""
         task, root = row.get('task'), row.get('worktree')
         if self.stop or row.get('worker_live') or not root or not Path(root).is_dir() or task in self.resolvers:
+            return False
+        if self.reexec_due():
+            # The reload waits for running resolvers and a due reload starts no batch: new ones
+            # each kept it pending, so for hours nothing landed while conflicts were resolved.
             return False
         adoption = row.get('merge_adoption') or {}
         if not adoption.get('allowed'):
             reason = adoption.get('reason') or 'the engine did not authorize merge adoption'
+            if reason.startswith('merge adoption limit reached'):
+                result = self.engine('--parallel-set-aside', task)
+                if result.get('outcome') == 'BUSY':
+                    return False  # a review holds the integration lock: the next cycle sets it aside
+                if result.get('outcome') == 'SET_ASIDE':
+                    kept = ', '.join(r['branch_now'] for r in result.get('renamed') or [] if r.get('branch_now'))
+                    LOG.say(f'{task}: its commit conflicted with main after {adoption.get("merged_count")} merges; '
+                            f'set aside as {kept}, and the task runs fresh on current main')
+                    self.seen[task] = 'pending'
+                    return True
+                reason += f'; could not set it aside: {result.get("reason") or result.get("outcome")}'
             if self.seen.get('merge-refused-' + task) != reason:
                 LOG.say(f'{task}: not running the merge resolver: {reason}; it waits for the owner')
                 self.seen['merge-refused-' + task] = reason
@@ -2412,7 +2560,7 @@ class Coordinator:
             triggers = maintainer.triggers(rows, findings=findings, limit=None)
             reasons = {r['task']: r.get('reason') or '' for r in rows if r.get('task')}
             repairs = maintainer.stalled(self.state, triggers, entries=maintainer.entries(todo, goals), reasons=reasons)
-            found = questions.build(snapshot, todo, goals, repairs=repairs)
+            found = questions.build(snapshot, todo, goals, repairs=repairs, resolving=self.resolving(rows))
             if os.environ.get('PI_AUTOWORK_ASK_FULL_CHECK', '1') != '0' and not main_check.full_check(self.integ):
                 # TOOLSET-180-72: nothing guards the suite
                 found.append(questions.full_check_question())
@@ -2426,6 +2574,14 @@ class Coordinator:
                     'Built from the engine status without a model; /blockers answers them.')
         LOG.say(f'Questions for the owner in BLOCKERS.md: {len(found)} open'
                 + (f" (easiest: {found[0]['id']}, {found[0]['effort']})" if found else ''))
+
+    def resolving(self, rows):
+        """Held conflicts the merge resolver is settling or will take next: not the owner's yet. One
+        is asked once its resolution failed or its merges ran out (merge_adoption not allowed)."""
+        return set(self.resolvers) | {
+            r['task'] for r in rows if r.get('state') == 'held' and r.get('cause') == 'conflict'
+            and (r.get('merge_adoption') or {}).get('allowed')
+            and self.seen.get('unresolved-' + r['task']) != r.get('commit')}
 
     def update_toolset(self):
         """While nothing is in flight, update the toolset package Pi loads, at most once per
@@ -2683,6 +2839,8 @@ class Coordinator:
                                  '--min-free-mem-mb', self.min_free_mb, '--adopt-idle-claims', str(self.claim_idle),
                                  '--base-ref', self.base, *(['--tasks', ','.join(resumes)] if resumes else []))
             outcome = result.get('outcome') or 'ACTION_REQUIRED'
+            if outcome != 'BUSY':
+                self.seen.pop('busy-since', None)
             for task in result.get('closed_on_base') or []:
                 self.note_state(task, 'closed', f'closed on {self.base}; its worker is stopped and its work set aside')
             for task in result.get('closing') or []:
@@ -2719,6 +2877,12 @@ class Coordinator:
             if result.get('requeued') is False:
                 LOG.say(f'{task}: its TODO entry was removed or closed while it was held; set aside'
                         + (f' (earlier work kept as {kept})' if kept else ''))
+            elif result.get('why') == 'review_rework':
+                LOG.say(f'{task}: its last attempt failed review; reworking it once with the findings'
+                        + (f' (earlier work kept as {kept})' if kept else ''))
+            elif result.get('why') == 'runner_merged':
+                LOG.say(f'{task}: its branch was merged past its commit by the runner; running it fresh from that tip'
+                        + (f' (earlier work kept as {kept})' if kept else ''))
             else:
                 LOG.say(f'{task}: its TODO entry changed while it was held; running it fresh'
                         + (f' (earlier work kept as {kept})' if kept else ''))
@@ -2730,6 +2894,9 @@ class Coordinator:
             if waiting and waiting != self.last_waiting:
                 LOG.say(f'Waiting: {waiting}')
             self.last_waiting = waiting
+            if self.overlap_idles() and self.maintain(overlap=True):
+                self.last_waiting = ''
+                return  # dispatch again on the re-cut tasks first
         elif outcome == 'IDLE':
             # IDLE only means no worker is running: tasks may still be waiting on something.
             blocked = summary_list(result.get('waiting') or [])
@@ -2749,7 +2916,17 @@ class Coordinator:
         elif outcome == 'BUSY':
             reason = result.get('reason') or 'busy'
             if self.mode in ('once', 'until-empty'):
-                self.finish(4, f'Repository busy: {reason}')
+                # A killed runner's engine helper holds the execution lock until it finishes: under
+                # load the restart that adopts its workers exited 4 at once (TOOLSET-288-cf). A held
+                # lock gets a bounded wait; another owner (a live sequential runner) does not.
+                since = self.seen.setdefault('busy-since', time.monotonic())
+                held = reason.startswith(('Repository execution lock', 'Repository or helper publication lock'))
+                if not held or time.monotonic() - since >= worker.setting('PI_AUTOWORK_BUSY_WAIT', 60, float):
+                    self.finish(4, f'Repository busy: {reason}')
+                if self.seen.get('busy-said') != reason:
+                    self.seen['busy-said'] = reason
+                    LOG.say(f'Repository busy ({reason}); waiting for it to finish')
+                return self.pause(2)
             LOG.say(f'Repository busy ({reason}); checking again in {self.interval}s')
             return self.blocked_pause(f'repository busy: {reason}')
         elif outcome == 'PRIORITY_DRIFT':

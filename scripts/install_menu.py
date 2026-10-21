@@ -91,6 +91,43 @@ def run_command(argv, output):
     return code, tail.strip()
 
 
+def failure_summary(text):
+    """Extract a final structured receipt, not its closing brace, from native logs."""
+    text = text[-16384:]
+    decoder = json.JSONDecoder()
+    receipt = None
+    for index, character in enumerate(text):
+        if character != '{':
+            continue
+        try:
+            value, end = decoder.raw_decode(text, index)
+        except ValueError:
+            continue
+        if isinstance(value, dict) and isinstance(value.get('status'), str) and not text[end:].strip():
+            receipt = value
+            break
+    if receipt is not None:
+        parts = [receipt.get(key) for key in ('status', 'error')]
+        # Scoped/recovery receipts keep per-profile diagnostics.
+        diagnostics = [receipt]
+        if isinstance(receipt.get('recovery'), dict):
+            diagnostics.append(receipt['recovery'])
+        for diagnostic in diagnostics:
+            rows = diagnostic.get('profiles')
+            for row in rows.values() if isinstance(rows, dict) else ():
+                if isinstance(row, dict) and row.get('error'):
+                    parts.append(row['error'])
+        useful = list(dict.fromkeys(part for part in parts if isinstance(part, str) and part.strip()))
+        if useful:
+            cause = ' '.join('; '.join(useful).split())[:750]
+            action = receipt.get('action') or receipt.get('note')
+            return cause + ('; ' + ' '.join(action.split())[:400] if isinstance(action, str) else '')
+    lines = [line.strip() for line in text.splitlines() if line.strip()
+             and line.strip() not in ('{', '}', '[', ']', '},', '],')
+             and not line.lstrip().startswith(('"status"', '"pid"', '"started_ns"'))]
+    return ' '.join(' | '.join(lines[-3:]).split())[-1200:] or 'command failed; inspect the native output'
+
+
 @dataclass
 class Step:
     describe: str                   # what this step does, for --dry-run and the summary
@@ -421,7 +458,7 @@ def install(all_items, chosen, dry_run=False, output=None, mode='install'):
                         continue
                     if code:
                         outcome, exit_code = 'failed', code
-                        cause = text.splitlines()[-1] if text else 'command failed'
+                        cause = failure_summary(text)
                         detail.append(f'{cause} (exit {code})')
                         output.line(f'  FAILED: {step.describe} (exit {code})', 'failed')
                         break

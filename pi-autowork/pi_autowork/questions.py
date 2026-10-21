@@ -14,6 +14,7 @@ resolve them with the owner, easiest first; an answered question leaves the bloc
 its cause is gone (Git history keeps it).
 """
 from datetime import date, datetime, timezone
+from hashlib import sha1
 import re
 
 START = '<!-- pi-autowork:questions:start -->'
@@ -24,6 +25,17 @@ INPUT_CAUSES = ('blocker', 'scope_request', 'scope')
 # request) clears the hold. A merge conflict is different — the engine resolves it during
 # integration, and one it cannot resolve stays the owner's question — so it is not listed here.
 TECHNICAL_CAUSES = ('validation', 'runner_merged')
+
+
+def _one_line(value):
+    return ' '.join(str(value).split())
+
+
+def _question_id(value):
+    text = _one_line(value)
+    if re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', text):
+        return text
+    return 'COND-' + sha1(text.encode('utf-8'), usedforsecurity=False).hexdigest()[:8]
 
 
 def _title(todo, task, goals):
@@ -62,6 +74,8 @@ def technical(row):
     """A hold the runner recovers by itself: a merge conflict, or an integration-validation
     failure it can re-offer or re-verify. A person need not decide anything (owner direction:
     the recorded reason must name a decision, or it stays technical recovery)."""
+    if row.get('cause') == 'reviewed_twice':
+        return False  # its one rework failed review too (TOOLSET-285-29)
     return (row.get('cause') in TECHNICAL_CAUSES
             or 'integration validation' in str(row.get('reason') or ''))
 
@@ -74,21 +88,26 @@ def exhausted(row):
         return False
     adoption = row.get('merge_adoption') or {}
     return row.get('state') == 'held' and (int(row.get('attempt') or 0) >= 2 or row.get('cause') in INPUT_CAUSES
+                                          or row.get('cause') == 'reviewed_twice'
                                           or adoption.get('allowed') is False or bool(adoption.get('merged_count'))
                                           or bool(row.get('quick_hold')))
 
 
-def build(snapshot, todo, goals, repairs=()):
-    """Questions from an engine status snapshot, without a model: dicts sorted easiest first."""
+def build(snapshot, todo, goals, repairs=(), resolving=(), *, now=None):
+    """Questions from an engine status snapshot, without a model: dicts sorted easiest first.
+    ``resolving`` names held conflicts the runner's merge resolver still settles by itself: seven
+    such holds were posted as owner questions while three resolvers were clearing them."""
+    now = datetime.now(timezone.utc).timestamp() if now is None else now
     rows = {r.get('task'): r for r in snapshot.get('tasks') or [] if r.get('task')}
     roots = {r['id']: r for r in snapshot.get('roots') or []}
     found = {}
     deferred = goals.deferred_tasks(goals.task_bodies(todo))
 
     def add(qid, kind, effort, needs, answer, task_line, unblocks):
+        qid = _question_id(qid)
         found[qid] = dict(id=qid, type='USER_INPUT' if effort == 'input' else 'USER_DECISION', effort=effort,
-                          unblocks=unblocks, task=task_line, needs=' '.join(str(needs).split()), answer=answer,
-                          kind=kind)
+                          unblocks=unblocks, task=_one_line(task_line), needs=_one_line(needs),
+                          answer=_one_line(answer), kind=kind)
 
     if snapshot.get('ledger_errors'):
         add('LEDGER', 'ledger', 'investigate',
@@ -127,12 +146,24 @@ def build(snapshot, todo, goals, repairs=()):
             f'{task} — {title}' if title else task, (roots.get(task) or {}).get('blocks', 0))
 
     for task, row in rows.items():
-        if task in found or not exhausted(row):
+        if task in found or task in resolving:
+            continue
+        waits = row.get('waits_for') if row.get('state') == 'held' else None
+        if waits:
+            since = row.get('wait_since')
+            if since is None or now - since < 24 * 3600:
+                continue
+        elif not exhausted(row):
             continue
         title = _title(todo, task, goals)
         line = f'{task} — {title}' if title else task
         blocks = (roots.get(task) or {}).get('blocks', 0)
-        if row.get('cause') in INPUT_CAUSES:
+        if waits:
+            add(task, 'held', 'input', 'Waiting for ' + ', '.join(waits) + ' to land for at least 24 hours. ' +
+                (row.get('reason') or ''),
+                'Inspect the prerequisite tasks and resolve their holds or close them with verified evidence. '
+                'The runner resumes this task on the same attempt when all prerequisites close.', line, blocks)
+        elif row.get('cause') in INPUT_CAUSES:
             add(task, 'held', 'input', row.get('reason') or 'the worker stopped and asked for input', (
                 f"Answer in {task}'s TODO.md entry: widen `Touches:`, supply the input, narrow the acceptance, "
                 "or add a dated `Owner decision:` line. The runner reruns it when the entry changes."), line, blocks)
@@ -143,7 +174,7 @@ def build(snapshot, todo, goals, repairs=()):
                 "when the entry changes."), line, blocks)
     for qid, root in roots.items():
         kind, blocks = root.get('kind'), root.get('blocks', 0)
-        if qid in found:
+        if _question_id(qid) in found:
             continue
         title = _title(todo, qid, goals)
         line = f'{qid} — {title}' if title else qid
@@ -226,13 +257,23 @@ def planning(base):
 def previous_since(text):
     """{question id: Since} from an existing block, so a question keeps its first time."""
     block = block_of(text)
-    since, current = {}, None
+    since, current, heading = {}, None, None
     for line in (block or '').splitlines():
-        head = re.match(r'^### Q-(.+?) — ', line)
-        if head:
-            current = head[1]
+        if line.startswith('### '):
+            current, heading = None, line
+        elif heading is not None:
+            if re.match(r'^- (?:Task|Needs|Since|Answer|Kind):', line):
+                heading = None
+            else:
+                heading += ' ' + line
         elif current and line.startswith('- Since: '):
-            since[current] = line[len('- Since: '):].strip()
+            since.setdefault(current, _one_line(line[len('- Since: '):]))
+        if heading is not None:
+            # Match the metadata suffix: legacy prose can wrap or contain an em dash.
+            head = re.fullmatch(r'### Q-(.+?) — USER_(?:INPUT|DECISION) — effort \S+ — unblocks \S+',
+                                _one_line(heading))
+            if head:
+                current, heading = _question_id(head[1]), None
     return since
 
 
@@ -244,10 +285,12 @@ def block_of(text):
 
 def render(questions, since):
     lines = [START, '']
-    for q in questions:
+    for question in questions:
+        q = {key: _one_line(value) for key, value in question.items()}
+        q['id'] = _question_id(q['id'])
         lines += [f"### Q-{q['id']} — {q['type']} — effort {q['effort']} — unblocks {q['unblocks']}", '',
-                  f"- Task: {q['task']}", f"- Needs: {q['needs']}", f"- Since: {since.get(q['id'])}",
-                  f"- Answer: {q['answer']}", f"- Kind: {q.get('kind') or 'other'}", '']
+                  f"- Task: {q['task']}", f"- Needs: {q['needs']}", f"- Since: {_one_line(since.get(q['id']))}",
+                  f"- Answer: {q['answer']}", f"- Kind: {_one_line(question.get('kind') or 'other')}", '']
     lines.append(END)
     return '\n'.join(lines)
 
@@ -258,7 +301,7 @@ def update(text, questions, now=None):
         return text  # nothing to ask and no block yet: leave the file alone
     stamp = (now or datetime.now(timezone.utc)).strftime('%Y-%m-%dT%H:%M:%SZ')
     known = previous_since(text or '')
-    since = {q['id']: known.get(q['id'], stamp) for q in questions}
+    since = {_question_id(q['id']): known.get(_question_id(q['id']), stamp) for q in questions}
     block = render(questions, since)
     if not text:
         return f'# Blockers\n\n## Active\n\n{block}\n'
