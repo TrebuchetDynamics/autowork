@@ -948,8 +948,8 @@ def pending_edits(repo):
     return {Path(p).stem for p in paths if p.startswith('tasks/items/') and p.endswith('.md')}
 
 
-def task_rows(runner):
-    """Every open task in ``runner``'s task store, in its order, with what the runner says about it."""
+def task_rows(runner, include_closed=False):
+    """Task rows in priority order, optionally including closures and their provenance."""
     store = task_store(runner.repo) if runner.repo else None
     if store is None:
         return []
@@ -991,6 +991,12 @@ def task_rows(runner):
         rows.append(TaskRow(task=task, short=short, section=section, state=words, kind=kind,
                             why='you: ' + question.needs if question else why, question=bool(question),
                             pending=task in edited))
+    if include_closed:
+        for record in sorted(store.tasks.values(), key=lambda t: t.id):
+            if record.status == 'done':
+                info = record.closure_info
+                why = (info['evidence'] if record.closure == 'coordinator_verified' else info['reason']) or 'Closure provenance not recorded'
+                rows.append(TaskRow(record.id, record.short or record.title, 'Closed', info['label'], 'closed', why))
     return rows
 
 
@@ -1023,6 +1029,8 @@ def task_actions(runner, row, *, command, script, agent=None):
     """What the Tasks window can do with one task: re-sort it (its rank is the priority),
     clear or set aside its hold, or answer the owner's questions in an agent."""
     repo, name, task = runner.repo, runner.name, row.task
+    if row.kind == 'closed':
+        return []
     out = [Action('u', 'Up', [command, 'tasks', 'move', task, 'up', name]),
            Action('d', 'Down', [command, 'tasks', 'move', task, 'down', name]),
            Action('s', 'Section', [], interactive=True)]  # the TUI asks which: Now, Next or Needs decision

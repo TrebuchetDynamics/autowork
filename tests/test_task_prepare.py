@@ -631,7 +631,7 @@ class MaintainTests(Repo):
                                                                'attempt': 1}))
         before = self.store_bytes()
         for args in (('field', self.start, 'acceptance', 'other'), ('place', self.start, 'Next'),
-                     ('done', self.start, '--evidence', 'x'), ('supersede', self.start, '--by', self.export,
+                     ('done', self.start, '--by', 'owner', '--reason', 'x'), ('supersede', self.start, '--by', self.export,
                                                                '--reason', 'x')):
             refused = self.tasks(*args, ok=False)
             self.assertIn('held by a worker slot or a live lease', refused.stderr)
@@ -673,12 +673,12 @@ class MaintainTests(Repo):
         self.assertEqual((report['read'], len(report['pending'])), ('HEAD', 1))
         self.assertEqual(self.snapshot(), before)
 
-    def test_no_completion_without_evidence(self):
+    def test_no_completion_without_a_manual_reason_or_goal_evidence(self):
         before = self.store_bytes()
         met = self.tasks('goal', 'START', '--status', 'met', ok=False)
         self.assertIn('needs --evidence', met.stderr)
-        done = self.tasks('done', self.start, '--evidence', ' ', ok=False)
-        self.assertIn('needs --evidence', done.stderr)
+        done = self.tasks('done', self.start, '--by', 'owner', '--reason', ' ', ok=False)
+        self.assertIn('nonempty --by and --reason', done.stderr)
         self.assertEqual(self.store_bytes(), before)
         self.assertEqual(self.prepare()['counts'], {'open:Now': 2})
 
@@ -711,8 +711,9 @@ class MaintainTests(Repo):
         # EXPORT depends on START being met, so its tasks wait despite focus; START leads.
         self.assertEqual(order, [self.start])
         self.tasks('goal', 'EXPORT', '--no-focus', '--depends-on', 'START')
+        self.tasks('done', self.start, '--by', 'owner', '--reason', 'Start checked offline')
+        self.tasks('field', self.start, 'owner_qualification', 'Owner: python3 -m unittest: pass')
         self.tasks('goal', 'START', '--status', 'met', '--evidence', 'python3 -m unittest: pass')
-        self.tasks('done', self.start, '--evidence', 'python3 -m unittest: pass')
         self.commit()
         self.assertEqual(self.prepare()['order'], [self.export, extra])
         why = json.loads(self.tasks('why', extra).stdout)

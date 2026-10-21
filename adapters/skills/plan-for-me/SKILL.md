@@ -22,7 +22,10 @@ Research relevant code and evidence; routine planning needs no experiment. Save 
 complete task records with `autowork tasks add`/`goal`
 ([work center](../../../skills/shared/TODO-WORKCENTER.md)), including acceptance,
 checks, dependencies, `touches` and Now/Next placement. A planning task the runner
-handed you closes with `autowork tasks done ID --evidence TEXT`; its successor notes
+handed you closes with `autowork tasks done ID --by WHO --reason TEXT [--evidence REF]`.
+That is manual, not verified: it writes no receipt and does not by itself qualify a
+goal or a verified prerequisite; use only an actual recorded owner waiver/qualification.
+Its successor notes
 `Plan round: N of M` with `autowork tasks field`. Planning does not implement or dispatch workers.
 Explicit read-only/chat-only/no-write/dry-run requests save nothing. Record goals, non-goals,
 anti-goals and every default as the planner's call, and run the builder check on

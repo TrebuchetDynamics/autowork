@@ -114,6 +114,58 @@ class TaskCommandTests(unittest.TestCase):
         self.assertTrue(json.loads(self.tasks('why', 'T-1').stdout)['first'])
         self.assertEqual(self.tasks('release', 'T-1', ok=False).returncode, 1)
 
+    def test_manual_closure_records_provenance_without_verification(self):
+        sys.path.insert(0, str(ROOT / 'pi-autowork'))
+        from pi_autowork import fleet_view
+        for kind in ('implementation', 'plan', 'inspection'):
+            with self.subTest(kind=kind):
+                tid = self.add(kind, '--kind', kind)
+                before = self.show(tid)
+                evidence = None if kind == 'inspection' else 'docs/review.md'
+                self.tasks('done', tid, '--by', 'owner', '--reason', 'Stopped after review',
+                           *(['--evidence', evidence] if evidence else []))
+                record = self.show(tid)
+                self.assertEqual(record['contract_hash'], before['contract_hash'])
+                closure = record['closure']
+                self.assertEqual((closure['provenance'], closure['actor'], closure['reason'], closure['evidence']),
+                                 ('manual', 'owner', 'Stopped after review', evidence))
+                self.assertRegex(closure['timestamp'], r'^\d{4}-\d\d-\d\dT.*\+00:00$')
+                self.assertFalse((self.repo / 'tasks/evidence').exists())
+                self.assertNotIn('Evidence:', record['notes'])
+                listed = next(r for r in json.loads(self.tasks('list').stdout) if r['id'] == tid)
+                why = json.loads(self.tasks('why', tid).stdout)
+                self.assertEqual(listed['closure'], closure)
+                self.assertEqual(why['closure'], closure)
+                rows = fleet_view.task_rows(fleet_view.Runner('fixture', repo=str(self.repo)), include_closed=True)
+                row = next(r for r in rows if r.task == tid)
+                self.assertEqual((row.state, row.why), ('Manual', 'Stopped after review'))
+                self.assertEqual(fleet_view.task_actions(fleet_view.Runner('fixture'), row,
+                                                       command='aw', script='aw.sh'), [])
+
+    def test_verified_dependencies_require_verification_or_an_owner_waiver(self):
+        ordinary = self.add('Ordinary', '--depends-on', 'T-1')
+        verified = self.add('Verified consumer', '--depends-on', 'T-1', '--verified-depends-on', 'T-1')
+        self.tasks('done', 'T-1', '--by', 'owner', '--reason', 'Not verified')
+        self.commit()
+        self.assertTrue(json.loads(self.tasks('why', ordinary).stdout)['eligible'])
+        why = json.loads(self.tasks('why', verified).stdout)
+        self.assertEqual(why['reasons'], [{'code': 'DEPENDENCY_UNVERIFIED', 'detail': 'T-1'}])
+        self.tasks('field', 'T-1', 'owner_waiver', 'Owner 2026-10-21: waive prerequisite proof for this scope')
+        self.commit()
+        self.assertTrue(json.loads(self.tasks('why', verified).stdout)['eligible'])
+
+    def test_goal_met_requires_qualification_of_manual_closures(self):
+        self.tasks('done', 'T-1', '--by', 'owner', '--reason', 'Hand closed')
+        refused = self.tasks('goal', 'G-1', '--status', 'met', '--evidence', 'goal check: pass', ok=False)
+        self.assertEqual(refused.returncode, 1)
+        self.assertIn('T-1', refused.stderr)
+        self.tasks('field', 'T-1', 'owner_qualification', 'Owner 2026-10-21: inspected result docs/review.md')
+        accepted = self.tasks('goal', 'G-1', '--status', 'met', '--evidence', 'goal check: pass')
+        self.assertIn('T-1', accepted.stdout)
+        self.assertIn('docs/review.md', accepted.stdout)
+        self.commit()
+        self.assertIn('docs/review.md', TaskStore.at(self.repo, 'HEAD').goals['G-1'].body)
+
     def test_supersede_names_its_successor(self):
         successor = self.add('Successor')
         self.tasks('supersede', 'T-1', '--by', successor, '--reason', 'replaced')

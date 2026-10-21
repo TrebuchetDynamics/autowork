@@ -61,7 +61,27 @@ class ScorecardTests(unittest.TestCase):
     def test_a_week_of_one_runner(self):
         self.commit_files(store(OLD_1='done', T_2='open', T_3='open', T_4='open'), age_days=10)
         # Closed this week, however: a task already done before the window does not count.
-        self.commit_files(store(OLD_1='done', T_2='done', T_3='done', T_4='open'), age_days=1)
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'engine'))
+        from task_store import TaskStore
+        snapshot = TaskStore.at(self.repo, 'HEAD')
+        candidate = self.commit_files({'work.txt': 'fixture'}, age_days=9)
+        git = ['git', '-C', str(self.repo), '-c', 'user.name=t', '-c', 'user.email=t@example.invalid']
+        tree = subprocess.check_output([*git, 'rev-parse', 'HEAD^{tree}'], text=True).strip()
+        integration = subprocess.check_output([*git, 'commit-tree', tree, '-p', snapshot.rev, '-p', candidate,
+                                               '-m', 'integration'], text=True).strip()
+        subprocess.run([*git, 'update-ref', 'HEAD', integration, candidate], check=True)
+        files = store(OLD_1='done', T_2='done', T_3='done', T_4='done')
+        files['tasks/evidence/T-2.toml'] = (f'schema = 1\ntask = "T-2"\ncontract_hash = "{snapshot.tasks["T-2"].contract_hash}"\n'
+                                          f'candidate = "{candidate}"\nintegration = "{integration}"\n'
+                                          f'tree = "{tree}"\nresult = "pass"\nreview = "passed"\n')
+        files['tasks/items/T-4.md'] = files['tasks/items/T-4.md'].replace(
+            'status = "done"', 'status = "done"\nclosure = "coordinator_verified"\nclosure_evidence = "tasks/evidence/T-4.toml"')
+        files['tasks/items/T-2.md'] = files['tasks/items/T-2.md'].replace(
+            'status = "done"', 'status = "done"\nclosure = "coordinator_verified"\nclosure_evidence = "tasks/evidence/T-2.toml"')
+        files['tasks/items/T-3.md'] = files['tasks/items/T-3.md'].replace(
+            'status = "done"', 'status = "done"\nclosure = "manual"\nclosure_actor = "owner"\n'
+            'closure_timestamp = "2026-10-21T00:00:00+00:00"\nclosure_reason = "Hand closed"')
+        self.commit_files(files, age_days=1)
         self.commit('BLOCKERS.md', '### Q-T-5 — USER_DECISION\n### Q-T-6 — USER_DECISION\n', age_days=2)
         self.commit('BLOCKERS.md', '### Q-T-5 — USER_DECISION\n', age_days=1)  # a repeat is one question
         self.journal((300, 'T-2', None, 'dispatched'), (290, 'T-2', 'dispatched', 'running'),
@@ -71,7 +91,11 @@ class ScorecardTests(unittest.TestCase):
                      (20, 'T-3', 'integrating', 'integrated'),
                      (60 * 24 * 9, 'T-9', 'integrating', 'held'))  # before the window
         row = scorecard.measure(self.repo, 7, now=self.now)
-        self.assertEqual(row['closed'], 2)
+        self.assertEqual(row['closed'], 3)
+        self.assertEqual((row['verified_closed'], row['manual_closed'], row['unverified_closed']), (1, 1, 1))
+        table = '\n'.join(scorecard.table({'fixture': row}, 7))
+        self.assertIn('verified', table)
+        self.assertIn('manual', table)
         self.assertEqual((row['integrations'], row['held_share']), (3, 0.33))
         self.assertEqual(row['start_to_merge_minutes'], 130)  # median of 180 and 80 minutes
         self.assertEqual(row['questions'], 2)
