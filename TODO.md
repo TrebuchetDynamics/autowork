@@ -714,25 +714,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No change to Git commands themselves or to the status format.
 - Planner's call: invariant for the batch: no path from a failed Git call reaches a commit, landing or deletion.
 
-### TOOLSET-276-a9 — Every hold cause is a known value with its recovery rule in one table
-
-- [ ] TOOLSET-276-a9 — Every hold cause is a known value with its recovery rule in one table
-- Short: One table of hold causes and recovery
-- Status: open
-- Goal: PI-RUNNER
-- Payoff: Run Autowork continuously through Pi with a model fallback.
-- Sources: [reliability research](docs/research/orchestrator-reliability.md) (root cause 2); [state](skills/autowork/scripts/parallel_state.py) (`cause`, `SCOPE_HOLD`, `NEEDS_PERSON`, `reoffered`); [integration](skills/autowork/scripts/parallel_integrate.py) (`retry_held` reads `reason.startswith(...)` and `'changed files violate Touches' in reason`); [state model test](skills/autowork/scripts/test_parallel_state_model.py).
-- Evidence: about 25 fixes in the hold/retry class, including the chain dbc0ba0 → 74a7136 → 8e5268b; 271-d6 and 272-1c are further cases of a hold no rule recovers.
-- Touches: skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_hold_causes.py
-- Produces: `parallel_state.HOLD_CAUSES`, a mapping from each cause to its recovery (`reoffer_once`, `resolve_conflict`, `ask_owner`, `rerun`, `wait_for_task`); `parallel_state.next_action(slot)`.
-- Scope: (1) `transition` to `held` refuses a cause that is not in `HOLD_CAUSES`; existing slots with an unknown or missing cause read as `crash`. (2) `retry_held` decides from `next_action`, never from the text of `reason`. (3) Behaviour for each existing cause is unchanged.
-- Acceptance: Given a slot moved to `held` with cause `typo`, the transition is refused and the slot is unchanged (`skills/autowork/scripts/test_hold_causes.py::test_unknown_cause_refused`). Given each cause in `HOLD_CAUSES`, `retry_held` takes the action its table entry names, and the existing `test_parallel_integrate.py` still passes (`test_each_cause_follows_its_rule`). The random walk in `test_parallel_state_model.py` checks the new invariant "held implies a known cause".
-- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_hold_causes.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_state_model.py; python3 scripts/check.py skills/autowork/scripts/test_parallel_integrate.py
-- Dependencies: TOOLSET-271-d6, TOOLSET-272-1c.
-- Ownership: Toolset coordinator.
-- Exclusions: No new hold causes and no change to when a slot is held.
-- Planner's call: after 271-d6 and 272-1c, which both change hold recovery in the same functions; this then folds their rules into the table.
-
 ### TOOLSET-276-3d — Landing refuses a commit the tree guard rejects
 
 - [ ] TOOLSET-276-3d — Landing refuses a commit the tree guard rejects

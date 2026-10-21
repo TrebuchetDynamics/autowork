@@ -1613,14 +1613,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-276-a9",
-      "section": "Next",
-      "status": "open",
-      "title": "Every hold cause is a known value with its recovery rule in one table"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-286-32",
       "section": "Next",
       "status": "open",
@@ -3436,6 +3428,14 @@
       "section": "Done",
       "status": "done",
       "title": "Tasks that share a hot file never run at the same time"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-276-a9",
+      "section": "Done",
+      "status": "done",
+      "title": "Every hold cause is a known value with its recovery rule in one table"
     },
     {
       "depends_on": [],
