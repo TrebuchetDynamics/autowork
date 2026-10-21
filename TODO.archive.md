@@ -5708,3 +5708,27 @@ Source section: Next
 - Ownership: Toolset coordinator.
 - Exclusions: No enforcement on commands run without the wrapper; no change to focused tests.
 - Planner's call: a voluntary wrapper on PATH needs no sandbox; workers already follow the prompt's TMPDIR and port rules, and the cost of ignoring it is only load, which the 1.5 × CPU safety gate still bounds.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-202-9a"></a>
+
+### TOOLSET-202-9a — Retire the owner-cycle engine modules no live entry point reaches
+
+- [x] TOOLSET-202-9a — Retire the owner-cycle engine modules no live entry point reaches
+- Short: Retire unreachable owner-cycle modules
+- Status: done
+- Goal: TEST-SUITE — Optimize test suites without losing defect detection.
+- Sources: [engine graph review](docs/plans/2026-10-17-engine-graph-review.md#engine-graph-review-findings) (finding 4); [historical owner cycle](skills/autowork/references/historical-owner-cycle.md) ("retained as evidence, not current instructions"), [legacy fixture](tests/fixtures/legacy_owner_cycle.py), [live skill](skills/autowork/SKILL.md) (runs only `scripts/owner_cycle.py` and `scripts/worktree_closeout.py`), [offline check](scripts/check.py).
+- Evidence (2026-10-17 graph review): no live entry point imports or runs `start_goal`, `pass_workspace`, `writer_registration`, `registration_admission`, `runtime_bundle`, `native_lifecycle`, `controller_bridge`, `native_containment`, `budget_controller`, `delivery_state`, `check_receipt`, `ready_preflight`, `progress_runtime`, `backlog_plan`, `prepare_prerequisites`, `owner_unblock`, `disjoint_fallback`, `continuation_capability` or `gate_skip`; their callers are each other, their own tests, the legacy fixture and historical references. Together about 5k production and 8k test lines, run by every full check.
+- Touches: skills/autowork/scripts/, skills/autowork/references/, tests/fixtures/, tests/, scripts/check.py, docs/
+- Scope: (1) Compute the retired set by rule, not from this list alone: a module under `skills/autowork/scripts/` is retired when no live entry point reaches it through imports or by path. Live entry points are `owner_cycle.py`, `worktree_closeout.py`, the `pi-autowork` package, `scripts/*.py` and `scripts/*.sh`, the skills and adapters (`SKILL.md`, references they link as current), and modules those reach (which keeps `finish_task`, `candidate_identity`, `source_freshness` where still reached, `audit_profiles`, `retry_selection` (imported by `audit_profiles`), `analyze_audit_logs`, `cron_output`, `discover_sources`, `engineering_signals`, `goals.py`). A name that appears only in a comment or as a dictionary key (`check_receipt` in `parallel_integrate.py`) does not reach a module. (2) Delete the retired modules, their tests, `tests/fixtures/legacy_owner_cycle.py` and tests that exercise only it, and the `scripts/check.py` exclusions they leave unused. (3) Keep `references/historical-owner-cycle.md` and other historical references as evidence, with their links to deleted scripts replaced by the commit that removed them. (4) Record the removed modules, line counts and full-check time before and after in the task evidence.
+- Acceptance: The rule, run as a script in the task's evidence, lists the retired set, and every listed module is gone. Nothing live imports a deleted module (`python3 scripts/check.py` passes, and a grep of live files for each name finds only history). The full check is measurably shorter on the same host load.
+- Checks: python3 scripts/check.py with TMPDIR set to a fresh short directory; python3 scripts/check.py --list
+- Dependencies: None.
+- Ownership: Toolset; reconcile TOOLSET-125-e6, TOOLSET-126-6b and TOOLSET-127-b1 (test thinning), which should not spend effort on tests this deletes.
+- Exclusions: No change to live behavior, no deletion of a module a live entry point still reaches, no edits to historical evidence beyond broken links.
+- Planner's call: delete instead of disabling behind a flag (no compatibility shims), and decide by reachability rather than by this list, since references drift.

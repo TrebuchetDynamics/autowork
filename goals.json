@@ -1496,14 +1496,6 @@
       "title": "The offline check runs tests with SIGINT at its default, even when started in the background"
     },
     {
-      "depends_on": [],
-      "goal": "TEST-SUITE",
-      "id": "TOOLSET-202-9a",
-      "section": "Next",
-      "status": "open",
-      "title": "Retire the owner-cycle engine modules no live entry point reaches"
-    },
-    {
       "depends_on": [
         "TOOLSET-129-c4",
         "TOOLSET-261-15"
@@ -3078,6 +3070,14 @@
       "section": "Done",
       "status": "done",
       "title": "An idle runner keeps its session instead of recreating it every interval"
+    },
+    {
+      "depends_on": [],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-202-9a",
+      "section": "Done",
+      "status": "done",
+      "title": "Retire the owner-cycle engine modules no live entry point reaches"
     },
     {
       "depends_on": [],
