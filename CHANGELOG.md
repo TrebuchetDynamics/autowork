@@ -319,6 +319,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Integration order inherits priority from dependents: a finished commit ranks as high as
+  the highest-priority open task that depends on it, directly or through others. A commit
+  ranked 36th of 77 waited a day behind higher-ranked commits while 15 tasks, five of them
+  in the top 12, waited on it.
 - A day-old finished commit that still merges cleanly with the session is kept for its review
   instead of set aside: its age was the runner's own review queue. One that no longer merges
   (or cannot be checked) is set aside as before (`PI_AUTOWORK_STALE_HOURS`).

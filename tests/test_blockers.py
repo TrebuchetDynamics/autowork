@@ -64,6 +64,13 @@ class BlockersContract(unittest.TestCase):
         self.assertNotIn('never launches an execution or repair session', self.ref)
 
 
+    def test_classifies_causes_and_delivers_recoveries_before_claiming_progress(self):
+        for phrase in ('Classify each hold by cause', 'Resources: exclusive',
+                       'never strip exclusivity in bulk', 'Never repeat a recovery that already failed',
+                       'Protect the agreed priority', 'local uncommitted edit is not a delivered recovery',
+                       'One task starting does not unblock the queue'):
+            self.assertIn(phrase, self.ref)
+
     def test_portable_adapter_requires_repair_without_relaxing_guards(self):
         adapter = text(ROOT / 'adapters/skills/blockers/SKILL.md')
         for phrase in ('held tasks and owner questions', 'bounded authorized local recovery',

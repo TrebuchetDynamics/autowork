@@ -646,7 +646,10 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
             available = {tid for tid, held in slots.items() if not writers_busy(held)} or set(slots)
             # A changed reviewer's second look never jumps ahead of a fresh candidate.
             # Stable sorting preserves TODO priority within each group.
-            ordered = sorted((t for t in contracts if t in available), key=lambda t: bool(slots[t].get('reverified')))
+            # Within it, a commit that higher-priority open tasks depend on ranks with them.
+            ranks = inherited_ranks(repo)
+            ordered = sorted((t for t in contracts if t in available),
+                             key=lambda t: (bool(slots[t].get('reverified')), ranks.get(t, len(ranks))))
             # Candidates verified together land first, in the order they were verified: each verdict
             # holds only for its step of that chain, and a task landing between them voided them all.
             chain = [t for t in batch_order if t in available]
@@ -1458,6 +1461,29 @@ def review_rework(repo, common, current):
             state.event(common, 'review_rework', task_id=slot['task_id'], tip=slot.get('commit') or '')
             return dict(_retire(repo, common, slot, True), outcome='REQUEUED', why='review_rework')
     return None
+
+
+def inherited_ranks(repo):
+    """{task: rank} in TODO.md order, where a task ranks as high as the highest-priority open task
+    that depends on it, directly or through others. TOOLSET-261-15 (36th of 77) waited a day to
+    integrate behind higher-ranked commits while 15 tasks waited on it, five of them in the top 12."""
+    goals = execution.goals_module()
+    order, needs = [], {}
+    for tid, entries in goals.task_bodies((repo / 'TODO.md').read_text()).items():
+        block, mark, section = entries[0]
+        if mark != ' ' or section not in ('Now', 'Next'):
+            continue
+        order.append(tid)
+        needs[tid] = plan.dependency_ids(goals.task_fields(block).get('Dependencies', 'None.'))
+    rank = {tid: index for index, tid in enumerate(order)}
+    changed = True
+    while changed:  # to a fixpoint: a dependency inherits through chains of any length
+        changed = False
+        for tid in order:
+            for need in needs[tid]:
+                if need in rank and rank[tid] < rank[need]:
+                    rank[need], changed = rank[tid], True
+    return rank
 
 
 def draining_ahead(repo, common, task_id):
