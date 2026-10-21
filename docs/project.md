@@ -574,7 +574,8 @@ future model-driven scheduled behavior must be reported separately.
 
 ## TODO-owned task priority
 
-Status: Accepted
+Status: Superseded by [Task Store v2](#task-store-v2-2026-10-20) (2026-10-20): priority moves to
+each task's `section` and `rank`; this contract holds until the cutover lands.
 
 Decision: On 2026-10-14 the user accepted that TODO.md order is the human priority
 authority and goals.json is the execution index. Synchronization is explicit and a
@@ -1774,7 +1775,7 @@ planning evidence fingerprints the inspected local package/API files.
 
 ## Compact task ledger
 
-Status: Accepted
+Status: Superseded by [Task Store v2](#task-store-v2-2026-10-20) (2026-10-20)
 
 The owner requests smaller root queue/index/history documents through future updates
 to planning, Docs Sync and their consumers. The [compact ledger plan](plans/compact-task-ledger.md)
