@@ -476,6 +476,26 @@ class FleetViewTests(unittest.TestCase):
         (slots / 'T-0.json').write_text(json.dumps({'task_id': 'T-0', 'state': 'reported', 'attempt': 1}))
         self.assertEqual([lane.task for lane in fleet_view.lanes(runner)], ['T-1', 'T-0', 'T-2'])
 
+    def test_a_workers_actions_read_as_a_log_oldest_first_with_their_times(self):
+        """The worker view listed its last 10 actions newest first: upside down for a log, and
+        too short to follow what a 15-minute attempt did."""
+        state = self.base / 'state' / 'key'
+        (state / 'sessions').mkdir(parents=True)
+        start = time.time() - 600
+        events = [{'type': 'message', 'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime(start + i)),
+                   'message': {'role': 'assistant', 'content': [
+                       {'type': 'toolCall', 'name': 'bash', 'arguments': json.dumps({'command': f'echo step {i}'})}]}}
+                  for i in range(40)]
+        (state / 'sessions' / '2026-10-21T08-00-00-000Z_pi-autowork-T-1-attempt-1.jsonl').write_text(
+            '\n'.join(json.dumps(e) for e in events) + '\n')
+        runner = fleet_view.Runner(name='repo', state_dir=str(state))
+        log = fleet_view.action_log(runner, 'T-1')
+        self.assertEqual(len(log), 40)  # far more than the old 10
+        self.assertEqual([text for text, _, _ in log], [fleet_view.doing_text(f'bash: echo step {i}') for i in range(40)])
+        self.assertEqual([int(at) for _, _, at in log], [int(start) + i for i in range(40)])
+        self.assertEqual(fleet_view.action_log(runner, 'T-1', n=3), log[-3:])  # the newest three, still in order
+        self.assertEqual(fleet_view.recent_actions(runner, 'T-1', n=2), [(t, a) for t, a, _ in log[-2:]])
+
     def test_the_question_count_says_how_it_relates_to_the_blockers(self):
         """Blocker 1 in the table and '2 questions for you' below read as a contradiction: one of
         the two was a question about the runner that blocks no task."""
