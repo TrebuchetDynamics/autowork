@@ -1147,6 +1147,12 @@ def readiness(path):
         out.problems.append('main checked out' if branch else 'a branch (HEAD is detached)')
     elif not any(name in out.problems for name in REQUIRED) and uncommitted_planning(out.repo, branch):
         out.problems.append(f'commit tasks/ on {branch} first')
+    if not out.problems:
+        report = task_prepare.prepare(out.repo, mode='check')
+        # A valid store on an old runner still needs Start's service-copy upgrade path.
+        if not report.get('ok') or report.get('state') != 'converted' or report.get('outcome') not in (
+                'READY', 'ACTIVATION_PENDING'):
+            out.problems.append('task store preparation: ' + report.get('outcome', 'INVALID_STORE'))
     out.ready = not out.problems
     return out
 
@@ -1156,8 +1162,10 @@ def how_to_fix(ready):
     hints = []
     for problem in ready.problems:
         if problem == 'tasks':
-            hints.append(f'No task store: run `autowork migrate {ready.repo}` once to convert TODO.md and '
-                         'goals.json, or plan the work with /plan-with-me in any host.')
+            hints.append(f'Run `autowork tasks prepare {ready.repo}` to convert legacy planning; '
+                         'with no accepted intent, plan the work with /docs_sync. No tasks are invented.')
+        elif problem.startswith('task store preparation:'):
+            hints.append(f'Run `autowork tasks prepare {ready.repo}` and resolve its outcome through /docs_sync.')
         elif problem.startswith('commit tasks/ on '):
             hints.append(problem)
         elif problem.startswith('main checked out') or problem.startswith('a branch'):
