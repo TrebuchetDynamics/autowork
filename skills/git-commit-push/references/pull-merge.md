@@ -129,18 +129,15 @@ leaves its partial private destination retained, never deletes owner files.
      Where diagnostics overlap retry/replay changes, preserve error identity (wrapped
      sentinels, cause unwrapping) separately from display text, and run the auth-stop
      and redaction tests together: a lost auth-rejection wrapper can keep replaying.
-   - For machine-readable ledgers, compare task IDs/statuses and evidence records before choosing a
-     whole-file snapshot. Prefer the later reconciled snapshot only after confirming it contains the
-     completed work from both sides; merge missing evidence with the repository's supported ledger
-     CLI (and regenerate derived summaries), not by hand-editing JSON.
-     Check the entire merged queue by stable ID, not just conflict hunks: a clean
-     textual merge can remove or duplicate a moved task body. Require every unfinished
-     indexed task to have exactly one live body; preserve newer deferrals, completed
-     statuses, goal evidence and local accepted work. Retain both independent archive
-     additions verbatim. Reconcile order from the final live bodies with the supported
-     ledger helper, regenerate summaries, and repeat rendering to prove byte stability.
-     Compare upstream task/goal objects programmatically, allowing only the explicitly
-     owned changes; counts alone can hide a lost body or reverted completion.
+   - For `tasks/` records, compare task IDs, statuses and evidence receipts before choosing a
+     side. Prefer the later reconciled record only after confirming it contains the completed
+     work from both sides; apply missing changes with `autowork tasks`, not by hand-editing the
+     frontmatter. Check the entire merged store by stable ID, not just conflict hunks, and run
+     `autowork tasks validate --worktree .`: preserve newer deferrals, completed statuses,
+     receipts, goal evidence and local accepted work. A rank conflict keeps the owner's latest
+     order. Compare upstream task/goal
+     records programmatically, allowing only the explicitly owned changes; counts alone can
+     hide a lost record or reverted completion.
    - A conflict that is a real product decision becomes an owner question (ask, don't block):
      apply the recommended side, keep it reversible, and ask in the report.
    - Check nothing is left behind: `git diff --name-only --diff-filter=U` must be empty, and no
@@ -164,7 +161,7 @@ leaves its partial private destination retained, never deletes owner files.
    - After a surgical integration fix, reuse component-bound passing checks only when
      `git rev-parse <tested>:<component>` equals `git rev-parse <final>:<component>` and
      dependency/tool inputs are identical; rerun the changed component's gates, not every suite.
-   - A merged agent card branch is reported by card ID, so the board and goals.json can be reconciled.
+   - A merged agent card branch is reported by card ID, so the board and `tasks/` can be reconciled.
 
 ## Red lines
 

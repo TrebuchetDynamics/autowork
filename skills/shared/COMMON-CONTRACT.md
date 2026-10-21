@@ -23,6 +23,6 @@ Report changed artifacts, verified behavior, limitations and remaining work.
 
 Resolve helper paths from the actual loaded skill directory, not an assumed
 Hermes home. Sibling bundled skills and this support directory retain their
-relative layout. Quote absolute paths and repository arguments in shell commands;
-`goals.py` examples mean `python3 "<skills-root>/docs-sync/scripts/goals.py"`.
+relative layout. Quote absolute paths and repository arguments in shell commands.
+Edit task and goal records through `autowork tasks` ([work center](TODO-WORKCENTER.md)).
 See [plan handoff](PLAN-HANDOFF.md) for accepted backlog boundaries.

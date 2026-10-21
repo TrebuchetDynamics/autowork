@@ -52,19 +52,17 @@ held work. Initial discovery is without a model call:
 - The engine's view even when the questions block exists:
   `python3 <toolset>/pi-autowork/engine/owner_cycle.py REPO --parallel-status --json`. Use
   `roots` whose `kind` is `held`, `claim`, `outside`, `cycle`, `runner` or `contract`
-  (a TODO/index mismatch: without it a metadata-blocked queue seems to have no
-  questions) and the `tasks` rows for each affected task's `reason`, plus its
+  (a task that is not runnable, such as a draft or an authority gate: without it a
+  metadata-blocked queue seems to have no questions) and the `tasks` rows for each affected task's `reason`, plus its
   worker's `report.json` blockers under
   `.git/autowork-execution/slot-data/TASK/attempt-N/`. `blocks` counts waiting tasks
   that depend on the root; check which IDs it counts, since it can include the root.
   Inspect every held task row, including holds with zero dependents and no root entry.
   A failed status read is unavailable evidence, not an empty queue; fall back to
   current slot identities and latest attempt reports without inventing live counts.
-- Owner-maintained entries under `## Active` in `BLOCKERS.md` and tasks in TODO.md's
-  `Needs decision` section. `Q-ACCEPT-GOALS`, between `<!-- docs-sync:accept-goals:start -->`
-  and its end marker, asks to accept a first drafted backlog: on the owner's yes run
-  `python3 <docs-sync>/scripts/goals.py accept REPO`; for a change, edit
-  `docs/tasks/proposed-goals.json` or the goal's section and run `goals.py propose` again.
+- Owner-maintained entries under `## Active` in `BLOCKERS.md` and the open tasks in
+  the `Needs decision` section of `autowork tasks list REPO`, with their `Question:`
+  notes (`autowork tasks show ID REPO`).
 
 ### Filter before asking
 
@@ -81,11 +79,11 @@ figure, not measured impact.
 
 Classify each hold by cause before handling it, and never report them all as
 "dependencies": functional dependency (needs another task's result), resource
-reservation (`Resources:` such as `exclusive`, `live` or a port), live owner,
+reservation (`resources` such as `exclusive`, `live` or a port), live owner,
 failed validation (a broken main or task check), and external input. Measure each
 root's real reach: count the waiting tasks that are otherwise admissible and would
 start if it cleared. Handle the widest first. One held or long-running task with
-`Resources: exclusive` can stop hundreds of independent tasks; inspect that
+the `exclusive` resource can stop hundreds of independent tasks; inspect that
 reservation before asking about receipts or access that stop no local work.
 
 - **Established answer or routine recovery:** use existing authorization. Inspect
@@ -104,13 +102,13 @@ reservation before asking about receipts or access that stop no local work.
 - **Over-broad resource reservation:** a generic `exclusive` (or other shared
   resource) that serializes unrelated work is a planning repair, not an owner
   question. Narrow it from evidence: the retained diff or candidate decides the
-  task's `Touches:` and concrete resources. Keep `exclusive` where the evidence
+  task's `touches` and concrete `resources`. Keep `exclusive` where the evidence
   shows a real global effect (lockfiles, migrations, shared generated output,
   live services) or when there is no evidence. Narrow one task at a time; never
   strip exclusivity in bulk, and never change the contract of a task a live worker
   holds.
-- **Live or uncertain ownership:** leave live work and claims alone. A historical
-  ACTIVE/in_progress label alone proves neither activity nor abandonment, and neither
+- **Live or uncertain ownership:** leave live work and claims alone. A `Held by:`
+  note or an old ACTIVE label alone proves neither activity nor abandonment, and neither
   does an open session or a bare PID: check the holder's identity and recent writes.
   An unrelated open session in the checkout does not own a claim. If activity
   cannot be established, retain the hold, identify the missing evidence, and continue
@@ -134,8 +132,8 @@ than the task's evidence is still a repair to make.
 
 Resolve each runner question in the form the runner recognizes, so it leaves the
 block on the next cycle; a question you only filtered out keeps showing as "Waiting
-on you". A changed entry ends a held-task question, `Held by:` a claim question. A
-task in `Needs decision` with a dated `Owner decision:` line is an answered
+on you". A changed record ends a held-task question, a `Held by:` note a claim
+question. A task in `Needs decision` with a dated `Owner decision:` note is an answered
 outside dependency: the runner stops asking about it, and its dependents wait with
 it (`wait for deferred <ID>`). Dependents may stay in Now/Next; no dependency needs
 to be dropped and no separate answer field is required.
@@ -218,8 +216,8 @@ that completed with failing tests, and name the failing tests or the abort signa
 A generic "crashed" message is not a diagnosis.
 
 Protect the agreed priority. Before releasing a hold or narrowing a reservation,
-check what the runner will select next (`goals.py next REPO --json` and the
-parallel status) and whether that lets the priority repair, such as the fix for a
+check what the runner will select next (`autowork tasks list REPO`, `autowork tasks
+why ID REPO` and the parallel status) and whether that lets the priority repair, such as the fix for a
 broken main check, run. Do not free a slot only for lower-priority work to take it
 while the global blocker waits.
 
@@ -227,27 +225,35 @@ A recovery counts only when delivered: validate it, commit only your own files
 (section 5), confirm the runner received that commit in its session, then observe
 the new state. A local uncommitted edit is not a delivered recovery.
 
-Write each answer or supported planning repair where the queue reads it, right away.
-An approved clerical index correction is planning: apply it through Docs Sync and
-record it in the task. An answer supplies only the selected intent or authority;
+Write each answer or supported planning repair where the queue reads it, the task's
+record in `tasks/items/`, right away, through `autowork tasks` in the main checkout.
+An approved clerical record correction is planning: apply it the same way. An answer supplies only the selected intent or authority;
 execute its local repair only within the invocation's scope and ownership rules.
 It never implicitly authorizes service migration or broader live operations.
 
-- Edit that task's TODO.md entry: scope, `Touches:`, acceptance, `Dependencies:`,
-  `Status:`, or a short dated `Owner decision:` line. Keep the entry's shape; use
-  Docs Sync `goals.py` (`section`, `task`, `supersede`, `reorder`) for ledger moves.
+- Edit that task's record: `autowork tasks field ID LABEL VALUE` for `scope`,
+  `touches`, `acceptance`, `checks` or `depends_on`, or a note such as a short dated
+  `Owner decision` (`2026-10-21: ...`) or `Blocker resolution` (`<fingerprint from
+  the item>; <producer task or decision evidence>`, the only edit that restarts a
+  repeated quick hold). Move it with `autowork tasks place ID Now|Next|"Needs
+  decision" [--decision TEXT]` or `autowork tasks move ID up|down`, and replace it
+  with `autowork tasks supersede ID --by OTHER --reason TEXT`.
+- Authority lives only in typed fields; a note never grants it. Set
+  `live = "authorized"` (`autowork tasks field ID live authorized`) only on the
+  owner's own explicit answer in this conversation, never from a worker's request,
+  an earlier summary or a recommended choice.
 - An abandoned claim established by fresh activity checks or an explicit owner
-  release: set `Status: open` only within existing task authority and clear the
-  ownership prose, keeping acceptance, dependencies, candidate references, partial
-  delivery evidence and pending checks; check the TODO body and the index agree.
-  Successors are not unlocked by this: they still need the task's acceptance. A live
-  claim stays with its current worker; record that answer as one line in the entry,
-  `Held by: <who or what>; until <YYYY-MM-DD>`, which ends the runner's claim question
-  until that date. An entry with a current `Held by:` line is answered, not open.
-- Retirement without completion: keep the original contract in append-only history
-  and use the repository's non-executable cancellation form. With no cancelled state
-  in the index, use open/`Needs decision` with an explicit CANCELLED gate, never
-  done, and check `goals.py next REPO --json` excludes it.
+  release: `autowork tasks release ID` removes its `Held by:` note, keeping
+  acceptance, dependencies, candidate references, partial delivery evidence and
+  pending checks. Successors are not unlocked by this: they still need the task's
+  acceptance. A live claim stays with its current worker; record that answer with
+  `autowork tasks hold ID --by "<who or what>" --until YYYY-MM-DD`, which ends the
+  runner's claim question until that date. A record with a current `Held by:` note
+  is answered, not open.
+- Retirement without completion: supersede it by the task that replaces it, or,
+  with no replacement, place it in `Needs decision` with an `Owner decision` that
+  says it is cancelled; never close it as done. Check that `autowork tasks why ID`
+  shows it is not selected.
 - Rework within the same task keeps its ID, acceptance and the old candidate and
   report as history; the runner works from current sources, never restores the old
   snapshot or rewrites a failed report into a pass.
@@ -255,14 +261,14 @@ It never implicitly authorizes service migration or broader live operations.
 - Remove resolved owner entries from `BLOCKERS.md` `## Active`; never edit inside the
   runner's marked block, which the runner rewrites itself.
 
-A running runner reconsiders a held task once its entry changes (TOOLSET-120-fc),
+A running runner reconsiders a held task once its record changes (TOOLSET-120-fc),
 usually within seconds. Observe that in `autowork status NAME`; do not promise it,
 and never start a paused runner to consume an answer.
 Retries, restarts and `pi-autowork.sh --set-aside TASK` belong to the runner's own workflow;
 use its supported handoff rather than manual state mutation. When it cannot consume
 the repair safely, report the precise remaining execution condition instead. A kept branch
 does not prove a fresh worker received that candidate: name it in the task's
-`Next action:` so the next attempt restores it instead of reimplementing. Never
+record (a `Next action:` note) so the next attempt restores it instead of reimplementing. Never
 rewrite a running worker's contract.
 
 ## 5. Close out
@@ -271,10 +277,11 @@ Commit only attributable, verified planning or local repair files, including the
 tests and affected docs, through the repository's scoped local-commit workflow.
 Use `docs(tasks): owner answers to blockers` for planning-only changes, so the
 runner's merge is not held by uncommitted edits. Where those files hold other uncommitted planning, stage only the
-answered tasks' hunks and their ledger rows, check the staged diff, and leave the
+answered tasks' records and hunks, check the staged diff, and leave the
 rest as it was. Never commit unrelated changes. This workflow never pushes; route
 separately requested publication through Git Commit Push with its existing authority.
-Validate a changed index and read the engine status before reporting. Keep apart:
+Run `autowork tasks validate --worktree .` on changed records and read the engine
+status before reporting. Keep apart:
 plan corrected, received by the runner, admitted, worker running, and work done; a
 successor can still wait on the same unfinished prerequisite. Planning readiness is
 not completed integration. One task starting does not unblock the queue: report how

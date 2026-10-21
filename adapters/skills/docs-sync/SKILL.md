@@ -24,7 +24,7 @@ task store, through `autowork tasks`: `goal ID --title --source path#anchor
 LABEL VALUE` for other typed fields or notes (such as `Sources`), `place` and `move`
 for section and rank, `supersede --by OTHER --reason` to retire a task and `done
 --evidence` to close one without the engine. Give each executable task its
-`Touches:` paths (widen when unsure, or set `resources` to `exclusive` with a
+`touches` (widen when unsure, or set `resources` to `exclusive` with a
 reason) so parallel Autowork can run tasks together. Keep Now/Next/Needs decision
 distinct; priority is section, then rank. Only typed fields (`ownership`,
 `resources`, `live`) grant authority; live authorization is the owner's to grant.

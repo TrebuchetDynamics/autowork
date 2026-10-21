@@ -24,9 +24,9 @@ the current host session ends.
 Explicit invocation authorizes the documented default action within user scope.
 Questions-only/read-only/no-write/no-commit/no-push restrictions propagate through
 all handoffs. Product intent is distinct from proposals and current behavior.
-TODO.md is the central user-facing work queue; reuse an existing tracker when repo
-rules designate one. Keep any existing goals.json synchronized, without fabricating
-completion, review, attribution or live qualification. Python 3 is needed only when
+The repository's `tasks/` store is the one work queue: task and goal records edited
+through `autowork tasks`, never by a worker's commit. Do not fabricate completion,
+review, attribution or live qualification there. Python 3 is needed only when
 using bundled Python helpers, not for a questions-only interview.
 
 Use available independent review when required; if unavailable, state the missing

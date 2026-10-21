@@ -1,5 +1,6 @@
 """Public workflow names preserve skill identity, arguments and gateway routing."""
 import re
+import tomllib
 import unittest
 import test_plugin as fixture
 
@@ -70,7 +71,7 @@ class WorkflowCommands(unittest.TestCase):
         work_center = (fixture.ROOT / 'skills/shared/TODO-WORKCENTER.md').read_text()
         for command, skill in (('plan_for_me', 'plan-for-me'), ('plan_with_me', 'plan-with-me')):
             text = self.ctx.skills[skill].read_text()
-            for required in ('TODO-WORKCENTER.md#rolling-planning', 'Kind: plan',
+            for required in ('TODO-WORKCENTER.md#rolling-planning', 'kind = "plan"',
                              'Plan round: 1 of 10', 'every building task', 'Needs decision',
                              'continue on its own'):
                 self.assertIn(required, text)
@@ -79,20 +80,22 @@ class WorkflowCommands(unittest.TestCase):
                     self.ctx.commands[command](request)
                     self.assertTrue(self.ctx.messages[-1][0].endswith(request))
                     example = work_center.split('### Example: ' + request + '\n', 1)[1].split('\n### ', 1)[0]
-                    entries = re.findall(
-                        r'^- \[ \] (\S+) — [^\n]+\n(.*?)(?=^- \[ \] |\n```)', example, re.M | re.S)
+                    # Each record: `+++` TOML frontmatter `+++`, then its `- Label: value` notes.
+                    entries = [(tomllib.loads(header), notes) for header, notes in re.findall(
+                        r'^\+\+\+\n(.*?)^\+\+\+\n((?:- [^\n]*\n)*)', example, re.M | re.S)]
                     self.assertTrue(entries)
-                    plans = [body for _, body in entries if 'Kind: plan' in body]
+                    plans = [(fields, notes) for fields, notes in entries if fields['kind'] == 'plan']
                     self.assertEqual(len(plans), want_plans)
                     if plans:
-                        building_ids = [task for task, body in entries if 'Kind: plan' not in body]
+                        building_ids = [fields['id'] for fields, _ in entries if fields['kind'] != 'plan']
                         self.assertTrue(building_ids)
                         self.assertLessEqual(len(entries), 8)
-                        self.assertEqual(entries[-1][1], plans[0])
-                        self.assertTrue(all('Goal: PORT' in body for _, body in entries))
-                        self.assertIn('Dependencies: ' + ', '.join(building_ids), plans[0])
-                        self.assertIn('Plan round: 1 of 10', plans[0])
-                        self.assertRegex(plans[0], r'Scope:.*PORT.*find out')
+                        self.assertEqual(entries[-1], plans[0])
+                        self.assertTrue(all(fields['goal'] == 'PORT' for fields, _ in entries))
+                        fields, notes = plans[0]
+                        self.assertEqual(fields['depends_on'], building_ids)
+                        self.assertIn('- Plan round: 1 of 10', notes)
+                        self.assertRegex(fields['scope'], r'PORT.*find out')
                     else:
                         self.assertEqual(len(entries), 1)
 

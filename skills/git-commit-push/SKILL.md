@@ -184,19 +184,20 @@ Report the branch and sha it prints. Never point it at main/master or the checke
    - Eligibility is per hunk, not per file. Read the diff of every co-touched file; if excluded
      hunks cannot be split out safely (`git add -p` is unavailable; use `git apply --cached`
      on an edited patch), hold the whole file.
-   - Ledgers (`TODO.md`, `BLOCKERS.md`, trackers) usually carry other passes' uncommitted
-     prose. If you stage one, say so in the commit message and report; never present it as
-     only your change. A ledger also receives a live card's own status ticks (`goals.py task
-     <id> done`), so staging one can duplicate lines that card's branch commits too — name it in
-     the message and reconcile by task/entry identity before staging; do not duplicate status ticks.
+   - Ledgers (`tasks/` records, `BLOCKERS.md`, trackers) usually carry other passes' uncommitted
+     edits. If you stage one, say so in the commit message and report; never present it as
+     only your change. A task record also receives the engine's own verified close (`status =
+     "done"` plus its `tasks/evidence/` receipt), so staging one can duplicate a change that
+     close commits too — name it in the message and reconcile by task identity before staging;
+     do not duplicate a close.
      - A ledger's working copy can also be **behind** the remote, and committing that deletes other
        people's work. Another pass may have pushed its entries from a different checkout, so the copy
        you hold is missing lines that exist on `origin/<branch>` and your commit removes them on push.
        Diff the ledger against the remote before staging (`git diff origin/<branch> -- <ledger>`) and
        inspect additions, removals and task identities against fresh upstream. Reconstruct only
        genuine authorized unshipped edits **on fresh upstream in an isolated candidate**;
-       preserve newer remote entries via supported `goals.py task`/`add-task`/`fmt`/`render`
-       operations and anchored prose edits, then validate and inspect the resulting diff.
+       preserve newer remote entries via supported `autowork tasks` operations and anchored
+       prose edits, then validate and inspect the resulting diff.
        Never delete remote lines merely to match a stale/forked copy. A stale-only ledger
        contains no new work: leave that copy untouched and do not create a restoration commit.
      - Re-measure `git status --porcelain` right before staging. A count that moved means a
@@ -438,7 +439,7 @@ Report the branch and sha it prints. Never point it at main/master or the checke
    - **When a shared dirty checkout cannot safely integrate incoming work**, prepare a fresh
      isolated delivery branch at a pinned upstream revision without stashing, resetting or
      switching the shared checkout. Apply only attributed completed source deltas; reconstruct
-     genuine ledger changes with supported ledger operations instead of copying a stale file.
+     genuine task-record changes with `autowork tasks` instead of copying a stale file.
      Stage explicit paths, gate the coherent candidate and push its delivery branch. Reuse an
      existing suitable PR rather than creating a duplicate. When merge is authorized, satisfy
      repository protection, reviews and checks, then merge the exact inspected PR head and
@@ -466,10 +467,10 @@ Report the branch and sha it prints. Never point it at main/master or the checke
 
 - Never commit secrets, `.env*`, credentials, private keys, logs, caches, build output,
   databases or service data roots, `.understand-anything/` or other generated artifacts, or machine state.
-- **Project ledgers are not generated artifacts.** `goals.json` (the docs-sync goal ledger,
-  written via `goals.py`), `TODO.md`, `BLOCKERS.md`, and impeccable's `PRODUCT.md`, `DESIGN.md`
-  (+ sidecar) and `.impeccable/` config/briefs are tracked project files. Ship them with
-  the work that changed them; check them with `goals.py validate` for goals.json. Only
+- **Project ledgers are not generated artifacts.** `tasks/` (task, goal and evidence records,
+  written via `autowork tasks` and the engine), `BLOCKERS.md`, and impeccable's `PRODUCT.md`,
+  `DESIGN.md` (+ sidecar) and `.impeccable/` config/briefs are tracked project files. Ship them
+  with the work that changed them; check `tasks/` with `autowork tasks validate --worktree .`. Only
   `.impeccable/mocks/` and screenshot/evidence folders follow the repo's gitignore.
 - Do not discard, stash, revert, or `git clean` other agents' or the owner's work to make a commit tidy.
 - Committed is not deployed. Do not deploy, publish, release, rebuild images, restart live

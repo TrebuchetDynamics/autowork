@@ -15,13 +15,14 @@ class TaskTouchesContractTests(unittest.TestCase):
     def test_every_task_writer_asks_for_touches(self):
         for path in WRITERS:
             with self.subTest(path=path):
-                self.assertIn('touches', (ROOT / path).read_text())
+                text = (ROOT / path).read_text()
+                self.assertTrue('`touches`' in text or '--touches' in text, path)
 
     def test_shared_rule_requires_touches_or_an_explicit_exclusive(self):
         text = (ROOT / 'skills/shared/TODO-WORKCENTER.md').read_text()
-        for requirement in ('Every executable task you create or rewrite gets `Touches:`',
+        for requirement in ('Every executable task you create or rewrite gets `touches`',
                             'widen to the owning directories rather than omit',
-                            '`Resources: exclusive` with the reason',
+                            'set `resources` to `exclusive` with the reason',
                             'the coordinator owns them'):
             with self.subTest(requirement=requirement):
                 self.assertIn(requirement, ' '.join(text.split()))

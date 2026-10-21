@@ -291,9 +291,7 @@ A record missing contract fields is a visible draft and is never selected. A
 questions; CHANGELOG.md keeps releases. A repository that still has TODO.md and
 goals.json selects nothing until the owner runs `autowork migrate [repo]` once;
 do not convert it yourself or recreate those files. In a repository with no task
-store at all, `autowork tasks` refuses (`no task store`): keep the planned goals and
-tasks in the plan and ask the owner to start the store, rather than hand-writing
-records.
+store at all, the first `autowork tasks goal` starts `tasks/`; never hand-write records.
 
 ### Edit tasks and goals with `autowork tasks`
 
@@ -368,7 +366,7 @@ acceptance: the runner needs checks. Mark proposed fixtures and unexecuted comma
 as planned; a check records the required procedure, not a passing result. List
 actual prerequisite task IDs in `depends_on` (an empty list is explicit) and keep
 coordination, history and prior evidence in notes. Give every executable task you
-create or rewrite `touches` (its `Touches:` paths) and `resources` where needed:
+create or rewrite `touches` (the paths it may change) and `resources` where needed:
 widen to owning directories when unsure, or set `resources` to `exclusive` with a
 `Reason:` note when no path can be bounded. Parallel Autowork admits a task beside
 others only from these fields. Never list files under `tasks/` in `touches`: the

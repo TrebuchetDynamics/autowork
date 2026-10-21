@@ -124,11 +124,9 @@ concurrent-write rules rather than inventing a new schema.
 Goals and tasks come from the CLI, never from hand-seeded records. A repository
 that still has TODO.md and goals.json is converted once by the owner with
 `autowork migrate [repo]`; do not hand-convert it. In a repository with no task
-store at all, `autowork tasks` refuses (`no task store`); keep the planned goals and
-tasks in the plan and ask the owner to start the store.
+store at all, the first `autowork tasks goal` starts `tasks/`.
 
-Once the store exists, put actual accepted intent in a plan heading (only when the
-owner accepted this scope):
+Put actual accepted intent in a plan heading (only when the owner accepted this scope):
 
 ```markdown
 # Startup slice
@@ -151,7 +149,7 @@ autowork tasks validate --worktree .
 ```
 
 Expected: `validate` reports `"ok": true` with no drafts. Give every executable
-task its `Touches:` paths through `--touches` (widen to owning directories when
+task its `touches` through `--touches` (widen to owning directories when
 unsure, or set `resources` to `exclusive` with a reason). An added goal starts
 `unmet`; never mark it met without completed tasks and an executed, passing check.
 Commit the new `tasks/` files with the plan when authorized; `autowork tasks list`
