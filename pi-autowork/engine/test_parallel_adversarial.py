@@ -113,7 +113,7 @@ class AdversarialWorkerTests(unittest.TestCase):
 
     def test_retained_commit_resumes_only_its_report_before_batching_or_conflict_resolution(self):
         """A stopped worker's commit is not evidence until that attempt writes its report."""
-        sys.path.insert(0, str(SCRIPTS.parents[2] / 'pi-autowork'))
+        sys.path.insert(0, str(SCRIPTS.parents[1] / 'pi-autowork'))
         from pi_autowork import worker
         self.commit_todo(task('A', 'a.txt'), task('B', 'b.txt'))
         self.set_spec({'A': {'files': {'a.txt': 'done'}, 'sleep': 0.1},

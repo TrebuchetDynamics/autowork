@@ -13,7 +13,7 @@ the coordinator reviews, integrates, validates and closes.
 
 ## Coordinator loop
 
-All calls use `python3 <autowork>/scripts/owner_cycle.py REPO` with the
+All calls use `python3 <toolset>/pi-autowork/engine/owner_cycle.py REPO` with the
 coordinator's verified `--owner-pid` (the same persistent session identity as
 sequential Autowork). `--run` takes every argument after it, so put it last.
 
@@ -45,7 +45,7 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
    runner triages each new blocker this way and leaves only a person's part as a
    question. Exception: when every blocker is solely a wait for other open tasks, use
    `Needs TASK-ID to land.` (multiple IDs may be joined with commas or `and`). The
-   [report classifier](../scripts/parallel_state.py) records `cause: task_wait`, `waits_for`
+   [report classifier](../../../pi-autowork/engine/parallel_state.py) records `cause: task_wait`, `waits_for`
    and `wait_since` before triage; the runner never triages a slot with `waits_for`.
    Unknown wording, additional requests, self references and existing ledger dependencies
    remain ordinary blockers for triage, not automatic owner questions. A task wait reserves
@@ -85,7 +85,7 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
    Coordinator-owned edits are left out before validation, including ledger-only
    conflicts and edits introduced by the runner or resolver merging into the task
    branch. Those paths always keep the current integration base's content. The
-   [integrator](../scripts/parallel_integrate.py) saves the omitted proposal as
+   [integrator](../../../pi-autowork/engine/parallel_integrate.py) saves the omitted proposal as
    `slot-data/<TASK>/attempt-N/ledger-edit.patch` and records `ledger_edit_dropped`
    (paths and patch path) on the slot. Ledger-only candidates integrate as empty
    changes; undeclared protected files still hold. Batch checks and reviews use
@@ -175,7 +175,7 @@ launch no new work; once/until-empty limits include needed closeout.
 
 ## Runner jobs versus outside sessions
 
-The [writer scan](../scripts/task_execution.py) excludes this repository's own
+The [writer scan](../../../pi-autowork/engine/task_execution.py) excludes this repository's own
 runner jobs before integration, closeout and slot worktree cleanup check for outside
 sessions. The primary attribution is the process's `/proc/<pid>/cgroup`: an exact
 `pi-autowork@<canonical-repository-name>.service` component, including its child
@@ -296,18 +296,18 @@ write authority.
 ### Shared admission path and history
 
 Fresh/resumed dispatch (`admit`) and held retries (`retry_plan`) in
-[`parallel_dispatch.py`](../scripts/parallel_dispatch.py#L1028) both use
-[`parallel_plan.plan`](../scripts/parallel_plan.py#L271). They supply the same
+[`parallel_dispatch.py`](../../../pi-autowork/engine/parallel_dispatch.py#L1028) both use
+[`parallel_plan.plan`](../../../pi-autowork/engine/parallel_plan.py#L271). They supply the same
 tracked/nonignored-untracked protected-file inventory to the planner's directory
 classification and the full unfinished task context (including dependency- and
 decision-held tasks) for hot-file counts; these are callers of one policy, not
 alternative admission rules. Only runnable contracts are dispatch candidates.
-The [retry lifecycle guard](../scripts/parallel_state.py#L348-L355) also calls
-`retry_plan`. [Integration](../scripts/parallel_integrate.py#L220-L234) checks the
+The [retry lifecycle guard](../../../pi-autowork/engine/parallel_state.py#L348-L355) also calls
+`retry_plan`. [Integration](../../../pi-autowork/engine/parallel_integrate.py#L220-L234) checks the
 original dispatched contract against the protected inventory at the slot baseline,
 so later files or contract edits cannot retroactively authorize serial work.
 Fresh, retry and integration worktrees all use
-[`worktree_path`](../scripts/worktree_paths.py#L38) under the canonical checkout.
+[`worktree_path`](../../../pi-autowork/engine/worktree_paths.py#L38) under the canonical checkout.
 
 TOOLSET-138-62 provenance: current-history directory-admission commit
 `34d988b7962c7942c97dcf703ff8fc17b3741db2` landed through merge
@@ -370,7 +370,7 @@ nothing parallel was claimed or started.
   Task waits described above resume without spending a retry; other inputs go through
   blocker triage, which leaves only a person's part as a question. Closing a
   retried task leaves the first attempt's worktree and branch for manual cleanup.
-- **Hold causes:** [`parallel_state.HOLD_CAUSES`](../scripts/parallel_state.py) owns
+- **Hold causes:** [`parallel_state.HOLD_CAUSES`](../../../pi-autowork/engine/parallel_state.py) owns
   the supported machine-readable causes and their recovery policies:
   `reoffer_once`, `resolve_conflict`, `ask_owner`, `rerun` or `wait_for_task`.
   `next_action(slot)` selects the refill policy; evidence, liveness and attempt
@@ -402,7 +402,7 @@ nothing parallel was claimed or started.
   revision IDs), that commit stays held for the maintainer's `review findings` trigger;
   a different verdict or new commit resets this limit. Timeouts are not verdicts and
   may still be retried with a longer limit. See
-  [`reverify` and `reverifiable`](../scripts/parallel_integrate.py).
+  [`reverify` and `reverifiable`](../../../pi-autowork/engine/parallel_integrate.py).
 - **Answers re-queue:** each attempt records the contract it was dispatched with
   (`contract.txt`). When a held task's TODO entry no longer matches it (the owner
   answered by editing the entry), the next refill retires the slot as a set-aside
@@ -417,7 +417,7 @@ nothing parallel was claimed or started.
   so its task runs fresh on current main. Every attempt's
   worktree and branch is kept, renamed with `-set-aside-N`, and the slot record and
   data move to `slot-history/TASK/N`; the next refill dispatches the task fresh.
-- **Earlier task work:** [the worker prompt](../scripts/parallel_dispatch.py) lists
+- **Earlier task work:** [the worker prompt](../../../pi-autowork/engine/parallel_dispatch.py) lists
   this task's local `autowork/<TASK>-set-aside-N` branches (including retired `-r2`
   attempts) and previous attempt branches, excluding the current branch. Each has
   its tip commit, commit date and changed files, newest tip first. Changed files
@@ -444,19 +444,19 @@ nothing parallel was claimed or started.
   dead worker with a commit becomes `reported` (keeping any uncommitted changes),
   one with only uncommitted changes `interrupted`, one with neither `released`, and
   one whose HEAD left the baseline `held`. No task gets a second worker.
-- **Name collisions:** [dispatch](../scripts/parallel_dispatch.py) adopts a clean, idle
+- **Name collisions:** [dispatch](../../../pi-autowork/engine/parallel_dispatch.py) adopts a clean, idle
   journaled task worktree after verifying its identity. An orphan task branch without commits
   beyond the dispatch baseline is removed with `git branch -d` and journaled as
   `stale_branch_removed`; otherwise its work is kept under the next free
   `-set-aside-N` name. A clean, idle task worktree can be removed without force before
   this recovery. Dirty worktrees (including ignored files), unrelated paths and
   branches checked out elsewhere are preserved: only that task waits, while
-  independent tasks dispatch. [Slot retirement](../scripts/parallel_integrate.py)
+  independent tasks dispatch. [Slot retirement](../../../pi-autowork/engine/parallel_integrate.py)
   also skips existing set-aside names, preserving earlier attempts.
 - **Resources:** a worker starts only while MemAvailable is at least twice
   `--min-free-mem-mb` (default 1500): one worker's budget plus as much spare, however
   many already run, since their memory is already out of MemAvailable. In
-  [dispatch](../scripts/parallel_dispatch.py), the 1-minute load average must be below
+  [dispatch](../../../pi-autowork/engine/parallel_dispatch.py), the 1-minute load average must be below
   the CPU count only when this runner already has a live worker; its first worker
   still obeys the memory and disk floors. [Runner health](../../../pi-autowork/pi_autowork/health.py)
   shows load-only waits as `waiting for the host (load L on N CPUs)`, never stalled.

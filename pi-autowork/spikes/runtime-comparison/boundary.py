@@ -16,7 +16,7 @@ import time
 import uuid
 
 REPO = Path(__file__).resolve().parents[3]
-sys.path[:0] = [str(REPO / 'skills/autowork/scripts'), str(REPO / 'pi-autowork')]
+sys.path[:0] = [str(REPO / 'pi-autowork/engine'), str(REPO / 'pi-autowork')]
 import parallel_state as state
 import task_execution as execution
 from pi_autowork import pi_runtime

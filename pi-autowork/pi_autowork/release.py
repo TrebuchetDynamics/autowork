@@ -21,7 +21,7 @@ import shlex
 import subprocess
 import sys
 
-STATE_FILE = 'skills/autowork/scripts/parallel_state.py'
+STATE_FILE = 'pi-autowork/engine/parallel_state.py'
 
 
 def _alive(pid):

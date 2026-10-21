@@ -141,7 +141,7 @@ class IntegrationTests(unittest.TestCase):
         module = self.module()
         result = module.integrate(self.repo, self.owner, 'A', ['true'], 30)
         self.assertEqual((result['outcome'], result['cause']), ('HELD', 'runner_merged'), result)
-        sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'pi-autowork'))
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'pi-autowork'))
         from pi_autowork import questions
         held = dict(state.slots(self.common)[0], task=slot['task_id'], attempt=2)
         self.assertFalse(questions.exhausted(held))  # technical: never a question for the owner
@@ -176,7 +176,7 @@ class IntegrationTests(unittest.TestCase):
 
     def test_a_last_attempt_that_failed_review_is_reworked_once_then_asked(self):
         """TOOLSET-285-29: a second attempt failed its review and was neither retried nor asked about."""
-        sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'pi-autowork'))
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'pi-autowork'))
         from pi_autowork import questions
         module = self.module()
         root, commit = self.worker()
@@ -1453,7 +1453,7 @@ finally:
         self.assertIn('+worker', Path(result['ledger_edit_dropped']['patch']).read_text())
 
     def test_ledger_edits_are_saved_and_handed_off_for_mixed_and_empty_candidates(self):
-        sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'pi-autowork'))
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'pi-autowork'))
         from pi_autowork import maintainer
         from pi_autowork.coordinator import Coordinator
         import parallel_status
@@ -1714,7 +1714,7 @@ finally:
 
     def test_a_rescope_missing_a_protected_path_gives_one_actionable_question(self):
         import parallel_status
-        sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'pi-autowork'))
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'pi-autowork'))
         from pi_autowork import questions
         module = self.module()
         self.worker(files={'package.json': '{}\n', 'package-lock.json': '{}\n'})

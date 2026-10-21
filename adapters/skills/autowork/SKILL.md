@@ -98,7 +98,7 @@ explicit read-only runs write nothing.
    own authorization; never override host approvals or actual live-safety gates.
    Finish [worktree closeout](../../../skills/autowork/references/worktree-closeout.md):
    verify integration on the canonical `main` or `master`, then remove the task's
-   worktree with `skills/autowork/scripts/worktree_closeout.py CANONICAL --worktree PATH --apply`. Preserve active, dirty, unmerged and recovery-bearing
+   worktree with `pi-autowork/engine/worktree_closeout.py CANONICAL --worktree PATH --apply`. Preserve active, dirty, unmerged and recovery-bearing
    worktrees; report integration/cleanup pending until the remaining steps succeed.
 5. Reconcile task status and evidence in TODO.md and any existing goals.json. Do not
    close a whole feature from a partial slice. Report completed task, checks, commit,

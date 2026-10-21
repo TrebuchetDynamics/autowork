@@ -108,7 +108,7 @@ COMPONENT = Path(__file__).resolve().parents[1]
 
 
 def is_toolset(path):
-    return (Path(path) / 'skills/autowork/scripts/owner_cycle.py').is_file() and \
+    return (Path(path) / 'pi-autowork/engine/owner_cycle.py').is_file() and \
         (Path(path) / 'skills/docs-sync/scripts/goals.py').is_file()
 
 
@@ -475,7 +475,7 @@ def status_view(repo, base, toolset, state):
         print(f'Session:    none; a new integration branch would start from {base}')
     if dirty(repo):
         print(f'Note:       {repo} has uncommitted changes; the final merge stops if it would touch them')
-    out = subprocess.run([sys.executable, str(Path(toolset) / 'skills/autowork/scripts/owner_cycle.py'), view,
+    out = subprocess.run([sys.executable, str(Path(toolset) / 'pi-autowork/engine/owner_cycle.py'), view,
                           '--parallel-status', '--json'], capture_output=True, text=True).stdout
     try:
         snapshot = json.loads(out)

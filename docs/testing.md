@@ -2,7 +2,7 @@
 
 ## Parallel offline acceptance
 
-`python3 -m unittest skills/autowork/scripts/test_parallel_e2e.py` exercises the
+`python3 -m unittest pi-autowork/engine/test_parallel_e2e.py` exercises the
 real coordinator CLI and disposable Git worktrees with fake local workers. It
 checks A/B overlap, C starting only after A closes, merged-tree validation,
 cleanup, golden status text/JSON, journal metrics and capacity changes on refill.
@@ -12,7 +12,7 @@ process startup, Git, validation and waits, not isolated coordinator CPU time.
 Neither test nor benchmark qualifies model-worker throughput or live hosts.
 Integration regressions additionally refuse changed checked/archived contracts
 and enforce retry-worker deadlines before returning WAITING.
-`python3 -m unittest skills/autowork/scripts/test_parallel_compat.py` compares
+`python3 -m unittest pi-autowork/engine/test_parallel_compat.py` compares
 sequential `owner_cycle.py` output, byte for byte, with a snapshot captured before
 any parallel code, and checks that a Claude Code coordinator without
 `--worker-command` or a missing worker CLI returns `SEQUENTIAL_FALLBACK` without
@@ -124,7 +124,7 @@ Response headings, Unicode and long prompts. The collector shares the consultati
 cache's character-count parser, reads native documents up to 256 KiB, and redacts
 before capping display at 32,768 characters. Invalid or oversized frames produce
 explicit gaps; legacy compatibility tails retain their unknown-coverage boundary.
-`python3 -m unittest discover -s skills/autowork/scripts -p test_response_tail.py`
+`python3 -m unittest discover -s pi-autowork/engine -p test_response_tail.py`
 and `python3 -m unittest discover -s tests -p test_profile_consult.py` cover both
 callers. Frame validity does not prove execution/file association or completion.
 
@@ -400,7 +400,7 @@ metadata. The selected archive and the live TODO must both be inspected after
 rendering; a passing fixture does not prove a real task's acceptance or model
 follow-through. See the [archive contract](../skills/docs-sync/references/todo-archive.md).
 
-From `skills/autowork/scripts`, run:
+From `pi-autowork/engine`, run:
 
 ```sh
 python3 -m unittest test_retry_selection

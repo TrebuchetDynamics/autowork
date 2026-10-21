@@ -1,6 +1,5 @@
 """Offline project-status regressions; no native execution or timing claims."""
 
-import json
 from pathlib import Path
 import re
 import unittest
@@ -40,11 +39,10 @@ class ProjectStatusTests(unittest.TestCase):
         authority = section(PROJECT_TEXT, "Autonomous execution authority")
         self.assertIn("operating-policy question without another user permission round", authority)
         self.assertIn("caller scope and saved stop/batch limits control", authority)
-        states = {task["id"]: task["status"] for task in json.loads((ROOT / "goals.json").read_text())["tasks"]}
+        # The queue reset (2026-10-20) removed their goals from goals.json; the archive keeps them.
         archive = (ROOT / "TODO.archive.md").read_text()
         for task in ("TOOLSET-002", "TOOLSET-008", "TOOLSET-012"):
             with self.subTest(task=task):
-                self.assertEqual(states[task], "done")
                 self.assertIn(task, archive)
 
     def test_task_context_metrics_and_ids_remain_historical(self):
@@ -60,11 +58,8 @@ class ProjectStatusTests(unittest.TestCase):
         self.assertIn("At requirement capture (`f617808`)", PROJECT_TEXT)
 
     def test_live_qualification_stays_open_and_separate(self):
-        states = {task["id"]: task["status"] for task in json.loads((ROOT / "goals.json").read_text())["tasks"]}
-        for task in ("TOOLSET-003", "TOOLSET-011"):
-            self.assertEqual(states[task], "open", task)
-        # Superseded by real-host timing (2026-10-15 replan); never closed as passed.
-        self.assertEqual(states["TOOLSET-013"], "superseded")
+        # TOOLSET-003/011 were deleted with the rest of the queue on 2026-10-20, never closed as
+        # passed; the project contract still says the qualification is pending.
         self.assertIn("Measured native qualification remains pending", PROJECT_TEXT)
         self.assertIn("externally enforced spending/descendant limits", PROJECT_TEXT)
         self.assertIn("not actual model startup or universal latency", PROJECT_TEXT)

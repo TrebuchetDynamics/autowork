@@ -97,7 +97,7 @@ Do not duplicate its unchanged plan or evade a shared integration conflict.
    of invoking the cycle recorder with invented inputs.
 
 ```sh
-python3 <autowork>/scripts/backlog_plan.py record \
+python3 <toolset>/pi-autowork/engine/backlog_plan.py record \
   --cycle /private/original-cycle.json --state-dir /private/profile/autowork \
   --evidence /private/planning-findings.json --outcome canonical_reconciled
 ```

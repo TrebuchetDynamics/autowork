@@ -91,10 +91,11 @@ all" does not revoke a specific earlier KEEP/preservation decision; resolve it b
 staging bulk deletions.
 
 Card branch helper (temporary index, so HEAD, the real index, and other agents' dirty work
-are untouched). Resolve `<skills-root>` as the parent of this loaded skill directory:
+are untouched). It ships with the Autowork engine: `<toolset>` is the installed Autowork
+toolset (the Pi package `~/.pi/agent/git/github.com/TrebuchetDynamics/autowork`, or a clone):
 
 ```bash
-"<skills-root>/autowork/scripts/agent_commit.sh" <repo> <profile> <card-id> "<message>" <files>...
+"<toolset>/pi-autowork/engine/agent_commit.sh" <repo> <profile> <card-id> "<message>" <files>...
 ```
 
 Report the branch and sha it prints. Never point it at main/master or the checked-out branch.

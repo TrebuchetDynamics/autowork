@@ -99,7 +99,7 @@ Use the repository's supported registration operation to append the exact native
 card/task/workspace/base/scope row. Then prepare private evidence with:
 
 ```sh
-python3 <autowork>/scripts/writer_registration.py \
+python3 <toolset>/pi-autowork/engine/writer_registration.py \
   --prepare-handoff /private/autowork/goal-handoff.json \
   --handoff-sha256 <original-receipt-sha256> --output /private/registration-preparation
 ```
@@ -157,9 +157,9 @@ Before a fragmented recovery handoff, use the composed CLI against the actual
 consumer, preserving its named accepted plan and literal task IDs:
 
 ```sh
-python3 <autowork>/scripts/owner_unblock.py /absolute/consumer \
+python3 <toolset>/pi-autowork/engine/owner_unblock.py /absolute/consumer \
   --plan SPEC.md#slice --tasks T1
-python3 <autowork>/scripts/owner_unblock.py /absolute/consumer \
+python3 <toolset>/pi-autowork/engine/owner_unblock.py /absolute/consumer \
   --plan SPEC.md#slice --tasks T1 --apply --authority /private/owner.json
 ```
 

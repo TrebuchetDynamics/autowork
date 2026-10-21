@@ -41,7 +41,7 @@ class PriorityDriftError(ValueError):
 
 @lru_cache(maxsize=1)
 def goals_module():
-    path = Path(__file__).resolve().parents[2] / 'docs-sync/scripts/goals.py'
+    path = Path(__file__).resolve().parents[2] / 'skills/docs-sync/scripts/goals.py'
     spec = importlib.util.spec_from_file_location('todo_goals', path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -88,7 +88,7 @@ def contract_labels(body):
 
 @lru_cache(maxsize=1)
 def archive_module():
-    path = Path(__file__).resolve().parents[2] / 'docs-sync/scripts/todo_archive.py'
+    path = Path(__file__).resolve().parents[2] / 'skills/docs-sync/scripts/todo_archive.py'
     spec = importlib.util.spec_from_file_location('todo_archive_owner', path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

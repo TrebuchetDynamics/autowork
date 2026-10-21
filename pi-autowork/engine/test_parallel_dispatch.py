@@ -233,7 +233,7 @@ class DispatchTests(unittest.TestCase):
                     self.assertEqual(stat.read_text().rsplit(')', 1)[1].split()[0], 'Z')
 
     def test_slot_waiting_is_not_a_stuck_command_but_running_still_is(self):
-        sys.path.insert(0, str(SCRIPTS.parents[2] / 'pi-autowork'))
+        sys.path.insert(0, str(SCRIPTS.parents[1] / 'pi-autowork'))
         from pi_autowork import pi_runtime
         checks = self.root / 'checks'
         checks.mkdir(mode=0o700)
@@ -638,7 +638,7 @@ class DispatchTests(unittest.TestCase):
         launcher.write_text(f'''import json, subprocess, sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-sys.path.insert(0, {str(SCRIPTS.parents[2] / 'pi-autowork')!r})
+sys.path.insert(0, {str(SCRIPTS.parents[1] / 'pi-autowork')!r})
 from pi_autowork import worker
 
 def fake_job(settings, role, task, directory, message, session, limit, extra):
@@ -753,6 +753,23 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
             self.git('worktree', 'add', '-q', '-b', 'trunk', str(base), 'HEAD')
         (base / 'TODO.md').write_text('# Work queue\n\n## Next\n\n' + '\n'.join(bodies))
         self.git('commit', '-qam', 'close on the base', repo=base)
+
+    def test_a_task_deleted_from_the_queue_is_stopped_and_set_aside(self):
+        """After the owner reset the queue, eight finished commits of deleted tasks asked to
+        integrate every minute and were refused as 'first: None'; nothing set them aside."""
+        self.set_spec({'A': {'files': {'a.txt': 'deleted work'}, 'sleep': 30},
+                       'B': {'files': {'b.txt': 'b'}, 'sleep': 30}})
+        _, first = self.apply()
+        self.assertIn('A', [d['task'] for d in first['dispatched']])
+        worker = next(s for s in state.slots(self.common) if s['task_id'] == 'A')
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text().replace(task('A', 'a.txt'), ''))
+        self.assertNotIn('- [ ] A ', todo.read_text())
+        _, freed = self.apply()
+        self.assertEqual(freed['closed_on_base'], ['A'], freed)
+        self.assertFalse(state.worker_live(worker))
+        self.assertNotIn('A', [s['task_id'] for s in state.slots(self.common)])
+        self.assertTrue(self.git('branch', '--list', 'autowork/A-set-aside-1'))  # its work is kept
 
     def test_a_worker_whose_task_closes_on_the_base_is_stopped_and_set_aside(self):
         self.set_spec({'A': {'files': {'a.txt': 'duplicate'}, 'sleep': 30},
@@ -907,7 +924,7 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         original = state.slots(self.common)[0]
         self.assertEqual(original.get('waits_for'), ['B', 'E'])
         from parallel_status import snapshot
-        sys.path.insert(0, str(SCRIPTS.parents[2] / 'pi-autowork'))
+        sys.path.insert(0, str(SCRIPTS.parents[1] / 'pi-autowork'))
         from pi_autowork import questions
         self.assertEqual(questions.build(snapshot(self.repo), (self.repo / 'TODO.md').read_text(),
                                          execution.goals_module()), [])

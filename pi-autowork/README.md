@@ -3,7 +3,7 @@
 The `pi-autowork` runner. `scripts/pi-autowork.sh` is a thin entry point and the
 service command: it finds this component and runs `pi_autowork/cli.py`, which then
 continues in the toolset release it resolves. The generic task lifecycle (admission, slots,
-integration, closure) stays in the shared engine under `skills/autowork/scripts`,
+integration, closure) stays in the shared engine under `pi-autowork/engine`,
 which is the only authority for task state. Runtime state lives outside the
 repository, under `${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key>/`.
 

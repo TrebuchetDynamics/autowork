@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pi-autowork.sh: run Autowork's Parallel Autowork engine with Pi workers.
 #
-# The engine (skills/autowork/scripts/owner_cycle.py --parallel) plans, dispatches,
+# The engine (pi-autowork/engine/owner_cycle.py --parallel) plans, dispatches,
 # verifies and closes tasks; the pi-autowork component (pi-autowork/pi_autowork/)
 # drives its coordinator loop and supplies what the engine leaves to the host: Pi
 # workers with model choice and fallback, an independent verification step, budgets,

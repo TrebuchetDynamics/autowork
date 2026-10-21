@@ -50,7 +50,7 @@ held work. Initial discovery is without a model call:
   when present (TOOLSET-120-fc). Each entry already carries its type, effort,
   `unblocks` count, `Needs:` and `Answer:`.
 - The engine's view even when the questions block exists:
-  `python3 <autowork>/scripts/owner_cycle.py REPO --parallel-status --json`. Use
+  `python3 <toolset>/pi-autowork/engine/owner_cycle.py REPO --parallel-status --json`. Use
   `roots` whose `kind` is `held`, `claim`, `outside`, `cycle`, `runner` or `contract`
   (a TODO/index mismatch: without it a metadata-blocked queue seems to have no
   questions) and the `tasks` rows for each affected task's `reason`, plus its
