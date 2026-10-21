@@ -22,7 +22,8 @@ import sys
 import tempfile
 import time
 
-from . import fleet_view, health, janitor, main_check, maintainer, pi_runtime, questions, release, task_commands, telemetry, worker, workspaces
+from . import (fleet_view, health, janitor, main_check, maintainer, optimistic, pi_runtime, questions, release,
+               task_commands, telemetry, worker, workspaces)
 from .common import LOG, dirty, git, git_ok, lifecycle, open_for_writing, safe_name, summary_list
 
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
@@ -305,6 +306,8 @@ class Coordinator:
         conflict the resolver merged with the session is a new revision, so the candidates the
         last batch had to skip are offered to a new batch once they merge (one check, not one
         each) instead of being held back for the process's lifetime."""
+        if optimistic.enabled():
+            return []  # optimistic landing: each reviewed candidate lands on its own, no batch gate
         size = int(os.environ.get('PI_AUTOWORK_BATCH') or 6)
         failed = self.batch_failed()
         fresh = [(t, commit) for t, commit in reported if not worker.batch_record(self.state, t).exists()
@@ -1405,8 +1408,21 @@ class Coordinator:
                 LOG.say(f'Not pushed: {self.base} has no upstream branch')
             return
         remote, branch = upstream.split('/', 1)
+        source = self.base
+        if optimistic.enabled():
+            # Optimistic landing publishes only what main's full check passed: its last green
+            # revision, when that is on main and ahead of the upstream.
+            green = main_check.read(self.state).get('green')
+            if green and git_ok(self.repo, 'merge-base', '--is-ancestor', green, upstream):
+                return  # the upstream already has main's last green revision; the rest waits for its check
+            if not green or not git_ok(self.repo, 'merge-base', '--is-ancestor', green, self.base):
+                if self.seen.get('push-note') != 'waiting for green':
+                    self.seen['push-note'] = 'waiting for green'
+                    LOG.say(f'Not pushed yet: {self.base} has commits main\'s full check has not passed')
+                return
+            source = green
         env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_CONFIG_')}
-        result = subprocess.run(['git', '-C', str(self.repo), 'push', '--quiet', remote, f'{self.base}:{branch}'],
+        result = subprocess.run(['git', '-C', str(self.repo), 'push', '--quiet', remote, f'{source}:refs/heads/{branch}'],
                                 capture_output=True, text=True, env=env, timeout=300)
         if result.returncode == 0:
             self.seen.pop('push-note', None)
@@ -2159,6 +2175,16 @@ class Coordinator:
             return
         if record.get('pid') is not None:  # receipt consumed just before bash exited: reap next cycle
             return
+        if record.get('state') == 'red' and record.get('revert_pending') and optimistic.enabled():
+            # A review was running when main went red: revert once the session is free.
+            try:
+                log_text = (self.state / 'main-check.log').read_text(errors='replace')
+            except OSError:
+                log_text = ''
+            if self.revert_regression(record['rev'], record.get('green'), record.get('failures') or [], log_text):
+                return
+            if not self.session_busy():
+                main_check.write(self.state, dict(record, revert_pending=False))  # nothing to revert: repair task
         rev = git(self.repo, 'rev-parse', self.base)
         if not rev or rev == record.get('rev'):
             return
@@ -2245,6 +2271,26 @@ class Coordinator:
             return None
         return str(receipt.get('task') or receipt.get('commit') or 'a full check')
 
+    def revert_regression(self, rev, green, failures, log_text):
+        """Optimistic landing: revert, in the session, the tasks landed since ``green`` that the new
+        failures point at, reopen them with those tests named, and land that; True when it did."""
+        if not self.integ or not green or self.session_busy():
+            return False
+        candidates = optimistic.landed(self.repo, green, rev)
+        blamed = optimistic.regression(self.repo, rev, failures, log_text, candidates)
+        if not blamed:
+            return False
+        done = optimistic.revert(self.integ, blamed, dict(candidates), failures, rev, task_commands.reopen)
+        if not done:
+            return False
+        LOG.say(f'Main is red at {rev[:7]} ({len(failures)} failing: {", ".join(failures[:3])}); reverted '
+                f'{", ".join(done)}, which landed since {green[:7]}, and reopened '
+                f'{"it" if len(done) == 1 else "them"} with those tests named')
+        self.land_soon = True
+        main_check.write(self.state, dict(main_check.read(self.state), state='reverted', rev='', green=green,
+                                          last_finished=time.time(), reverted=done, failures=failures))
+        return True
+
     def finish_main_check(self, record):
         """Record a finished (or aborted) main check and clean its checkout up."""
         code = main_check.exit_code(self.state)
@@ -2325,12 +2371,17 @@ class Coordinator:
                 LOG.say(f'Main is green at {rev[:7]} ({len(flaky)} flaky): {", ".join(flaky)}')
             if any(len(revisions) >= 3 for revisions in history.values()):
                 self.maintain(main_only=True)
+            if optimistic.enabled():
+                self.push()  # optimistic landing publishes only green revisions: this one now
             return
+        if optimistic.enabled() and self.revert_regression(rev, green, failures, log_text):
+            return  # reverted: main is checked again on the reverted revision
         commits = (git(self.repo, 'log', '--format=%h %s', '-20', f'{green}..{rev}' if green else rev) or '').splitlines()
         red_since = record.get('red_since') if record.get('failures') else rev
         finished(dict(state='red', rev=rev, green=green, failures=failures, commits=commits,
                                           red_since=red_since or rev, finished=time.time(),
-                                          flaky=flaky, flaky_history=history, **child))
+                                          flaky=flaky, flaky_history=history,
+                                          revert_pending=optimistic.enabled(), **child))
         LOG.say(f'Main is red at {rev[:7]}: {len(failures)} failing ({", ".join(failures[:3])}'
                 + (f', +{len(failures) - 3} more' if len(failures) > 3 else '') + ')')
         self.maintain(main_only=True)  # one repair task, now: red main hides every later regression

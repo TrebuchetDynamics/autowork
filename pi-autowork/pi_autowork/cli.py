@@ -85,6 +85,8 @@ Environment (optional):
   PI_AUTOWORK_PLAN_SETTLE   seconds a plan change must be quiet before an idle runner reads it
                             (default 3)
   PI_AUTOWORK_PUSH          0 keeps merged main local; otherwise it is pushed to its upstream
+  PI_AUTOWORK_OPTIMISTIC    1 lands reviewed tasks without the full-suite gate; main's check reverts
+                            a regression and only green revisions are pushed (default 0)
   PI_AUTOWORK_STALL_AFTER   seconds with nothing running while work waits before the runner
                             announces STALLED with its root blockers (default 1800)
   PI_AUTOWORK_COOLDOWN      seconds on the fallback before trying the primary again (default 1800)

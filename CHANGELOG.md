@@ -49,6 +49,15 @@ claim of a tagged release, completed installation or live workflow qualification
   result, reruns, the base comparison and where it came from, the verdict) in
   `full-check/<task>.gate.jsonl`, and the TUI's task and worker views show them as `runner:`
   lines between the worker's last action and the review, where they were silent.
+- **Optimistic landing** (TOOLSET-344-7dadea23, owner decision 2026-10-21;
+  `PI_AUTOWORK_OPTIMISTIC=1`). Finished tasks waited 40 minutes to 3 hours for batch full
+  checks. With it on, a candidate lands after its own checks and its review, without the
+  full-suite gate and without batching; the background full check of main is the gate after
+  landing. When it finds new failures, the runner blames them on the tasks landed since the
+  last green main (traceback lines, `git blame`, else all of them), reverts each one's merge
+  (`git revert -m 1`, which the scorecard counts as that task's regression), reopens it with
+  the failing tests named and lands that. Pushes publish only main's last green revision. Off
+  by default: the gated flow is unchanged.
 - **A menu bar on top, and a laid-out runner pane.** Every TUI screen now shows its keys on
   one line at the very top, under the title, like a GUI app's "File Edit View" menu: the
   runner keys (Log, Pause, Stop, Restart, Model, Fallback, Tasks, New, Quit), the task list's
