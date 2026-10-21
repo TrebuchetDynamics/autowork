@@ -364,13 +364,15 @@ class Coordinator:
             path.unlink(missing_ok=True)
         return found
 
-    def start_batch(self, tasks, on=None, revisions=None):
+    def start_batch(self, tasks, on=None, revisions=None, independent=False):
         """TOOLSET-258-07: one full check on the candidates' merged tree and their reviews side
         by side, as a child the loop polls like a review; the engine then lands each one.
 
         With ``on`` (the tip of the batch still being checked), the next car of a merge train:
         built on that tip and checked beside it, so its verdicts hold once the batch ahead lands
-        as checked; it runs as self.train while the batch ahead keeps self.integration."""
+        as checked; it runs as self.train while the batch ahead keeps self.integration.
+        ``independent`` (TOOLSET-340-64b75d92): ``on`` is the base the batch ahead was built on,
+        not its tip, so its verdicts do not depend on the batch ahead passing."""
         out = tempfile.NamedTemporaryFile(dir=self.state / 'runs', prefix='batch.', delete=False)
         out.close()
         tip = Path(out.name).with_suffix('.tip')  # where the batch publishes its chain's tip
@@ -381,13 +383,18 @@ class Coordinator:
             child = subprocess.Popen(args, stdout=stream, stderr=err, stdin=subprocess.DEVNULL, cwd=self.integ,
                                      env=env)
         job = {'task': self.BATCH, 'proc': child, 'out': out.name, 'started': time.time(),
-               'members': list(tasks), 'tip': str(tip), 'on': on,
+               'members': list(tasks), 'tip': str(tip), 'on': on, 'independent': independent,
+               'base': on if on else git(self.integ, 'rev-parse', 'HEAD'),
                'revisions': list(revisions if revisions is not None else getattr(self, 'batch_revisions', []))}
         self.snapshot = None
         if on:
             self.train = job
-            LOG.say(f'Merge train: {len(tasks)} more candidate(s) ({", ".join(tasks)}) checked on top of the '
-                    'batch still running, beside it')
+            if independent:
+                LOG.say(f'Batch half: {len(tasks)} candidate(s) ({", ".join(tasks)}) checked on the base, beside '
+                        'the other half, so it lands even if that half fails')
+            else:
+                LOG.say(f'Merge train: {len(tasks)} more candidate(s) ({", ".join(tasks)}) checked on top of the '
+                        'batch still running, beside it')
             return
         self.integration = job
         self.batch_members = list(tasks)
@@ -404,9 +411,16 @@ class Coordinator:
                 or worker.setting('PI_AUTOWORK_TRAIN', 1) < 1):
             return
         if (self.state / 'batch-split.json').exists():
-            # A failed batch is being halved to find the candidate that breaks it: a car on a half
-            # is stopped when that half fails, and one took the remaining candidates along each
-            # time, so the culprit was never checked without the others and never held.
+            # A failed batch is being halved to find the candidate that breaks it. A car on a half's
+            # tip was stopped when that half failed, and took the remaining candidates along, so the
+            # culprit was never checked without the others. The next half is checked on the same
+            # base instead, beside this one, and lands if it passes whatever this half does
+            # (TOOLSET-340-64b75d92: six clean candidates waited 1-2.5 h behind one bad one).
+            if not job.get('base') or worker.setting('PI_AUTOWORK_INDEPENDENT_HALVES', 1) < 1:
+                return  # taken off the split only when it starts: otherwise it waits its turn
+            if half := self.next_half(rows):
+                self.start_batch([t for t, _ in half], on=job['base'], revisions=[f'{t}@{c}' for t, c in half],
+                                 independent=True)
             return
         try:
             tip = json.loads(Path(job['tip']).read_text())['tip']
@@ -420,6 +434,38 @@ class Coordinator:
         cars = cars[:max(1, int(os.environ.get('PI_AUTOWORK_BATCH') or 6))]
         if cars:
             self.start_batch([t for t, _ in cars], on=tip, revisions=[f'{t}@{c}' for t, c in cars])
+
+    def settle_train(self, result):
+        """The batch ahead ended with ``result``: keep or stop the car beside it. A merge-train car
+        on its tip only holds if it passed as checked. An independent half was built on the base:
+        a failing half beside it changes nothing it checked, while a passing one lands first and
+        moves the base, so the half's verdicts would no longer match and it is checked again."""
+        if not self.train:
+            return
+        if self.train.get('independent'):
+            if self.batch_clean(result):
+                self.stop_train('the half beside it passed and lands first, on a newer base')
+        elif not self.batch_clean(result):
+            self.stop_train('the batch ahead did not pass as checked')
+
+    def next_half(self, rows):
+        """Take the next half of a failed batch off batch-split.json, as the (task, commit) pairs
+        still reported at those revisions; [] when none is left."""
+        path = self.state / 'batch-split.json'
+        try:
+            halves = [h for h in json.loads(path.read_text()) if isinstance(h, list)]
+        except (OSError, ValueError, TypeError):
+            return []
+        current = {f'{t}@{c}' for t, c in batchable(rows)
+                   if next((r for r in rows if r.get('task') == t), {}).get('state') == 'reported'}
+        half = []
+        while halves and not half:
+            half = [tuple(r.split('@', 1)) for r in halves.pop(0) if r in current]
+        if halves:
+            path.write_text(json.dumps(halves) + '\n')
+        else:
+            path.unlink(missing_ok=True)
+        return half
 
     @staticmethod
     def batch_clean(result):
@@ -513,7 +559,8 @@ class Coordinator:
         # The order they were verified in: each verdict holds only for its step of that chain. A
         # car's chain starts where the batch ahead ends: it lands after what of that is left.
         order = [t for t in result.get('tasks') or [] if worker.batch_record(self.state, t).exists()]
-        ahead = [t for t in self.batch_chain() if t not in order] if job else []
+        # An independent half was built on the base, not on the chain ahead: it lands on its own.
+        ahead = [t for t in self.batch_chain() if t not in order] if job and not job.get('independent') else []
         (self.state / 'batch-order.txt').write_text('\n'.join(ahead + order) + '\n')
         # Offered first, out of priority order: the engine holds a conflict at once, and the
         # hold is what starts the resolver. Asked after a long review, they waited hours.
@@ -1778,8 +1825,7 @@ class Coordinator:
         finished = self.collect_integration()
         if finished and finished[0] == self.BATCH:
             self.batch_done(finished[1])
-            if self.train and not self.batch_clean(finished[1]):
-                self.stop_train('the batch ahead did not pass as checked')
+            self.settle_train(finished[1])
         elif finished:
             handled.add(finished[0])
             self.integrated(*finished, resolve_conflicts=False)
