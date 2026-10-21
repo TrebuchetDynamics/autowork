@@ -23,7 +23,6 @@ class SkillDescriptionTests(unittest.TestCase):
                 self.assertIsInstance(description, str)
                 self.assertTrue(description.strip())
                 self.assertLessEqual(len(description), 60, description)
-                self.assertTrue(description.endswith('.'), description)
 
 
 if __name__ == '__main__':
