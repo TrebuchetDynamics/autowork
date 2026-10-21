@@ -382,7 +382,7 @@ def render(fields: dict, body: str = '', goal: bool = False) -> str:
     if unknown:
         raise WriteError('unknown field ' + ', '.join(sorted(unknown)))
     header = [f'{key} = {toml_value(key, fields[key])}' for key in order if key in fields]
-    text = '+++\n' + '\n'.join(header) + '\n+++\n' + body
+    text = ('+++\n' + '\n'.join(header) + '\n+++\n' + body).rstrip('\n') + '\n'
     _check(text, fields)
     return text
 
