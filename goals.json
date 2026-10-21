@@ -818,7 +818,8 @@
         "TOOLSET-287-44",
         "TOOLSET-288-cf",
         "TOOLSET-289-71",
-        "TOOLSET-291-ae"
+        "TOOLSET-291-ae",
+        "TOOLSET-294-9d"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -858,6 +859,7 @@
       "TOOLSET-130-15",
       "TOOLSET-235-0d",
       "TOOLSET-279-eb",
+      "TOOLSET-294-9d",
       "TOOLSET-293-25",
       "TOOLSET-286-32",
       "TOOLSET-285-47",
@@ -1725,6 +1727,14 @@
       "section": "Next",
       "status": "open",
       "title": "Split goals.py once its private copies and the runner's parse cache allow it"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-294-9d",
+      "section": "Next",
+      "status": "open",
+      "title": "Expose every unresolved Needs decision task in blocker counts and intake"
     },
     {
       "depends_on": [],
