@@ -7,8 +7,8 @@ status = "open"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 31000
-depends_on = []
-touches = ["pi-autowork/pi_autowork/command.py", "pi-autowork/pi_autowork/service.py", "pi-autowork/pi_autowork/coordinator.py", "pi-autowork/tests/", "tests/", "docs/"]
+depends_on = ["TOOLSET-310-50", "TOOLSET-330-c2"]
+touches = ["pi-autowork/pi_autowork/command.py", "pi-autowork/pi_autowork/service.py", "pi-autowork/pi_autowork/coordinator.py", "tests/test_autowork_command.py", "tests/test_pi_autowork.py", "pi-autowork/README.md", "docs/cross-host.md"]
 resources = []
 kind = "implementation"
 ownership = "worker"
@@ -17,3 +17,4 @@ acceptance = ["With a batch full check running, `autowork restart --stop-workers
 checks = ["python3 scripts/check.py"]
 exclusions = []
 +++
+- Coordination: Overlap repair: keep the restart/check-result path together; waiting, timeout refusal and --now must be tested through the command and coordinator, so a help-only split cannot deliver independent Acceptance. Wait for TOOLSET-310-50 (candidate 91cfc443e6edfad1e9b0b3666066751135cc7318; command.py and component README) and the earlier-ranked TOOLSET-330-c2 (command.py and command/runner tests), whose dependency TOOLSET-325-d4 also changes service.py and command.py in candidate 16ffb2039f9e52337731c2bbfd88be28832b2bc9. Evidence: their attempt-1/report.json files under slot-data in the Git common execution directory; 310 is integrating, 325 reported at inspection. Touches replaces directory-wide tests/docs claims with the existing restart tests in tests/test_autowork_command.py, coordinator coverage in tests/test_pi_autowork.py, and the restart contracts in the component README and docs/cross-host.md. No Acceptance or priority changes; plain restart remains unchanged.
