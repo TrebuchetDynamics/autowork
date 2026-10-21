@@ -7,7 +7,7 @@ status = "open"
 goal = "TASK-STORE"
 section = "Next"
 rank = 10000
-depends_on = []
+depends_on = ["TOOLSET-304-2c", "TOOLSET-305-7b"]
 touches = ["pi-autowork/pi_autowork/task_commands.py", "tests/", "skills/docs-sync/", "adapters/skills/", "skills/shared/TODO-WORKCENTER.md", "pi-autowork/task-store.md"]
 resources = []
 kind = "implementation"
@@ -19,3 +19,4 @@ exclusions = ["No shell execution added anywhere; the existing flags keep workin
 +++
 
 - Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20)
+- Coordination: Overlap repair: wait for TOOLSET-304-2c atomic writes in task_commands.py, then the earlier-ranked TOOLSET-305-7b closure CLI and skill changes. Task Store v2 uses this one CLI for add, field and goal; literal JSON input must be implemented there before its documented commands and round-trip tests can be verified. A docs-only split would depend on the same unfinished input contract, not run independently. Preserve all Acceptance and existing priority.

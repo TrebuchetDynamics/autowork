@@ -107,6 +107,32 @@ class FleetViewTests(unittest.TestCase):
                 if superseded:
                     self.assertIn(head[:7], text)
 
+    def test_fleet_puts_owner_questions_and_setup_before_idle_and_working(self):
+        for name, state in (('a-idle', 'idle'), ('b-working', 'working'),
+                            ('y-setup', 'idle'), ('z-question', 'idle')):
+            repo = self.base / name
+            repo.mkdir()
+            if name != 'y-setup':
+                (repo / 'tasks').mkdir()
+            (self.env / f'{name}.env').write_text(f'PI_AUTOWORK_REPO={repo}\n')
+            self.runner_state(str(repo), state=state)
+        (self.base / 'z-question' / 'BLOCKERS.md').write_text(
+            '<!-- pi-autowork:questions:start -->\n'
+            '### Q-T-1 — USER_DECISION — effort decision — unblocks 1\n'
+            '- Needs: choose a target\n<!-- pi-autowork:questions:end -->\n')
+        units = '\n'.join(f'pi-autowork@{name}.service loaded active running x'
+                          for name in ('a-idle', 'b-working', 'y-setup', 'z-question'))
+        self.assertEqual(list(self.collect(units)), ['y-setup', 'z-question', 'a-idle', 'b-working'])
+
+    def test_unconverted_repository_needs_setup_not_idle(self):
+        runner = fleet_view.Runner('legacy', repo=str(self.base), state='idle')
+        self.assertEqual(fleet_view.verdict(runner),
+                         ('Setup required — run autowork migrate', 'bold yellow'))
+        self.assertEqual(fleet_view.needs(runner), 'Setup required — run autowork migrate')
+        (self.base / 'tasks').mkdir()
+        self.assertEqual(fleet_view.verdict(runner)[0], 'Idle — nothing left to run in Now/Next')
+        self.assertEqual(fleet_view.needs(runner), '')
+
     def test_state_without_a_service_is_history_not_a_runner(self):
         self.runner_state('/git/gone', state='working', since=time.time())
         self.assertEqual(self.collect(), {})
@@ -400,6 +426,8 @@ class FleetViewTests(unittest.TestCase):
             (R('a', state='restarting', restarting='service'), 'Restarting'),
             (R('a', state='paused'), 'Paused — p resumes it'),
             (R('a', state='not running'), 'Not running — a starts its service'),
+            (R('a', state='idle', questions=[Q('T-1', 'decision', 1, 'choose a target')]),
+             'Waiting on you — 1 question, easiest T-1 (unblocks 1): choose a target'),
             (R('a', state='idle'), 'Idle — nothing left to run in Now/Next'),
             (R('a', state='working', minutes=5, job={'role': 'maintainer', 'task': 'DOCS-MAINTAINER'}),
              'Working — DOCS-MAINTAINER repairing task docs (5m)'),
@@ -486,6 +514,26 @@ class FleetViewTests(unittest.TestCase):
         # The finished commit waiting to land sorts below the task being worked on, whatever its name.
         (slots / 'T-0.json').write_text(json.dumps({'task_id': 'T-0', 'state': 'reported', 'attempt': 1}))
         self.assertEqual([lane.task for lane in fleet_view.lanes(runner)], ['T-1', 'T-0', 'T-2'])
+
+    def test_a_workers_actions_read_as_a_log_oldest_first_with_their_times(self):
+        """The worker view listed its last 10 actions newest first: upside down for a log, and
+        too short to follow what a 15-minute attempt did."""
+        state = self.base / 'state' / 'key'
+        (state / 'sessions').mkdir(parents=True)
+        start = time.time() - 600
+        events = [{'type': 'message', 'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime(start + i)),
+                   'message': {'role': 'assistant', 'content': [
+                       {'type': 'toolCall', 'name': 'bash', 'arguments': json.dumps({'command': f'echo step {i}'})}]}}
+                  for i in range(40)]
+        (state / 'sessions' / '2026-10-21T08-00-00-000Z_pi-autowork-T-1-attempt-1.jsonl').write_text(
+            '\n'.join(json.dumps(e) for e in events) + '\n')
+        runner = fleet_view.Runner(name='repo', state_dir=str(state))
+        log = fleet_view.action_log(runner, 'T-1')
+        self.assertEqual(len(log), 40)  # far more than the old 10
+        self.assertEqual([text for text, _, _ in log], [fleet_view.doing_text(f'bash: echo step {i}') for i in range(40)])
+        self.assertEqual([int(at) for _, _, at in log], [int(start) + i for i in range(40)])
+        self.assertEqual(fleet_view.action_log(runner, 'T-1', n=3), log[-3:])  # the newest three, still in order
+        self.assertEqual(fleet_view.recent_actions(runner, 'T-1', n=2), [(t, a) for t, a, _ in log[-2:]])
 
     def test_the_question_count_says_how_it_relates_to_the_blockers(self):
         """Blocker 1 in the table and '2 questions for you' below read as a contradiction: one of

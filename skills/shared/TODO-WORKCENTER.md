@@ -41,6 +41,8 @@ like. A note never grants authority; only the typed fields `live`, `resources` a
 `ownership` do. A record missing contract fields is a visible draft and is never
 selected.
 
+For an explicitly attributed regression, put `- Regression of: <ID>; commit <sha>; severity low|medium|high; found by owner|check` in the later task's body, naming the original task and its receipt's full integration SHA; discovery is the note's first commit, not a later edit to the same files.
+
 A goal file carries `id`, `title`, `priority` (1 first), `source` (the accepted plan
 or spec, `path#anchor`), `status` (`unmet`, `partial`, `unverified` or `met`),
 `focus` (at most one goal has it) and `depends_on` (goal IDs).

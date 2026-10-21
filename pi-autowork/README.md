@@ -87,7 +87,23 @@ A task someone works on outside the runner carries a `Held by:` note
 (`autowork tasks hold TASK --by WHO [--until DATE]`); the runner never starts it and asks
 nothing about it. `autowork tasks release TASK` lifts the hold; a dated hold ends by itself.
 
+The fleet lists runners with open owner questions or missing `tasks/` setup first,
+then other runners; each group is alphabetical. An idle runner with open questions
+reads `Waiting on you`, not `Idle`. An existing repository without `tasks/` reads
+`Setup required — run autowork migrate` in its headline and Needs field.
+
 The TUI and web view run Textual 8.2.8 (and textual-serve 1.1.3) through `uv`.
+
+## Runner health reads
+
+Engine status reads wait up to two seconds for the writer lock, so brief dispatch
+or integration writes do not immediately fail a read. If a read still fails,
+health keeps its last observed state for that one failure, with the snapshot's
+original timestamp and the read error. A second consecutive failure marks health
+`unavailable`; without a previous snapshot it is unavailable immediately. A
+successful read clears the failure episode without resetting an unchanged state's
+stall clock. In `autowork status`, an unavailable Health line shows when reads
+began failing, not when the previous healthy or blocked state began.
 
 ## Isolated runtime comparison
 

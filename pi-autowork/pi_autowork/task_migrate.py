@@ -16,6 +16,14 @@ stopped, or refuses, changing nothing, when a path holds content that is neither
 nor the converted version. `--no-commit` stops after staging: HEAD stays where it is, and
 the owner's commit (or a later run) lands it.
 
+One kind of slot does not stop it: a held slot that only waits for the owner's answer to a
+worker-reported blocker (no live worker, no finished commit, not a repeated quick hold).
+The runner that would take that answer cannot run before conversion, so the conversion sets
+that attempt aside, as `--parallel-set-aside` does (worktrees and branches kept under
+-set-aside-N names, the slot moved to slot-history), once the store is proven and before any
+file changes; the task then dispatches fresh from its converted record, with whatever answer
+its entry now holds.
+
 Mapping (lossless; every other label becomes a `- Label: value` note in the body):
 rank = 1000 x the queue's human order; Dependencies -> depends_on (task IDs, or the
 whole prose clause when it names none, which keeps it waiting as before); Touches ->
@@ -90,12 +98,49 @@ def committed(repo, rev, path):
     return _ok(repo, 'rev-parse', '--verify', '-q', f'{rev}:{path}') is not None
 
 
+def awaiting_answer(repo):
+    """Held slots that only wait for the owner's answer to a worker-reported blocker: no live
+    worker, and not a repeated quick hold (that one needs its Blocker resolution first)."""
+    import parallel_state
+    common = parallel_state.common_dir(Path(repo))
+    try:
+        slots = parallel_state.slots(common) if (common / 'slots').is_dir() else []
+    except ValueError:
+        return []  # busy() reports the unreadable slots
+    return [s for s in slots if s['state'] == 'held' and s.get('cause') == 'blocker'
+            and not parallel_state.worker_live(s) and not parallel_state.quick_hold(common, s)]
+
+
 def busy(repo):
-    """What is in flight, as plain sentences: nothing may convert under it."""
+    """What is in flight, as plain sentences: nothing may convert under it. A slot waiting on
+    an owner's answer is not in flight: conversion sets it aside."""
     held, problems = task_commands.in_flight(repo)
+    held -= {s['task_id'] for s in awaiting_answer(repo)}
     if held:
         problems.append('worker slots in flight or unfinished integration/closure: ' + ', '.join(sorted(held)))
     return problems
+
+
+def set_aside_waiting(repo):
+    """Set aside every slot waiting on an owner's answer, under the engine's own locks; the
+    task dispatches fresh after conversion. Returns their task IDs."""
+    import parallel_integrate
+    import parallel_state
+    common = parallel_state.common_dir(Path(repo))
+    done = []
+    try:
+        with task_execution.lock(common / 'dispatch.lock', 5), task_execution.lock(common / 'integration.lock', 5), \
+                task_execution.lock(common / 'writer.lock', 5):
+            if parallel_state.live_coordinator(common):
+                raise Refused('a live parallel coordinator lease')
+            for slot in awaiting_answer(repo):  # reread under the locks
+                parallel_integrate._retire(repo, common, slot, True)
+                done.append(slot['task_id'])
+    except BlockingIOError:
+        raise Refused('the engine is busy (its dispatch, integration or writer lock is held)') from None
+    except ValueError as exc:
+        raise Refused(f'setting aside a slot waiting on an answer failed: {exc}') from None
+    return done
 
 
 def refusals(repo):
@@ -153,9 +198,9 @@ def _task_record(tid, title, entry, fields, rank, known, listed=()):
     if fields.get('Scope', '').strip():
         header['scope'] = fields['Scope'].strip()
     if fields.get('Acceptance', '').strip():
-        header['acceptance'] = [fields['Acceptance'].strip()]
+        header['acceptance'] = _items(fields['Acceptance'])
     if checks and checks.strip():
-        header['checks'] = [checks.strip()]
+        header['checks'] = _items(checks)
     if fields.get('Exclusions', '').strip():
         header['exclusions'] = [fields['Exclusions'].strip()]
     labels = [label for label, _ in listed]
@@ -171,6 +216,25 @@ def _task_record(tid, title, entry, fields, rank, known, listed=()):
     if not fields.get('Touches', '').strip():
         notes.append(('Touches', 'none before conversion; ** stands for the whole repository'))
     return header, _notes(tid, notes)
+
+
+ITEM = re.compile(r'(?:\d+[.)]|[-*])\s+')
+
+
+def _items(text):
+    """An array field's value: one item per numbered or bulleted point of a value written over
+    several lines (`1. ...` / `- ...`, its continuation lines joined), in order; otherwise the
+    whole value as one item, its line breaks folded."""
+    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
+    if len(lines) > 1 and ITEM.match(lines[0]):
+        items = []
+        for line in lines:
+            if ITEM.match(line):
+                items.append(ITEM.sub('', line, count=1))
+            else:
+                items[-1] += ' ' + line
+        return items
+    return [' '.join(lines)]
 
 
 def _notes(tid, notes):
@@ -416,8 +480,13 @@ def convert(repo, dry_run=False, commit=True):
     store = prove(repo, tree, legacy, ids)
     summary = dict(outcome='DRY_RUN' if dry_run else 'CONVERTED', tasks=len(store.tasks), goals=len(store.goals),
                    order=legacy)
+    waiting = sorted(s['task_id'] for s in awaiting_answer(repo))
     if dry_run:
+        if waiting:
+            summary['would_set_aside'] = waiting
         return summary
+    if waiting:
+        summary['set_aside'] = set_aside_waiting(repo)
     head = _git(repo, 'rev-parse', 'HEAD')
     candidate = _git(repo, 'commit-tree', tree, '-p', head, '-m', SUBJECT, '-m',
                      f'{len(store.tasks)} tasks and {len(store.goals)} goals; selection order unchanged. '

@@ -20,6 +20,7 @@ import task_execution as execution
 WORKING = {'running'}
 INTEGRATING = {'integrating'}
 WAITING = {'dispatched', 'reported', 'integrated', 'held', 'interrupted', 'released', 'waiting'}
+STATUS_LOCK_WAIT = 2  # seconds; brief dispatch/integration writes should not fail a read
 
 
 def journal(common):
@@ -88,7 +89,7 @@ def snapshot(repo, *, now=None):
     # Atomic slot writes and complete journal appends are read under the same lock
     # as writers. An untouched repository needs no new runtime directory.
     if common.exists():
-        with execution.lock(common / 'writer.lock'):
+        with execution.lock(common / 'writer.lock', wait=STATUS_LOCK_WAIT):
             return _snapshot(repo, common, time.time() if now is None else now)
     return _snapshot(repo, common, time.time() if now is None else now)
 

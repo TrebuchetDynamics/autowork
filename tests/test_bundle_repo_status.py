@@ -103,6 +103,24 @@ class RepositoryStatusTests(unittest.TestCase):
             self.assertIn('Workers:    unavailable', output.getvalue())
             self.assertNotIn('0 running', output.getvalue())
 
+    def test_unavailable_health_line_uses_when_status_reads_began_failing(self):
+        import contextlib
+        from datetime import datetime
+        import io
+        import sys
+        import types
+        with patch.object(sys, 'path', [str(ROOT / 'pi-autowork'), *sys.path]):
+            from pi_autowork import cli
+        (self.root / 'status.json').write_text(json.dumps({
+            'state': 'unavailable', 'since': 1000, 'status_unavailable_since': 90000}))
+        output = io.StringIO()
+        with patch.object(cli, 'dirty', return_value=False), \
+                patch.object(cli.subprocess, 'run', return_value=types.SimpleNamespace(
+                    stdout='{"outcome":"PARALLEL_STATUS","tasks":[]}')), contextlib.redirect_stdout(output):
+            cli.status_view(str(self.root), 'main', str(ROOT), self.root)
+        line, = [line for line in output.getvalue().splitlines() if line.startswith('Health:')]
+        self.assertEqual(line, f'Health:     unavailable since {datetime.fromtimestamp(90000):%Y-%m-%d %H:%M}')
+
     def test_native_named_status_does_not_check_or_refresh_authentication(self):
         import os
         import subprocess

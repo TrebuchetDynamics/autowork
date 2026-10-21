@@ -62,6 +62,8 @@ Goal fields are all mandatory: `id`, `title`, `source` are nonempty strings;
 (an unknown ID is refused). The reader preserves declared goal status; it does
 not infer goal completion or qualify evidence.
 
+A later task can explicitly attribute a regression with the body note `- Regression of: <ID>; commit <sha>; severity low|medium|high; found by owner|check`, where `<sha>` is the original task receipt's full integration SHA and discovery is the note's first commit, never file overlap.
+
 ## Authority and runnable boundary
 
 `Kind`, `Ownership` and `LiveAuthorization` are enums. Missing kind/ownership map
@@ -154,7 +156,11 @@ authority beyond its typed fields, and a declared check still needs approval to 
 repository once; `autowork tasks prepare` runs it for Docs Sync, so no owner has to. It
 refuses, writing nothing, while a worker slot is occupied (running, held, reported,
 integrating or integrated), a coordinator or sequential lease is live, a task is
-`in_progress`, planning files are uncommitted, or `tasks/` is already committed. It builds
+`in_progress`, planning files are uncommitted, or `tasks/` is already committed. A held slot
+that only waits for the owner's answer to a worker-reported blocker (no live worker, no
+finished commit, not a repeated quick hold) does not stop it: the runner that would take the
+answer cannot run before conversion, so the proven conversion sets that attempt aside, as
+`--parallel-set-aside` does, and the task dispatches fresh from its converted record. It builds
 every record, reads them back through a throwaway commit and requires the same task set and
 the same selection order as the current queue before writing. The converted commit (records
 added, TODO.md and goals.json removed with no stub, TODO.archive.md kept) is recorded as

@@ -34,6 +34,7 @@ GATE_WINDOW = 300
 DEFAULT_MODEL = 'openai-codex/gpt-6.1-sol'           # pi_runtime's defaults
 DEFAULT_FALLBACK = 'openrouter/deepseek/deepseek-v4.1-flash'
 MODEL_KEYS = {'model': 'PI_AUTOWORK_PRIMARY', 'fallback': 'PI_AUTOWORK_FALLBACK'}
+SETUP_REQUIRED = 'Setup required — run autowork migrate'
 
 
 def read_env(path):
@@ -116,6 +117,11 @@ class Runner:
     def has_service(self):
         return bool(self.service)
 
+    @property
+    def setup_required(self):
+        """An existing repository without the tasks/ store cannot run the queue."""
+        return bool(self.repo) and Path(self.repo).is_dir() and not (Path(self.repo) / 'tasks').is_dir()
+
 
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
 PHASES = {'dispatched': 'starting', 'running': 'implementing', 'reported': 'implemented',
@@ -170,8 +176,9 @@ def _split_phase(text):
     return ' '.join(words[:3]), '; '.join(x for x in (' '.join(words[3:]), rest) if x)
 
 
-def _actions(state_dir, task, now):
-    """The task's Pi session actions, newest first: (text, seconds ago), from its transcript."""
+def _actions(state_dir, task, now, size=262144):
+    """The task's Pi session actions, newest first: (text, seconds ago, epoch time), from the last
+    ``size`` bytes of its transcript."""
     sessions = Path(state_dir) / 'sessions'
     try:
         files = [f for f in sessions.iterdir()
@@ -180,7 +187,7 @@ def _actions(state_dir, task, now):
         return
     if not files:
         return
-    for line in reversed(_tail(max(files, key=lambda f: f.stat().st_mtime), 262144)):
+    for line in reversed(_tail(max(files, key=lambda f: f.stat().st_mtime), size)):
         try:
             event = json.loads(line)
         except ValueError:
@@ -203,31 +210,38 @@ def _actions(state_dir, task, now):
                 text = 'said: ' + ' '.join(part['text'].split())
         if not text:
             continue
-        age = None
+        age = at = None
         try:
             from datetime import datetime
-            age = int(now - datetime.fromisoformat(event['timestamp'].replace('Z', '+00:00')).timestamp())
+            at = datetime.fromisoformat(event['timestamp'].replace('Z', '+00:00')).timestamp()
+            age = int(now - at)
         except (KeyError, ValueError, TypeError):
             pass
-        yield text, age
+        yield text, age, at
 
 
 def _activity(state_dir, task, now):
     """The last thing the task's Pi session did: (text, seconds ago)."""
-    for text, age in _actions(state_dir, task, now):
+    for text, age, _ in _actions(state_dir, task, now):
         return short(text, 90), age
     return '', None
 
 
 def recent_actions(runner, task, n=10, now=None):
-    """The task's last ``n`` actions, newest first, in plain words: [(text, seconds ago)]."""
+    """The task's last ``n`` actions, oldest first as in a log, in plain words: [(text, seconds ago)]."""
+    return [(text, age) for text, age, _ in action_log(runner, task, n, now)]
+
+
+def action_log(runner, task, n=500, now=None, size=2097152):
+    """The task's last ``n`` actions, oldest first: [(text, seconds ago, epoch time)], read from the
+    last ``size`` bytes of its transcript (a long attempt's transcript runs to megabytes)."""
     now = time.time() if now is None else now
     out = []
-    for text, age in _actions(runner.state_dir, task, now) if runner.state_dir else ():
-        out.append((doing_text(text), age))
+    for text, age, at in _actions(runner.state_dir, task, now, size) if runner.state_dir else ():
+        out.append((doing_text(text), age, at))
         if len(out) >= n:
             break
-    return out
+    return out[::-1]
 
 
 TESTS = re.compile(r'\b(unittest|pytest|check\.py|go test|cargo test|npm (run )?test|flutter test|dart test|'
@@ -340,6 +354,8 @@ def verdict(runner):
     """(sentence, style): whether this runner is stuck, and why, in one line."""
     count = len(runner.questions)
     asks = f"{count} question{'s' if count > 1 else ''}" if count else ''
+    if runner.setup_required:
+        return SETUP_REQUIRED, 'bold yellow'
     if runner.state == 'restarting':
         return (f"Restarting {runner.restarting}" if runner.restarting.startswith('onto') else 'Restarting', 'bold cyan')
     if runner.state == 'paused':
@@ -365,6 +381,10 @@ def verdict(runner):
         if asks:
             text += f'; {asks} for you'
         return text, 'bold green'
+    if runner.questions:
+        first = runner.questions[0]
+        return (f'Waiting on you — {asks}, easiest {first.id} (unblocks {first.unblocks}): {first.needs}',
+                'bold yellow')
     if runner.state == 'idle':
         return 'Idle — nothing left to run in Now/Next', 'bold green'
     if runner.state == health.HOST_WAIT:
@@ -372,10 +392,6 @@ def verdict(runner):
         return text, 'bold yellow'
     if runner.gate and not runner.lanes:
         return f'Host busy — {runner.gate}', 'bold yellow'
-    if runner.questions:
-        first = runner.questions[0]
-        return (f'Waiting on you — {asks}, easiest {first.id} (unblocks {first.unblocks}): {first.needs}',
-                'bold yellow')
     age = duration(runner.minutes)
     head = ('Stuck ' + age).strip() if runner.state in ('stalled', 'blocked', 'not cycling') else runner.state
     if runner.blocker:
@@ -624,7 +640,9 @@ def read_questions(repo, state_dir=''):
 
 
 def needs(runner):
-    """What would move this runner, in a few words: the owner's questions, else its first blocker."""
+    """What would move this runner, in a few words: setup, owner questions, else its first blocker."""
+    if runner.setup_required:
+        return SETUP_REQUIRED
     if runner.state == 'restarting':
         return ('restarting ' + runner.restarting).strip() if runner.restarting != 'service' else 'restarting'
     if runner.state in ('paused', 'not running'):
@@ -827,7 +845,8 @@ def collect(state_root, env_dir, *, systemctl='systemctl', now=None, strict=Fals
                 runner.state, runner.minutes = 'restarting', None  # its own update, not a stop
             else:
                 runner.state, runner.minutes = 'not running', None  # its records may say otherwise
-    return sorted(found.values(), key=lambda r: r.name)
+    # Put the owner's decisions and setup work first; keep each group alphabetical.
+    return sorted(found.values(), key=lambda r: (not (r.questions or r.setup_required), r.name))
 
 
 def summary(runners):

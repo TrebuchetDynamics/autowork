@@ -16,6 +16,7 @@ import statistics
 import subprocess
 import sys
 import time
+import tomllib
 
 JOURNAL = Path('autowork-execution') / 'journal.jsonl'
 
@@ -90,6 +91,120 @@ def owner_questions(repo, days):
     return len(set(re.findall(r'(?m)^\+### (Q-\S+)', log)))
 
 
+def regression_history(repo, *, patches=False):
+    """Reachable commits, parents before children; NULs separate messages from diffs."""
+    args = ['log', '--no-color', '--reverse', '--topo-order', '--full-history', '--format=%x00%H%x00%ct%x00%B%x00']
+    if patches:
+        args += ['-p', '--unified=0', '--no-renames', '--no-ext-diff', '--no-textconv',
+                 '--src-prefix=a/', '--dst-prefix=b/', '--diff-merges=first-parent', '--', 'tasks/items/']
+    fields = git_text(repo, *args).split('\0')
+    return [(fields[i].strip(), int(fields[i + 1]), fields[i + 2], fields[i + 3])
+            for i in range(1, len(fields) - 3, 4)]
+
+
+def regressions(repo, since, now):
+    """Explicit receipt-linked discoveries in the window, plus malformed note diagnostics.
+
+    Delivery is the receipt's integration commit, not its candidate or closure commit.
+    Reverts carry unknown severity/finder (None), never inferred from Git authorship.
+    Note discovery is its first committed occurrence, even if later edited or removed.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'engine'))
+    from task_store import StoreError, TaskStore
+    try:
+        current = TaskStore.at(repo, 'HEAD')
+    except StoreError:
+        return [], []
+    history = regression_history(repo)
+    times = {sha: timestamp for sha, timestamp, _, _ in history}
+    deliveries = {}
+    for task in current.tasks:
+        text = git_text(repo, 'show', f'{current.rev}:tasks/evidence/{task}.toml')
+        try:
+            receipt = tomllib.loads(text)
+        except ValueError:
+            continue
+        commit = receipt.get('integration')
+        if (receipt.get('schema') == 1 and receipt.get('task') == task
+                and isinstance(commit, str) and commit in times):
+            deliveries[task] = commit
+    records, incomplete, seen, noted = [], [], set(), set()
+    ancestors = {}
+
+    def add(task, delivered, discovery, timestamp, source, severity=None, finder=None, source_task=None):
+        if not since <= timestamp <= now or timestamp < times[delivered] or delivered == discovery:
+            return
+        pair = (delivered, discovery)
+        if pair not in ancestors:
+            try:
+                ancestors[pair] = subprocess.run(
+                    ['git', '-C', str(repo), 'merge-base', '--is-ancestor', delivered, discovery],
+                    capture_output=True, timeout=30).returncode == 0
+            except (OSError, subprocess.TimeoutExpired):
+                ancestors[pair] = False
+        if not ancestors[pair]:
+            return
+        records.append({'task': task, 'delivered_commit': delivered, 'discovery_commit': discovery,
+                        'delivered_at': times[delivered], 'discovered_at': timestamp,
+                        'time_to_discovery_seconds': timestamp - times[delivered],
+                        'severity': severity, 'found_by': finder,
+                        'found_by_owner': finder == 'owner' if finder else None,
+                        'source': source, 'source_task': source_task})
+
+    for sha, timestamp, message, _ in history:
+        for delivered in set(re.findall(r'(?m)^This reverts commit ([0-9a-f]{40}(?:[0-9a-f]{24})?)(?:[.,]|$)', message)):
+            for task, integration in deliveries.items():
+                if integration == delivered:
+                    add(task, delivered, sha, timestamp, 'revert')
+
+    note_pattern = re.compile(r'- Regression of: ([A-Za-z0-9][A-Za-z0-9_-]*); commit ([0-9a-f]{40}(?:[0-9a-f]{24})?); '
+                              r'severity (low|medium|high); found by (owner|check)')
+    for sha, timestamp, _, patch in regression_history(repo, patches=True):
+        path, snapshot = None, None
+        for line in patch.splitlines():
+            if line.startswith('+++ '):
+                match = re.fullmatch(r'\+\+\+ b/tasks/items/([A-Za-z0-9][A-Za-z0-9_-]*)\.md', line)
+                path = match[1] if match else None
+            if not path or not line.startswith('+- Regression of:'):
+                continue
+            note = line[1:]
+            key = (path, note)
+            if key in seen:
+                continue
+            seen.add(key)
+            # Confirm this is a body note in a real task, not frontmatter or another file.
+            if snapshot is None:
+                try:
+                    snapshot = TaskStore.at(repo, sha)
+                except StoreError:
+                    break
+            source_task = snapshot.tasks.get(path)
+            if source_task is None or note not in source_task.body.splitlines():
+                continue
+            match = note_pattern.fullmatch(note)
+            if match is None:
+                if since <= timestamp <= now:
+                    incomplete.append({'task': path, 'discovery_commit': sha, 'note': note,
+                                       'reason': 'malformed Regression of note'})
+                continue
+            task, delivered, severity, finder = match.groups()
+            if task == path or task not in snapshot.tasks or deliveries.get(task) != delivered:
+                continue
+            link = (path, task, delivered)
+            if link in noted:
+                continue
+            noted.add(link)
+            add(task, delivered, sha, timestamp, 'note', severity, finder, path)
+    # A note can describe the same discovery as its commit's revert message; prefer
+    # that explicit severity/finder over a second, metadata-free revert record.
+    note_discoveries = {(r['task'], r['delivered_commit'], r['discovery_commit'])
+                        for r in records if r['source'] == 'note'}
+    records = [r for r in records if r['source'] != 'revert'
+               or (r['task'], r['delivered_commit'], r['discovery_commit']) not in note_discoveries]
+    return sorted(records, key=lambda r: (r['discovered_at'], r['discovery_commit'], r['task'],
+                                          r['source'], r['source_task'] or '')), incomplete
+
+
 def measure(repo, days, now=None):
     now = time.time() if now is None else now
     since = now - days * 86400
@@ -109,10 +224,12 @@ def measure(repo, days, now=None):
         elif previous == 'integrating' and state == 'held':
             held += 1
     attempts = integrated + held
+    attributed, incomplete = regressions(repo, since, now)
     return {'repo': str(repo), 'closed': len(closed(repo, days)), 'integrations': attempts,
             'held_share': round(held / attempts, 2) if attempts else None,
             'start_to_merge_minutes': round(statistics.median(merge_minutes)) if merge_minutes else None,
-            'questions': owner_questions(repo, days)}
+            'questions': owner_questions(repo, days),
+            'regressions': attributed, 'regressions_incomplete': incomplete}
 
 
 def table(rows, days):

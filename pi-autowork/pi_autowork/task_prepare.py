@@ -257,7 +257,8 @@ def _check_conversion(repo, report):
         try:
             files, order, _ids = task_migrate.build(repo)
             report['would'] = dict(convert=len([p for p in files if p.startswith('tasks/items/')]),
-                                   goals=len([p for p in files if p.startswith('tasks/goals/')]), order=order)
+                                   goals=len([p for p in files if p.startswith('tasks/goals/')]), order=order,
+                                   set_aside=sorted(s['task_id'] for s in task_migrate.awaiting_answer(repo)))
         except task_migrate.Refused as exc:
             report['refusals'] = [str(exc)]
     report['ok'] = not report['refusals']

@@ -141,11 +141,14 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
     except (OSError, ValueError):
         previous = {}
     if snapshot.get('outcome') != 'PARALLEL_STATUS' or not isinstance(snapshot.get('tasks'), list):
-        # Keep the last observation and its stall clock, but explicitly mark it
-        # unavailable. A new write is not evidence that these worker rows are fresh.
+        # Keep the last observation and its stall clock across one failed read.
+        # Repeated failures (or no observation yet) are unavailable; even during
+        # this grace read, retain the evidence age rather than freshening rows.
         stamp = previous.get('snapshot_at', previous.get('updated_at'))
+        state = (previous.get('state', 'unavailable')
+                 if stamp is not None and 'status_unavailable_since' not in previous else 'unavailable')
         value = dict(previous, **runner)
-        value.update(schema=SCHEMA, updated_at=now, state='unavailable',
+        value.update(schema=SCHEMA, updated_at=now, state=state,
                      since=previous.get('since', now), snapshot_at=stamp,
                      snapshot_state=previous.get('snapshot_state', previous.get('state', 'unknown')),
                      snapshot_age_seconds=max(0, now - stamp) if stamp is not None else None,
@@ -272,7 +275,7 @@ def fleet(state_root, *, now=None, service=_service):
             state = 'not running'
         elif job:
             state = 'working'  # busy with its own job: the status is old because the loop waits on it
-        elif 'status_unavailable_since' in status:
+        elif status.get('state') == 'unavailable':
             state = 'unavailable'
         elif now - float(status.get('updated_at', 0)) > STALE_AFTER and state != 'working':
             state = 'not cycling'

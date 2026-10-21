@@ -27,6 +27,23 @@ class StatusWaitTests(unittest.TestCase):
         self.common = self.repo / '.git/autowork-execution'
         (self.common / 'slots').mkdir(parents=True)
 
+    def test_status_waits_for_a_briefly_busy_writer_lock(self):
+        with execution.lock(self.common / 'writer.lock') as fd:
+            flock = execution.fcntl.flock
+
+            def release_after_contention(reader, flags):
+                try:
+                    return flock(reader, flags)
+                except BlockingIOError:
+                    # Release only once snapshot actually meets the real held lock.
+                    flock(fd, execution.fcntl.LOCK_UN)
+                    raise
+
+            with patch.object(execution.fcntl, 'flock', side_effect=release_after_contention):
+                value = status.snapshot(self.repo, now=10)
+        self.assertEqual(value['outcome'], 'PARALLEL_STATUS')
+        self.assertEqual([r['task'] for r in value['tasks']], ['A', 'B'])
+
     def test_completed_owners_invalidate_historical_file_waits_only(self):
         event = dict(timestamp=1, event='dispatch_observed', waiting=[
             dict(id='B', reason='overlapping paths with A', blocked_by=['A'])])

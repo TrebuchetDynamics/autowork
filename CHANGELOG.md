@@ -24,6 +24,9 @@ claim of a tagged release, completed installation or live workflow qualification
 - `autowork migrate` is one recoverable transaction: the converted commit is recorded as
   `refs/autowork/migration` before any file changes, staged, then landed by
   compare-and-swap; an interrupted run resumes or refuses, and `--no-commit` stages it.
+  A held slot that only waits for an owner's answer to a worker blocker no longer
+  deadlocks conversion (the runner that would take the answer cannot run before it): the
+  conversion sets that attempt aside and the task dispatches fresh.
 - `autowork tasks` writes take a per-checkout task lock, accept `--expect REV`, refuse
   contract, section and closing changes to a task a worker or lease holds, and `add` takes
   the whole contract (`--resources`, `--exclusions`, `--kind`, `--ownership`, `--sources`)

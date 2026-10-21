@@ -146,7 +146,8 @@ class HealthTests(unittest.TestCase):
         for now in (2000, 2500):
             self.assertIsNone(health.update(folder, busy, now=now, runner=runner))
             record = json.loads((folder / 'status.json').read_text())
-            self.assertEqual((record['state'], record['since']), ('unavailable', 1000))
+            self.assertEqual((record['state'], record['since']),
+                             ('blocked' if now == 2000 else 'unavailable', 1000))
             self.assertEqual((record['snapshot_at'], record['status_unavailable_since']), (1000, 2000))
             self.assertEqual(record['snapshot_age_seconds'], now - 1000)
             self.assertIn('status unavailable since 2000:', record['status_error'])
@@ -170,6 +171,31 @@ class HealthTests(unittest.TestCase):
         record = json.loads((folder / 'status.json').read_text())
         self.assertIsNone(record['snapshot_at'])
         self.assertIn('no successful snapshot', record['status_error'])
+
+    def test_one_failed_read_preserves_working_but_repeated_failures_are_unavailable(self):
+        folder = self.state / 'repo'
+        folder.mkdir()
+        runner = dict(repo='/x/repo', pid=os.getpid())
+        (folder / 'runner.json').write_text(json.dumps(runner))
+        busy = {'outcome': 'BUSY', 'reason': 'writer lock busy'}
+        working = snapshot(workers=1)
+        health.update(folder, working, now=1000, runner=runner)
+        for now, reply, expected, failed_since in (
+                (1010, busy, 'working', 1010), (1020, working, 'working', None),
+                (1030, busy, 'working', 1030), (1040, busy, 'unavailable', 1030),
+                (1050, busy, 'unavailable', 1030), (1060, working, 'working', None)):
+            with self.subTest(now=now):
+                health.update(folder, reply, now=now, runner=runner)
+                record = json.loads((folder / 'status.json').read_text())
+                self.assertEqual((record['state'], record['since']), (expected, 1000))
+                self.assertEqual(record.get('status_unavailable_since'), failed_since)
+                row, = health.fleet(self.state, now=now, service=lambda name: 'active')
+                self.assertEqual(row['state'], expected)
+                if failed_since is not None:
+                    self.assertLess(record['snapshot_at'], now)
+                    self.assertIn('last snapshot', row['blocker'])
+                else:
+                    self.assertNotIn('status_error', record)
 
     def test_new_root_blockers_are_announced_again(self):
         health.update(self.state, snapshot(), now=0)
