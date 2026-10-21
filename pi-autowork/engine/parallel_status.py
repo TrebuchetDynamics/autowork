@@ -244,11 +244,11 @@ def _snapshot(repo, common, now):
         task = item['id']
         observations = [e['timestamp'] for e in events if e['event'] == 'dispatch_observed'
                         and any(v['id'] == task for v in e['waiting'])]
-        # TODO.md tells today's dependencies; the last dispatch observation tells the rest.
-        # A dependency reason, then or now, is always taken from TODO.md as it is now.
+        # The store at HEAD tells today's dependencies; the last dispatch observation tells the rest.
+        # A dependency reason, then or now, is always taken from the store as it is now.
         dependency = (item['blocked_by'] and item['blocked_by'] != [task]) \
             or pending.get(task, {}).get('reason', '').startswith('dependency:')
-        # Authorization is current TODO state, never a stale dispatch observation:
+        # Authorization is the record's current typed field, never a stale dispatch observation:
         # recording it must remove the question without requiring another dispatch.
         authorization = any(by.startswith('Live authorization: ')
                             for by in pending.get(task, {}).get('blocked_by', []))

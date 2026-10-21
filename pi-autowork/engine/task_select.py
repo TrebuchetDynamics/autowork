@@ -5,7 +5,7 @@ The sort key keeps the engine's selection rule: the focused goal first, then sec
 A task is selectable when it is open, not a draft, in Now or Next, its dependencies
 are done, its goal is not met and its goal's dependencies are met. Authority
 (ownership, live resources) is not a selection rule: admission applies it afterwards,
-as it does for the TODO.md queue.
+the same way for every task.
 """
 from dataclasses import dataclass
 import datetime

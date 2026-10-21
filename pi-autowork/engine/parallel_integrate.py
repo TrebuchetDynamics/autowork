@@ -712,7 +712,7 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
                 with execution.lock(common / 'dispatch.lock'):
                     aside = _retire(repo, common, dict(slot, cause='closed_on_base'), False)
                 state.event(common, 'closed_on_base', task_id=task, base=base or '')
-                return dict(aside, reason=(f'{task} was removed from TODO.md' if gone
+                return dict(aside, reason=(f'{task} was removed from tasks/' if gone
                                            else f'{task} is closed on {base or "this branch"}')
                             + '; its commit is set aside')
             if missing := state.missing_commit_report(common, slot):
