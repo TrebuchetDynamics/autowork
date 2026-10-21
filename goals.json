@@ -902,7 +902,6 @@
       "TOOLSET-144-c0",
       "TOOLSET-184-1d",
       "TOOLSET-019",
-      "TOOLSET-096-7e",
       "TOOLSET-029",
       "TOOLSET-149-df",
       "TOOLSET-150-71",
@@ -1251,16 +1250,6 @@
       "section": "Next",
       "status": "open",
       "title": "Migrate fleet repositories to recorded TODO.md priority order"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-095-48"
-      ],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-096-7e",
-      "section": "Next",
-      "status": "open",
-      "title": "Qualify the worktree runner live on a fleet repository"
     },
     {
       "depends_on": [
@@ -2479,6 +2468,16 @@
       "section": "Done",
       "status": "done",
       "title": "Run Pi Autowork from the main branch with per-task worktrees merged at the end"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-095-48"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-096-7e",
+      "section": "Done",
+      "status": "done",
+      "title": "Qualify the worktree runner live on a fleet repository"
     },
     {
       "depends_on": [],
