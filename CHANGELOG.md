@@ -464,6 +464,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A merged task whose closing commit was refused (its record still reads open) waits with
+  "merged; its record is not closed yet" instead of stopping every task in the repository.
+  Each dispatch pass selected it again and failed with "slot already exists; transition it
+  without discarding history", so one refused close stalled a whole runner.
 - A landing that waits for uncommitted work in the main checkout names the files and the
   session holding the checkout lock ("uncommitted changes in the main checkout: X (held by
   session S) would be overwritten; it lands once they are committed or reverted") instead of
