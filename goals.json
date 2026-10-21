@@ -276,14 +276,6 @@
   },
   "tasks": [
     {
-      "depends_on": [],
-      "goal": "TASK-STORE",
-      "id": "TOOLSET-294-f6",
-      "section": "Now",
-      "status": "in_progress",
-      "title": "TaskStore reads tasks/ files into immutable records from a pinned commit"
-    },
-    {
       "depends_on": [
         "TOOLSET-294-f6"
       ],
@@ -682,6 +674,14 @@
       "section": "Done",
       "status": "done",
       "title": "Ignore inline code examples in README image audits"
+    },
+    {
+      "depends_on": [],
+      "goal": "TASK-STORE",
+      "id": "TOOLSET-294-f6",
+      "section": "Done",
+      "status": "done",
+      "title": "TaskStore reads tasks/ files into immutable records from a pinned commit"
     }
   ],
   "version": 1

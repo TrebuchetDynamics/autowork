@@ -5800,3 +5800,29 @@ removed goal is met. Original archive bodies, acceptance, TODO.md, goals.json,
 priority and evidence remain unchanged. The reports describe focused offline checks;
 this reconciliation does not rerun or promote them to a full-check or live pass
 (TOOLSET-271-d6's serial runner check was reported as timed out).
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-294-f6"></a>
+
+### TOOLSET-294-f6 — TaskStore reads tasks/ files into immutable records from a pinned commit
+
+- [x] TOOLSET-294-f6 — TaskStore reads tasks/ files into immutable records from a pinned commit
+- Short: Read-only TaskStore over tasks/
+- Status: done
+- Goal: TASK-STORE
+- Payoff: Give every engine consumer one typed, immutable view of a repository's tasks and goals.
+- Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20); [current queue reader](pi-autowork/engine/task_execution.py) (`selection_inputs`, `_queue_inputs`, `task_ledger`); [ledger rules](skills/docs-sync/scripts/goals_ledger.py).
+- Evidence: the engine parses TODO.md bodies and goals.json in `task_execution._queue_inputs` and again in parallel_*, fleet_view and worker; no single typed record exists, and the working tree is read directly.
+- Touches: pi-autowork/engine/task_store.py, pi-autowork/engine/test_task_store.py, pi-autowork/engine/fixtures/task_store/
+- Scope: (1) Define the schema, versioned from the start (`schema = 1` in every file; an unknown or missing version is refused, never guessed or upgraded): `tasks/items/<ID>.md` and `tasks/goals/<ID>.md`, TOML frontmatter between `+++` lines and a Markdown body; task fields id, title, short, status (`open|done|superseded`), goal, section (`Now|Next|Needs decision`), rank, depends_on, touches, resources, kind, ownership, live authorization, scope, acceptance, checks, exclusions; goal fields id, title, priority, source, status, focus. (2) `TaskStore.at(repo, rev)` reads every file with `git show`/`git ls-tree` at a pinned commit and returns frozen records; `TaskStore.pending(repo)` lists uncommitted task-file edits without reading them as tasks. (3) Each record carries a record revision (hash of its bytes) and a contract hash over scope, acceptance, checks, dependencies, touches, section group (runnable vs Needs decision) and the authority fields; rank, title, short, status, Now-vs-Next and free notes are excluded (status is a transition: closing a task keeps the hash its verification pinned; supervisor review 2026-10-20). (4) Typed authority fields: unknown or absent values never grant permission. (5) Fail closed: a malformed file, duplicate ID or unknown goal makes the whole store invalid with path:line errors; a task missing required contract fields is a visible draft, not runnable.
+- Acceptance: `test_task_store` covers: records read at a pinned commit ignore a later working-tree edit (`test_reads_the_pinned_commit_not_the_worktree`); an uncommitted edit shows only as pending (`test_uncommitted_edit_is_pending`); changing rank or title keeps the contract hash, changing acceptance, checks, Touches or moving to Needs decision changes it (`test_contract_hash_ignores_rank_and_title`); absent `resources`/`live` grant nothing (`test_absent_authority_grants_nothing`); malformed TOML, a duplicate ID, an unknown goal and an unknown schema version fail closed (`test_corrupt_store_fails_closed`); a draft is listed but not runnable (`test_draft_is_visible_not_runnable`).
+- Checks: python3 -m unittest discover -s pi-autowork/engine -p test_task_store.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No writer, CLI, migration or consumer change in this task; no SQLite; no third-party TOML library (read with `tomllib`).
+- Planner's call: frontmatter is TOML because the reader is stdlib `tomllib` and the writer can stay small; the contract-hash field list above is the starting set and later tasks may add a field only with a test.
+- Delivered: 2026-10-20, merge dbc0aa02 (runner commit 71e1a385 reviewed and reused; 8ae918d0, bd052131). Offline evidence only: `python3 -m unittest discover -s pi-autowork/engine -p test_task_store.py` 10 tests OK; `python3 scripts/check.py` 5 test directories passed, 0 failed, 4 modules excluded.
