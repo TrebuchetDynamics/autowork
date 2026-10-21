@@ -12,7 +12,7 @@
       "id": "RELIABILITY-2026-10",
       "priority": 15,
       "source": "docs/project.md#reliability-bug-harvest-2026-10-15",
-      "status": "met",
+      "status": "partial",
       "tasks": [
         "MAIN-001-38",
         "TOOLSET-043",
@@ -23,7 +23,8 @@
         "TOOLSET-048",
         "TOOLSET-049",
         "TOOLSET-050",
-        "TOOLSET-051"
+        "TOOLSET-051",
+        "TOOLSET-303-24"
       ],
       "title": "Fix the reproduced high-ROI reliability bugs from the 2026-10-15 harvest"
     },
@@ -269,7 +270,8 @@
       "TOOLSET-302-33",
       "TOOLSET-299-d9",
       "TOOLSET-300-68",
-      "TOOLSET-301-32"
+      "TOOLSET-301-32",
+      "TOOLSET-303-24"
     ]
   },
   "tasks": [
@@ -366,6 +368,14 @@
       "section": "Now",
       "status": "open",
       "title": "Integration judges task edits by contract hash, not by path"
+    },
+    {
+      "depends_on": [],
+      "goal": "RELIABILITY-2026-10",
+      "id": "TOOLSET-303-24",
+      "section": "Next",
+      "status": "open",
+      "title": "Harden managed-recovery interruption test isolation"
     },
     {
       "depends_on": [],
