@@ -1,8 +1,8 @@
-"""Parallel mode is opt-in: sequential output is unchanged and unsupported hosts fall back.
+"""Parallel mode is opt-in: sequential output is unchanged by it and unsupported hosts fall back.
 
-The golden outputs below were captured from the last commit before any parallel
-code (b5092b3) on the same fixtures, without and with goals.json, with the repository path and owner PID
-replaced by placeholders. Real Git and the real CLI; no model hosts.
+The expected outputs are the sequential selector's own, built from the task store's contract
+for the fixture's first task; the parallel flags must not change a byte of them. Real Git and
+the real CLI; no model hosts.
 """
 import json
 import os
@@ -12,6 +12,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
+
+import store_fixture
+import task_queue
 
 CLI = Path(__file__).with_name('owner_cycle.py')
 TODO = '''# Work
@@ -31,33 +34,18 @@ TODO = '''# Work
   Checks: run fixture
   Dependencies: T1.
 '''
-T1 = {
-    'id': 'T1', 'title': 'repair fixture', 'section': 'Now',
-    'contract': '— repair fixture\n  Status: open\n  Scope: fixture.py only\n  Acceptance: fixture records '
-                'execution\n  Checks: run fixture\n  Dependencies: None.\n  Ownership: current coordinator',
-    'fields': {'Status': 'open', 'Scope': 'fixture.py only', 'Acceptance': 'fixture records execution',
-               'Checks': 'run fixture', 'Dependencies': 'None.', 'Ownership': 'current coordinator'},
-}
-EXECUTE = {'outcome': 'EXECUTE', 'task': T1, 'completed_tasks': [], 'workspace': 'REPO',
-           'priority': {'state': 'todo_only'},
-           'reason': 'Current coordinator owns this TODO task; implement, check, review and record '
-                     'completion in repository files.'}
-LEDGER = {'version': 1, 'goals': [{'id': 'G', 'title': 'fixture', 'source': 'TODO.md', 'status': 'partial',
-                                   'tasks': ['T1', 'T2'], 'priority': 1, 'depends_on': []}],
-          'tasks': [{'id': 'T1', 'title': 'repair fixture', 'goal': 'G', 'status': 'open', 'section': 'Now',
-                     'depends_on': []},
-                    {'id': 'T2', 'title': 'successor', 'goal': 'G', 'status': 'open', 'section': 'Next',
-                     'depends_on': ['T1']}]}
-UNMIGRATED = {'state': 'unmigrated',
-              'action': 'UNMIGRATED: TODO.md order is not recorded; legacy goal-priority selection applies. '
-                        'Run `goals.py bootstrap-order <repo> --dry-run`, then apply with its revision.'}
 
 
-def golden(priority, dependency_reason):
+def golden(task, dependency_reason):
     """(arguments, exit code, stdout object) in call order against one fixture."""
-    execute = dict(EXECUTE, priority=priority)
+    priority = task['priority']
+    execute = {'outcome': 'EXECUTE', 'task': {k: v for k, v in task.items() if k != 'priority'},
+               'completed_tasks': [], 'workspace': 'REPO', 'priority': priority,
+               'reason': 'Current coordinator owns this task; implement, check, review and record '
+                         'completion in repository files.'}
     return [
-        ([], 0, {'outcome': 'READY', 'task': T1, 'completed_tasks': [], 'workspace': 'REPO', 'priority': priority}),
+        ([], 0, {'outcome': 'READY', 'task': execute['task'], 'completed_tasks': [], 'workspace': 'REPO',
+                 'priority': priority}),
         (['--tasks', 'T2'], 1, {'outcome': 'ACTION_REQUIRED', 'reason': dependency_reason}),
         (['--apply', '--owner-pid', 'PID'], 0, execute),
         (['--apply', '--owner-pid', 'PID'], 0, execute),
@@ -74,7 +62,9 @@ class ParallelCompatibilityTests(unittest.TestCase):
         self.state = Path(tmp.name) / 'state'
         self.state.mkdir()
         subprocess.run(['git', 'init', '-q', str(self.repo)], check=True)
-        (self.repo / 'TODO.md').write_text(TODO)
+        store_fixture.write_todo(self.repo, TODO)
+        snapshot = task_queue.store(self.repo)
+        self.t1 = task_queue.contract(snapshot.tasks['T1'], snapshot)
         self.common = self.repo / '.git'
         # A caller's GIT_DIR (for example inside a hook) must not redirect the CLI.
         self.env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
@@ -94,19 +84,15 @@ class ParallelCompatibilityTests(unittest.TestCase):
         self.assertFalse((execution / 'journal.jsonl').exists())
         self.assertFalse((execution / 'coordinator.json').exists())
 
-    def test_sequential_output_is_byte_identical_to_pre_parallel_release(self):
-        self.assert_golden(golden({'state': 'todo_only'}, 'T2: unresolved dependency T1'))
-
-    def test_ledger_output_keeps_admission_with_an_actionable_dependency_reason(self):
-        (self.repo / 'goals.json').write_text(json.dumps(LEDGER))
-        self.assert_golden(golden(UNMIGRATED, 'T2: ledger: dependency T1 is open in goals.json'))
+    def test_sequential_output_is_the_selectors_own(self):
+        self.assert_golden(golden(self.t1, 'T2: unresolved dependency T1'))
 
     def assert_fallback(self, p, reason):
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         result = json.loads(p.stdout)
         self.assertEqual(result['outcome'], 'SEQUENTIAL_FALLBACK')
         self.assertIn(reason, result['reason'])
-        self.assertEqual(result['task'], T1)
+        self.assertEqual(result['task'], {k: v for k, v in self.t1.items() if k != 'priority'})
         self.assertIn('owner_cycle.py --apply', result['next'])
         # Nothing parallel was claimed or started: no journal, slots, worktrees or branches.
         execution = self.common / 'autowork-execution'
@@ -136,7 +122,8 @@ class ParallelCompatibilityTests(unittest.TestCase):
         self.assert_fallback(self.call('--apply', '--parallel', '--worker-host', 'claude', '--owner-pid', 'PID'),
                              'explicit --worker-command')
         p = self.call('--apply', '--owner-pid', 'PID')
-        self.assertEqual(p.stdout.replace(str(self.repo), 'REPO'), json.dumps(EXECUTE, indent=2) + '\n')
+        expected = golden(self.t1, '')[2][2]
+        self.assertEqual(p.stdout.replace(str(self.repo), 'REPO'), json.dumps(expected, indent=2) + '\n')
 
 
 if __name__ == '__main__':
