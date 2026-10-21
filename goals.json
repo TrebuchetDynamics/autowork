@@ -924,7 +924,9 @@
   "tasks": [
     {
       "depends_on": [
-        "TOOLSET-098-4c"
+        "TOOLSET-098-4c",
+        "TOOLSET-172-92",
+        "TOOLSET-261-15"
       ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-099-87",
@@ -933,7 +935,10 @@
       "title": "Run as many independent tasks at once as possible"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-172-92",
+        "TOOLSET-261-15"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-118-68",
       "section": "Now",
@@ -941,7 +946,9 @@
       "title": "Separate worker, test and memory budgets in the parallel resource gate"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-261-15"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-119-2b",
       "section": "Now",
@@ -969,7 +976,9 @@
       "title": "Runners report unlanded work in health and BLOCKERS.md"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-261-15"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-126-02",
       "section": "Now",
@@ -1601,8 +1610,10 @@
     },
     {
       "depends_on": [
+        "TOOLSET-129-c4",
         "TOOLSET-222-e1",
-        "TOOLSET-228-0c"
+        "TOOLSET-228-0c",
+        "TOOLSET-261-15"
       ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-260-ae",
@@ -1674,7 +1685,9 @@
       "title": "Bound docs-maintainer repair loops and report actual changed task bodies"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-261-15"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-276-2c",
       "section": "Next",

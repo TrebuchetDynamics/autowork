@@ -542,15 +542,17 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-126-02 — Every runner worktree in .worktrees, none outliving its work
 
 - [ ] TOOLSET-126-02 — Every runner worktree in .worktrees, none outliving its work
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Scheduling: Wait for TOOLSET-261-15 to land before coordinator.py edits. Its check-slot wrapper does not deliver session relocation or owned-worktree cleanup. Keep relocation, set-aside cleanup and the startup sweep with their runner/engine preservation fixtures; removing coordinator.py would omit session-state reconciliation rather than create a complete independent slice.
 - Short: Runner worktrees in .worktrees only
 - Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: owner request (2026-10-17: audit runners' .worktrees use and merging after each task, then plan improvements), [plan](docs/plans/2026-10-17-runner-landing-and-worktrees.md), audit findings 1–2, [worktree placement](docs/worktree-placement.md).
+- Goal: PI-RUNNER
+- Sources: owner request (2026-10-17: audit runners' .worktrees use and merging after each task, then plan improvements), [plan](docs/plans/2026-10-17-runner-landing-and-worktrees.md), audit findings 1–2, [worktree placement](docs/worktree-placement.md); [accepted continuous runner scope](docs/project.md#continuous-pi-runner-2026-10-15).
 - Touches: pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/workspaces.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/worktree_paths.py, skills/autowork/scripts/test_parallel_integrate.py, tests/test_pi_autowork.py, docs/worktree-placement.md
 - Scope: 47 runner worktrees still live in state directories and 34 exist only for `-set-aside-N` branches. (1) Session: when nothing is in flight and the session worktree is outside `.worktrees/`, `git worktree move` it to `workspaces.task_path` and update session.json; a move that fails leaves it in place and says why once. (2) Set-aside: `set_aside` removes the worktree after the `-set-aside-N` branch is created, when the worktree is clean; a dirty one is kept and reported. (3) A one-time sweep on runner start removes clean worktrees of `-set-aside-N` branches and of task branches already merged into main with no engine slot, and runs `git worktree prune`; it never touches worktrees the runner did not create (journal `worktree_created`) or the owner's own worktrees.
 - Acceptance: a fixture with a session in the state directory moves it into `.worktrees/` while idle and resumes from there; a set-aside leaves the branch and removes the clean worktree, keeps a dirty one with a report line; the start sweep removes only runner-created clean set-aside or merged worktrees and leaves a foreign worktree and a dirty one untouched.
 - Checks: `python3 -m unittest skills/autowork/scripts/test_parallel_integrate.py`; `python3 -m unittest discover -s tests -p 'test_pi_autowork.py' -k worktree`; `python3 scripts/check.py`.
-- Dependencies: None.
+- Dependencies: TOOLSET-261-15.
 - Ownership: Toolset coordinator under the owner's request (2026-10-17).
 - Exclusions: No edits to the runner log output or the TUI log view (ht2, 2026-10-17), nor to `update_toolset`/`release.py`; no force push; never delete uncommitted or unpushed work.
 - Added (2026-10-17, fleet feedback item 6): about 20 worktrees under this repository's `.worktrees/`, many for `-set-aside-N` branches, and more under the runners' state directories. Acceptance adds: after the start sweep and a task's close, no clean runner worktree remains for a closed task or an archived set-aside branch.
@@ -558,16 +560,17 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-119-2b — Record intent before side effects in worktree creation and slot transitions
 
 - [ ] TOOLSET-119-2b — Record intent before side effects in worktree creation and slot transitions
+- Scheduling: Wait for TOOLSET-261-15 to land before parallel_dispatch.py/parallel_state.py edits (its saved report names both). Its test wrapper does not journal worktree/slot intent. Keep matching-intent adoption and slot recovery with their crash/restart fixtures; splitting off the journal alone would not prove recovery through dispatch.
 - Short: Record intent before side effects
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
-- Sources: [pi-durable: commit before showing](https://github.com/earendil-works/pi/blob/main/packages/durable/README.md), [design invariants](docs/plans/2026-10-16-pi-autowork-coordinator.md).; [owned recovery and freshness](docs/plans/2026-10-16-pi-autowork-coordinator.md#owned-worktree-healing-and-fresh-taskquestion-views).
+- Sources: [pi-durable: commit before showing](https://github.com/earendil-works/pi/blob/main/packages/durable/README.md), [design invariants](docs/plans/2026-10-16-pi-autowork-coordinator.md).; [owned recovery and freshness](docs/plans/2026-10-16-pi-autowork-coordinator.md#owned-worktree-healing-and-fresh-taskquestion-views); [accepted continuous runner scope](docs/project.md#continuous-pi-runner-2026-10-15).
 - Touches: skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/parallel_status.py, skills/autowork/scripts/test_parallel_*.py, skills/autowork/references/parallel-workers.md, pi-autowork/, skills/autowork/scripts/
 - Scope: Owner direction (2026-10-16), after pi-durable's rule that nothing is shown before its commit is stored. Two crash windows in the engine: `create_worktree` runs `git worktree add` and only then journals `worktree_created`, so a crash between them leaves a worktree that dispatch refuses as "not created by parallel Autowork" and a person must resolve; `write_slot` saves the slot file and then appends `slot_changed`, so a crash between them leaves a transition the journal never recorded. Journal the intent (path, branch, baseline) before `git worktree add` and adopt a worktree whose intent matches; make a slot change and its journal entry recoverable as one step (journal first, or a single record both are derived from).
 - Acceptance: Failure-injection fixtures crash at each point (after the intent, after the worktree add, between slot file and journal); on the next pass the worktree is adopted without a person, and the slot file and journal agree; nothing adopts a worktree without a matching intent.
-- Checks: engine tests in `skills/autowork/scripts`; `python3 scripts/check.py`.
-- Dependencies: None.
+- Checks: `python3 scripts/check.py skills/autowork/scripts/test_parallel_*.py`; `python3 scripts/check.py`. Engine failure-injection and owned-recovery cases above remain required, not executed evidence.
+- Dependencies: TOOLSET-261-15.
 - Ownership: Toolset coordinator under the owner's request.
 - Exclusions: No change to which worktrees are adopted beyond a matching recorded intent; no live Pi or fleet runs.
 
@@ -577,16 +580,17 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-118-68 — Separate worker, test and memory budgets in the parallel resource gate
 
 - [ ] TOOLSET-118-68 — Separate worker, test and memory budgets in the parallel resource gate
+- Scheduling: Wait for TOOLSET-172-92 to land before docs/cross-host.md edits and TOOLSET-261-15 before shared resource/runner edits. Keep the existing cgroup/process-tree scope and all retained proof; the worker check wrapper supplies only the heavy-suite slot part, not cgroup limits or descendant termination. A guide-only follow-up would still leave the runtime sharing parallel_dispatch.py, parallel_state.py and tests with 261-15, so it does not produce a disjoint ready lane.
 - Short: Separate worker, test, memory budgets
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
-- Sources: [research: budgets and shutdown](docs/research/pi-autowork-reference-architectures.md#budgets-and-shutdown-pi-rukas), [engine](skills/autowork/references/parallel-workers.md).; [completion-first delivery](docs/plans/2026-10-16-pi-autowork-coordinator.md#completion-first-delivery-and-recoverable-handoffs).
+- Sources: [research: budgets and shutdown](docs/research/pi-autowork-reference-architectures.md#budgets-and-shutdown-pi-rukas), [engine](skills/autowork/references/parallel-workers.md).; [completion-first delivery](docs/plans/2026-10-16-pi-autowork-coordinator.md#completion-first-delivery-and-recoverable-handoffs); [accepted continuous runner scope](docs/project.md#continuous-pi-runner-2026-10-15).
 - Touches: skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, skills/autowork/references/parallel-workers.md, docs/cross-host.md, pi-autowork/pi_autowork/coordinator.py, pi-autowork/tests/, tests/test_pi_autowork.py, skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/parallel_status.py, skills/autowork/scripts/test_parallel_state.py, skills/autowork/scripts/test_parallel_status.py
 - Scope: Today `resource_gate` checks one flat MemAvailable-per-worker figure and the load average. Following pi-rukas (`readHostResources`/`budgetFor`, `killProcessTree`): read cgroup memory and CPU limits when present, budget model-worker slots separately from expensive test runs, and stop a timed-out worker's whole process tree with TERM then KILL. Report the binding limit in the waiting reason.
 - Acceptance: Inside a cgroup-limited fixture the gate uses the cgroup limit; a worker's heavy test run cannot push the host past its budget unnoticed; a timed-out worker's grandchildren are gone after escalation.
 - Checks: python3 scripts/check.py skills/autowork/scripts/test_parallel_dispatch.py skills/autowork/scripts/test_parallel_state.py skills/autowork/scripts/test_parallel_status.py tests/test_pi_autowork.py; python3 -m unittest discover -s pi-autowork/tests; python3 scripts/check.py
-- Dependencies: None.
+- Dependencies: TOOLSET-172-92, TOOLSET-261-15.
 - Ownership: Toolset coordinator under the owner's request.
 - Exclusions: Cgroup detection is not proof of enforced spend or memory limits; no money or model-cost budgets here.
 - Owner decision: Completion first: defer NEW implementation starts when verification/integration capacity is saturated; existing workers continue, with no waived checks or review. This records the owner's picked answer during the completion-handoff planning conversation; it does not pause/reconfigure a live runner.
@@ -599,15 +603,18 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-099-87 — Run as many independent tasks at once as possible
 
 - [ ] TOOLSET-099-87 — Run as many independent tasks at once as possible
+- Readiness: Initial offline implementation exists; remaining scope inference and independent-admission corrections are accepted below. Fleet qualification remains TOOLSET-096-7e.
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Scheduling: Wait for TOOLSET-172-92 to land before docs/cross-host.md edits and TOOLSET-261-15 before shared dispatch/state/runner edits. Neither task delivers NONE expiry, literal-route scope matching or independent dispatch/refill proof. A guide-only split would still overlap those runtime/test paths. Preserve and reconcile the retained candidate/history under the accepted continuation; these ordering edits do not certify its checks or reset its attempts.
 - Short: Run every independent task at once
-- Status: open; initial offline implementation exists; remaining scope inference and independent-admission corrections are accepted below. Fleet qualification remains TOOLSET-096-7e.
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: [accepted progress and parallelism continuation](docs/plans/2026-10-16-pi-autowork-coordinator.md#useful-progress-and-independent-workers), [usage](docs/cross-host.md#run-autowork-continuously), [engine](skills/autowork/references/parallel-workers.md).
+- Status: open
+- Goal: PI-RUNNER
+- Sources: [accepted progress and parallelism continuation](docs/plans/2026-10-16-pi-autowork-coordinator.md#useful-progress-and-independent-workers), [usage](docs/cross-host.md#run-autowork-continuously), [engine](skills/autowork/references/parallel-workers.md); [accepted continuous runner scope](docs/project.md#continuous-pi-runner-2026-10-15).
 - Touches: pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/touches_inference.py, pi-autowork/tests/test_touches_inference.py, skills/autowork/scripts/parallel_plan.py, skills/autowork/scripts/test_parallel_plan.py, skills/autowork/scripts/test_parallel_dispatch.py, scripts/pi-autowork.sh, scripts/pi_autowork_touches.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/parallel_dispatch.py, skills/autowork/references/parallel-workers.md, tests/test_pi_autowork.py, docs/cross-host.md
 - Scope: Owner direction: run every task that is independent and achievable at once. `--workers` 1-8, default 8 (engine limit); 3 GB free memory per worker. A read-only Pi pass proposes `Touches:` for runnable tasks lacking it (`scripts/pi_autowork_touches.py` records them in the TODO's own field style); `NONE` keeps a task solo for 24 h. Idle sessions merge the main branch. Engine fix: a task without `Touches:` is no longer held at integration for changing its own files. A scope-held first commit whose retry made no commit is re-verified once (`READOPTED`), recovering work held by the old rule.
 - Acceptance: Tasks without `Touches:` gain proposed paths and run in parallel; an unboundable task runs alone and is not re-asked; solo tasks integrate.
 - Checks: `python3 -m unittest tests/test_pi_autowork.py` (34 pass); engine tests in `skills/autowork/scripts`; `shellcheck scripts/pi-autowork.sh`; `python3 scripts/check.py`.
-- Dependencies: TOOLSET-098-4c.
+- Dependencies: TOOLSET-098-4c, TOOLSET-172-92, TOOLSET-261-15.
 - Ownership: Toolset coordinator under the owner's request.
 - Exclusions: No push by the runner; no direct edits in fleet repositories.
 - Planner's call (2026-10-16): Skip the excluded live/model operation in this occurrence; its remaining fleet qualification is already separated under TOOLSET-096-7e. Preserve both open acceptances. The offline TOOLSET-072/073 work and TOOLSET-102-ea's measured fixture follow-up are archived. No new live authority is inferred.
@@ -780,18 +787,19 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-276-2c — A failed git command is never read as a clean tree or an empty result
 
 - [ ] TOOLSET-276-2c — A failed git command is never read as a clean tree or an empty result
+- Scheduling: Wait for TOOLSET-261-15 to land before coordinator.py edits. Keep common.dirty failure propagation and the coordinator/worker caller handling together: changing the helper alone cannot prove the required no-commit/no-land and retained-worker-slot invariants. The check wrapper is not a substitute for either Git-error regression.
 - Short: A failed git command is never clean
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
-- Sources: [reliability research](docs/research/orchestrator-reliability.md) (root cause 3); [common](pi-autowork/pi_autowork/common.py) (`git` returns `None` on failure, `dirty` turns that into `''`); about 21 `git(..) or ''` / `dirty(` call sites in [coordinator](pi-autowork/pi_autowork/coordinator.py).
+- Sources: [reliability research](docs/research/orchestrator-reliability.md) (root cause 3); [common](pi-autowork/pi_autowork/common.py) (`git` returns `None` on failure, `dirty` turns that into `''`); about 21 `git(..) or ''` / `dirty(` call sites in [coordinator](pi-autowork/pi_autowork/coordinator.py); [accepted continuous runner scope](docs/project.md#continuous-pi-runner-2026-10-15).
 - Evidence: a failed `git status` reads as a clean checkout, the same shape as the status read that looked like "nothing running" (TOOLSET-200-c1). Simple Testing Can Prevent Most Critical Failures (OSDI 2014): most severe failures come from mishandled minor errors.
 - Touches: pi-autowork/pi_autowork/common.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/worker.py, pi-autowork/tests/test_git_failures.py
 - Produces: `common.dirty(path)` raises `GitError` (a `RuntimeError` naming the command and stderr) when `git status` fails; `common.git(..., check=False)` keeps returning `None` only where the caller handles `None` explicitly.
 - Scope: (1) `dirty` raises instead of returning `''`. (2) Every caller decides what a failure means at that call: skip this cycle with a logged reason, or stop. None treats it as clean. (3) The other `git(...) or ''` sites that decide whether to commit, merge, land or delete in `coordinator.py` and `worker.py` get the same treatment; display-only sites may keep a placeholder. Other modules' callers are a follow-up task.
 - Acceptance: Given a fake `git` on `PATH` that exits 128 for `status`, when the runner cycle checks the main checkout, then it neither commits, lands nor reports the checkout clean, and it logs the failed command (`pi-autowork/tests/test_git_failures.py::test_failed_status_is_not_clean`). Given the same fake for the worker's checkout, the worker's settle step keeps the slot (`test_failed_status_keeps_worker_slot`).
 - Checks: python3 -m unittest discover -s pi-autowork/tests -p test_git_failures.py; python3 scripts/check.py
-- Dependencies: None.
+- Dependencies: TOOLSET-261-15.
 - Ownership: Toolset coordinator.
 - Exclusions: No change to Git commands themselves or to the status format.
 - Planner's call: invariant for the batch: no path from a failed Git call reaches a commit, landing or deletion.
@@ -892,17 +900,18 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-260-ae — Every worker on the host takes a slot from one shared worker pool, shared fairly among runners
 
 - [ ] TOOLSET-260-ae — Every worker on the host takes a slot from one shared worker pool, shared fairly among runners
+- Scheduling: Wait for TOOLSET-129-c4 to land before fleet_view.py edits and TOOLSET-261-15 before shared dispatch/coordinator/reference edits. Needs presentation and worker check slots are not the host worker pool or fair share. Keep the pool wait classification with the pool fixtures; a display-only split would still leave runtime overlap with 261-15. Existing 222-e1/228-0c prerequisites remain.
 - Short: One shared host worker pool
 - Status: open
 - Goal: PI-RUNNER
 - Payoff: Run Autowork continuously through Pi with a model fallback.
-- Sources: [plan](docs/plans/2026-10-19-more-parallel-workers.md) (decisions 1-2); [research](docs/research/multi-agent-orchestration.md); [resource gate](skills/autowork/scripts/parallel_dispatch.py) (`resource_gate`, `capacity`, `HARD_LIMIT`, `port_lease` for the flock pattern); TOOLSET-228-0c (check slots).
-- Evidence (2026-10-19 05:30): nine runners allowed up to 65 workers and ran 9, with 119 tasks waiting; each runner's gate refuses another worker at load average >= CPUs (22), and the load stayed 22-50 all day, so caps of 8 sat idle while one runner's 27 ready tasks waited for its single slot.
+- Sources: [plan](docs/plans/2026-10-19-more-parallel-workers.md) (decisions 1-2); [research](docs/research/multi-agent-orchestration.md); [resource gate](skills/autowork/scripts/parallel_dispatch.py) (`resource_gate`, `capacity`, `HARD_LIMIT`, `port_lease` for the flock pattern); TOOLSET-228-0c (check slots); [accepted continuous runner scope](docs/project.md#continuous-pi-runner-2026-10-15).
+- Evidence: 2026-10-19 05:30 — nine runners allowed up to 65 workers and ran 9, with 119 tasks waiting; each runner's gate refuses another worker at load average >= CPUs (22), and the load stayed 22-50 all day, so caps of 8 sat idle while one runner's 27 ready tasks waited for its single slot.
 - Touches: skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/cli.py, pi-autowork/pi_autowork/fleet_view.py, tests/test_pi_autowork.py, docs/reference.md
 - Scope: (1) Before launching a worker, dispatch takes one of `PI_AUTOWORK_HOST_WORKERS` host-wide pool slots (default: 2 × CPU count), each a `flock`ed file under the user's runtime directory, passed to the worker like its port lease, so it frees itself when the worker exits. (2) Fair share: each runner writes `pool/<repository key>.json` in the same runtime directory on each dispatch pass (live workers, ready tasks, updated_at; stale after 5 minutes). A runner takes a freed slot only if no fresh record shows ready work with fewer live workers than its own; a runner's first worker is never refused by the pool. (3) `HARD_LIMIT` becomes 16 and remains a per-runner ceiling; `--workers` accepts 1-16 (default 8 unchanged) and the coordinator passes the engine's limit instead of a literal 8. (4) The load-average gate refuses a new worker only at 1.5 × the CPU count; memory and disk gates are unchanged. (5) Waiting for a pool slot shows as `waiting for a host worker slot (N of M in use)`, a wait, not stalled.
 - Acceptance: In fixtures: with a pool of 2 and two repositories, the third worker waits until one exits, then starts; a killed worker frees its slot; a runner with three live workers yields the next slot to a runner with one; a runner's first worker starts with the pool full; load at 1.2 × CPUs no longer refuses a worker; the status line names the pool.
 - Checks: python3 scripts/check.py skills/autowork/scripts/test_parallel_dispatch.py; python3 scripts/check.py tests/test_pi_autowork.py; python3 scripts/check.py
-- Dependencies: TOOLSET-228-0c, TOOLSET-222-e1.
+- Dependencies: TOOLSET-129-c4, TOOLSET-222-e1, TOOLSET-228-0c, TOOLSET-261-15.
 - Ownership: Toolset coordinator. Supersedes the load-average part of TOOLSET-118-68; its cgroup and process-tree parts stay there.
 - Exclusions: No central daemon; no change to check slots, review or the full check; no per-task fan-out (separate tasks).
 - Planner's call: a host-wide flock pool shares capacity the way ports and check slots already do, and CPU-heavy work is bounded by check slots, so the load average becomes a safety net, not the scheduler.
