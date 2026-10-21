@@ -53,6 +53,14 @@ async def main():
                            'echo "[16:00] TASK-034: pending — dependency: TASK-035"\n')
         for path in (systemctl, journal):
             path.chmod(0o755)
+        (state / 'sessions').mkdir()
+        transcript = state / 'sessions' / '2026-10-21T08-00-00-000Z_pi-autowork-TASK-036-attempt-1.jsonl'
+
+        def step(i):  # one worker action, i seconds after a fixed start
+            stamp = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime(time.time() - 600 + i))
+            return json.dumps({'type': 'message', 'timestamp': stamp, 'message': {'role': 'assistant', 'content': [
+                {'type': 'toolCall', 'name': 'bash', 'arguments': json.dumps({'command': f'echo step {i}'})}]}}) + '\n'
+        transcript.write_text(''.join(step(i) for i in range(30)))
         tree = base / 'git'
         for name, files in (('ready', ('tasks/items/T.md',)), ('half', ('TODO.md',))):
             repo = tree / name
@@ -196,6 +204,16 @@ async def main():
             app.push_screen(WorkerScreen(app.current(), 'TASK-036'))  # a worker row's screen opens
             await pilot.pause()
             assert isinstance(app.screen, WorkerScreen) and app.screen.title == 'india: TASK-036', app.screen
+            lines = lambda: [''.join(seg.text for seg in strip) for strip in app.screen.query_one('#worker-actions').lines]
+            shown = lines()  # a log: all 30 actions, oldest first, each with its time
+            assert len(shown) == 30 and 'step 0' in shown[0] and 'step 29' in shown[-1], shown
+            assert shown[0][:8].count(':') == 2, shown[0]
+            with transcript.open('a') as stream:
+                stream.write(step(30))
+            app.screen.refresh_actions()
+            await pilot.pause()
+            after = lines()  # the new action is appended at the bottom; nothing above it is redrawn
+            assert after[:30] == shown and 'step 30' in after[-1] and len(after) == 31, after
             await pilot.press('escape')
             await pilot.pause()
             await pilot.press('n')                      # new: browse; half is not ready, ready plays after a yes

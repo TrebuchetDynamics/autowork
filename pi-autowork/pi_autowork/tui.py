@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import fleet_view  # noqa: E402
@@ -271,16 +272,18 @@ class LogScreen(Screen):
 
 
 class WorkerScreen(Screen):
-    """One worker's last actions, newest first, in plain words; refreshed."""
+    """One worker's actions as a log: oldest first, stamped with the time, new ones appended at the
+    bottom so the view keeps its place while you scroll back; refreshed."""
     BINDINGS = [Binding('escape,q', 'app.pop_screen', 'back')]
 
     def __init__(self, runner, task):
         super().__init__()
         self.runner, self.task_id = runner, task  # Screen.task is Textual's own, read-only
+        self.shown = []
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Static(id='worker-actions')
+        yield RichLog(id='worker-actions', wrap=True, highlight=False, markup=False)
         yield Footer()
 
     def on_mount(self):
@@ -289,12 +292,21 @@ class WorkerScreen(Screen):
         self.set_interval(LOG_REFRESH, self.refresh_actions)
 
     def refresh_actions(self):
-        text = Text()
-        actions = fleet_view.recent_actions(self.runner, self.task_id)
-        for line, age in actions:
-            text.append(f'{fleet_view.ago(age):>9}  ', style='dim')
-            text.append(line + '\n')
-        self.query_one('#worker-actions', Static).update(text if actions else 'No actions recorded yet.')
+        actions = [(at, line) for line, _, at in fleet_view.action_log(self.runner, self.task_id)]
+        log = self.query_one('#worker-actions', RichLog)
+        last = self.shown[-1] if self.shown else None
+        if last in actions:  # append only what is new; a full redraw would lose the scroll position
+            fresh = actions[len(actions) - actions[::-1].index(last):]
+        else:
+            log.clear()
+            fresh = actions
+            if not actions:
+                log.write('No actions recorded yet.')
+        for at, line in fresh:
+            stamp = time.strftime('%H:%M:%S', time.localtime(at)) if at is not None else '--:--:--'
+            log.write(Text.assemble((stamp + '  ', 'dim'), line))
+        if fresh:
+            self.shown = actions
 
 
 class TasksScreen(Screen):
