@@ -277,16 +277,6 @@
   "tasks": [
     {
       "depends_on": [
-        "TOOLSET-294-f6"
-      ],
-      "goal": "TASK-STORE",
-      "id": "TOOLSET-295-57",
-      "section": "Now",
-      "status": "in_progress",
-      "title": "Task selection from the store matches the current selector"
-    },
-    {
-      "depends_on": [
         "TOOLSET-294-f6",
         "TOOLSET-295-57"
       ],
@@ -682,6 +672,16 @@
       "section": "Done",
       "status": "done",
       "title": "TaskStore reads tasks/ files into immutable records from a pinned commit"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-294-f6"
+      ],
+      "goal": "TASK-STORE",
+      "id": "TOOLSET-295-57",
+      "section": "Done",
+      "status": "done",
+      "title": "Task selection from the store matches the current selector"
     }
   ],
   "version": 1

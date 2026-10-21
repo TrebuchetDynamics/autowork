@@ -5826,3 +5826,28 @@ Source section: Now
 - Exclusions: No writer, CLI, migration or consumer change in this task; no SQLite; no third-party TOML library (read with `tomllib`).
 - Planner's call: frontmatter is TOML because the reader is stdlib `tomllib` and the writer can stay small; the contract-hash field list above is the starting set and later tasks may add a field only with a test.
 - Delivered: 2026-10-20, merge dbc0aa02 (runner commit 71e1a385 reviewed and reused; 8ae918d0, bd052131). Offline evidence only: `python3 -m unittest discover -s pi-autowork/engine -p test_task_store.py` 10 tests OK; `python3 scripts/check.py` 5 test directories passed, 0 failed, 4 modules excluded.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-295-57"></a>
+
+### TOOLSET-295-57 — Task selection from the store matches the current selector
+
+- [x] TOOLSET-295-57 — Task selection from the store matches the current selector
+- Short: Store selection parity
+- Status: done
+- Goal: TASK-STORE
+- Payoff: Prove the cut cannot change which task a runner picks.
+- Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20); [selector](pi-autowork/engine/task_execution.py) (`_contracts`, `_queue_inputs`, `dependency_done`); [queue order](skills/docs-sync/scripts/goals_queue.py) (`queue`, `eligible`, `priority_status`); [priority tests](pi-autowork/engine/test_priority_selection.py).
+- Evidence: the decision requires selection order to stay focused goal, section, rank, goal priority, derived goal status, then ID, and to be proven by a differential test before the cut.
+- Touches: pi-autowork/engine/task_select.py, pi-autowork/engine/test_task_select.py
+- Scope: (1) `task_select.order(store)` and `task_select.next(store, done)` over TaskStore records, with dependency satisfaction including archived and `done` records. (2) `task_select.why(store, id)` returns structured reasons (blocked by dependency, Needs decision, draft, superseded, goal met, position and the rule that placed it). (3) A differential test builds each fixture both ways (TODO.md + goals.json, and the equivalent tasks/ tree) and asserts the same order and next task as the current `task_execution` selector, including focus, sections, dependencies, met goals and drafts. (4) Record the time and memory to read and order a generated 1,000-task store at a pinned commit, as the baseline for a budget (a measurement, not a pass/fail gate).
+- Acceptance: `test_task_select.SelectionParityTests` passes on at least eight fixtures covering focus, Now/Next/Needs decision, cross-goal priority, an unmet dependency, an archived dependency, a met goal, a superseded task and a draft; `test_why_names_the_blocking_rule` asserts the reason for each non-selected task.
+- Checks: python3 -m unittest discover -s pi-autowork/engine -p test_task_select.py; python3 -m unittest discover -s pi-autowork/engine -p test_priority_selection.py; python3 scripts/check.py
+- Dependencies: TOOLSET-294-f6.
+- Ownership: Toolset coordinator.
+- Exclusions: The current selector stays untouched here; no consumer switches to the new selector in this task.
+- Delivered: 2026-10-20, merge 4e846ae8. Offline evidence only: test_task_select (SelectionParityTests on 12 fixtures, test_why_names_the_blocking_rule, 1,000-task baseline about 0.5 s and 3.8 MiB peak, measured, not a gate), test_priority_selection and test_task_store OK; `python3 scripts/check.py` 5 test directories passed, 0 failed, 4 modules excluded. Goals gained optional depends_on (the current selector honours goal dependencies).
