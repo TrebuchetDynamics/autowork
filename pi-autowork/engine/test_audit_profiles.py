@@ -8,7 +8,14 @@ import sys
 import tempfile
 import unittest
 
+import store_fixture
+
 SCRIPT = Path(__file__).with_name('audit_profiles.py')
+
+
+TODO_ONE = ('# TODO\n\n## Now\n\n- [ ] T1 — useful change\n  Scope: bounded change\n'
+            '  Acceptance: fixture passes\n  Checks: python3 -m unittest\n  Touches: src/a.py\n'
+            '  Dependencies: None\n')
 
 
 class CollectorTests(unittest.TestCase):
@@ -170,80 +177,55 @@ class CollectorTests(unittest.TestCase):
             subprocess.run(['git', '-C', str(repo), *argv], check=True, capture_output=True)
         git('init'); git('config', 'user.email', 'fixture@example.test'); git('config', 'user.name', 'Fixture')
         (repo / 'old').write_text('same content\n')
-        ledger = {'version': 1, 'primary_milestone': 'G1', 'goals': [
-            {'id': 'G1', 'title': 'fixture', 'source': 'SPEC.md#accepted', 'status': 'unmet', 'tasks': ['T1']}],
-            'tasks': [{'id': 'T1', 'title': 'fixture task', 'goal': 'G1', 'status': 'open', 'section': 'Now'}]}
-        (repo / 'goals.json').write_text(json.dumps(ledger))
-        (repo / 'TODO.md').write_text('# TODO\n')
-        git('add', '.'); git('commit', '-m', 'fixture'); git('mv', 'old', 'new')
+        git('add', '.'); git('commit', '-m', 'fixture')
+        store_fixture.write_todo(repo, TODO_ONE)
+        git('mv', 'old', 'new')
         (home / 'config.yaml').write_text('terminal:\n  cwd: ' + str(repo) + '\n')
         index = (repo / '.git/index').read_bytes()
-        before = (repo / 'goals.json').read_bytes()
+        before = {p: p.read_bytes() for p in (repo / 'tasks').rglob('*') if p.is_file()}
         _, summary = self.run_collector()
         row = self.receipt(summary)['profiles'][0]['repo']
         self.assertEqual(row['dirty_records'], 1)
-        self.assertEqual(row['backlog_readiness']['state'], 'ledger_eligible_only')
+        self.assertEqual(row['backlog_readiness']['state'], 'consumer_ready')
         self.assertEqual(row['backlog_readiness']['eligible_task_ids'], ['T1'])
-        self.assertEqual(before, (repo / 'goals.json').read_bytes())
+        self.assertEqual(before, {p: p.read_bytes() for p in (repo / 'tasks').rglob('*') if p.is_file()})
         self.assertEqual(index, (repo / '.git/index').read_bytes())
 
-    def test_todo_only_linked_readiness_ignores_native_authority_and_writes_nothing(self):
+    def test_linked_readiness_reads_the_store_and_writes_nothing(self):
         import audit_profiles
-        from unittest.mock import patch
         repo = Path(self.tmp.name) / 'repo'
         repo.mkdir()
         subprocess.run(['git', 'init', '-q', str(repo)], check=True)
-        (repo / 'TODO.md').write_text('# TODO\n\n## Now\n\n- [ ] T1: useful change\n'
-                                      '  Scope: bounded change\n  Acceptance: fixture passes\n'
-                                      '  Checks: python3 -m unittest\n  Dependencies: None\n')
-        subprocess.run(['git', '-C', str(repo), 'add', '.'], check=True)
-        subprocess.run(['git', '-C', str(repo), '-c', 'user.name=Fixture',
-                        '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture'], check=True)
+        store_fixture.write_todo(repo, TODO_ONE)
         worker = Path(self.tmp.name) / 'worker'
         subprocess.run(['git', '-C', str(repo), 'worktree', 'add', '-q', '-b', 'worker', str(worker)], check=True)
         subprocess.run(['git', '-C', str(repo), 'config', '--local', 'repoDocs.backlogAuthority',
                         '/nonexistent/old-binding'], check=True)
         before = {p: p.read_bytes() for root in (repo, worker) for p in root.rglob('*') if p.is_file()}
         gaps = []
-        with patch.object(audit_profiles.goals, 'backlog_authority', side_effect=AssertionError('native authority queried')):
-            result = audit_profiles.backlog_readiness(worker, gaps)
+        result = audit_profiles.backlog_readiness(worker, gaps)
         self.assertEqual(result['state'], 'consumer_ready', result)
         self.assertEqual(result['eligible_task_ids'], ['T1'])
         self.assertEqual(result['canonical_readiness'], {'state': 'observed', 'repo': audit_profiles.safe(worker)})
         self.assertEqual(result['live_ownership'], 'unknown')
         self.assertEqual(gaps, [])
         self.assertEqual(before, {p: p.read_bytes() for root in (repo, worker) for p in root.rglob('*') if p.is_file()})
-        # An existing malformed index is never ignored in favor of TODO selection.
-        (worker / 'goals.json').write_text('{broken')
-        result = audit_profiles.backlog_readiness(worker, [])
-        self.assertEqual(result['state'], 'invalid')
+        # A malformed committed record is never ignored in favor of the rest.
+        record = worker / 'tasks/items/T1.md'
+        record.write_text(record.read_text().replace('rank = 1000', 'rank = ['))
+        subprocess.run(['git', '-C', str(worker), '-c', 'user.name=F', '-c', 'user.email=f@example.invalid',
+                        'commit', '-qam', 'broken'], check=True)
+        self.assertEqual(audit_profiles.backlog_readiness(worker, [])['state'], 'invalid')
 
-    def test_indexed_linked_readiness_does_not_require_native_canonical_binding(self):
+    def test_an_unconverted_repository_names_the_migration(self):
         import audit_profiles
-        from unittest.mock import patch
-        repo = Path(self.tmp.name) / 'indexed'
+        repo = Path(self.tmp.name) / 'old'
         repo.mkdir()
         subprocess.run(['git', 'init', '-q', str(repo)], check=True)
-        (repo / 'SPEC.md').write_text('# Accepted\n\nStatus: Accepted\n')
-        (repo / 'TODO.md').write_text('# TODO\n\n## Now\n\n- [ ] T1: fixture task\n'
-            '  Goal: G1\n  Scope: bounded change\n  Acceptance: fixture passes\n'
-            '  Checks: python3 -m unittest\n  Dependencies: None\n  Ownership: fixture\n'
-            '  Sources: [Accepted](SPEC.md#accepted)\n')
-        ledger = {'version': 1, 'goals': [{'id': 'G1', 'title': 'fixture',
-            'source': 'SPEC.md#accepted', 'status': 'unmet', 'tasks': ['T1']}],
-            'tasks': [{'id': 'T1', 'title': 'fixture task', 'goal': 'G1', 'status': 'open', 'section': 'Now'}]}
-        (repo / 'goals.json').write_text(json.dumps(audit_profiles.goals.normalize(ledger)))
-        subprocess.run(['git', '-C', str(repo), 'add', '.'], check=True)
-        subprocess.run(['git', '-C', str(repo), '-c', 'user.name=Fixture',
-                        '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture'], check=True)
-        worker = Path(self.tmp.name) / 'indexed-worker'
-        subprocess.run(['git', '-C', str(repo), 'worktree', 'add', '-q', '-b', 'worker', str(worker)], check=True)
-        before = {p: p.read_bytes() for root in (repo, worker) for p in root.rglob('*') if p.is_file()}
-        with patch.object(audit_profiles.goals, 'backlog_authority', side_effect=AssertionError('native authority queried')):
-            result = audit_profiles.backlog_readiness(worker, [])
-        self.assertEqual(result['state'], 'consumer_ready', result)
-        self.assertEqual(result['canonical_readiness'], {'state': 'observed', 'repo': audit_profiles.safe(worker)})
-        self.assertEqual(before, {p: p.read_bytes() for root in (repo, worker) for p in root.rglob('*') if p.is_file()})
+        (repo / 'TODO.md').write_text(TODO_ONE)
+        result = audit_profiles.backlog_readiness(repo, [])
+        self.assertEqual(result['state'], 'unconverted')
+        self.assertIn('autowork migrate', result['action'])
 
     def test_job_delivery_and_response_coverage_are_not_silently_omitted(self):
         home = self.profile('default')

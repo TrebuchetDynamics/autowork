@@ -7,6 +7,7 @@ goals.json gets one goal, `FIXTURE`, holding every task.
 """
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 
@@ -33,9 +34,21 @@ def _ledger_for(todo):
             'tasks': tasks}
 
 
-def convert(repo, *, commit=True, message='fixture: tasks/ store'):
-    """Write tasks/ from the fixture's TODO.md (and goals.json), remove both, and commit."""
+def write_todo(repo, text, ledger=None, *, commit=True):
+    """Write a fixture's TODO.md text (and an optional goals.json ledger) and convert it at once."""
     repo = Path(repo)
+    (repo / 'TODO.md').write_text(text)
+    if ledger is not None:
+        (repo / 'goals.json').write_text(ledger if isinstance(ledger, str) else json.dumps(ledger, indent=2))
+    return convert(repo, commit=commit)
+
+
+def convert(repo, *, commit=True, message='fixture: tasks/ store'):
+    """Write tasks/ from the fixture's TODO.md (and goals.json), remove both, and commit. A
+    fixture that writes a new TODO.md later converts again: the old tasks/items and goals go."""
+    repo = Path(repo)
+    for folder in ('tasks/items', 'tasks/goals'):
+        shutil.rmtree(repo / folder, ignore_errors=True)
     synthesized = not (repo / 'goals.json').exists()
     if synthesized:
         (repo / 'goals.json').write_text(json.dumps(_ledger_for((repo / 'TODO.md').read_text()), indent=2))
@@ -47,6 +60,11 @@ def convert(repo, *, commit=True, message='fixture: tasks/ store'):
         (repo / name).unlink(missing_ok=True)
     if commit:
         git = ['git', '-C', str(repo), '-c', 'user.email=fixture@example.invalid', '-c', 'user.name=Fixture']
-        subprocess.run([*git, 'add', '-A', '--', 'tasks', 'TODO.md', 'goals.json'], check=True, capture_output=True)
+        if subprocess.run(['git', '-C', str(repo), 'rev-parse', '--show-toplevel'], capture_output=True,
+                          text=True).stdout.strip() != str(repo.resolve()):
+            subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+        subprocess.run([*git, 'add', '-A', '--', 'tasks'], check=True, capture_output=True)
+        subprocess.run([*git, 'rm', '-q', '--cached', '--ignore-unmatch', '--', 'TODO.md', 'goals.json'],
+                       check=True, capture_output=True)
         subprocess.run([*git, 'commit', '-q', '--allow-empty', '-m', message], check=True, capture_output=True)
     return sorted(files)
