@@ -47,9 +47,11 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 
 ENGINE = Path(__file__).resolve().parents[1] / 'engine'
 sys.path.insert(0, str(ENGINE))
@@ -168,6 +170,14 @@ def set_aside_waiting(repo, owner_pid=None):
     return done
 
 
+def uncommitted_planning(repo):
+    """TODO.md, goals.json and TODO.archive.md paths that differ from HEAD or are untracked
+    (by name: porcelain status lines lose their leading space to _git's strip)."""
+    changed = _git(repo, 'diff', '--name-only', 'HEAD', '--', *PLANNING).splitlines()
+    new = _git(repo, 'ls-files', '--others', '--exclude-standard', '--', *PLANNING).splitlines()
+    return sorted({p for p in changed + new if p})
+
+
 def claimed(repo):
     """Task IDs goals.json marks in_progress (a legacy runner's claims)."""
     try:
@@ -186,9 +196,8 @@ def refusals(repo, owner_pid=None, released=()):
         found.append('already converted: tasks/ is committed')
     if not (repo / 'TODO.md').is_file() or not (repo / 'goals.json').is_file():
         found.append('TODO.md and goals.json are both needed to convert')
-    dirty = _git(repo, 'status', '--porcelain', '--', *PLANNING)
-    if dirty:
-        found.append('uncommitted planning files: ' + ', '.join(line[3:] for line in dirty.splitlines()))
+    if dirty := uncommitted_planning(repo):
+        found.append('uncommitted planning files: ' + ', '.join(dirty))
     found += busy(repo, owner_pid)
     if held := [tid for tid in claimed(repo) if tid not in set(released)]:
         found.append('claimed tasks (release them first): ' + ', '.join(held))
@@ -239,19 +248,66 @@ def clear_intent(repo):
         pass
 
 
-def drain(repo, owner_pid):
+def _end_process(owner, wait=90.0):
+    """Stop the process a lease names (SIGTERM, then SIGKILL), only while that identity holds:
+    a reused PID is never signalled. A runner pauses its workers on SIGTERM."""
+    pid = owner.get('pid') if isinstance(owner, dict) else None
+    for sig, pause in ((signal.SIGTERM, wait), (signal.SIGKILL, 5.0)):
+        if not pid or task_execution.identity(pid) != owner:
+            return
+        try:
+            os.kill(pid, sig)
+        except ProcessLookupError:
+            return
+        deadline = time.time() + pause
+        while time.time() < deadline and task_execution.identity(pid) == owner:
+            time.sleep(0.2)
+
+
+def force_leases(repo, owner_pid):
+    """The owner's force: end every other live holder of this repository's coordinator or
+    sequential execution lease. Returns what it ended, as sentences."""
+    import parallel_state
+    common = parallel_state.common_dir(Path(repo))
+    ended = []
+    current = parallel_state.live_coordinator(common)
+    if current and not _own_lease(common, owner_pid):
+        _end_process(current['owner'])
+        ended.append(f"stopped the runner holding the coordinator lease (PID {current['owner'].get('pid')})")
+    sequential = task_execution.read(common / 'active.json') if (common / 'active.json').exists() else None
+    if sequential and task_execution.active_owner(sequential):
+        _end_process(sequential['owner'])
+        ended.append(f"stopped the sequential run holding the execution lease (PID {sequential['owner'].get('pid')})")
+    return ended
+
+
+def commit_planning(repo):
+    """The owner's force: commit their uncommitted TODO.md, goals.json and TODO.archive.md
+    edits as they are, so the conversion includes them. Returns the paths committed."""
+    if dirty := uncommitted_planning(repo):
+        _git(repo, 'add', '-A', '--', *dirty)
+        _git(repo, 'commit', '-q', '-m', 'docs(tasks): owner planning before a forced conversion', '--', *dirty)
+    return dirty
+
+
+def drain(repo, owner_pid, force=False):
     """The runner's step towards a deferred conversion, under its coordinator lease and the
     engine's locks: every attempt with no live worker is set aside (work kept). Returns
     dict(live=[...], set_aside=[...], landed=[...], blocked=[...]); conversion may run once
     live and blocked are empty. ``landed``: set-aside attempts whose merge is already in
     main but whose task was never closed (it converts open; close it with its evidence). A
-    repeated quick hold without its Blocker resolution stays: it needs the owner's answer."""
+    repeated quick hold without its Blocker resolution stays: it needs the owner's answer.
+
+    ``force`` (the owner's /docs_sync force): live workers are stopped and their attempts
+    set aside too, and a repeated quick hold is set aside without its answer; ``stopped``
+    names them. Work is still never discarded: worktrees, branches and files are kept."""
+    import parallel_dispatch
     import parallel_integrate
     import parallel_state
     common = parallel_state.common_dir(Path(repo))
-    result = dict(live=[], set_aside=[], landed=[], blocked=[], claimed=False)
+    result = dict(live=[], set_aside=[], landed=[], blocked=[], stopped=[], claimed=False)
     if not _own_lease(common, owner_pid) or not parallel_state.live_coordinator(common):
-        # A dead runner's lease is taken over; a live one is never broken.
+        # A dead runner's lease is taken over; a live one is never broken (unless forced first).
         taken = parallel_state.claim(Path(repo), owner_pid, max_workers=16)
         if taken['outcome'] != 'CLAIMED':
             raise Refused(f"{taken.get('reason', 'the coordinator lease is held')}: {taken.get('owner')}")
@@ -265,12 +321,23 @@ def drain(repo, owner_pid):
                 if slot['state'] not in task_commands.OCCUPYING:
                     continue
                 if parallel_state.worker_live(slot):
-                    result['live'].append(slot['task_id'])
-                    continue
+                    if not force:
+                        result['live'].append(slot['task_id'])
+                        continue
+                    parallel_dispatch.stop(slot.get('worker'), slot.get('worktree'))
+                    if parallel_state.worker_live(slot):
+                        result['blocked'].append(f"{slot['task_id']}: its worker survived SIGKILL")
+                        continue
+                    result['stopped'].append(slot['task_id'])
                 merged = slot['state'] in ('integrating', 'integrated') and parallel_integrate.landed(
                     repo, (slot.get('integration') or {}).get('commit'))
                 try:
-                    parallel_integrate._retire(repo, common, slot, True)
+                    try:
+                        parallel_integrate._retire(repo, common, slot, True)
+                    except ValueError:
+                        if not force:
+                            raise
+                        parallel_integrate._retire(repo, common, slot, False)  # its hold check is waived
                     result['set_aside'].append(slot['task_id'])
                     if merged:
                         result['landed'].append(slot['task_id'])
@@ -293,12 +360,18 @@ def release_drain(repo, owner_pid):
     parallel_state.release(Path(repo), owner_pid)
 
 
-def convert_after_drain(repo, owner_pid):
+def convert_after_drain(repo, owner_pid, force=False):
     """A runner's whole deferred-conversion step: dict(outcome=CONVERTED|WAITING|BLOCKED,
-    detail, set_aside). Writes only through drain() and convert(); idempotent."""
+    detail, set_aside). Writes only through drain() and convert(); idempotent. ``force``
+    (the owner's): end other lease holders and live workers, commit the owner's planning
+    edits, and convert now; it never discards work and never overwrites unknown content."""
     repo = Path(task_execution.git(Path(repo), 'rev-parse', '--show-toplevel')).resolve()
-    drained = drain(repo, owner_pid)
+    ended = force_leases(repo, owner_pid) if force else []
+    drained = drain(repo, owner_pid, force)
+    drained['ended'] = ended
     try:
+        if force:
+            drained['committed'] = commit_planning(repo)
         if drained['live']:
             return dict(outcome='WAITING', set_aside=drained['set_aside'],
                         detail='conversion waits for running workers: ' + ', '.join(sorted(drained['live'])))
@@ -314,7 +387,8 @@ def convert_after_drain(repo, owner_pid):
                         detail=f'conversion refused: {exc}')
         clear_intent(repo)
         return dict(result, outcome='CONVERTED', set_aside=drained['set_aside'] + result.get('set_aside', []),
-                    landed=drained['landed'],
+                    landed=drained['landed'], stopped=drained['stopped'], ended=ended,
+                    committed=drained.get('committed', []),
                     detail=f"converted {result.get('tasks')} tasks and {result.get('goals')} goals")
     finally:
         if drained['claimed']:
@@ -670,13 +744,14 @@ def add_parser(sub):
     # The runner's deferred-conversion step, run as its helper (engine leases name an ancestor).
     p.add_argument('--after-drain', action='store_true', help=argparse.SUPPRESS)
     p.add_argument('--owner-pid', type=int, help=argparse.SUPPRESS)
+    p.add_argument('--force', action='store_true', help=argparse.SUPPRESS)
     return p
 
 
 def run(args, repo):
     if args.after_drain:
         try:
-            step = convert_after_drain(repo, args.owner_pid)
+            step = convert_after_drain(repo, args.owner_pid, args.force)
         except Refused as exc:
             step = dict(outcome='BLOCKED', detail=str(exc), set_aside=[])
         print(json.dumps(step, indent=2))

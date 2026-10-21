@@ -25,6 +25,13 @@ claim of a tagged release, completed installation or live workflow qualification
   worktree, branch and uncommitted files kept, releases their claims (the tasks convert
   open and dispatch fresh), converts under its own coordinator lease, and plans from
   `tasks/`. A live worker is never stopped, a live lease never broken and no task closed.
+- **`/docs_sync force`** runs `autowork tasks prepare --force` (prepare API 3): the owner's
+  override converts a legacy repository now instead of deferring. It stops the
+  repository's service, ends live workers and any other lease holder, sets every attempt
+  aside with its worktree, branch and uncommitted files kept (repeated holds too),
+  releases the claims, commits the owner's TODO.md/goals.json edits, converts, and starts
+  the service again. It still never discards work or data: content a conversion cannot
+  account for, or an invalid queue, answers MIGRATION_BLOCKED.
 - `autowork capabilities`: the executable's release, commands, `tasks` verbs and prepare
   API as JSON. Docs Sync checks it first and reports `TOOLCHAIN_MISMATCH` (with `autowork
   update` as the fix) instead of falling back to TODO.md when the installed CLI is older
