@@ -1095,6 +1095,20 @@ class BatchLandingTests(unittest.TestCase):
             runner.board_train(rows)
             self.assertEqual(started, [])  # the batch ahead has no chain yet
 
+    def test_no_car_boards_while_a_failed_batch_is_halved(self):
+        """A failing candidate rode three stopped cars on failing halves and never got a verdict of
+        its own, so every batch it joined failed: halving must check halves alone."""
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator, rows = self.merge_train_runner(folder)
+            started = []
+            runner.start_batch = lambda tasks, on=None, revisions=None: started.append(tasks)
+            (runner.state / 'batch-split.json').write_text(json.dumps([['C@c1'], ['D@d1']]))
+            runner.board_train(rows)
+            self.assertEqual(started, [])
+            (runner.state / 'batch-split.json').unlink()  # the search ended: cars board again
+            runner.board_train(rows)
+            self.assertEqual(started, [['C', 'D']])
+
     def test_a_car_on_a_batch_that_did_not_pass_is_stopped_and_its_verdicts_dropped(self):
         with tempfile.TemporaryDirectory() as folder:
             runner, coordinator, _ = self.merge_train_runner(folder)

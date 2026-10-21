@@ -403,6 +403,11 @@ class Coordinator:
         if (self.train or not job or job['task'] != self.BATCH or self.stop or self.reexec_due()
                 or worker.setting('PI_AUTOWORK_TRAIN', 1) < 1):
             return
+        if (self.state / 'batch-split.json').exists():
+            # A failed batch is being halved to find the candidate that breaks it: a car on a half
+            # is stopped when that half fails, and one took the remaining candidates along each
+            # time, so the culprit was never checked without the others and never held.
+            return
         try:
             tip = json.loads(Path(job['tip']).read_text())['tip']
         except (OSError, ValueError, KeyError, TypeError):
