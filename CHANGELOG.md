@@ -49,6 +49,12 @@ claim of a tagged release, completed installation or live workflow qualification
   result, reruns, the base comparison and where it came from, the verdict) in
   `full-check/<task>.gate.jsonl`, and the TUI's task and worker views show them as `runner:`
   lines between the worker's last action and the review, where they were silent.
+- **`install.sh` updates its checkout first.** Install and update now fast-forward the
+  installer's own Git checkout (`git pull --ff-only` of its upstream) and run the pulled
+  installer, so `./install.sh` never installs a stale checkout. A checkout with local changes
+  to tracked files, no upstream or a detached HEAD is installed as it is, with a line saying
+  why; `--no-pull` (or `AUTOWORK_INSTALL_NO_PULL=1`) skips it, and `--list` and `--dry-run`
+  never pull.
 - **Optimistic landing** (TOOLSET-344-7dadea23, owner decision 2026-10-21;
   `PI_AUTOWORK_OPTIMISTIC=1`). Finished tasks waited 40 minutes to 3 hours for batch full
   checks. With it on, a candidate lands after its own checks and its review, without the

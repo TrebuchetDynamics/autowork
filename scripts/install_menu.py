@@ -8,6 +8,11 @@
     install.sh --only tx,pi    just these; --skip hermes leaves those out
     install.sh --list          the items and whether each host is available
     install.sh --dry-run ...   print each command instead of running it
+    install.sh --no-pull       install this checkout as it is
+
+Install and update first bring this checkout up to date (`git pull --ff-only` of its
+upstream) and then run the pulled installer; a checkout with local changes, no upstream
+or a detached HEAD is installed as it is, and says so.
 
 Each item runs the host's own supported install command; a host whose CLI is not
 installed is skipped and says so, and fails when named with --only. Hermes options
@@ -485,6 +490,35 @@ def install(all_items, chosen, dry_run=False, output=None, mode='install'):
     return int(bool(counts['failed']))
 
 
+def pull_checkout(root, write=print, run=subprocess.run):
+    """Bring this installer's own Git checkout up to date before installing from it (owner
+    request 2026-10-21: `./install.sh` should not install a stale checkout). Fast-forward only;
+    a checkout with local changes to tracked files, no upstream, or a detached HEAD is left as
+    it is, with a line saying why. Returns True when new commits arrived."""
+    def git(*args):
+        return run(['git', '-C', str(root), *args], capture_output=True, text=True)
+    if git('rev-parse', '--is-inside-work-tree').returncode != 0:
+        return False  # not a Git checkout (an unpacked release): nothing to pull
+    upstream = git('rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}')
+    if upstream.returncode != 0 or not upstream.stdout.strip():
+        write('Not pulling: this checkout has no upstream branch (detached or local-only); installing it as it is.')
+        return False
+    if git('status', '--porcelain', '--untracked-files=no').stdout.strip():
+        write('Not pulling: this checkout has local changes to tracked files; installing it as it is.')
+        return False
+    before = git('rev-parse', 'HEAD').stdout.strip()
+    pulled = git('pull', '--ff-only', '--quiet')
+    if pulled.returncode != 0:
+        write('Not pulled: ' + (pulled.stderr.strip().splitlines() or ['git pull --ff-only failed'])[-1]
+              + '; installing the checkout as it is.')
+        return False
+    after = git('rev-parse', 'HEAD').stdout.strip()
+    if after == before:
+        return False
+    write(f'Updated this checkout {before[:8]}..{after[:8]} ({upstream.stdout.strip()}); installing the new version.')
+    return True
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     selection = parser.add_mutually_exclusive_group()
@@ -502,10 +536,18 @@ def main(argv=None):
     for flag in ('--bundle-only', '--no-reload', '--yes-deps'):
         parser.add_argument(flag, action='store_true', help='passed to the Hermes item')
     parser.add_argument('--hermes-home', help='passed to the Hermes item')
+    parser.add_argument('--no-pull', action='store_true',
+                        help="install this checkout as it is, without first pulling its upstream (git pull --ff-only)")
     parser.add_argument('command', nargs='?', choices=('install', 'update'), default='install',
                         help='install (default) or update the installed suite in place; both run the same items')
     args = parser.parse_args(argv)
     output = Output(args.color, 0 if args.quiet else 2)
+    if not (args.no_pull or args.list or args.dry_run or os.environ.get('AUTOWORK_INSTALL_PULLED')
+            or os.environ.get('AUTOWORK_INSTALL_NO_PULL')):
+        if pull_checkout(ROOT, write=output.line):
+            # The pulled installer may differ from this one: run it, once.
+            os.execvpe('bash', ['bash', str(ROOT / 'install.sh'), *(sys.argv[1:] if argv is None else argv)],
+                       dict(os.environ, AUTOWORK_INSTALL_PULLED='1'))
     hermes = [f for f, on in (('--bundle-only', args.bundle_only), ('--no-reload', args.no_reload),
                               ('--yes-deps', args.yes_deps), ('--dry-run', args.dry_run)) if on]
     if args.hermes_home:

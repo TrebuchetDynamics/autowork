@@ -7,11 +7,14 @@ import pty
 import selectors
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 INSTALL = ROOT / 'install.sh'
+sys.path.insert(0, str(ROOT / "scripts"))
+import install_menu  # noqa: E402
 NEW = 'git:github.com/TrebuchetDynamics/autowork'
 
 # A fake pi: `pi list` reads installed sources from a file; install and remove edit it.
@@ -43,7 +46,8 @@ class InstallMenuTests(unittest.TestCase):
             self.fake(name, LOGGING)
         self.env = {'PATH': f'{self.bin}:/usr/bin:/bin', 'HOME': str(self.home), 'FAKE_LOG': str(self.log),
                     'FAKE_HOME': str(self.home), 'XDG_CONFIG_HOME': str(self.home / '.config'),
-                    'PI_AUTOWORK_SYSTEMCTL': str(self.bin / 'systemctl'), 'LANG': 'C.UTF-8'}
+                    'PI_AUTOWORK_SYSTEMCTL': str(self.bin / 'systemctl'), 'LANG': 'C.UTF-8',
+                    'AUTOWORK_INSTALL_NO_PULL': '1'}  # never pull the checkout under test
 
     def fake(self, name, body):
         path = self.bin / name
@@ -442,6 +446,57 @@ class InstallMenuTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stdout)
         self.assertRegex(result.stdout, r'hermes\s+failed\s+no Hermes home')
         self.assertEqual(self.calls('hermes'), [])
+
+class PullCheckoutTests(unittest.TestCase):
+    """install.sh first fast-forwards its own checkout (owner request 2026-10-21)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        base = Path(self.tmp.name)
+        self.origin, self.clone, self.other = base / 'origin.git', base / 'clone', base / 'other'
+        run = lambda *a, cwd=None: subprocess.run(a, cwd=cwd, check=True, capture_output=True, text=True)
+        run('git', 'init', '-q', '--bare', '-b', 'main', str(self.origin))
+        for repo in (self.clone, self.other):
+            run('git', 'clone', '-q', str(self.origin), str(repo))
+            run('git', '-C', str(repo), 'config', 'user.email', 'o@example.invalid')
+            run('git', '-C', str(repo), 'config', 'user.name', 'O')
+        (self.other / 'f').write_text('1')
+        run('git', '-C', str(self.other), 'add', '-A')
+        run('git', '-C', str(self.other), 'commit', '-qm', 'one')
+        run('git', '-C', str(self.other), 'push', '-q', 'origin', 'main')
+        run('git', '-C', str(self.clone), 'pull', '-q')
+        (self.other / 'f').write_text('2')
+        run('git', '-C', str(self.other), 'commit', '-qam', 'two')
+        run('git', '-C', str(self.other), 'push', '-q', 'origin', 'main')
+        self.run_git = run
+
+    def head(self, repo):
+        return subprocess.run(['git', '-C', str(repo), 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout
+
+    def test_a_clean_checkout_behind_its_upstream_is_fast_forwarded(self):
+        said = []
+        self.assertTrue(install_menu.pull_checkout(self.clone, write=said.append))
+        self.assertEqual(self.head(self.clone), self.head(self.other))
+        self.assertIn('Updated this checkout', said[0])
+        self.assertFalse(install_menu.pull_checkout(self.clone, write=said.append))  # up to date: quiet
+        self.assertEqual(len(said), 1)
+
+    def test_local_changes_are_installed_as_they_are(self):
+        (self.clone / 'f').write_text('mine')
+        said = []
+        self.assertFalse(install_menu.pull_checkout(self.clone, write=said.append))
+        self.assertEqual((self.clone / 'f').read_text(), 'mine')
+        self.assertIn('local changes', said[0])
+
+    def test_a_detached_or_local_only_checkout_is_not_pulled(self):
+        self.run_git('git', '-C', str(self.clone), 'checkout', '-q', '--detach')
+        said = []
+        self.assertFalse(install_menu.pull_checkout(self.clone, write=said.append))
+        self.assertIn('no upstream', said[0])
+        self.assertFalse(install_menu.pull_checkout(Path(self.tmp.name), write=said.append))  # not a checkout
+        self.assertEqual(len(said), 1)
+
 
 if __name__ == '__main__':
     unittest.main()
