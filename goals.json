@@ -949,7 +949,9 @@
       "title": "Record intent before side effects in worktree creation and slot transitions"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-172-92"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-120-fc",
       "section": "Now",
@@ -957,7 +959,9 @@
       "title": "Hands-off runners: the owner only plans and answers questions"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-154-d3"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-125-3c",
       "section": "Now",
@@ -1012,7 +1016,9 @@
       "title": "Merge pending names its real cause and clears a dirty integration worktree safely"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-129-c4"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-153-64",
       "section": "Now",
@@ -1028,7 +1034,9 @@
       "title": "Question IDs are single-line and stable, so BLOCKERS.md changes only when questions do"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-135-16"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-155-e2",
       "section": "Now",
@@ -1078,7 +1086,10 @@
       "title": "A standing DOCS-MAINTAINER worker repairs, re-sorts and syncs each repository's task docs"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-154-d3",
+        "TOOLSET-261-15"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-173-94",
       "section": "Now",
@@ -1138,7 +1149,9 @@
       "title": "One busy status read is not 'unavailable': the last state stays, and unavailable dates from the first failed read"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-154-d3"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-265-16",
       "section": "Now",
