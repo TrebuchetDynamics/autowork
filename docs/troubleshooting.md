@@ -175,6 +175,18 @@ anchor, a documented script that does not exist, a missing covered path, or a
 baseline role that is neither mapped nor recorded as not applicable. Fix the document or the manifest; see the
 [role manifest](../skills/docs-sync/references/document-scaffold.md#optional-role-manifest).
 
+### `docs.py stale` reports an unverifiable historical pin
+
+`stale` exits 1 when a covered role has no `verified_at`, an unknown commit, or a
+commit that is not an ancestor of the checkout's HEAD. An existing commit on a
+different history is not current-source proof. Preserve its identifier and record
+the role's source-evidence gap; do not replace a pin with HEAD merely to remove a
+warning. Reverify the document against its full current source closure before
+recording new verification, retaining the old identifier as historical evidence.
+This repository's [role provenance inventory](project.md#role-source-evidence-gaps)
+distinguishes the retained pins from current gaps. A passing `check` verifies
+structure and local references, not content accuracy or runtime qualification.
+
 ## Still stuck
 
 Collect `hermes autowork doctor --json`, the relevant receipt or log and the exact

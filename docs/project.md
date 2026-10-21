@@ -615,9 +615,9 @@ Status: Accepted
 
 Decision: On 2026-10-14 the user approved recording two Docs Sync improvements as
 bounded tasks: a machine-checkable document role manifest and repository-type
-role profiles. Today Docs Sync's core-document completeness, link and command
-checks, and drift detection are prose instructions that only an agent applies;
-`goals.py` has no equivalent for documents. This acceptance covers offline helper,
+role profiles. At that decision, Docs Sync's core-document completeness, link and
+command checks, and drift detection were prose instructions that only an agent
+applied; the then-current `goals.py` had no equivalent for documents. This acceptance covers offline helper,
 skill-reference and regression work; it does not accept a particular manifest
 path or authorize rewriting consumer repositories.
 
@@ -637,6 +637,68 @@ path or authorize rewriting consumer repositories.
 Implemented: TOOLSET-030 to TOOLSET-032 added `docs.py validate|check|stale|profiles`
 (goal DOCS-COMPLETENESS met on offline evidence). The manifest defaults to
 `docs/roles.json` (`--manifest` overrides it); this repository uses that path.
+
+### Role source-evidence gaps
+
+TOOLSET-321-57 reviewed the role mapping and source-closure inventory at
+`f589211db3d7b474821ca52b78ecf5c33d57fe3d`, after the `tasks/` migration.
+This is a **provenance inventory, not completed current-source verification**.
+All ten recorded pins resolve locally, but `git merge-base --is-ancestor PIN
+f589211db3d7b474821ca52b78ecf5c33d57fe3d` returns 1 for each. This establishes
+non-ancestry only: it neither disproves an old review nor proves the current
+source/document relationship. No historical check result is inferred.
+
+Historical identifiers, expanded with `git rev-parse PIN^{commit}`:
+
+| Recorded pin | Resolved historical commit |
+| --- | --- |
+| `8738cc636fdc` | `8738cc636fdc3aa19ec4573b0a294f082112c055` |
+| `41aaad8fccfe` | `41aaad8fccfeb5706a655fdf31c7ec6f9f2e9d6d` |
+| `6c2f4e51d8d2` | `6c2f4e51d8d2efc8b338088e892bf34e60bef105` |
+
+The [manifest](roles.json) retains each original `verified_at`, `covers`, path
+and outcome status. Its supported `reason` field records the explicit gap for
+that role; a `maintained` or `created` status is not a fresh verification receipt.
+No new `verified_at` or current passing content-review claim is recorded.
+Counts below are tracked files selected by `git ls-files -- COVERED_PATHS` at the
+inventory revision, not reviewed-file totals. The exact source paths remain in
+`covers`; coverage omissions below must be reconciled during the relevant review,
+not silently treated as historically covered.
+
+| Role / document | Historical pin | Covered files | Current source-evidence gap / next review |
+| --- | --- | --- | --- |
+| [readme](../README.md) | `8738cc636fdc` | 5 | Recheck installation, update and runtime-policy claims against all five covered sources; link checks do not execute or qualify them. |
+| [reference](reference.md) | `41aaad8fccfe` | 13 | Recheck command/configuration entries against their implementations. The page links `task_prepare.py` and `task_migrate.py`, which are outside its current `covers`. |
+| [install-upgrade](installation.md) | `8738cc636fdc` | 10 | Recheck preflight ordering, fleet-write boundaries, upgrade and recovery procedures against the covered installers/defaults. No setup or profile operation was run. |
+| [troubleshooting](troubleshooting.md) | `8738cc636fdc` | 5 | Recheck diagnosis/remedy pairs against the covered runtime/update/menu sources. Task-store and docs-checker remedies additionally require sources outside `covers`. |
+| [architecture](#current-components) | `41aaad8fccfe` | 282 | Recheck registration, all covered skills and the Pi adapter. The current map also links engine/task-store implementations outside `covers`; registration alone does not qualify execution. |
+| [test-plan](testing.md) | `41aaad8fccfe` | 67 | Reconcile documented checks and their evidence limits with the covered inventory/tests, plus documented engine and Docs Sync tests outside `covers`. Listing tests is not running them. |
+| [workflows](workflows.md) | `8738cc636fdc` | 3 | Recheck aliases, routing and menu behavior against all three registrars; separately reconcile task-store instructions with their skill/CLI sources. |
+| [cross-host](cross-host.md) | `41aaad8fccfe` | 36 | Recheck adapter/package contents and runner claims. Retain historical install/discovery records separately from current host/model qualification. |
+| [memory](memory.md) | `6c2f4e51d8d2` | 2 | Recheck store binding/provider selection against installer/defaults and externally owned capture-policy claims against the named OMH version. No store access or live replay was performed. |
+| [dependencies](dependencies.md) | `8738cc636fdc` | 9 | Reconcile pin/license/install claims with all covered inputs. The page also cites Impeccable/Beautify inventories and `pi-autowork/pi_autowork/command.py` dependency pins outside `covers`. |
+
+Checker boundaries are source-backed in
+[`docs.py`](../skills/docs-sync/scripts/docs.py): `validate` accepts `reason` on
+mapped roles, `check` scans entire mapped documents (including combined roles),
+and `stale` uses only `covers`, `verified_at` and Git history. It does not consume
+these gap notes or inspect content accuracy, uncommitted source drift, external
+URLs or live behavior. Thus `stale` still exits 1 with ten non-ancestor findings;
+that is retained unqualified evidence, not a fresh/pass verdict. Roles without
+`covers` are not assessed by `stale`, so silence for PRD, changelog, user-guide,
+removal or contributing is not proof of freshness either.
+
+The earlier inventory reported `changelog: CHANGELOG.md: broken link TODO.md`:
+the task store had moved to `tasks/` and the old relative target no longer existed.
+At the rework baseline `bf1a36d040474e54002a10fadcaf0dfb3b2b6e7a`, the
+coordinator-owned CHANGELOG already records that historical task-queue reference
+without the broken link. A fresh `python3 skills/docs-sync/scripts/docs.py check .`
+now passes all mapped-document link/anchor, script-path, covered-path and
+baseline-role checks. This rework retains the earlier provenance inventory and
+changes no CHANGELOG bytes, task contracts, ranks or frozen archives. It does not
+recreate TODO.md, remap the changelog role or weaken the checker. The structural
+pass is not current-source content verification or runtime qualification; the ten
+explicit source-evidence gaps above remain.
 
 ## Reliability bug harvest (2026-10-15)
 
