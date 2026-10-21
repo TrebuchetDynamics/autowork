@@ -1459,6 +1459,22 @@ def review_rework(repo, common, current):
     return None
 
 
+def draining_ahead(repo, common, task_id):
+    """The reason ``task_id``'s fresh retry waits: an exclusive task ahead of it in priority order has
+    waited past drain_after for the pool to empty, as ordinary dispatch reports it; else ''. A retry
+    started while one drained, and the task that had to run alone kept waiting (2026-10-20)."""
+    after = dispatch.drain_after()
+    streaks = {tid: waited for tid, waited in dispatch.waiting_streaks(common).items() if waited >= after}
+    if not streaks:
+        return ''
+    for contract in dispatch.contracts(repo):
+        if contract['id'] == task_id:
+            return ''  # ranked above every draining task: it may run, as ordinary dispatch allows
+        if contract['id'] in streaks:
+            return f'priority waits for {contract["id"]} (draining, waited {int(streaks[contract["id"]] // 60)}m)'
+    return ''
+
+
 def retry_held(args):
     """Refill adapter for held slots; first attempts and their artifacts survive."""
     repo, common = context(args.consumer, args.owner_pid)
@@ -1636,6 +1652,8 @@ def retry_held(args):
             task = next((t for t in planned['dispatch'] if t['id'] in held), None)
             if task is None:
                 return {'outcome': 'IDLE'}  # unrelated fresh work may still fill spare slots
+            if draining := draining_ahead(repo, common, task['id']):
+                return {'outcome': 'WAITING', 'reason': draining}
             template, host = dispatch.worker_command(args, args.owner_pid)
             if template is None:
                 return {'outcome': 'SEQUENTIAL_FALLBACK', 'reason': host}
