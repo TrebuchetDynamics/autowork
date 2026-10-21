@@ -166,6 +166,11 @@ class Stopped(Exception):
     """The caller was told to stop while its suite waited or ran; the suite is killed."""
 
 
+# A background main check re-checks what already landed: it yields the CPU to the integration
+# check that lands the next task, as workers do (parallel_dispatch.WORKER_NICE).
+BACKGROUND_NICE = 10
+
+
 def run_command(cmd, checkout, limit, progress, output=None, stop=None, background=False):
     """Run a full suite with its complete timeout after admission; report queue progress.
     A background main check is admitted after the reviews waiting with it.
@@ -207,6 +212,7 @@ def run_command(cmd, checkout, limit, progress, output=None, stop=None, backgrou
             env = {k: v for k, v in os.environ.items() if k != 'AUTOWORK_CHECK_WAIT_FD'}
             with subprocess.Popen(['bash', '-c', cmd], cwd=checkout, env=env, stdin=subprocess.DEVNULL,
                                   stdout=output, stderr=subprocess.STDOUT, start_new_session=True,
+                                  preexec_fn=(lambda: os.nice(BACKGROUND_NICE)) if background else None,
                                   pass_fds=(() if lease is None else (lease,))) as process:
                 deadline = time.monotonic() + limit
                 while True:

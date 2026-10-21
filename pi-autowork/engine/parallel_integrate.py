@@ -591,8 +591,22 @@ def require_no_writers(repo, files=None):
                        for w in worker.get('workspaces') or [] for root in roots)
         def recorded(worker):  # a slot's leader running somewhere the record does not say
             return any(execution.identity(worker['pid']) == leader for leader in leaders)
+        # The write lands only in these checkouts. A session busy in another worktree of its
+        # own (an interactive session's .worktrees/claude-*) cannot be overwritten there: a
+        # merge waited 15 minutes on one.
+        # Only a registered worktree that is not the runner's own counts: a process somewhere
+        # unknown (/var/tmp) still blocks, and so does one in a runner checkout (pi-scratch-*,
+        # autowork-*, pi-autowork-*), whose commits the runner merges.
+        targets = {str(Path(repo).resolve()), main, str(worktree_path(repo, 'autowork-integration'))}
+        registered = {str(Path(line[9:]).resolve()) for line in
+                      git(repo, 'worktree', 'list', '--porcelain').splitlines() if line.startswith('worktree ')}
+        others = {path for path in registered - targets
+                  if not Path(path).name.startswith(('pi-scratch-', 'autowork-', 'pi-autowork-'))}
+        def elsewhere(worker):
+            spaces = set(worker.get('workspaces') or [])
+            return bool(spaces) and spaces <= others
         workers = [w for w in workers
-                   if not (w['kind'] == 'session' and touches_none_of(w, files, main)
+                   if not (w['kind'] == 'session' and (touches_none_of(w, files, main) or elsewhere(w))
                            and not in_pool(w) and not recorded(w))]
         if files is not None:
             only_uncommitted = {w['pid'] for w in workers

@@ -26,6 +26,19 @@ class MainCheckTests(unittest.TestCase):
                                                      'test_ui_taste_bundle.UiTasteBundleTests.test_bundle',
                                                      'test_other.OtherTests.test_fixed', '/repo/tests (timed out)'])
 
+    def test_a_background_main_check_yields_to_reviews(self):
+        """It re-checks what already landed; the review that lands the next task goes first."""
+        with tempfile.TemporaryDirectory() as folder, \
+                patch.dict(os.environ, PI_AUTOWORK_CHECK_ROOT=str(Path(folder) / 'slots')):
+            (Path(folder) / 'slots').mkdir(mode=0o700)
+            seen = {}
+            for background in (False, True):
+                out = Path(folder) / f'nice-{background}'
+                main_check.run_command(f'{sys.executable} -c "import os; print(os.nice(0))" > {out}', folder, 30,
+                                       Path(folder) / 'progress.json', background=background)
+                seen[background] = int(out.read_text())
+            self.assertEqual(seen[True] - seen[False], main_check.BACKGROUND_NICE)
+
     def test_the_full_check_comes_from_validate_or_agents_md(self):
         """TOOLSET-180-72: the repository declares its whole offline suite once."""
         import tempfile
