@@ -294,6 +294,31 @@ limits, and remaining mission criteria without weakening the accepted bar.
 Changes to acceptance require an authoritative owner decision, not a documentation
 pass that makes the current implementation appear complete.
 
+## Helper implementation boundary
+
+Callers keep `import goals`; [goals.py](../scripts/goals.py) remains the CLI and
+compatibility facade, with redaction and the Short/Touches checks. Its concern
+modules depend toward the ledger, never back on the facade:
+
+- [goals_ledger.py](../scripts/goals_ledger.py): ledger validation, normalization,
+  IDs, repository identity, locks and guarded IO.
+- [goals_todo.py](../scripts/goals_todo.py): TODO parsing, block edits, coverage
+  rendering and archive orchestration.
+- [goals_queue.py](../scripts/goals_queue.py): eligibility, priority drift and
+  order reconciliation.
+- [goals_backlog.py](../scripts/goals_backlog.py): source resolution, consumer
+  receipts and first-index proposal/acceptance.
+
+Private `goals.py` copies retain separate transaction ContextVars. The facade
+passes that state and a late-bound write callback explicitly to the shared
+modules; coordinating one copy must not arm another copy's stale-write guard.
+This preserves existing private loaders without sharing mutable write state.
+The runner's [task_execution.py](../../autowork/scripts/task_execution.py) passes
+its content-keyed parsed bodies to `queue(..., bodies=...)`, which forwards them
+to the priority check. Those bodies must describe the exact supplied TODO text.
+Selection therefore reuses one parse without patching a module's internal
+namespace. CLI commands and persisted formats are unchanged.
+
 ## Focused verification
 
 Run the local executable checks without profiles, providers, or production:
@@ -306,5 +331,9 @@ python -m unittest test_goals test_milestone_focus test_goal_concurrency -v
 `test_goal_concurrency.py` uses real CLI processes, temporary Git repositories,
 and linked worktrees. It checks shared-lock exclusion, retained parallel updates,
 canonical targeting, stale TODO refusal, in-flight edit refusal, exact task-body
-preservation, symlink refusal, and existing file permissions. These are fixture
-results, not proof of production deployment or all workflow policy execution.
+preservation, symlink refusal, existing file permissions, and isolation of two
+private helper copies' stale-write guards. The runner's
+`test_task_execution.SelectionCacheTests.test_one_selection_parses_todo_once`
+counts actual parser executions through selection with a recorded priority order.
+These are fixture results, not proof of production deployment or all workflow
+policy execution.

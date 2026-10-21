@@ -523,6 +523,32 @@ class RecoveryTests(ExecutionFixtureMixin, unittest.TestCase):
         self.assertEqual(result['outcome'], 'CHILDREN_TERMINATED')
 
 class SelectionCacheTests(unittest.TestCase):
+    def test_one_selection_parses_todo_once(self):
+        import task_execution as execution
+        with tempfile.TemporaryDirectory() as folder:
+            repo = Path(folder)
+            (repo / 'TODO.md').write_text('## Now\n- [ ] A — parse once\n  Scope: a\n'
+                                        '  Acceptance: works\n  Checks: test a\n  Dependencies: None.\n')
+            (repo / 'goals.json').write_text(json.dumps({
+                'version': 1, 'priority_order': {'schema': 1, 'tasks': ['A']},
+                'goals': [{'id': 'G', 'title': 'fixture', 'source': 'TODO.md',
+                           'status': 'partial', 'tasks': ['A'], 'priority': 1}],
+                'tasks': [{'id': 'A', 'title': 'parse once', 'goal': 'G',
+                           'status': 'open', 'section': 'Now'}]}))
+            parses = []
+            scripts = SCRIPT.parents[2] / 'docs-sync/scripts'
+            def observe(frame, event, arg):
+                if (event == 'call' and frame.f_code.co_name == 'task_bodies'
+                        and Path(frame.f_code.co_filename).parent == scripts):
+                    parses.append(frame.f_locals['text'])
+            previous = sys.getprofile()
+            sys.setprofile(observe)
+            try:
+                self.assertEqual(execution.select(repo, None, None)['id'], 'A')
+            finally:
+                sys.setprofile(previous)
+            self.assertEqual(parses, [(repo / 'TODO.md').read_text()])
+
     def test_selection_reuses_parsing_without_hiding_content_changes_or_caller_mutation(self):
         import task_execution as execution
         import parallel_status
