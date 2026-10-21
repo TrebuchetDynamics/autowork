@@ -892,6 +892,17 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
             self.wait_until_idle()
         self.assertNotIn('A', [e.get('task') for e in self.events()])
 
+    def test_a_closed_slot_whose_record_is_still_open_waits_alone(self):
+        """A refused close commit left a merged task open: every pass raised 'slot already exists'."""
+        self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 0.1}, 'B': {'files': {'b.txt': 'b'}, 'sleep': 0.1}})
+        execution.save(state.slot_path(self.common, 'A'),
+                       dict(task_id='A', worktree=str(self.root / 'gone'), branch='autowork/A', baseline='0' * 40,
+                            worker=None, state='closed', attempt=1, started_at=time.time()))
+        _, result = self.apply()
+        self.assertNotIn('A', [d['task'] for d in result['dispatched']], result)
+        self.assertIn('B', [d['task'] for d in result['dispatched']], result)
+        self.assertIn('record is not closed yet', next(w['reason'] for w in result['waiting'] if w['id'] == 'A'))
+
     def test_unconverted_repo_names_migrate(self):
         bare = self.root / 'unconverted'
         bare.mkdir()
