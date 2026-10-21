@@ -48,6 +48,7 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- **Task prose can no longer be run by the shell** (TOOLSET-314-23). `autowork tasks add`, `field` and `goal` accept one JSON object from a file or stdin (`--json FILE`, `-` for stdin) and take every string literally, so backticks, `$(...)`, `$VAR`, quotes and newlines round-trip byte for byte and start no subprocess; the existing flags still work. The docs-sync skill, its adapters and the shared task rules tell agents to use it for prose.
 - **Two more CI-only flakes decide from fixture state** (TOOLSET-339-54). The conflicting owner-plan test retries its owner edit on the runner's transient `index.lock`, and the live restart-waiter test synchronises on the waiter's explicit start instead of racing it; assertions are unchanged.
 - **Scoped-update tests stop depending on host timing** (TOOLSET-332-6c). The `test_update_bundle.py` scoped-update fixtures inject their own helper-process inventories instead of reading the host, so the unchanged-retry and backup/claim tests no longer fail only under load; real admission checks and assertions are unchanged.
 - **TUI Play prepares an unready repository** (TOOLSET-327-02, issue 9). Play on a repository without a usable task store now offers Prepare and Prepare and start, runs `autowork tasks prepare`, shows the outcome code and next step (NO_STORE, converted, MIGRATION_DEFERRED/BLOCKED, TOOLCHAIN, INVALID) and only starts after fresh readiness passes.
