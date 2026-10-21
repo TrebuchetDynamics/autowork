@@ -14,6 +14,7 @@ resolve them with the owner, easiest first; an answered question leaves the bloc
 its cause is gone (Git history keeps it).
 """
 from datetime import date, datetime, timezone
+from hashlib import sha1
 import re
 
 START = '<!-- pi-autowork:questions:start -->'
@@ -24,6 +25,17 @@ INPUT_CAUSES = ('blocker', 'scope_request', 'scope')
 # request) clears the hold. A merge conflict is different — the engine resolves it during
 # integration, and one it cannot resolve stays the owner's question — so it is not listed here.
 TECHNICAL_CAUSES = ('validation', 'runner_merged')
+
+
+def _one_line(value):
+    return ' '.join(str(value).split())
+
+
+def _question_id(value):
+    text = _one_line(value)
+    if re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', text):
+        return text
+    return 'COND-' + sha1(text.encode('utf-8'), usedforsecurity=False).hexdigest()[:8]
 
 
 def _title(todo, task, goals):
@@ -92,9 +104,10 @@ def build(snapshot, todo, goals, repairs=(), resolving=(), *, now=None):
     deferred = goals.deferred_tasks(goals.task_bodies(todo))
 
     def add(qid, kind, effort, needs, answer, task_line, unblocks):
+        qid = _question_id(qid)
         found[qid] = dict(id=qid, type='USER_INPUT' if effort == 'input' else 'USER_DECISION', effort=effort,
-                          unblocks=unblocks, task=task_line, needs=' '.join(str(needs).split()), answer=answer,
-                          kind=kind)
+                          unblocks=unblocks, task=_one_line(task_line), needs=_one_line(needs),
+                          answer=_one_line(answer), kind=kind)
 
     if snapshot.get('ledger_errors'):
         add('LEDGER', 'ledger', 'investigate',
@@ -161,7 +174,7 @@ def build(snapshot, todo, goals, repairs=(), resolving=(), *, now=None):
                 "when the entry changes."), line, blocks)
     for qid, root in roots.items():
         kind, blocks = root.get('kind'), root.get('blocks', 0)
-        if qid in found:
+        if _question_id(qid) in found:
             continue
         title = _title(todo, qid, goals)
         line = f'{qid} — {title}' if title else qid
@@ -244,13 +257,23 @@ def planning(base):
 def previous_since(text):
     """{question id: Since} from an existing block, so a question keeps its first time."""
     block = block_of(text)
-    since, current = {}, None
+    since, current, heading = {}, None, None
     for line in (block or '').splitlines():
-        head = re.match(r'^### Q-(.+?) — ', line)
-        if head:
-            current = head[1]
+        if line.startswith('### '):
+            current, heading = None, line
+        elif heading is not None:
+            if re.match(r'^- (?:Task|Needs|Since|Answer|Kind):', line):
+                heading = None
+            else:
+                heading += ' ' + line
         elif current and line.startswith('- Since: '):
-            since[current] = line[len('- Since: '):].strip()
+            since.setdefault(current, _one_line(line[len('- Since: '):]))
+        if heading is not None:
+            # Match the metadata suffix: legacy prose can wrap or contain an em dash.
+            head = re.fullmatch(r'### Q-(.+?) — USER_(?:INPUT|DECISION) — effort \S+ — unblocks \S+',
+                                _one_line(heading))
+            if head:
+                current, heading = _question_id(head[1]), None
     return since
 
 
@@ -262,10 +285,12 @@ def block_of(text):
 
 def render(questions, since):
     lines = [START, '']
-    for q in questions:
+    for question in questions:
+        q = {key: _one_line(value) for key, value in question.items()}
+        q['id'] = _question_id(q['id'])
         lines += [f"### Q-{q['id']} — {q['type']} — effort {q['effort']} — unblocks {q['unblocks']}", '',
-                  f"- Task: {q['task']}", f"- Needs: {q['needs']}", f"- Since: {since.get(q['id'])}",
-                  f"- Answer: {q['answer']}", f"- Kind: {q.get('kind') or 'other'}", '']
+                  f"- Task: {q['task']}", f"- Needs: {q['needs']}", f"- Since: {_one_line(since.get(q['id']))}",
+                  f"- Answer: {q['answer']}", f"- Kind: {_one_line(question.get('kind') or 'other')}", '']
     lines.append(END)
     return '\n'.join(lines)
 
@@ -276,7 +301,7 @@ def update(text, questions, now=None):
         return text  # nothing to ask and no block yet: leave the file alone
     stamp = (now or datetime.now(timezone.utc)).strftime('%Y-%m-%dT%H:%M:%SZ')
     known = previous_since(text or '')
-    since = {q['id']: known.get(q['id'], stamp) for q in questions}
+    since = {_question_id(q['id']): known.get(_question_id(q['id']), stamp) for q in questions}
     block = render(questions, since)
     if not text:
         return f'# Blockers\n\n## Active\n\n{block}\n'
