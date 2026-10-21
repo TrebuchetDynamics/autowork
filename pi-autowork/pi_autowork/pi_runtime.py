@@ -30,6 +30,11 @@ import sys
 import tempfile
 import time
 
+if __package__:
+    from . import telemetry
+else:
+    import telemetry  # pi_runtime.py is also a standalone subprocess entry point.
+
 PROVIDER_FAILURE = re.compile(
     r'429|rate.?limit|quota|usage limit|overloaded|5[0-9]{2}|unavailable|timed? ?out|ECONN|ENOTFOUND|EAI_AGAIN'
     r'|network|fetch failed|401|403|unauthori[sz]ed|forbidden|credential|api key|not logged in|/login|oauth'
@@ -313,7 +318,7 @@ def provider_failure(run):
     return run['stop'] == 'error' or (not run['settled'] and bool(PROVIDER_FAILURE.search(run['error'] or '')))
 
 
-def record(s, role, task, outcome, model, fallback, run, result=''):
+def record(s, role, task, outcome, model, fallback, run, result='', *, directory=None):
     result = redact(result)[:300]
     row = {'time': now_iso(), 'role': role, 'task': task, 'outcome': outcome, 'provider': provider(model),
            'model': model_name(model), 'seconds': run.get('seconds', 0), 'session': s.session_label,
@@ -322,6 +327,8 @@ def record(s, role, task, outcome, model, fallback, run, result=''):
            'error': run.get('error') or None, 'result': result or None}
     with open(s.state / 'runs.jsonl', 'a') as stream:  # one short append per run
         stream.write(json.dumps(row) + '\n')
+    if directory is not None:
+        telemetry.model_run(directory, role, task, model, outcome, run)
 
 
 # --- One job --------------------------------------------------------------------
@@ -334,19 +341,21 @@ def job(s, role, task, directory, message, session, limit, extra):
             return dict(ok=False, text='', notes=notes, why='budget')
         chosen, reason = choose(s)
         if chosen is None:
-            record(s, role, task, 'no_model', s.primary, reason, {'error': reason or 'no model ready'})
+            record(s, role, task, 'no_model', s.primary, reason, {'error': reason or 'no model ready'},
+                   directory=directory)
             return dict(ok=False, text='', notes=notes, why='no_model')
+        telemetry.model_run(directory, role, task, chosen, 'selected')
         run = run_pi(s, directory, message + note, session, chosen, limit, extra, role=role)
         if STOP:
-            record(s, role, task, 'interrupted', chosen, reason, run)
+            record(s, role, task, 'interrupted', chosen, reason, run, directory=directory)
             return dict(ok=False, text='', notes=notes, why='interrupted')
         if run['rc'] == 124:
-            record(s, role, task, 'timeout', chosen, reason, run)
+            record(s, role, task, 'timeout', chosen, reason, run, directory=directory)
             return dict(ok=False, text='', notes=notes, why='timeout')
         if provider_failure(run) or not run['settled'] or run['aborted']:
             kind = 'provider' if provider_failure(run) else 'crash'
             attempt += 1
-            record(s, role, task, kind + '_failure', chosen, reason, run)
+            record(s, role, task, kind + '_failure', chosen, reason, run, directory=directory)
             if attempt > s.max_retries:
                 return dict(ok=False, text='', notes=notes, why=kind + '_failure')
             if kind == 'provider' and chosen == s.primary and s.fallback_enabled:
@@ -358,7 +367,7 @@ def job(s, role, task, directory, message, session, limit, extra):
             continue
         result = next((line for line in run['text'].splitlines()
                        if re.match(r'^PI_AUTOWORK_(RESULT|VERIFY):', line)), '')
-        record(s, role, task, 'finished', chosen, reason, run, result)
+        record(s, role, task, 'finished', chosen, reason, run, result, directory=directory)
         return dict(ok=True, text=run['text'], notes=notes)
 
 
