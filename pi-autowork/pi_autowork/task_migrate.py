@@ -29,7 +29,8 @@ ENGINE = Path(__file__).resolve().parents[1] / 'engine'
 sys.path.insert(0, str(ENGINE))
 import parallel_plan  # noqa: E402
 import parallel_state  # noqa: E402
-import task_execution  # noqa: E402
+import task_execution  # noqa: E402  (leases only: read, active_owner, git)
+from pi_autowork.legacy import reader  # noqa: E402
 import task_select  # noqa: E402
 import task_store  # noqa: E402
 from task_store import StoreError, TaskStore, WriteError  # noqa: E402
@@ -113,8 +114,7 @@ def _owner_only(fields):
 
 def _task_record(tid, title, entry, fields, rank, known):
     """(header fields, body) for one open task, or Refused naming what cannot be held."""
-    goals = task_execution.goals_module()
-    checks = goals.task_checks(fields)
+    checks = reader.task_checks(fields)
     deps_text = fields.get('Dependencies', 'None.').strip()
     deps = parallel_plan.dependency_ids(deps_text, known)
     try:
@@ -167,14 +167,11 @@ def _notes(tid, notes):
 def build(repo):
     """{relative path: text} for the whole store, plus the legacy order it must reproduce."""
     repo = Path(repo)
-    goals = task_execution.goals_module()
     try:
-        inputs = task_execution.selection_inputs(repo)
-        legacy = [contract['id'] for contract in task_execution.select_all(repo)]
-    except task_execution.PriorityDriftError:
+        inputs = reader.inputs(repo)
+        legacy = reader.order(repo, inputs)
+    except reader.Drift:
         raise Refused('TODO.md order differs from the recorded priority; reconcile it first') from None
-    except task_execution.NoEligibleTask:
-        legacy = []
     except (ValueError, SystemExit) as exc:
         raise Refused(f'the current queue does not validate: {exc}') from None
     ledger, bodies = inputs['ledger'], inputs['bodies']
@@ -189,11 +186,11 @@ def build(repo):
     files = {}
     for index, tid in enumerate(human):
         body, _mark, _section = bodies[tid][0]
-        fields = goals.task_fields(body)
+        fields = reader.task_fields(body)
         title = body.splitlines()[0].split('—', 1)[-1].strip(' —:-') or tid
         header, notes = _task_record(tid, title, tasks[tid], fields, STEP * (index + 1), known)
         files[f'tasks/items/{tid}.md'] = _render(tid, header, notes)
-    archived = task_execution.archived_done(repo)
+    archived = reader.archived_done(repo)
     for tid, entry in tasks.items():
         if entry['status'] in ('done', 'superseded'):
             header = dict(schema=1, id=tid, title=entry.get('title') or tid, status=entry['status'], goal=entry['goal'])
@@ -204,7 +201,7 @@ def build(repo):
             files[f'tasks/items/{tid}.md'] = _render(tid, header, _notes(tid, notes))
     # Dependencies on tasks that exist only in the archive stay satisfied.
     needed = {d for tid in human for d in parallel_plan.dependency_ids(
-        goals.task_fields(bodies[tid][0][0]).get('Dependencies', 'None.'), known)}
+        reader.task_fields(bodies[tid][0][0]).get('Dependencies', 'None.'), known)}
     for tid in sorted(needed & archived - set(tasks)):
         files[f'tasks/items/{tid}.md'] = _render(tid, dict(schema=1, id=tid, title=tid, status='done'),
                                                  _notes(tid, [('Archived', 'TODO.archive.md')]))

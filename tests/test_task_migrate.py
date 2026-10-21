@@ -10,7 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 COMMAND = ROOT / 'pi-autowork/pi_autowork/command.py'
 GOALS = ROOT / 'skills/docs-sync/scripts/goals.py'
 sys.path.insert(0, str(ROOT / 'pi-autowork/engine'))
-import task_execution  # noqa: E402
+sys.path.insert(0, str(ROOT / 'pi-autowork'))
+from pi_autowork.legacy import reader  # noqa: E402
 from task_store import TaskStore  # noqa: E402
 
 EVIDENCE = [{'kind': 'executed', 'ref': 'fixture check', 'result': 'pass'}]
@@ -87,7 +88,7 @@ class MigrateTests(unittest.TestCase):
                               capture_output=True, text=True, timeout=120)
 
     def test_migration_keeps_order_and_fields(self):
-        legacy = [c['id'] for c in task_execution.select_all(self.repo)]
+        legacy = reader.order(self.repo)
         recorded = json.loads((self.repo / 'goals.json').read_text())['priority_order']['tasks']
         # Focus G2 first (T-004, though in Next; T-002 waits for T-001), then Now, then Next.
         self.assertEqual(legacy, ['T-004', 'T-001', 'T-003', 'T-005'])
