@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-321-57"
 title = "Requalify documentation coverage without rewriting unproven historical pins"
 short = "Requalify documentation source pins"
-status = "open"
+status = "done"
 goal = "DOCS-PROVENANCE"
 section = "Next"
 rank = 17000
@@ -16,6 +16,8 @@ scope = "Review current covered source closures for the role manifest after the 
 acceptance = ["Each currently unverifiable role has either completed current-source verification with an auditable retained historical pin, or an explicit source-evidence gap. Existing historical identifiers remain recoverable and no ancestry or passing check is invented. All local document links and role mappings pass docs.py check. Current and historical proof are distinguished; independent task ranks, active contracts and frozen archives are unchanged."]
 checks = ["python3 skills/docs-sync/scripts/docs.py check .", "python3 skills/docs-sync/scripts/docs.py stale .", "autowork tasks validate --worktree ."]
 exclusions = ["No source-pin rewrite merely to hide drift; no frozen archive edits, task-format conversion, profile/service/job changes, model qualification or publication."]
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-321-57.toml"
 +++
 
 - Sources: docs/project.md#checkable-core-document-completeness

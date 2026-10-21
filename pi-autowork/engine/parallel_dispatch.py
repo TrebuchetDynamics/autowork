@@ -996,13 +996,16 @@ def waiting_streaks(common, now=None):
 def merge_backlog(common, current, *, workers, now=None, env=os.environ):
     """Back-pressure from finished commits; only queue time counts, not worker runtime.
 
-    The default threshold is two commits per worker: one batch lands a whole pool's
-    work, so a fixed 3 left an 8-worker runner with one worker after every batch.
+    Landing finished work comes before starting more. The default threshold is half the
+    pool, at least two: two per worker (16 for 8 workers) never paused, and seven finished
+    commits waited up to 1h39m while new workers took the CPU their checks needed. (A fixed
+    3 left an 8-worker runner with one worker after every batch; a landed batch now drops
+    the count below the threshold and refills the pool.)
     The journal keeps the queue clock and pause across coordinator restarts. A pause
     lasts until the count drops below the threshold, even if the oldest merges first.
     """
     limits = {}
-    for name, default in (('MERGE_BACKLOG', 2 * workers), ('MERGE_BACKLOG_AFTER', 1200)):
+    for name, default in (('MERGE_BACKLOG', max(2, workers // 2)), ('MERGE_BACKLOG_AFTER', 1200)):
         try:
             value = int(env.get('PI_AUTOWORK_' + name, str(default)))
             limits[name] = value if value >= 0 else default
@@ -1087,6 +1090,10 @@ def dispatch_locked(args, repo, common, count, template, host):
     candidates = contracts(repo, args.tasks, args.plan) if (args.tasks or args.plan) else everything
     closed = retired(repo, getattr(args, 'base_ref', None))
     candidates = [t for t in candidates if t['id'] not in closed]  # closed work never starts
+    # A closed slot merged its task; the record still reads open only until its close commit
+    # lands. Starting it again raised for the whole pass: one refused close stopped every task.
+    unclosed = [t for t in candidates if any(s['task_id'] == t['id'] and s['state'] == 'closed' for s in current)]
+    candidates = [t for t in candidates if t not in unclosed]
     occupying = [s for s in current if s['state'] in OCCUPYING
                  and not (s['state'] in ('held', 'interrupted', 'released', 'reported') and s['task_id'] in closed)]
     contract = lambda s: by_id.get(s['task_id'], {'id': s['task_id'], 'fields': {}})
@@ -1111,6 +1118,8 @@ def dispatch_locked(args, repo, common, count, template, host):
     used = {meta(common, s).get('slot_index') for s in live}
     baseline = execution.git(repo, 'rev-parse', 'HEAD')
     started, waiting = [], list(planned['waiting'])
+    waiting.extend({'id': t['id'], 'reason': 'merged; its record is not closed yet (the close commit has not landed)',
+                    'blocked_by': []} for t in unclosed)
     for task in planned['dispatch']:
         if len(live) + len(started) >= count:
             waiting.append({'id': task['id'], 'reason': f'all {count} worker slots busy', 'blocked_by': []})

@@ -67,6 +67,8 @@ def fields(record):
         view.update(Scope=record.scope, Acceptance='; '.join(record.acceptance),
                     Checks='; '.join(record.checks),
                     Dependencies=', '.join(record.depends_on) or 'None.')
+        if record.verified_depends_on:
+            view['Verified dependencies'] = ', '.join(record.verified_depends_on)
         if record.exclusions:
             view['Exclusions'] = '; '.join(record.exclusions)
     if record.touches and record.touches != ('**',):  # ** stands for an unknown set, as no Touches did
@@ -109,7 +111,9 @@ def reason(snapshot, task_id, plan=None):
                  'DRAFT': 'needs Scope, Acceptance, Checks and Touches (draft: {})',
                  'NO_GOAL': 'no goal {}', 'GOAL_MET': 'goal {} is met',
                  'GOAL_DEPENDENCY_UNMET': 'goal dependency {} is unmet',
-                 'DEPENDENCY_UNFINISHED': 'unresolved dependency {}', 'HELD': 'held by {}'}
+                 'DEPENDENCY_UNFINISHED': 'unresolved dependency {}',
+                 'DEPENDENCY_UNVERIFIED': 'dependency {} needs verified evidence or an owner waiver/qualification',
+                 'HELD': 'held by {}'}
         return words[blocked.code].format(blocked.detail)
     if plan and plan not in re.findall(r'\]\(([^)]+)\)', notes(record).get('Sources', '')):
         return 'not linked to the named plan'
@@ -152,6 +156,11 @@ def closed(repo, rev='HEAD'):
     except StoreError:
         return set()
     return {t.id for t in snapshot.tasks.values() if t.status in ('done', 'superseded')}
+
+
+def qualified(repo, rev='HEAD'):
+    """Done prerequisites with a verified receipt or an explicit owner waiver/qualification."""
+    return {t.id for t in store(repo, rev).tasks.values() if t.status == 'done' and t.qualified}
 
 
 def present(repo, rev='HEAD'):
@@ -209,7 +218,8 @@ def stale_closures(repo, rev='HEAD'):
     changed its acceptance); the runner reopens it, since no one verified the merged contract.
     A task closed without a receipt (by a person, with its evidence note) is not checked."""
     snapshot = store(repo, rev)
-    done = {t.id: t for t in snapshot.tasks.values() if t.status == 'done'}
+    done = {t.id: t for t in snapshot.tasks.values()
+            if t.status == 'done' and t.closure == 'coordinator_verified'}
     listing = subprocess.run(['git', '-C', str(repo), 'ls-tree', '-z', snapshot.rev, '--', 'tasks/evidence/'],
                              capture_output=True, timeout=60).stdout.split(b'\0')
     receipts = {}

@@ -350,7 +350,7 @@ class TasksScreen(Screen):
     def refresh_tasks(self, follow=None):
         """``follow``: keep the cursor on this task wherever it moved (after a re-sort)."""
         runner = self.runner()
-        self.rows = fleet_view.task_rows(runner) if runner else []
+        self.rows = fleet_view.task_rows(runner, include_closed=True) if runner else []
         views = Text()
         for number, view in enumerate(fleet_view.TASK_VIEWS):
             count = len(fleet_view.task_view(self.rows, view))
@@ -491,7 +491,7 @@ class TaskScreen(Screen):
 
     def refresh_tasks(self, follow=None):
         runner, question = self.runner(), self.question()
-        row = next((r for r in fleet_view.task_rows(runner) if r.task == self.task_id), None) if runner else None
+        row = next((r for r in fleet_view.task_rows(runner, include_closed=True) if r.task == self.task_id), None) if runner else None
         text = Text()
         text.append(self.task_id, style='bold')
         if row:

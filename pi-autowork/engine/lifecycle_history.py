@@ -101,7 +101,8 @@ def observe(repo, delivered_rev=None):
                 facts.extend(journal.acceptance(Path(repo), ctx))
                 budget -= 1
             if record.status == 'done' and (task, 'closed') not in known:
-                facts.append(journal.fact(ctx, 'hand_closed', scope='task', revision=head))
+                if record.closure != 'coordinator_verified':
+                    facts.append(journal.fact(ctx, 'hand_closed', scope='task', revision=head))
                 facts.append(journal.fact(ctx, 'closed', scope='task', revision=head))
             if (task in delivered and delivered[task].status == 'done'
                     and (record.status == 'done' or (task, 'closed') in known)

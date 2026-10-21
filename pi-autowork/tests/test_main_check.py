@@ -410,6 +410,59 @@ class MainCheckTests(unittest.TestCase):
                         runner.check_main()
                         self.assertEqual(bool(started), starts)
 
+    def test_a_batch_that_passed_on_mains_tree_stands_in_for_the_main_check(self):
+        """TOOLSET-336-3c: the runner ran a full main check beside every batch check of main plus
+        its candidates, two full suites at once on a loaded host."""
+        from pi_autowork.coordinator import Coordinator
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, PI_AUTOWORK_MAIN_CHECK='true'):
+            runner = Coordinator.__new__(Coordinator)
+            runner.state, runner.repo, runner.base, runner.stop = Path(tmp), tmp, 'main', False
+            runner.tasks = lambda: []
+            started = []
+            runner.scratch_checkout = lambda *args: started.append(args) and None
+            receipts = Path(tmp) / 'full-check'
+            receipts.mkdir()
+            git = lambda repo, *args: 'tree1' if args[-1].endswith('^{tree}') else 'new'
+            for receipt, reused in ((dict(ok=True, tree='tree1', command='true', task='batch'), True),
+                                    (dict(ok=False, tree='tree1', command='true', task='batch'), False),
+                                    (dict(ok=True, tree='tree1', command='python3 other.py', task='batch'), False),
+                                    (dict(ok=True, tree='tree2', command='true', task='batch'), False)):
+                with self.subTest(receipt=receipt):
+                    started.clear()
+                    (receipts / 'tree-tree1.json').write_text(json.dumps(receipt))
+                    main_check.write(runner.state, {'state': 'green', 'rev': 'old', 'green': 'old', 'finished': 0})
+                    with patch('pi_autowork.coordinator.git', side_effect=git), \
+                            patch('os.getloadavg', return_value=(0, 0, 0)):
+                        runner.check_main()
+                    record = main_check.read(runner.state)
+                    self.assertEqual(bool(started), not reused)
+                    if reused:
+                        self.assertEqual((record['state'], record['rev'], record['green'], record['from_receipt']),
+                                         ('green', 'new', 'new', 'batch'))
+
+    def test_main_waits_for_a_running_batch_instead_of_checking_beside_it(self):
+        from pi_autowork.coordinator import Coordinator
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, PI_AUTOWORK_MAIN_CHECK='true'):
+            runner = Coordinator.__new__(Coordinator)
+            runner.state, runner.repo, runner.base, runner.stop = Path(tmp), tmp, 'main', False
+            runner.tasks = lambda: []
+            started = []
+            runner.scratch_checkout = lambda *args: started.append(args) and None
+            with patch('pi_autowork.coordinator.git', return_value='new'), \
+                    patch('os.getloadavg', return_value=(0, 0, 0)):
+                for job, train, ago, starts in (({'task': Coordinator.BATCH}, None, 600, False),
+                                                (None, {'task': Coordinator.BATCH}, 600, False),
+                                                ({'task': 'A'}, None, 600, True),
+                                                ({'task': Coordinator.BATCH}, None, 3 * Coordinator.MAIN_CHECK_WAIT, True)):
+                    with self.subTest(job=job, train=train, ago=ago):
+                        started.clear()
+                        runner.integration, runner.train = job, train
+                        main_check.write(runner.state, {'state': 'green', 'rev': 'old', 'finished': time.time() - ago})
+                        runner.check_main()
+                        self.assertEqual(bool(started), starts)
+
     def test_a_green_result_carries_over_planning_only_commits_and_not_code(self):
         """The runner's questions commits moved main 8 times in a day: each took a host check
         slot from a waiting review to check the same code."""
@@ -500,18 +553,33 @@ class MainCheckTests(unittest.TestCase):
                 ({'state': 'waiting', 'ahead': 1}, False),
                 ({'state': 'finished'}, False)):
             with self.subTest(progress=progress):
-                text = main_check.line(dict(record, check_slot=progress), now=3601)
+                with patch.object(os, 'kill', side_effect=AssertionError('render sent a signal')), \
+                        patch.object(os, 'killpg', side_effect=AssertionError('render sent a group signal')):
+                    text = main_check.line(dict(record, check_slot=progress), now=3601)
+                self.assertEqual('overdue' in text, overdue, text)
                 self.assertEqual('past timeout' in text, overdue, text)
 
     def test_the_status_line(self):
         self.assertEqual(main_check.line({'state': 'red', 'rev': 'abcdef123', 'failures': ['a', 'b']}),
                          'main red since abcdef1: 2 failing')
-        self.assertEqual(main_check.line({'state': 'green', 'rev': 'abcdef123'}), 'main green at abcdef1')
-        self.assertEqual(main_check.line({'state': 'green', 'rev': 'abcdef123', 'flaky': ['a']}),
-                         'main green at abcdef1 (1 flaky)')
-        self.assertEqual(main_check.line({'state': 'running', 'rev': 'abcdef123', 'started': 0,
-                                          'pid': os.getpid(), 'start_time': main_check.start_time(os.getpid())}, now=600),
-                         'main check running on abcdef1 (10m)')
+        running = dict(state='running', rev='abcdef123', started=0,
+                       pid=os.getpid(), start_time=main_check.start_time(os.getpid()))
+        for record, want in (
+                (running, 'main check running on abcdef1 (10m)'),
+                (dict(running, check_slot={'state': 'waiting', 'ahead': 2}),
+                 'main check waiting for a check slot, 2 ahead on abcdef1'),
+                (dict(running, start_time='wrong-process'), 'main check interrupted on abcdef1'),
+                (dict(running, start_time=None), 'main check interrupted on abcdef1'),
+                (dict(running, check_slot={'state': 'running', 'started': 0, 'timeout': 60}),
+                 'main check overdue on abcdef1 (10m); past timeout'),
+                (dict(running, main_head='123456789'),
+                 'main check running on abcdef1 (10m); superseded by main at 1234567'),
+                ({'state': 'green', 'rev': 'abcdef123', 'main_head': 'abcdef123'},
+                 'main check passed at abcdef1'),
+                ({'state': 'green', 'rev': 'abcdef123', 'flaky': ['a']},
+                 'main check passed at abcdef1 (1 flaky)')):
+            with self.subTest(record=record):
+                self.assertEqual(main_check.line(record, now=600), want)
         self.assertEqual(main_check.line({}), '')
         self.assertEqual(main_check.command({'PI_AUTOWORK_MAIN_CHECK': ' python3 scripts/check.py '}),
                          'python3 scripts/check.py')

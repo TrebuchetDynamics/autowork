@@ -247,28 +247,28 @@ def record_path(state):
     return Path(state) / 'main_check.json'
 
 
-def read(state, repo=None, base='HEAD'):
+def read(state, repo=None, base='HEAD', fallback=None):
     """Read the current receipt; views may also resolve main's head without changing state.
 
     The fleet's repo is the canonical main checkout, not its integration worktree.
     """
     try:
-        value = json.loads(record_path(state).read_text())
+        value = json.loads(record_path(state).read_text()) if state else {}
     except (OSError, ValueError):
-        return {}
-    if not isinstance(value, dict):
-        return {}
-    if value.get('state') == 'running':
-        if value.get('slot_status'):
-            value['check_slot'] = slot_status(value['slot_status'])
-        if repo:
-            try:
-                head = subprocess.run(['git', '-C', str(repo), 'rev-parse', '--verify', f'{base}^{{commit}}'],
-                                      capture_output=True, text=True, timeout=5)
-                if head.returncode == 0:
-                    value['main_head'] = head.stdout.strip()
-            except (OSError, subprocess.SubprocessError):
-                pass  # unavailable repository: do not invent revision drift
+        value = {}
+    if not isinstance(value, dict) or not value:
+        value = dict(fallback) if isinstance(fallback, dict) else {}
+    if value.get('state') == 'running' and value.get('slot_status'):
+        value['check_slot'] = slot_status(value['slot_status'])
+    if repo and value:
+        value.pop('main_head', None)  # a cached head is not a current observation
+        try:
+            head = subprocess.run(['git', '-C', str(repo), 'rev-parse', '--verify', f'{base}^{{commit}}'],
+                                  capture_output=True, text=True, timeout=5)
+            if head.returncode == 0:
+                value['main_head'] = head.stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            pass  # unavailable repository: do not invent revision drift
     return value
 
 
@@ -521,7 +521,7 @@ def alive(pid, started=None):
 
 
 def line(record, now=None):
-    """'main red since 1a2b3c4: 5 failing', 'main green at 1a2b3c4', 'main check running …', or ''."""
+    """Revision-bound, read-only status; process identity is required to claim a live check."""
     now = time.time() if now is None else now
     state = record.get('state')
     if state == 'red':
@@ -533,22 +533,27 @@ def line(record, now=None):
     if state == 'recheck':
         return f"main check again at {record.get('gated', '')[:7]} when the host is quieter"
     if state == 'green':
+        rev, head = record.get('rev', ''), record.get('main_head')
+        if head and rev and rev != head:
+            return f'Last green: {rev[:7]} · HEAD: {head[:7]} · verification pending'
         flaky = len(record.get('flaky') or [])
-        return f"main green at {record.get('rev', '')[:7]}" + (f' ({flaky} flaky)' if flaky else '')
+        return f"main check passed at {rev[:7]}" + (f' ({flaky} flaky)' if flaky else '')
     if state == 'running':
         rev, head = record.get('rev', ''), record.get('main_head')
         superseded = f'; superseded by main at {head[:7]}' if head and rev and rev != head else ''
-        if not alive(record.get('pid'), record.get('start_time')):
+        if not record.get('start_time') or not alive(record.get('pid'), record.get('start_time')):
             return f'main check interrupted on {rev[:7]}' + superseded
         progress = record.get('check_slot') or {}
         if progress.get('state') == 'waiting':
-            return f"main check waiting for a check slot, {progress.get('ahead', 0)} ahead" + superseded
+            return f"main check waiting for a check slot, {progress.get('ahead', 0)} ahead on {rev[:7]}" + superseded
         started = progress.get('started', record.get('started', now))
         # Admission, not queueing, starts the execution budget. Finished slot progress
         # means the supervisor may be rerunning failures, outside that command's timeout.
         limit = progress.get('timeout', 3600)  # legacy receipts used the default policy
-        overdue = '; past timeout' if progress.get('state') != 'finished' and now - started > limit else ''
-        return f'main check running on {rev[:7]} ({int((now - started) // 60)}m)' + overdue + superseded
+        overdue = progress.get('state') != 'finished' and now - started > limit
+        label = 'overdue' if overdue else 'running'
+        return (f'main check {label} on {rev[:7]} ({int((now - started) // 60)}m)'
+                + ('; past timeout' if overdue else '') + superseded)
     return ''
 
 

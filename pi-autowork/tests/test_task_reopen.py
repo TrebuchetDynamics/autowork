@@ -35,7 +35,8 @@ class ReopenTests(LandingFixture):
         """What a verified close commits: done, and a receipt pinning the contract it verified."""
         record = task_queue.store(self.integ).tasks['T']
         path = self.integ / 'tasks/items/T.md'
-        path.write_text(task_store.edit(path.read_text(), {'status': 'done'}))
+        path.write_text(task_store.edit(path.read_text(), {'status': 'done', 'closure': 'coordinator_verified',
+                                                          'closure_evidence': 'tasks/evidence/T.toml'}))
         receipt = self.integ / 'tasks/evidence/T.toml'
         receipt.parent.mkdir(parents=True, exist_ok=True)
         receipt.write_text(f'schema = 1\ntask = "T"\ncontract_hash = "{record.contract_hash}"\nresult = "pass"\n')
@@ -61,16 +62,52 @@ class ReopenTests(LandingFixture):
         log = self.git(self.repo, 'log', '--format=%s', '-3', 'main')
         self.assertIn('docs(tasks): reopen T (pi-autowork)', log)
 
+    def test_refused_reopening_keeps_uncommitted_session_bookkeeping(self):
+        note = self.integ / 'BLOCKERS.md'
+        note.write_text('old question\n')
+        self.git(self.integ, 'add', 'BLOCKERS.md')
+        self.git(self.integ, 'commit', '-qm', 'old question')
+        self.close_on_session()
+        self.edit_on_main({'acceptance': ['changed after closure']})
+        note.write_text('session question not committed yet\n')
+        self.git(self.integ, 'add', 'BLOCKERS.md')
+        hook = self.repo / '.git/hooks/pre-commit'
+        hook.write_text('#!/bin/sh\necho "pre-commit: checks failed" >&2\nexit 1\n')
+        hook.chmod(0o755)
+        before = self.head('pi-autowork/s')
+        self.assertFalse(self.runner.merge_main())
+        self.assertIn('could not be reopened', self.runner.merge_pending)
+        self.assertEqual(self.head('pi-autowork/s'), before)
+        self.assertEqual(note.read_text(), 'session question not committed yet\n')
+
+    def test_reopening_does_not_discard_an_uncommitted_task_note(self):
+        self.close_on_session()
+        self.edit_on_main({'acceptance': ['changed after closure']})
+        self.git(self.integ, 'merge', '-q', '--no-edit', 'main')  # a retained stale close
+        path = self.integ / 'tasks/items/T.md'
+        edited = task_store.set_note(path.read_text(), 'Note', 'keep this session note')
+        path.write_text(edited)
+        self.git(self.repo, 'commit', '-q', '--allow-empty', '-m', 'main moved')
+        hook = self.repo / '.git/hooks/pre-commit'
+        hook.write_text('#!/bin/sh\nexit 1\n')
+        hook.chmod(0o755)
+        self.assertFalse(self.runner.merge_main())
+        self.assertEqual(path.read_text(), edited)
+        self.assertIn('could not be reopened', self.runner.merge_pending)
+
     def test_a_rank_edit_keeps_the_close(self):
         self.close_on_session()
         self.edit_on_main({'rank': 5000})  # priority is no contract: the verification still covers it
         self.assertTrue(self.runner.merge_main(), self.runner.merge_pending)
         self.assertEqual(task_queue.store(self.repo, 'main').tasks['T'].status, 'done')
 
-    def test_a_close_without_a_receipt_is_not_reopened(self):
-        path = self.integ / 'tasks/items/T.md'  # a person's close: its evidence note, no receipt
-        path.write_text(task_store.set_note(task_store.edit(path.read_text(), {'status': 'done'}),
-                                            'Evidence', 'checked by hand'))
+    def test_a_manual_close_is_not_reopened_by_an_old_receipt(self):
+        self.close_on_session()  # a receipt from an earlier verified attempt remains
+        path = self.integ / 'tasks/items/T.md'
+        path.write_text(task_store.edit(path.read_text(), {'closure': 'manual', 'closure_actor': 'owner',
+                                                          'closure_timestamp': '2026-10-21T00:00:00+00:00',
+                                                          'closure_reason': 'Closed by hand',
+                                                          'closure_evidence': None}))
         self.git(self.integ, 'commit', '-qam', 'close by hand')
         self.edit_on_main({'acceptance': ['changed']})
         self.assertTrue(self.runner.merge_main(), self.runner.merge_pending)

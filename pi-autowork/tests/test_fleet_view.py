@@ -98,13 +98,19 @@ class FleetViewTests(unittest.TestCase):
                       start_time=fleet_view.main_check.start_time(os.getpid()), started=time.time())
         path = self.state / 'india' / 'main_check.json'
         path.write_text(json.dumps(record))
-        for rev, superseded in ((old, True), (head, False)):
-            with self.subTest(rev=rev):
-                path.write_text(json.dumps(dict(record, rev=rev)))
+        for state, rev, receipt in (('running', old, True), ('running', head, True),
+                                     ('green', old, True), ('green', old, False)):
+            with self.subTest(state=state, rev=rev, receipt=receipt):
+                path.write_text(json.dumps(dict(record, state=state, rev=rev)))
+                if not receipt:
+                    path.unlink()  # the cached health result must also be revision-bound
                 text = fleet_view.main_check.line(self.collect()['india'].main_check)
-                self.assertIn('running', text)
-                self.assertEqual('superseded' in text, superseded, text)
-                if superseded:
+                if state == 'running':
+                    self.assertIn('running', text)
+                    self.assertEqual('superseded' in text, rev == old, text)
+                else:
+                    self.assertEqual(text, f'Last green: {old[:7]} · HEAD: {head[:7]} · verification pending')
+                if rev == old:
                     self.assertIn(head[:7], text)
 
     def test_fleet_puts_owner_questions_and_setup_before_idle_and_working(self):
@@ -113,7 +119,9 @@ class FleetViewTests(unittest.TestCase):
             repo = self.base / name
             repo.mkdir()
             if name != 'y-setup':
-                (repo / 'tasks').mkdir()
+                store_fixture.write_todo(repo, '- [ ] T-1 — Work\n')
+            else:
+                subprocess.run(['git', 'init', '-q', str(repo)], check=True)
             (self.env / f'{name}.env').write_text(f'PI_AUTOWORK_REPO={repo}\n')
             self.runner_state(str(repo), state=state)
         (self.base / 'z-question' / 'BLOCKERS.md').write_text(
@@ -124,14 +132,24 @@ class FleetViewTests(unittest.TestCase):
                           for name in ('a-idle', 'b-working', 'y-setup', 'z-question'))
         self.assertEqual(list(self.collect(units)), ['y-setup', 'z-question', 'a-idle', 'b-working'])
 
-    def test_unconverted_repository_needs_setup_not_idle(self):
-        runner = fleet_view.Runner('legacy', repo=str(self.base), state='idle')
-        self.assertEqual(fleet_view.verdict(runner),
-                         ('Setup required — run autowork migrate', 'bold yellow'))
-        self.assertEqual(fleet_view.needs(runner), 'Setup required — run autowork migrate')
-        (self.base / 'tasks').mkdir()
-        self.assertEqual(fleet_view.verdict(runner)[0], 'Idle — nothing left to run in Now/Next')
-        self.assertEqual(fleet_view.needs(runner), '')
+    def test_prepare_states_label_setup_migration_and_repair_instead_of_idle(self):
+        runner = fleet_view.Runner('repo', repo=str(self.base), state='idle')
+        for state, label in (
+                ('none', 'Setup required — run /docs_sync'),
+                ('legacy', 'Migration required — run /docs_sync'),
+                ('conversion_pending', 'Task store needs repair'),
+                ('invalid', 'Task store needs repair'),
+                ('uncommitted', 'Setup required — run /docs_sync'),
+                ('no_repository', 'Setup required — run /docs_sync'),
+                ('converted', '')):
+            with self.subTest(state=state), mock.patch(
+                    'pi_autowork.task_prepare.prepare', return_value={'state': state}) as prepare:
+                self.assertEqual(fleet_view.verdict(runner),
+                                 (label, 'bold yellow') if label else
+                                 ('Idle — nothing left to run in Now/Next', 'bold green'))
+                self.assertEqual(fleet_view.needs(runner), label)
+                self.assertTrue(all(call == mock.call(str(self.base), mode='check')
+                                    for call in prepare.call_args_list), 'display must remain read-only')
 
     def test_state_without_a_service_is_history_not_a_runner(self):
         self.runner_state('/git/gone', state='working', since=time.time())

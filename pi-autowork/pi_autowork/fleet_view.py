@@ -16,7 +16,7 @@ import subprocess
 import sys
 import time
 
-from pi_autowork import health, main_check, questions as owner_questions
+from pi_autowork import health, main_check, questions as owner_questions, task_prepare
 
 KINDS = {'runner': 'runner', 'cycle': 'dependency cycle', 'held': 'blocker', 'contract': 'not runnable',
          'claim': 'claimed elsewhere', 'outside': 'outside Now/Next'}
@@ -34,7 +34,14 @@ GATE_WINDOW = 300
 DEFAULT_MODEL = 'openai-codex/gpt-6.1-sol'           # pi_runtime's defaults
 DEFAULT_FALLBACK = 'openrouter/deepseek/deepseek-v4.1-flash'
 MODEL_KEYS = {'model': 'PI_AUTOWORK_PRIMARY', 'fallback': 'PI_AUTOWORK_FALLBACK'}
-SETUP_REQUIRED = 'Setup required — run autowork migrate'
+SETUP_LABELS = {
+    'none': 'Setup required — run /docs_sync',
+    'uncommitted': 'Setup required — run /docs_sync',
+    'no_repository': 'Setup required — run /docs_sync',
+    'legacy': 'Migration required — run /docs_sync',
+    'invalid': 'Task store needs repair',
+    'conversion_pending': 'Task store needs repair',
+}
 
 
 def read_env(path):
@@ -109,6 +116,8 @@ class Runner:
     main_check: dict = field(default_factory=dict)  # main's full offline check (TOOLSET-176-98)
     job: dict | None = None   # the runner's own Pi job running now (TOOLSET-177-d0)
 
+    prepare_state: str | None = None  # one read-only preparation probe per fleet refresh
+
     @property
     def color(self):
         return COLORS.get(self.state, 'red')
@@ -118,9 +127,18 @@ class Runner:
         return bool(self.service)
 
     @property
+    def setup_label(self):
+        """Use Docs Sync's read-only preparation states, not just the tasks/ directory."""
+        if not self.repo or not Path(self.repo).is_dir():
+            return ''
+        state = self.prepare_state
+        if state is None:
+            state = task_prepare.prepare(self.repo, mode='check').get('state')
+        return SETUP_LABELS.get(state, '')
+
+    @property
     def setup_required(self):
-        """An existing repository without the tasks/ store cannot run the queue."""
-        return bool(self.repo) and Path(self.repo).is_dir() and not (Path(self.repo) / 'tasks').is_dir()
+        return bool(self.setup_label)
 
 
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
@@ -354,8 +372,9 @@ def verdict(runner):
     """(sentence, style): whether this runner is stuck, and why, in one line."""
     count = len(runner.questions)
     asks = f"{count} question{'s' if count > 1 else ''}" if count else ''
-    if runner.setup_required:
-        return SETUP_REQUIRED, 'bold yellow'
+    setup = runner.setup_label
+    if setup:
+        return setup, 'bold yellow'
     if runner.state == 'restarting':
         return (f"Restarting {runner.restarting}" if runner.restarting.startswith('onto') else 'Restarting', 'bold cyan')
     if runner.state == 'paused':
@@ -641,8 +660,9 @@ def read_questions(repo, state_dir=''):
 
 def needs(runner):
     """What would move this runner, in a few words: setup, owner questions, else its first blocker."""
-    if runner.setup_required:
-        return SETUP_REQUIRED
+    setup = runner.setup_label
+    if setup:
+        return setup
     if runner.state == 'restarting':
         return ('restarting ' + runner.restarting).strip() if runner.restarting != 'service' else 'restarting'
     if runner.state in ('paused', 'not running'):
@@ -823,11 +843,13 @@ def collect(state_root, env_dir, *, systemctl='systemctl', now=None, strict=Fals
         runner.max_workers = row.get('max_workers')
         runner.maintainer = row.get('maintainer') or {}
         # status.json deliberately omits the PID and may outlive a stopped runner.
-        runner.main_check = (main_check.read(runner.state_dir, runner.repo) if runner.state_dir else {}) or row.get('main_check') or {}
+        runner.main_check = main_check.read(runner.state_dir, runner.repo, fallback=row.get('main_check'))
         runner.job = row.get('job')
         if runner.job and runner.job.get('started'):
             runner.minutes = int((now - runner.job['started']) // 60)
     for runner in found.values():
+        if runner.repo and Path(runner.repo).is_dir():
+            runner.prepare_state = task_prepare.prepare(runner.repo, mode='check').get('state')
         runner.lanes = lanes(runner, now)
         runner.restarting, runner.gate = recent_events(runner, now)
         # The runner refreshes its status between cycles, not during a long verification it
@@ -948,8 +970,8 @@ def pending_edits(repo):
     return {Path(p).stem for p in paths if p.startswith('tasks/items/') and p.endswith('.md')}
 
 
-def task_rows(runner):
-    """Every open task in ``runner``'s task store, in its order, with what the runner says about it."""
+def task_rows(runner, include_closed=False):
+    """Task rows in priority order, optionally including closures and their provenance."""
     store = task_store(runner.repo) if runner.repo else None
     if store is None:
         return []
@@ -991,6 +1013,12 @@ def task_rows(runner):
         rows.append(TaskRow(task=task, short=short, section=section, state=words, kind=kind,
                             why='you: ' + question.needs if question else why, question=bool(question),
                             pending=task in edited))
+    if include_closed:
+        for record in sorted(store.tasks.values(), key=lambda t: t.id):
+            if record.status == 'done':
+                info = record.closure_info
+                why = (info['evidence'] if record.closure == 'coordinator_verified' else info['reason']) or 'Closure provenance not recorded'
+                rows.append(TaskRow(record.id, record.short or record.title, 'Closed', info['label'], 'closed', why))
     return rows
 
 
@@ -1023,6 +1051,8 @@ def task_actions(runner, row, *, command, script, agent=None):
     """What the Tasks window can do with one task: re-sort it (its rank is the priority),
     clear or set aside its hold, or answer the owner's questions in an agent."""
     repo, name, task = runner.repo, runner.name, row.task
+    if row.kind == 'closed':
+        return []
     out = [Action('u', 'Up', [command, 'tasks', 'move', task, 'up', name]),
            Action('d', 'Down', [command, 'tasks', 'move', task, 'down', name]),
            Action('s', 'Section', [], interactive=True)]  # the TUI asks which: Now, Next or Needs decision

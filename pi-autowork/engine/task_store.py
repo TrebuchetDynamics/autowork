@@ -7,7 +7,7 @@ records. StoreError invalidates the entire snapshot and reports path:line errors
 Files are UTF-8 Markdown with TOML between opening/closing +++ lines. See the
 component's task-store.md for the schema and the precise runnable/hash boundary.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 import hashlib
 import json
@@ -81,6 +81,34 @@ class TaskRecord(Record):
     checks: tuple[str, ...]
     exclusions: tuple[str, ...]
     missing_fields: tuple[str, ...]
+    verified_depends_on: tuple[str, ...] = ()
+    closure: str | None = None
+    closure_actor: str | None = None
+    closure_timestamp: str | None = None
+    closure_reason: str | None = None
+    closure_evidence: str | None = None
+    owner_waiver: str | None = None
+    owner_qualification: str | None = None
+    receipt_valid: bool = False
+
+    @property
+    def verified(self):
+        return self.status == 'done' and self.closure == 'coordinator_verified' and self.receipt_valid
+
+    @property
+    def qualified(self):
+        return self.verified or bool(self.owner_waiver or self.owner_qualification)
+
+    @property
+    def closure_info(self):
+        if self.status != 'done':
+            return None
+        return dict(provenance=self.closure, actor=self.closure_actor, timestamp=self.closure_timestamp,
+                    reason=self.closure_reason, evidence=self.closure_evidence,
+                    label=('Verified' if self.verified else 'Verified (evidence missing or invalid)')
+                          if self.closure == 'coordinator_verified' else 'Manual',
+                    evidence_valid=self.receipt_valid if self.closure == 'coordinator_verified' else None,
+                    owner_waiver=self.owner_waiver, owner_qualification=self.owner_qualification)
 
     @property
     def draft(self) -> bool:
@@ -101,6 +129,8 @@ class TaskRecord(Record):
 
 
 _TASK_LISTS = ('depends_on', 'touches', 'resources', 'acceptance', 'checks', 'exclusions')
+_CLOSURE_FIELDS = ('closure', 'closure_actor', 'closure_timestamp', 'closure_reason', 'closure_evidence',
+                   'owner_waiver', 'owner_qualification')
 _TASK_STRINGS = ('id', 'title', 'short', 'status', 'goal', 'section', 'scope')
 _TASK_REQUIRED = (*_TASK_STRINGS, 'rank', *_TASK_LISTS, 'kind', 'ownership')
 _GOAL_REQUIRED = ('id', 'title', 'priority', 'source', 'status', 'focus')
@@ -135,21 +165,32 @@ def _git(repo, *args, stdin=None) -> bytes:
     return result.stdout
 
 
-def _blobs(repo, oids) -> list[bytes]:
-    """Every blob in one `git cat-file --batch` call: one process per snapshot, not per file."""
+def _objects(repo, oids):
+    """Batch immutable objects, retaining missing references as absent rather than proof."""
     if not oids:
-        return []
+        return {}
     out = _git(repo, 'cat-file', '--batch', stdin=''.join(oid + '\n' for oid in oids).encode())
-    blobs, cursor = [], 0
+    objects, cursor = {}, 0
     for oid in oids:
         end = out.index(b'\n', cursor)
         header = out[cursor:end].split()
-        if len(header) != 3 or header[0].decode() != oid or header[1] != b'blob':
+        if header == [oid.encode(), b'missing']:
+            cursor = end + 1
+            continue
+        if len(header) != 3 or header[0].decode() != oid:
             raise StoreError(f'tasks/:1: Git read failed: unexpected object header for {oid}')
         size = int(header[2])
-        blobs.append(out[end + 1:end + 1 + size])
+        objects[oid] = (header[1], out[end + 1:end + 1 + size])
         cursor = end + 1 + size + 1
-    return blobs
+    return objects
+
+
+def _blobs(repo, oids) -> list[bytes]:
+    """Every blob in one `git cat-file --batch` call, not one process per file."""
+    objects = _objects(repo, oids)
+    if any(objects.get(oid, (None,))[0] != b'blob' for oid in oids):
+        raise StoreError('tasks/:1: Git read failed: expected blob objects')
+    return [objects[oid][1] for oid in oids]
 
 
 class _Document:
@@ -190,7 +231,7 @@ class _Document:
 
     def validate(self, goal=False):
         required = _GOAL_REQUIRED if goal else _TASK_REQUIRED
-        allowed = {'schema', *required} | ({'depends_on'} if goal else {'live'})
+        allowed = {'schema', *required} | ({'depends_on'} if goal else {'live', 'verified_depends_on', *_CLOSURE_FIELDS})
         for key in self.data.keys() - allowed:
             self.fail(f'unknown field {key}', key)
         for key in (_GOAL_REQUIRED if goal else _TASK_STRINGS):
@@ -217,7 +258,7 @@ class _Document:
             return
         if 'section' in self.data and self.data['section'] not in ('Now', 'Next', 'Needs decision'):
             self.fail('section must be Now, Next or Needs decision', 'section')
-        for key in _TASK_LISTS:
+        for key in (*_TASK_LISTS, 'verified_depends_on'):
             if key not in self.data:
                 continue
             value = self.data[key]
@@ -225,6 +266,17 @@ class _Document:
                 self.fail(f'{key} must be an array of nonempty strings', key)
             if key == 'resources' and any(not _RESOURCE.fullmatch(v) for v in value):
                 self.fail('resources must contain resource tokens, not prose', key)
+        for key in _CLOSURE_FIELDS:
+            if key in self.data and (not isinstance(self.data[key], str) or not self.data[key].strip()):
+                self.fail(f'{key} must be a nonempty string', key)
+        if self.data.get('closure') not in (None, 'manual', 'coordinator_verified'):
+            self.fail('closure must be manual or coordinator_verified', 'closure')
+        if self.data.get('closure') == 'manual':
+            for key in ('closure_actor', 'closure_timestamp', 'closure_reason'):
+                if key not in self.data:
+                    self.fail(f'manual closure needs {key}', 'closure')
+        if not set(self.data.get('verified_depends_on', ())) <= set(self.data.get('depends_on', ())):
+            self.fail('verified_depends_on must be a subset of depends_on', 'verified_depends_on')
         for key, enum in (('kind', Kind), ('ownership', Ownership), ('live', LiveAuthorization)):
             if key in self.data:
                 try:
@@ -245,6 +297,8 @@ class _Document:
         # Writing an authority field's default must not look like a contract change.
         contract.update(kind=data.get('kind', 'unknown'), ownership=data.get('ownership', 'unknown'),
                         live=data.get('live', 'denied'))
+        if data.get('verified_depends_on'):
+            contract['verified_depends_on'] = data['verified_depends_on']
         contract['section_group'] = ('runnable' if data.get('section') in ('Now', 'Next')
                                      else data.get('section'))
         fields = {key: tuple(data.get(key, ())) for key in _TASK_LISTS}
@@ -253,6 +307,8 @@ class _Document:
                       kind=Kind(data.get('kind', 'unknown')),
                       ownership=Ownership(data.get('ownership', 'unknown')),
                       live=LiveAuthorization(data.get('live', 'denied')))
+        fields.update({key: data.get(key) for key in _CLOSURE_FIELDS})
+        fields['verified_depends_on'] = tuple(data.get('verified_depends_on', ()))
         missing = [key for key in _TASK_REQUIRED if key not in data]
         missing.extend(key for key in ('acceptance', 'checks', 'touches') if key in data and not data[key])
         if data.get('status') in ('done', 'superseded'):
@@ -276,7 +332,7 @@ class TaskStore:
         # symlink/gitlink replacing a store directory, disguising it as empty.
         tree = _git(repo, 'ls-tree', '-rtz', '--full-tree', pinned, '--', 'tasks')
         tasks, goals, documents = {}, {}, {}
-        seen, files = {}, []
+        seen, files, evidence = {}, [], {}
         if not any(entry.split(b'\t', 1)[-1] == b'tasks' for entry in tree.split(b'\0') if entry):
             # An unconverted repository has no store; it is never an empty queue.
             raise StoreError(f'tasks/:1: no task store at {pinned[:12]}')
@@ -290,6 +346,8 @@ class TaskStore:
                 if mode != b'040000' or kind != b'tree':
                     raise StoreError(f'{path}:1: expected a store directory')
                 continue
+            if path.startswith('tasks/evidence/') and mode in (b'100644', b'100755') and kind == b'blob':
+                evidence[path] = _oid.decode()
             if not path.startswith(('tasks/items/', 'tasks/goals/')):
                 continue  # Evidence and other tasks/ owners are not records.
             if mode not in (b'100644', b'100755') or kind != b'blob':
@@ -306,6 +364,37 @@ class TaskStore:
             seen[record.id] = path
             documents[path] = document
             (goals if is_goal else tasks)[record.id] = record
+        requested = [(tid, task.closure_evidence) for tid, task in tasks.items()
+                     if task.closure == 'coordinator_verified'
+                     and task.closure_evidence == f'tasks/evidence/{tid}.toml'
+                     and task.closure_evidence in evidence]
+        receipts = {}
+        for (tid, _), blob in zip(requested, _blobs(repo, [evidence[path] for _, path in requested])):
+            task = tasks[tid]
+            try:
+                receipt = tomllib.loads(blob.decode('utf-8'))
+                valid = (type(receipt.get('schema')) is int and receipt.get('schema') == 1 and receipt.get('task') == tid
+                         and receipt.get('contract_hash') == task.contract_hash
+                         and receipt.get('result') == 'pass' and receipt.get('review') == 'passed'
+                         and all(re.fullmatch(r'[0-9a-f]{40}(?:[0-9a-f]{24})?', receipt.get(key, ''))
+                                 for key in ('candidate', 'integration', 'tree')))
+            except (ValueError, TypeError, UnicodeError):
+                valid = False
+            if valid:
+                receipts[tid] = receipt
+        objects = _objects(repo, sorted({r[key] for r in receipts.values()
+                                         for key in ('candidate', 'integration', 'tree')}))
+        ancestors = set(_git(repo, 'rev-list', pinned).decode().split()) if receipts else set()
+        for tid, receipt in receipts.items():
+            integration = objects.get(receipt['integration'], (None, b''))
+            headers = integration[1].split(b'\n\n', 1)[0].splitlines()
+            parents = [line.removeprefix(b'parent ').decode('ascii', 'replace') for line in headers if line.startswith(b'parent ')]
+            tree = next((line.removeprefix(b'tree ').decode('ascii', 'replace') for line in headers if line.startswith(b'tree ')), None)
+            valid = (integration[0] == b'commit' and receipt['integration'] in ancestors
+                     and objects.get(receipt['candidate'], (None,))[0] == b'commit'
+                     and objects.get(receipt['tree'], (None,))[0] == b'tree'
+                     and len(parents) == 2 and parents[1] == receipt['candidate'] and tree == receipt['tree'])
+            tasks[tid] = replace(tasks[tid], receipt_valid=valid)
         focused = [goal for goal in goals.values() if goal.focus]
         if len(focused) > 1:
             documents[focused[1].path].fail(f'only one goal may have focus (also {focused[0].id})', 'focus')
@@ -350,7 +439,7 @@ class TaskStore:
 
 TASK_ORDER = ('schema', 'id', 'title', 'short', 'status', 'goal', 'section', 'rank', 'depends_on',
               'touches', 'resources', 'kind', 'ownership', 'live', 'scope', 'acceptance', 'checks',
-              'exclusions')
+              'exclusions', 'verified_depends_on', *_CLOSURE_FIELDS)
 GOAL_ORDER = ('schema', 'id', 'title', 'priority', 'source', 'status', 'focus', 'depends_on')
 _CONTROL = re.compile(r'[\x00-\x1f\x7f]')
 _STRINGS = re.compile(r'"(?:[^"\\\n]|\\.)*"|\'[^\'\n]*\'')  # TOML one-line strings

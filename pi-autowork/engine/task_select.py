@@ -56,6 +56,10 @@ def blocking(store, task, done=()):
     for dep in task.depends_on:
         if dep not in finished:
             return Reason('DEPENDENCY_UNFINISHED', dep)
+        if dep in task.verified_depends_on:
+            prerequisite = store.tasks.get(dep)
+            if prerequisite is None or prerequisite.status != 'done' or not prerequisite.qualified:
+                return Reason('DEPENDENCY_UNVERIFIED', dep)
     return None
 
 

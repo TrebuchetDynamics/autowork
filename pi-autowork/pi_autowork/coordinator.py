@@ -54,6 +54,30 @@ MERGE_PROMPT = (
     'switch branches or touch {repo}. End with one line: PI_AUTOWORK_RESULT: completed|blocked, then one sentence.')
 
 
+def own_process(pid, proc='/proc'):
+    """Whether ``pid`` is this runner or one of its descendants (its engine helpers and
+    background jobs), read from /proc parent links."""
+    me = os.getpid()
+    seen = set()
+    while isinstance(pid, int) and pid > 1 and pid not in seen:
+        if pid == me:
+            return True
+        seen.add(pid)
+        try:
+            pid = int(Path(f'{proc}/{pid}/stat').read_text().rsplit(')', 1)[1].split()[1])
+        except (OSError, ValueError, IndexError):
+            return False
+    return False
+
+
+def process_name(pid):
+    try:
+        return ' '.join(Path(f'/proc/{pid}/cmdline').read_bytes().split(b'\0')[:3]).decode(errors='replace') \
+            or 'helper'
+    except OSError:
+        return 'helper'
+
+
 def merge_prompt(*, branch, base, files, tasks, repo):
     """Only actual task-store conflicts need reconciliation, not source-only merges."""
     planning = ('In each conflicted task file under tasks/, keep both sides\' changes; where both changed the '
@@ -378,6 +402,11 @@ class Coordinator:
         job = self.integration
         if (self.train or not job or job['task'] != self.BATCH or self.stop or self.reexec_due()
                 or worker.setting('PI_AUTOWORK_TRAIN', 1) < 1):
+            return
+        if (self.state / 'batch-split.json').exists():
+            # A failed batch is being halved to find the candidate that breaks it: a car on a half
+            # is stopped when that half fails, and one took the remaining candidates along each
+            # time, so the culprit was never checked without the others and never held.
             return
         try:
             tip = json.loads(Path(job['tip']).read_text())['tip']
@@ -900,6 +929,10 @@ class Coordinator:
             return True  # an unreadable store is the LEDGER repair's, and selects nothing
         if not stale:
             return True
+        for task, _, _ in stale:
+            if git(self.integ, 'status', '--porcelain', '--', f'tasks/items/{task}.md'):
+                LOG.warn(f'{task}: cannot reopen over uncommitted session bookkeeping; its edits are kept')
+                return False
         paths = []
         for task, pinned, now in stale:
             reason = (f'{datetime.now():%Y-%m-%d}: its contract changed after its verified close '
@@ -926,15 +959,20 @@ class Coordinator:
         """Merge ``ref`` into the session; task files merge per file like any other text, and a
         conflicting one is left for the Pi resolver. A close the merge left under another contract
         is reopened; if that cannot be committed, the merge is undone (it waits, not lands)."""
+        self.merge_error = ''
         if git_ok(self.integ, 'merge-base', '--is-ancestor', ref, 'HEAD'):
             return True
         before = git(self.integ, 'rev-parse', 'HEAD')
-        if not git_ok(self.integ, 'merge', '-q', '--no-ff', '--no-edit', ref):
+        result = subprocess.run(['git', '-C', str(self.integ), 'merge', '-q', '--no-ff', '--no-edit', ref],
+                                capture_output=True, text=True)
+        if result.returncode:
+            self.merge_error = (result.stdout + result.stderr).strip() or f'git merge exited with status {result.returncode}'
             return False
         if self.reopen_stale_closures():
             return True
-        git(self.integ, 'reset', '-q', '--hard', before)
-        LOG.say(f'Held the merge of {ref}: a task it leaves done under a changed contract could not be reopened')
+        git(self.integ, 'reset', '-q', '--merge', before)  # keep unstaged bookkeeping if its commit was refused
+        self.merge_error = 'a task the merge leaves done under a changed contract could not be reopened'
+        LOG.say(f'Held the merge of {ref}: {self.merge_error}')
         return False
 
     def end_session(self):
@@ -984,14 +1022,23 @@ class Coordinator:
                 self.seen['merge-batch'] = note
                 LOG.say(f'Merge pending: {note}')
             return False
-        self.commit_session_leftovers()
+        commit_error = self.commit_session_leftovers()
+        if commit_error:
+            self.merge_pending = commit_error
+            LOG.say(f'Merge pending: {self.merge_pending}. The session edits are kept in {self.integ}.')
+            return False
         ahead = self.ahead()
-        if ahead == 0:
+        if ahead == 0 and git_ok(self.integ, 'merge-base', '--is-ancestor', self.base, 'HEAD'):
             return True
         planning_note = self.commit_owner_changes()
         if not self.merge_planning(self.base):
             conflicts = (git(self.integ, 'diff', '--name-only', '--diff-filter=U') or '').splitlines()
-            files = ' '.join(conflicts) or '(unknown files)'
+            if not conflicts:
+                self.merge_pending = f'could not merge {self.base} into {self.integ_branch}: {self.merge_error}'
+                git(self.integ, 'merge', '--abort')
+                LOG.say(f'Merge pending: {self.merge_pending}. The branch and its worktree ({self.integ}) are kept.')
+                return False
+            files = ' '.join(conflicts)
             base_rev = git(self.repo, 'rev-parse', self.base)
             if not self.stop and self.resolved_for != base_rev:  # once per main revision, not per session
                 self.resolved_for = base_rev
@@ -1453,17 +1500,27 @@ class Coordinator:
 
     def commit_session_leftovers(self):
         """The session worktree is the runner's own: anything left there uncommitted (a close
-        that failed after writing, an interrupted merge) is committed, or every later merge
-        refuses it (bravo, TASK-010)."""
+        that failed after writing, an interrupted merge) is committed. If a hook refuses
+        bookkeeping, unstage only those paths, preserving the working edits so an unrelated
+        main fix can still merge. Work-commit failures keep the session held."""
         marker = git(self.integ, 'rev-parse', '--path-format=absolute', '--git-path', 'MERGE_HEAD')
         if marker and Path(marker).exists():
             git(self.integ, 'merge', '--abort')
         if not dirty(self.integ):
-            return
+            return ''
         git(self.integ, 'add', '-A')
-        if git_ok(self.integ, 'commit', '-q', '-m', 'chore: commit uncommitted session changes (pi-autowork)',
-                  '-m', 'Left uncommitted in the session worktree; committed so the session can merge.'):
-            LOG.say(f'Committed uncommitted changes left in the session worktree ({self.integ})')
+        if not self.commit_session('-q', '-m', 'chore: commit uncommitted session changes (pi-autowork)',
+                                   '-m', 'Left uncommitted in the session worktree; committed so the session can merge.'):
+            staged = git(self.integ, 'diff', '--cached', '--no-renames', '--name-only', '-z')
+            paths = [p for p in (staged or '').split('\0') if p]
+            if (paths and all(planning_path(p) for p in paths)
+                    and git_ok(self.integ, 'reset', '-q', 'HEAD', '--', *paths)
+                    and git_ok(self.integ, 'diff', '--cached', '--quiet')):
+                LOG.say('Unstaged session bookkeeping after the refused commit; working edits are kept')
+                return ''
+            return self.session_commit_error
+        LOG.say(f'Committed uncommitted changes left in the session worktree ({self.integ})')
+        return ''
 
     def follow_base(self):
         """The session follows the main branch whenever no review is running, and takes
@@ -1483,8 +1540,15 @@ class Coordinator:
             # there is nothing to merge, or a stalled runner never sees them (TOOLSET-157-cd).
             self.commit_owner_changes()
         behind = git(self.repo, 'rev-list', f'{self.integ_branch}..{self.base}') if self.integ else ''
-        if not behind or dirty(self.integ) or (self.batch_pending() and not self.session_busy()):
+        if not behind or (self.batch_pending() and not self.session_busy()):
             return  # batch verdicts wait to land on the trees they were reached on (TOOLSET-258-07)
+        if dirty(self.integ):
+            if not self.session_busy():
+                # A refused bookkeeping commit may leave no ahead commit at all. Recover
+                # through the landing seam instead of waiting forever on its dirty guard.
+                self.merge_blocker = ('' if self.merge_main()
+                                      else f'the session cannot take {self.base}: {self.merge_pending}')
+            return
         if self.session_busy():
             # A review is running. Planning-only commits are taken at once: integration lands the
             # review's merge on top without validating again (TOOLSET-233-ba). Anything else waits
@@ -1564,6 +1628,16 @@ class Coordinator:
         self.sync_upstream()
         return True
 
+    def commit_session(self, *args):
+        """Keep Git's diagnostic when session bookkeeping cannot be committed, including hook output."""
+        result = subprocess.run(['git', '-C', str(self.integ), 'commit', *args], capture_output=True, text=True)
+        self.session_commit_error = ''
+        if result.returncode:
+            detail = (result.stdout + result.stderr).strip() or f'git commit exited with status {result.returncode}'
+            self.session_commit_error = f'Session bookkeeping commit refused: {detail}. Repository hooks were not bypassed.'
+            LOG.warn(self.session_commit_error)
+        return result.returncode == 0
+
     def commit(self, paths, *message):
         if self.session_busy():
             return False  # a review is running: its fast-forward needs the session unchanged
@@ -1574,7 +1648,7 @@ class Coordinator:
         args = []
         for line in message:
             args += ['-m', line]
-        done = git_ok(self.integ, 'commit', '-q', *args)
+        done = self.commit_session('-q', *args)
         self.land_soon = self.land_soon or done
         return done
 
@@ -2022,6 +2096,19 @@ class Coordinator:
             if changed and all(planning_path(p) for p in changed):
                 main_check.write(self.state, dict(record, rev=rev, green=rev))
                 return
+        # A batch or merge-train check that passed on exactly main's tree already ran this check:
+        # record main green from it instead of running the suite a second time (TOOLSET-336-3c).
+        if passed := self.passed_on_tree(rev, cmd):
+            main_check.write(self.state, dict(state='green', rev=rev, green=rev, finished=time.time(),
+                                              checked_rev=rev, from_receipt=passed, flaky=[],
+                                              flaky_history=record.get('flaky_history') or {}))
+            LOG.say(f'Main is green at {rev[:7]}: the full check already passed on its tree ({passed})')
+            return
+        # A batch (or the merge train) is checking main plus its candidates right now: it covers
+        # main's code and lands as main, so main's own check waits for it rather than running a
+        # second full suite beside it, up to twice MAIN_CHECK_WAIT since the last main check.
+        if self.batch_running() and time.time() - float(record.get('finished') or 0) < 2 * self.MAIN_CHECK_WAIT:
+            return
         # It waits for room at most MAIN_CHECK_WAIT: with eight workers and batches a review or a
         # loaded host was nearly always there, and main went unchecked for hours while it was red.
         if time.time() - float(record.get('finished') or 0) < self.MAIN_CHECK_WAIT:
@@ -2060,6 +2147,26 @@ class Coordinator:
                                           red_since=record.get('red_since'), gated=record.get('gated'),
                                           crashed=record.get('crashed'), flaky_history=record.get('flaky_history') or {}))
         LOG.say(f'Checking main at {rev[:7]} in the background: {cmd}')
+
+    def batch_running(self):
+        """Whether a batch check or the merge train's next car is running beside the loop."""
+        job = getattr(self, 'integration', None)
+        return bool(self.train) or bool(job and job.get('task') == self.BATCH)
+
+    def passed_on_tree(self, rev, cmd):
+        """The task or batch whose passing full check (the same command) ran on exactly ``rev``'s
+        tree, from its tree receipt in full-check/, or None."""
+        tree = git(self.repo, 'rev-parse', f'{rev}^{{tree}}')
+        if not tree:
+            return None
+        try:
+            receipt = json.loads((self.state / 'full-check' / f'tree-{tree}.json').read_text())
+        except (OSError, ValueError):
+            return None
+        if not isinstance(receipt, dict) or receipt.get('ok') is not True or receipt.get('tree') != tree \
+                or receipt.get('command') != cmd:
+            return None
+        return str(receipt.get('task') or receipt.get('commit') or 'a full check')
 
     def finish_main_check(self, record):
         """Record a finished (or aborted) main check and clean its checkout up."""
@@ -2184,6 +2291,10 @@ class Coordinator:
         the prompt; an unchanged unsuccessful repair needs an owner, not another run.
         True when its repair merged, or another ledger-proposal batch still waits."""
         if self.stop or not self.integ or self.maintainer_job:
+            return False
+        if overlap and self.reexec_due():
+            # A due reload already holds new reviews and batches and waits for a re-cut beside the
+            # loop: one started then kept integration idle for its whole Pi job. Reload first.
             return False
         self.ledger_errors = self.validate_ledger() if ledger_errors is None else ledger_errors
         # Like MAIN repair, LEDGER repair may coexist with task workers/reported slots:
@@ -3055,6 +3166,8 @@ class Coordinator:
             outcome = result.get('outcome') or 'ACTION_REQUIRED'
             if outcome != 'BUSY':
                 self.seen.pop('busy-since', None)
+                self.seen.pop('busy-own-since', None)
+                self.seen.pop('busy-own-said', None)
             for task in result.get('closed_on_base') or []:
                 self.note_state(task, 'closed', f'closed on {self.base}; its worker is stopped and its work set aside')
             for task in result.get('closing') or []:
@@ -3125,6 +3238,21 @@ class Coordinator:
             pass
         elif outcome == 'BUSY':
             reason = result.get('reason') or 'busy'
+            if own_process(result.get('holder')):
+                # This runner's own background job (a review, landing or status read) holds the
+                # lock past the engine's wait: ordinary work, not a blocker. Retry within seconds,
+                # quietly; name the job once only if it keeps the lock past the bound.
+                since = self.seen.setdefault('busy-own-since', time.monotonic())
+                bound = worker.setting('PI_AUTOWORK_OWN_LOCK_BOUND', 600, float)
+                if time.monotonic() - since < bound:
+                    return self.pause(5)
+                if not self.seen.get('busy-own-said'):
+                    self.seen['busy-own-said'] = True
+                    LOG.say(f"{result.get('lock') or 'a lock'} has been held by this runner's own "
+                            f"{process_name(result['holder'])} (PID {result['holder']}) for "
+                            f'{int((time.monotonic() - since) // 60)} min; still waiting for it')
+                return self.pause(5)
+            self.seen.pop('busy-own-said', None)
             if self.mode in ('once', 'until-empty'):
                 # A killed runner's engine helper holds the execution lock until it finishes: under
                 # load the restart that adopts its workers exited 4 at once (TOOLSET-288-cf). A held

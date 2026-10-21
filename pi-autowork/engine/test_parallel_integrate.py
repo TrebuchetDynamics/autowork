@@ -1853,7 +1853,9 @@ finally:
         module = self.module()
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
         path = self.repo / 'tasks/items/A.md'
-        path.write_text(path.read_text().replace('status = "open"', 'status = "done"'))
+        import task_store
+        path.write_text(task_store.edit(path.read_text(), {'status': 'done', 'closure': 'coordinator_verified',
+                                                          'closure_evidence': 'tasks/evidence/A.toml'}))
         result = module.close(self.repo, self.owner, 'A')
         self.assertEqual(result['outcome'], 'CLOSED', result)
         self.assertEqual(result['files'], ['tasks/evidence/A.toml', 'tasks/items/A.md'])
@@ -2829,6 +2831,12 @@ sys.exit(1)
         return result
 
     def test_closure_is_one_commit(self):
+        import task_store
+        path = self.repo / 'tasks/items/B.md'
+        path.write_text(task_store.edit(path.read_text(), {'depends_on': ['A'], 'verified_depends_on': ['A']}))
+        self.git('commit', '-qam', 'B needs verified A')
+        self.baseline = self.git('rev-parse', 'HEAD')
+        self.assertNotIn('B', [t['id'] for t in dispatch.contracts(self.repo)])
         self.worker()
         self.assertEqual(self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
         before = self.git('rev-parse', 'HEAD')
@@ -2838,17 +2846,46 @@ sys.exit(1)
         self.assertEqual(self.git('show', '--format=', '--name-only', 'HEAD').split(),
                          ['tasks/evidence/A.toml', 'tasks/items/A.md'])  # only that task's file and receipt
         self.assertEqual(self.record('A').status, 'done')
+        self.assertEqual(self.record('A').closure, 'coordinator_verified')
+        self.assertEqual(self.record('A').closure_evidence, 'tasks/evidence/A.toml')
         receipt = (self.repo / 'tasks/evidence/A.toml').read_text()
         slot = state.slots(self.common)[0] if state.slots(self.common) else None
         self.assertIn(f'contract_hash = "{self.record("A").contract_hash}"', receipt)
         self.assertIn('candidate = "', receipt)
         self.assertIn('tree = "', receipt)
         self.assertTrue(slot is None or slot['state'] == 'closed')
+        self.assertTrue(self.record('A').verified)
+        self.assertIn('B', [t['id'] for t in dispatch.contracts(self.repo)])
+        from pi_autowork import fleet_view, task_commands
+        self.assertEqual(task_commands.cmd_show(self.repo, 'A')['closure']['label'], 'Verified')
+        row = next(r for r in fleet_view.task_rows(fleet_view.Runner('fixture', repo=str(self.repo)),
+                                                 include_closed=True) if r.task == 'A')
+        self.assertEqual((row.state, row.why), ('Verified', 'tasks/evidence/A.toml'))
+        receipt_path = self.repo / 'tasks/evidence/A.toml'
+        for text in (receipt.replace('review = "passed"', 'review = "failed"'),
+                     receipt.replace(self.git('rev-parse', 'HEAD^'), 'f' * 40),
+                     receipt.replace('tree = "', 'tree = "f')):
+            receipt_path.write_text(text)
+            self.git('commit', '-qam', 'invalid receipt cannot qualify B')
+            self.assertNotIn('B', [t['id'] for t in dispatch.contracts(self.repo)])
+        receipt_path.unlink()
+        self.git('commit', '-qam', 'missing receipt cannot qualify B')
+        self.assertNotIn('B', [t['id'] for t in dispatch.contracts(self.repo)])
+        info = task_commands.cmd_show(self.repo, 'A')['closure']
+        self.assertEqual(info['provenance'], 'coordinator_verified')
+        self.assertIn('Verified', info['label'])
+        self.assertFalse(info['evidence_valid'])
 
     def test_replayed_closure_is_a_noop(self):
         self.worker()
         self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
-        self.close_committed()
+        result = self.module().close(self.repo, self.owner, 'A')
+        self.git('add', 'tasks/items/A.md')
+        self.git('commit', '-qm', 'interrupted closure committed only task state')
+        (self.repo / 'tasks/evidence/A.toml').unlink()
+        recovery = self.close_committed()
+        self.assertEqual(recovery['files'], ['tasks/evidence/A.toml'])
+        self.assertTrue(self.record('A').verified)
         head = self.git('rev-parse', 'HEAD')
         again = self.close_committed()
         self.close_committed()
@@ -2867,7 +2904,9 @@ sys.exit(1)
         self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
         before = self.git('rev-parse', 'HEAD')
         path = self.repo / 'tasks/items/A.md'
-        path.write_text(path.read_text().replace('status = "open"', 'status = "done"'))  # the crash point
+        import task_store
+        path.write_text(task_store.edit(path.read_text(), {'status': 'done', 'closure': 'coordinator_verified',
+                                                          'closure_evidence': 'tasks/evidence/A.toml'}))  # crash point
         result = self.close_committed()
         self.assertEqual(result['outcome'], 'CLOSED', result)
         self.assertEqual(self.git('rev-list', '--count', f'{before}..HEAD'), '1')

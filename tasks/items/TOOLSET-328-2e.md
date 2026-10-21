@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-328-2e"
 title = "Check issue 2's worker-dependency and blocker-panel reports against the task-store runner"
 short = "Recheck issue 2 parts 2 and 4"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 23000
@@ -16,6 +16,8 @@ scope = "GitHub issue 2 groups five reports from the legacy runner. Parts 1, 3 a
 acceptance = ["The worker report states for parts 2 and 4 whether each still reproduces with code or test evidence; a part that reproduces gets an offline test showing it marked expected-failure with the issue link", "Each part that still reproduces is named in the report as one bounded follow-up with scope and touches and acceptance and checks for the coordinator to queue; none is implemented here"]
 checks = ["python3 scripts/check.py tests/test_pi_autowork.py"]
 exclusions = []
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-328-2e.toml"
 +++
 
 - Sources: https://github.com/TrebuchetDynamics/autowork/issues/2

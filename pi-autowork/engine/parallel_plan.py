@@ -12,6 +12,16 @@ import re
 # Open tasks naming one file before it counts as hot.
 HOT_TASKS = 3
 
+
+def test_module(path):
+    """A test module: tasks append test cases to it, so two of them rarely conflict, a conflict
+    is resolved by the merge step, and the full check runs on the result. It ranks like a cold
+    file and never makes tasks wait for each other (TOOLSET-341-eb82856d: five tasks waited on
+    one for tests/test_pi_autowork.py alone while seven of eight workers sat idle)."""
+    name = path.rsplit('/', 1)[-1]
+    return (path.startswith('tests/') or '/tests/' in path
+            or (name.endswith('.py') and (name.startswith('test_') or name.endswith('_test.py'))))
+
 # Reversible built-in serial policy, including nested packages and CI files.
 SERIAL_NAMES = (
     'package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock',
@@ -329,7 +339,7 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), protected_files=None, dr
     counts = Counter(path for t in known.values()
                      if re.split(r'[;.\s]', t.get('fields', {}).get('Status', 'open'))[0] != 'done'
                      for path in files(t))
-    hot_files = {path for path, count in counts.items() if count >= HOT_TASKS}
+    hot_files = {path for path, count in counts.items() if count >= HOT_TASKS and not test_module(path)}
     active = {t['id']: t for t in running}
     claims = {t['id']: t for t in known.values()
               if t.get('fields', {}).get('Held by') and t['id'] not in active}
