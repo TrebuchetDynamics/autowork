@@ -18,3 +18,4 @@ checks = ["Live qualification by an authorized person"]
 exclusions = ["Offline evidence does not count"]
 +++
 
+- Owner decision: 2026-10-21: Deferred by the owner. Preserve all live acceptance criteria and exclusions; billing/subscription reconciliation and native interactive interruption timing remain unqualified. No paid calls, credential access, service changes or live execution are authorized. Offline delivery remains separate.
