@@ -1,5 +1,6 @@
 """`autowork migrate`: a TODO.md + goals.json repository converts to tasks/ once, losslessly."""
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -11,6 +12,7 @@ COMMAND = ROOT / 'pi-autowork/pi_autowork/command.py'
 sys.path.insert(0, str(ROOT / 'pi-autowork/engine'))
 sys.path.insert(0, str(ROOT / 'pi-autowork'))
 from pi_autowork.legacy import reader  # noqa: E402
+import task_execution  # noqa: E402
 from task_store import TaskStore  # noqa: E402
 
 EVIDENCE = [{'kind': 'executed', 'ref': 'fixture check', 'result': 'pass'}]
@@ -112,10 +114,47 @@ class MigrateTests(unittest.TestCase):
         (self.repo / 'tasks/notes.md').write_text('a committed tasks/ tree\n')
         self.commit()
 
-    def slot(self, state):
+    def slot(self, state, **fields):
         folder = self.repo / '.git/autowork-execution/slots'
         folder.mkdir(parents=True, exist_ok=True)
-        (folder / 'T-001.json').write_text(json.dumps({'task_id': 'T-001', 'state': state, 'attempt': 1}))
+        (folder / 'T-001.json').write_text(json.dumps({'task_id': 'T-001', 'state': state, 'attempt': 1, **fields}))
+
+    def blocker_slot(self, worker=None):
+        """A held slot that only waits for the owner's answer to a worker-reported blocker."""
+        dead = {'pid': 2 ** 22 + 7, 'start_ticks': 1, 'boot_id': 'gone'}
+        self.slot('held', cause='blocker', reason='worker reported a blocker: allowance spent',
+                  worker=worker or dead, held_at=1.0, held_seconds=60.0)
+
+    def test_a_slot_waiting_on_an_owner_answer_is_set_aside(self):
+        """2026-10-21: a repository whose runner could not start before conversion had one task
+        held on a worker-reported blocker; no supported path released it, so neither could run."""
+        self.blocker_slot()
+        common = self.repo / '.git/autowork-execution'
+        dry = self.migrate('--dry-run')
+        self.assertEqual(dry.returncode, 0, dry.stderr)
+        self.assertEqual(json.loads(dry.stdout)['would_set_aside'], ['T-001'])
+        self.assertTrue((common / 'slots/T-001.json').exists(), 'a dry run sets nothing aside')
+        result = self.migrate()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        summary = json.loads(result.stdout)
+        self.assertEqual((summary['outcome'], summary['set_aside']), ('CONVERTED', ['T-001']))
+        self.assertFalse((common / 'slots/T-001.json').exists())
+        kept = json.loads((common / 'slot-history/T-001/1/slot.json').read_text())
+        self.assertEqual((kept['state'], kept['cause']), ('held', 'blocker'))
+        self.assertIn('"slot_set_aside"', (common / 'journal.jsonl').read_text())
+        self.assertEqual(TaskStore.at(self.repo, 'HEAD').tasks['T-001'].status, 'open')
+
+    def test_other_held_slots_still_refuse(self):
+        alive = task_execution.identity(os.getpid())
+        for name, make in (('a held finished commit', lambda: self.slot('held', cause='validation', commit='abc')),
+                           ('a live worker', lambda: self.blocker_slot(worker=alive))):
+            with self.subTest(slot=name):
+                make()
+                result = self.migrate()
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn('worker slots in flight', result.stderr)
+                self.assertTrue((self.repo / 'TODO.md').exists())
+                self.assertFalse((self.repo / '.git/autowork-execution/slot-history').exists())
 
     def claim(self):
         data = json.loads((self.repo / 'goals.json').read_text())
