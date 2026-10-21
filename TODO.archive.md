@@ -5261,3 +5261,29 @@ Source section: Next
 - Exclusions: No retries or longer sleeps added to the tests to hide the failure.
 - Planner's call: queued rather than fixed by hand because live runner workers own all four files.
 - Outcome (2026-10-20): the restart flake was the one-shot run treating the killed runner's helper's execution lock as final; it now waits up to `PI_AUTOWORK_BUSY_WAIT` (429eb87a, a test that holds the lock fails on the old code). The retry test was superseded the same day by 5ca0bc35, under which an overlapping retry waits by design (the test now expects IDLE); the failing run predated it.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-277-52"></a>
+
+### TOOLSET-277-52 — Restore the offline gate for the picker-policy failures at 171b26b
+
+- [x] TOOLSET-277-52 — Restore the offline gate for the picker-policy failures at 171b26b
+- Short: Restore the picker-policy offline gate
+- Status: done
+- Goal: PI-RUNNER
+- Payoff: Restore the offline gate without changing accepted execution policy.
+- Sources: [accepted runner contract](docs/project.md#continuous-pi-runner-2026-10-15); [repair evidence and boundary](docs/tasks/TOOLSET-277-52-picker-policy-main-red.md#repair-boundary); [picker policy tests](skills/autowork/scripts/test_picker_policy.py); [Autowork core](skills/autowork/SKILL.md).
+- Evidence: MAIN red at 171b26b after last green 3a00a05: `test_picker_policy.PickerPolicyTests.test_core_stays_lean_and_points_to_every_reference` and `test_picker_policy.PickerPolicyTests.test_no_early_exit_and_terminal_results_continue`. Supplied commit window: 171b26b, f057d64, 24748e1, 653998e, ce092d9, 5cfb7f8, 1f6364d, a41e3f0, 42f257a, 07b0338 (the trigger truncated the last to `07b03`). The [receipt and focused reproduction](docs/tasks/TOOLSET-277-52-picker-policy-main-red.md#focused-reproduction) record the full window, exact assertions and six-test exit-1 reproduction at 2c4bf2c: core is 16076 bytes against a strict 16000 limit; test expects version 0.28.1 while core declares 0.28.2. All references are currently linked. No flaky classification is reported for these failures.
+- Touches: skills/autowork/SKILL.md, skills/autowork/references/, skills/autowork/scripts/test_picker_policy.py
+- Scope: Reconcile the lean-core and stale-version assertions with the current accepted policy. Move detail to existing references as needed, retain all reference links, and preserve meaningful continuation, caller-stop, authority and no-busywork regression coverage. Inspect the cited change window; unrelated fleet, coordinator, state-machine and plan-lint changes are evidence context, not permission to rewrite them.
+- Acceptance: The two named failures pass, the core remains strictly below 16000 bytes and links every reference, and coverage no longer rejects a valid policy solely for its incidental patch version. Existing continuation, caller-stop, authority and no-busywork semantics remain intact; no size-limit increase or wholesale assertion removal. The full offline check passes with skips and exclusions reported separately, not counted as passes.
+- Checks: `python3 -m unittest discover -s skills/autowork/scripts -p test_picker_policy.py -v`; `python3 scripts/check.py`.
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No product/runtime redesign, live qualification, publication or coordinator-owned planning edits by the code worker. Do not reopen TOOLSET-184-b3 or replay its older candidate.
+- Next action: Reproduce the two assertions using repository files, make the smallest policy-preserving repair, then run the focused and full checks. The original runner bundle is not a prerequisite; TOOLSET-234-d4 owns its delivery and the failures reproduce locally.
+- Priority reason: The current DOCS-MAINTAINER instruction explicitly puts an uncovered main-red repair first in Now. Preserve every pre-existing task's relative order.

@@ -1201,14 +1201,6 @@
     },
     {
       "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-277-52",
-      "section": "Now",
-      "status": "open",
-      "title": "Restore the offline gate for the picker-policy failures at 171b26b"
-    },
-    {
-      "depends_on": [],
       "goal": "PARALLEL",
       "id": "TOOLSET-279-eb",
       "section": "Now",
@@ -3385,6 +3377,14 @@
       "section": "Done",
       "status": "done",
       "title": "Select and copy terminal TUI text by mouse dragging"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-277-52",
+      "section": "Done",
+      "status": "done",
+      "title": "Restore the offline gate for the picker-policy failures at 171b26b"
     },
     {
       "depends_on": [],
