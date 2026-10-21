@@ -18,3 +18,4 @@ checks = ["python3 scripts/check.py pi-autowork/engine/test_parallel_plan.py pi-
 exclusions = []
 +++
 
+- Held by: owner's interactive session (supervisor), implementing it now
