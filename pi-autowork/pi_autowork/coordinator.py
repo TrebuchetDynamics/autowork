@@ -54,6 +54,30 @@ MERGE_PROMPT = (
     'switch branches or touch {repo}. End with one line: PI_AUTOWORK_RESULT: completed|blocked, then one sentence.')
 
 
+def own_process(pid, proc='/proc'):
+    """Whether ``pid`` is this runner or one of its descendants (its engine helpers and
+    background jobs), read from /proc parent links."""
+    me = os.getpid()
+    seen = set()
+    while isinstance(pid, int) and pid > 1 and pid not in seen:
+        if pid == me:
+            return True
+        seen.add(pid)
+        try:
+            pid = int(Path(f'{proc}/{pid}/stat').read_text().rsplit(')', 1)[1].split()[1])
+        except (OSError, ValueError, IndexError):
+            return False
+    return False
+
+
+def process_name(pid):
+    try:
+        return ' '.join(Path(f'/proc/{pid}/cmdline').read_bytes().split(b'\0')[:3]).decode(errors='replace') \
+            or 'helper'
+    except OSError:
+        return 'helper'
+
+
 def merge_prompt(*, branch, base, files, tasks, repo):
     """Only actual task-store conflicts need reconciliation, not source-only merges."""
     planning = ('In each conflicted task file under tasks/, keep both sides\' changes; where both changed the '
@@ -2230,6 +2254,10 @@ class Coordinator:
         True when its repair merged, or another ledger-proposal batch still waits."""
         if self.stop or not self.integ or self.maintainer_job:
             return False
+        if overlap and self.reexec_due():
+            # A due reload already holds new reviews and batches and waits for a re-cut beside the
+            # loop: one started then kept integration idle for its whole Pi job. Reload first.
+            return False
         self.ledger_errors = self.validate_ledger() if ledger_errors is None else ledger_errors
         # Like MAIN repair, LEDGER repair may coexist with task workers/reported slots:
         # those slots cannot settle until the ledger is valid. Never move the session
@@ -3100,6 +3128,8 @@ class Coordinator:
             outcome = result.get('outcome') or 'ACTION_REQUIRED'
             if outcome != 'BUSY':
                 self.seen.pop('busy-since', None)
+                self.seen.pop('busy-own-since', None)
+                self.seen.pop('busy-own-said', None)
             for task in result.get('closed_on_base') or []:
                 self.note_state(task, 'closed', f'closed on {self.base}; its worker is stopped and its work set aside')
             for task in result.get('closing') or []:
@@ -3170,6 +3200,21 @@ class Coordinator:
             pass
         elif outcome == 'BUSY':
             reason = result.get('reason') or 'busy'
+            if own_process(result.get('holder')):
+                # This runner's own background job (a review, landing or status read) holds the
+                # lock past the engine's wait: ordinary work, not a blocker. Retry within seconds,
+                # quietly; name the job once only if it keeps the lock past the bound.
+                since = self.seen.setdefault('busy-own-since', time.monotonic())
+                bound = worker.setting('PI_AUTOWORK_OWN_LOCK_BOUND', 600, float)
+                if time.monotonic() - since < bound:
+                    return self.pause(5)
+                if not self.seen.get('busy-own-said'):
+                    self.seen['busy-own-said'] = True
+                    LOG.say(f"{result.get('lock') or 'a lock'} has been held by this runner's own "
+                            f"{process_name(result['holder'])} (PID {result['holder']}) for "
+                            f'{int((time.monotonic() - since) // 60)} min; still waiting for it')
+                return self.pause(5)
+            self.seen.pop('busy-own-said', None)
             if self.mode in ('once', 'until-empty'):
                 # A killed runner's engine helper holds the execution lock until it finishes: under
                 # load the restart that adopts its workers exited 4 at once (TOOLSET-288-cf). A held

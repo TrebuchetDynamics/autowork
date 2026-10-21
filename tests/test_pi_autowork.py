@@ -483,7 +483,7 @@ class Fixture(unittest.TestCase):
     def stop_workers(self):  # failures must not leave fake workers writing after cleanup
         slots = Path(self.git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')) / 'autowork-execution/slots'
         for path in slots.glob('*.json') if slots.exists() else []:
-            pid = json.loads(path.read_text()).get('worker', {}).get('pid')
+            pid = (json.loads(path.read_text()).get('worker') or {}).get('pid')  # a slot may record None
             if pid:
                 try:
                     os.killpg(pid, signal.SIGKILL)
@@ -1542,16 +1542,23 @@ class EngineTests(Fixture):
             self.assertEqual(holder.stdout.readline().strip(), 'held')
             return holder
 
+        # The runner's own bound is what this checks: the engine's short-lock wait is off.
+        env = {**self.env, 'AUTOWORK_LOCK_WAIT': '0'}
         first = hold(60)
-        result = self.run_runner('--until-empty', env={**self.env, 'PI_AUTOWORK_BUSY_WAIT': '2'})
+        result = self.run_runner('--until-empty', env={**env, 'PI_AUTOWORK_BUSY_WAIT': '2'})
         self.assertEqual(result.returncode, 4, result.stdout + result.stderr)  # past the bound: busy, as before
         self.assertIn('Repository busy', result.stdout + result.stderr)
         first.kill()
         first.wait()
         hold(4)
-        result = self.run_runner('--until-empty', env={**self.env, 'PI_AUTOWORK_BUSY_WAIT': '60'})
+        result = self.run_runner('--until-empty', env={**env, 'PI_AUTOWORK_BUSY_WAIT': '60'})
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('waiting for it to finish', result.stdout)
+        # With the default short-lock wait, the same brief hold is absorbed: no busy at all.
+        hold(4)
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn('Repository busy', result.stdout + result.stderr)
         self.assertTrue(self.done('A', 'B', 'C'))
 
     def test_a_reload_keeps_the_runner_and_its_worker_and_applies_new_settings(self):

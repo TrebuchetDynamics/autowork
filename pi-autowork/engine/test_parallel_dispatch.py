@@ -586,7 +586,7 @@ class DispatchTests(unittest.TestCase):
             execution.select(self.repo, 'PLAN', None)
     def test_merge_backlog_pauses_only_fresh_dispatch_until_it_drains(self):
         """Finished commits take precedence, without stopping interrupted work."""
-        # An unset or invalid count defaults to two per worker: 4 for these 2 workers.
+        # An unset or invalid count defaults to half the pool, at least 2: 2 for these 2 workers.
         # As in the answered-question fixture, integration's subreaper is process-wide.
         import ctypes
         libc, subreaper = ctypes.CDLL(None), ctypes.c_int()
@@ -595,7 +595,7 @@ class DispatchTests(unittest.TestCase):
         for number, (count, age, setting, after, paused) in enumerate(
                 [(3, 1260, '3', '1200', True), (2, 1260, '3', '1200', False),
                  (3, 300, '3', '1200', False), (3, 1260, '0', '1200', False),
-                 (3, 300, '3', '60', True), (3, 1260, '-1', '1200', False), (3, 1260, '', '1200', False),
+                 (3, 300, '3', '60', True), (2, 1260, '-1', '1200', True), (2, 1260, '', '1200', True),
                  (3, 300, '3', '-1', False)]):
             with self.subTest(count=count, age=age, setting=setting):
                 self.repo = self.root / f'backlog-{number}'
@@ -637,7 +637,7 @@ class DispatchTests(unittest.TestCase):
                         self.assertEqual([s['task'] for s in result['dispatched']],
                                          ['OLD'] if paused else ['OLD', 'F'])
                         if paused:
-                            reason = 'wait for 3 finished commits to merge'
+                            reason = f'wait for {count} finished commits to merge'
                             self.assertEqual(result['waiting'], [{'id': 'F', 'reason': reason, 'blocked_by': []}])
                             _, again = self.apply('--tasks', 'OLD,F')
                             self.assertEqual(again['dispatched'], [])
@@ -654,6 +654,19 @@ class DispatchTests(unittest.TestCase):
                             self.assertFalse(status['merge_backlog']['paused'])
                     finally:
                         self.stop_workers()
+
+    def test_finished_work_lands_before_more_starts(self):
+        """Seven finished commits waited up to 1h39m while an 8-worker runner kept starting
+        workers: two per worker (16) never paused it. Half the pool, at least 2, does."""
+        now = time.time()
+        for workers, waiting, paused in ((8, 3, False), (8, 4, True), (8, 7, True), (2, 2, True), (1, 1, False)):
+            with self.subTest(workers=workers, waiting=waiting):
+                current = [{'task_id': f'T{i}', 'state': 'reported', 'commit': f'c{i}'} for i in range(waiting)]
+                events = [{'event': 'slot_changed', 'task_id': f'T{i}', 'state': 'reported', 'timestamp': now - 1500}
+                          for i in range(waiting)]
+                with patch.object(state.journal, 'read', return_value={'events': events}):
+                    self.assertEqual(dispatch.merge_backlog(self.common, current, workers=workers, now=now, env={})['paused'],
+                                     paused)
 
     def test_a_closed_writer_window_no_longer_explains_the_merge_backlog(self):
         """A reason kept on an integrating slot was replayed for hours after the session left,
