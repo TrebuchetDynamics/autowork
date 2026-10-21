@@ -12,7 +12,7 @@ import signal
 import subprocess
 import sys
 
-TEST_DIRS = ('tests', 'skills/autowork/scripts', 'skills/docs-sync/scripts',
+TEST_DIRS = ('tests', 'pi-autowork/engine', 'skills/docs-sync/scripts',
              'skills/git-commit-push/scripts', 'pi-autowork/tests')
 EXCLUSIONS = {
     'skills/docs-sync/scripts/test_goal_gap_regression.py':
@@ -26,7 +26,7 @@ EXCLUSIONS = {
 }
 # Modules whose tests run in several processes: tests/test_pi_autowork.py alone took
 # 764s of a 1324s run as one process, while its tests are independent runner fixtures.
-SPLIT = {'tests/test_pi_autowork.py': 12, 'skills/autowork/scripts/test_parallel_integrate.py': 4}
+SPLIT = {'tests/test_pi_autowork.py': 12, 'pi-autowork/engine/test_parallel_integrate.py': 4}
 LIVE_FLAGS = ('CONTAINMENT_LINUX_TESTS', 'RUN_CONTROLLER_BRIDGE_LINUX',
               'HERMES_NATIVE_HANDOFF_TEST', 'HERMES_NATIVE_REGISTRATION_TEST')
 

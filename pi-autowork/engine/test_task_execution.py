@@ -536,7 +536,7 @@ class SelectionCacheTests(unittest.TestCase):
                 'tasks': [{'id': 'A', 'title': 'parse once', 'goal': 'G',
                            'status': 'open', 'section': 'Now'}]}))
             parses = []
-            scripts = SCRIPT.parents[2] / 'docs-sync/scripts'
+            scripts = SCRIPT.parents[2] / 'skills/docs-sync/scripts'
             def observe(frame, event, arg):
                 if (event == 'call' and frame.f_code.co_name == 'task_bodies'
                         and Path(frame.f_code.co_filename).parent == scripts):

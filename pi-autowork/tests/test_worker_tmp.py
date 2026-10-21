@@ -43,7 +43,7 @@ class WorkerTmpTests(unittest.TestCase):
     def test_full_suites_share_host_slots_without_spending_their_timeout_waiting(self):
         """A competing runner must wait, survive its outer timeout, and recover a killed holder."""
         component = str(Path(worker.__file__).resolve().parents[1])
-        engine = str(Path(__file__).resolve().parents[2] / 'skills/autowork/scripts')
+        engine = str(Path(__file__).resolve().parents[2] / 'pi-autowork/engine')
         with patch.dict(os.environ, PI_AUTOWORK_CHECK_ROOT=self.temp.name):
             for slots, killed in [('1', False), ('1', True), ('0', False)]:
                 with self.subTest(slots=slots, killed=killed):

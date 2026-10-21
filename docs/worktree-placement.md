@@ -6,12 +6,12 @@ necessarily the current directory. `.worktrees/` is ignored; the shared helper a
 adds a local Git exclusion for repositories without a tracked ignore rule.
 
 Autowork worker, retry, integration and isolation paths use
-`skills/autowork/scripts/worktree_paths.py`. Pi sessions and scratch checkouts use
+`pi-autowork/engine/worktree_paths.py`. Pi sessions and scratch checkouts use
 the same helper. Existing session paths remain resumable until explicitly moved.
 
 ## Claude Code
 
-Copy `skills/autowork/scripts/worktree_paths.py` to
+Copy `pi-autowork/engine/worktree_paths.py` to
 `~/.claude/hooks/worktree-policy.py`. Merge these entries into the user
 `~/.claude/settings.json` hooks, preserving other settings:
 
@@ -37,7 +37,7 @@ The hook payloads and lifecycle are documented in the
 ## One interactive writer per checkout
 
 One interactive session writes a checkout at a time. Copy
-`skills/autowork/scripts/checkout_lock.py` to `~/.claude/hooks/checkout-lock.py` and
+`pi-autowork/engine/checkout_lock.py` to `~/.claude/hooks/checkout-lock.py` and
 add these hooks beside the worktree policy's:
 
 ```json

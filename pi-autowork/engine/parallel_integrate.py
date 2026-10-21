@@ -884,7 +884,7 @@ def recover_integration(repo, common, slot, contracts):
 
 
 def goals_command(repo, *argv):
-    script = Path(__file__).resolve().parents[2] / 'docs-sync/scripts/goals.py'
+    script = Path(__file__).resolve().parents[2] / 'skills/docs-sync/scripts/goals.py'
     result = subprocess.run([sys.executable, str(script), argv[0], str(repo), *argv[1:]],
                             capture_output=True, text=True, timeout=60)
     if result.returncode:

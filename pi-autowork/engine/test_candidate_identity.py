@@ -50,7 +50,7 @@ class CandidateTests(unittest.TestCase):
     def test_agent_commit_emits_exact_identity_without_touching_shared_state(self):
         import json
         import os
-        script = Path(__file__).with_name('agent_commit.sh')
+        script = Path(__file__).resolve().parents[2] / 'skills/git-commit-push/scripts/agent_commit.sh'
         before_head = self.git('rev-parse', 'HEAD')
         before_index = (self.root / '.git/index').read_bytes()
         (self.root / 'input').write_text('candidate file')

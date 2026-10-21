@@ -321,7 +321,7 @@ wait behind fresh reported candidates, keeping task priority within each group.
 If that review repeats the same failure line (ignoring revision IDs), the commit
 stays held for the maintainer's `review findings` trigger, not another reviewer
 release. A different verdict or new commit resets this limit (see
-[`reverify`](../skills/autowork/scripts/parallel_integrate.py)); the same reviewer
+[`reverify`](../pi-autowork/engine/parallel_integrate.py)); the same reviewer
 version never gets a second try.
 
 A held task is answered by editing its TODO.md entry (scope, Touches, acceptance,

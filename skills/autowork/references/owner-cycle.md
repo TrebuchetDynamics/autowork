@@ -8,7 +8,7 @@ Private receipts preserve coordination and evidence, never a second task board.
 ## Current session
 
 ```sh
-python3 <autowork>/scripts/owner_cycle.py /absolute/repo \
+python3 <toolset>/pi-autowork/engine/owner_cycle.py /absolute/repo \
   --apply --owner-pid ACTUAL_SESSION_PID
 ```
 
@@ -46,7 +46,7 @@ reports `priority.state: drift`. Every result carries `priority.state`: `synced`
 ## Bounded command
 
 ```sh
-python3 <autowork>/scripts/owner_cycle.py /absolute/repo \
+python3 <toolset>/pi-autowork/engine/owner_cycle.py /absolute/repo \
   --apply --timeout 120 --run python3 -m unittest tests.test_example
 ```
 

@@ -23,7 +23,7 @@ COORDINATOR = {'TODO.md', 'TODO.archive.md', 'goals.json', 'CHANGELOG.md'}
 
 
 def modules(toolset):
-    sys.path.insert(0, str(Path(toolset) / 'skills/autowork/scripts'))
+    sys.path.insert(0, str(Path(toolset) / 'pi-autowork/engine'))
     sys.path.insert(0, str(Path(toolset) / 'skills/docs-sync/scripts'))
     import goals
     import parallel_dispatch

@@ -729,7 +729,7 @@ def batch_review(state, task, checkout, gate):
 
 def engine_modules():
     """The repository's engine modules: parallel_dispatch, parallel_integrate, parallel_state."""
-    scripts = str(Path(__file__).resolve().parents[2] / 'skills' / 'autowork' / 'scripts')
+    scripts = str(Path(__file__).resolve().parents[2] / 'pi-autowork' / 'engine')
     if scripts not in sys.path:
         sys.path.insert(0, scripts)
     import parallel_dispatch
@@ -872,7 +872,7 @@ def batch_suspects(state, checkout, base, steps):
             except OSError:
                 pass
         # Imported modules, or a file the test reads by name: 'autowork/SKILL.md' anywhere, or just
-        # 'SKILL.md' beside the test (ROOT.joinpath('SKILL.md') in skills/autowork/scripts/).
+        # 'SKILL.md' beside the test (ROOT.joinpath('SKILL.md') in pi-autowork/engine/).
         homes = {'/'.join(Path(path).parent.parts[:2]) + '/' for path in index.get(module, ())}
 
         def read(path):

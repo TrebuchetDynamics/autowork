@@ -62,7 +62,7 @@ def finish(repo, profile, card, message, files, checks, timeout):
         return {'status': 'source_changed', 'checks': receipts,
                 'error': 'Acceptance changed owned files; inspect and rerun validation.'}, 1
     try:
-        result = subprocess.run(['bash', str(Path(__file__).with_name('agent_commit.sh')),
+        result = subprocess.run(['bash', str(Path(__file__).resolve().parents[2] / 'skills/git-commit-push/scripts/agent_commit.sh'),
             str(repo), profile, card, message, *files], capture_output=True, text=True,
             env={**environment, 'AGENT_COMMIT_JSON': '0'}, timeout=timeout)
         if result.returncode:

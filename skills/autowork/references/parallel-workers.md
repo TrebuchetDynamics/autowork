@@ -13,7 +13,7 @@ the coordinator reviews, integrates, validates and closes.
 
 ## Coordinator loop
 
-All calls use `python3 <autowork>/scripts/owner_cycle.py REPO` with the
+All calls use `python3 <toolset>/pi-autowork/engine/owner_cycle.py REPO` with the
 coordinator's verified `--owner-pid` (the same persistent session identity as
 sequential Autowork). `--run` takes every argument after it, so put it last.
 

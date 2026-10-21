@@ -248,7 +248,7 @@ def stop_stuck_commands(runner_pid, limit, stopping, now=None):
             age = _age(command)
             directory = os.environ.get('AUTOWORK_WORKER_CHECK_DIR')
             if age is not None and directory:
-                scripts = str(Path(__file__).resolve().parents[2] / 'skills/autowork/scripts')
+                scripts = str(Path(__file__).resolve().parents[2] / 'pi-autowork/engine')
                 if scripts not in sys.path:
                     sys.path.insert(0, scripts)
                 import autowork_run

@@ -37,8 +37,8 @@ For milestone-first changes, exercise the real `goals.py focus <repo> <GOAL>` wr
 `docs-sync/scripts/test_milestone_focus.py` and `test_goals.py`; dependencies remain
 mandatory and focused Next must precede unrelated Now. Inspect the generated
 `start_goal.py` worker body as well as skill prose: injected delivery/review rules
-must agree with policy. Run `autowork/scripts/test_workflow_handoff.py` plus the
-existing handoff and picker-policy regressions. Update stale policy assertions
+must agree with policy. Run the existing handoff and picker-policy regressions
+(`pi-autowork/engine/test_picker_policy.py`). Update stale policy assertions
 only when the accepted contract changed, preserving no-bypass, original-card and
 mandatory-review checks. Tests of policy text do not prove observed worker behavior.
 For a suite exceeding the terminal transport's foreground window, use a bounded

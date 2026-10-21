@@ -74,7 +74,7 @@ is labeled as such; the helper does not independently certify the issuer.
 Never create this receipt for foreign edits or infer it from a clean status.
 
 ```sh
-python3 <autowork>/scripts/prepare_prerequisites.py \
+python3 <toolset>/pi-autowork/engine/prepare_prerequisites.py \
   --source /absolute/consumer --target /absolute/private-input-worktree \
   --base <full-base> --snapshot /private/source-snapshot.json \
   --attribution /private/existing-owner-attribution.json --profile worker \
@@ -97,9 +97,9 @@ After the bounded docs-sync fallback has reconciled its proposal into the real
 consumer, use `terminal` to run:
 
 ```sh
-python3 <autowork>/scripts/retry_selection.py /absolute/consumer
+python3 <toolset>/pi-autowork/engine/retry_selection.py /absolute/consumer
 # For an explicit named slice, preserve both bounds:
-python3 <autowork>/scripts/retry_selection.py /absolute/consumer \
+python3 <toolset>/pi-autowork/engine/retry_selection.py /absolute/consumer \
   --plan docs/spec.md#accepted-slice --tasks TASK1,TASK2
 ```
 
@@ -116,7 +116,7 @@ invent a remote because one is called origin or choose among several push URLs.
 For an attributed completed source commit, use `terminal` to run:
 
 ```sh
-python3 <autowork>/scripts/publication.py --repo /absolute/consumer \
+python3 <toolset>/pi-autowork/engine/publication.py --repo /absolute/consumer \
   --base <full-base> --commit <receipt-full-sha> --profile worker --task TASK1 \
   --contract-file /private/exact-contract.txt --authority /private/owner-publication.json
 ```

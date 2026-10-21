@@ -313,7 +313,7 @@ Private `goals.py` copies retain separate transaction ContextVars. The facade
 passes that state and a late-bound write callback explicitly to the shared
 modules; coordinating one copy must not arm another copy's stale-write guard.
 This preserves existing private loaders without sharing mutable write state.
-The runner's [task_execution.py](../../autowork/scripts/task_execution.py) passes
+The runner's [task_execution.py](../../../pi-autowork/engine/task_execution.py) passes
 its content-keyed parsed bodies to `queue(..., bodies=...)`, which forwards them
 to the priority check. Those bodies must describe the exact supplied TODO text.
 Selection therefore reuses one parse without patching a module's internal

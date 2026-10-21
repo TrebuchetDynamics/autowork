@@ -9,7 +9,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 SCRIPT = HERE / 'owner_cycle.py'
-GOALS = HERE.parents[1] / 'docs-sync/scripts/goals.py'
+GOALS = HERE.parents[1] / 'skills/docs-sync/scripts/goals.py'
 
 
 def body(tid, title):

@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 import sys
 
-spec = importlib.util.spec_from_file_location('retry_goals', Path(__file__).resolve().parents[2] / 'docs-sync/scripts/goals.py')
+spec = importlib.util.spec_from_file_location('retry_goals', Path(__file__).resolve().parents[2] / 'skills/docs-sync/scripts/goals.py')
 assert spec is not None and spec.loader is not None
 goals = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(goals)
