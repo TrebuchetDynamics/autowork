@@ -452,6 +452,12 @@ class MainCheckTests(unittest.TestCase):
             runner.scratch_checkout = lambda *args: started.append(args) and None
             with patch('pi_autowork.coordinator.git', return_value='new'), \
                     patch('os.getloadavg', return_value=(0, 0, 0)):
+                # After a restart the record is 'aborted' and carries the last finish as last_finished.
+                runner.integration, runner.train = {'task': Coordinator.BATCH}, None
+                started.clear()
+                main_check.write(runner.state, {'state': 'aborted', 'rev': '', 'last_finished': time.time() - 600})
+                runner.check_main()
+                self.assertEqual(started, [], 'an aborted record still remembers the last check')
                 for job, train, ago, starts in (({'task': Coordinator.BATCH}, None, 600, False),
                                                 (None, {'task': Coordinator.BATCH}, 600, False),
                                                 ({'task': 'A'}, None, 600, True),

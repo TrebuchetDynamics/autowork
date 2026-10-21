@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-324-73"
 title = "A runner honours requested service settings and does not push when disabled"
 short = "Honour service push setting (issue 4)"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 20000
@@ -16,6 +16,8 @@ scope = "GitHub issue 4: PI_AUTOWORK_PUSH=0 autowork start is silently ignored w
 acceptance = ["autowork start with PI_AUTOWORK_PUSH=0 on a repository whose service env file says push on either writes 0 to it or exits non-zero naming the conflict; it never starts with the old value silently", "A runner whose effective setting is 0 makes no push and no upstream sync push in an offline test with a bare upstream (sync_upstream and push both)"]
 checks = ["python3 scripts/check.py tests/test_autowork_command.py tests/test_autowork_push_setting.py", "python3 scripts/check.py tests/test_pi_autowork.py"]
 exclusions = []
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-324-73.toml"
 +++
 
 - Sources: https://github.com/TrebuchetDynamics/autowork/issues/4
