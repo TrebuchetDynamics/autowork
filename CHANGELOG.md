@@ -48,6 +48,7 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- **Task records end cleanly and a refused closure stays integrated** (TOOLSET-330-0a). Rendered records (an add, the `-LIVE` follow-up) end with exactly one newline, so a repository whose pre-commit hook runs `git diff --check` no longer refuses the engine's close commit; when a hook does refuse it, the runner reports the hook's output and keeps the task integrated rather than closing it, retrying without redispatching.
 - **Review gate: no second suite to confirm a hold, and its stages are visible.** When a
   merged tree fails, the base comparison takes main's own green check when main's latest record
   is green for the same command on the base's code (planning files aside), with main's excused
