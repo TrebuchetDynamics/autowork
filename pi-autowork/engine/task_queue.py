@@ -15,7 +15,7 @@ import subprocess
 import tomllib
 
 import task_select
-from task_store import Ownership, LiveAuthorization, Kind, StoreError, TaskStore, _blobs
+from task_store import Ownership, LiveAuthorization, Kind, StoreError, TaskStore, _Document, _blobs, _git
 
 NOTE = re.compile(r'^- ([A-Za-z][A-Za-z \'-]*): (.*)$', re.M)
 UNCONVERTED = 'no tasks/ store: run `autowork migrate {repo}` to convert this repository once'
@@ -48,6 +48,104 @@ def store(repo, rev='HEAD'):
         if 'no task store' in str(exc):
             raise Unconverted(UNCONVERTED.format(repo=repo)) from None
         raise
+
+
+def merge_record_error(repo, ours, theirs, result='HEAD'):
+    """A merge may select parent fields and combine ordinary notes, never invent authority
+    or closure. Compare pinned input commits, not a resolver's possibly amended parents.
+    Return a path/field diagnostic, or '' (also for repositories without a task store).
+    """
+    try:
+        revisions = [commit(repo, rev) for rev in (ours, theirs, result)]
+        if not all(revisions):
+            return 'tasks/: cannot read the merge inputs'
+        paths = set()
+        for parent in revisions[:2]:
+            paths.update(_git(repo, 'diff', '--name-only', '--no-renames', '-z', parent,
+                              revisions[2], '--', 'tasks').decode().rstrip('\0').split('\0'))
+        if not any(paths):
+            return ''
+        # Read changed documents individually: a broken parent store must not veto
+        # a valid LEDGER repair selected intact from the other parent. Unchanged
+        # invalid records are the maintainer's concern, not authority invented here.
+        trees = []
+        for rev in revisions:
+            tree = {}
+            for entry in _git(repo, 'ls-tree', '-rz', rev, '--', 'tasks').split(b'\0'):
+                if entry:
+                    meta, path = entry.split(b'\t', 1)
+                    tree[path.decode()] = meta.split()
+            trees.append(tree)
+        task_fields = ('status', 'goal', 'section', 'scope', 'acceptance', 'checks', 'depends_on',
+                       'verified_depends_on', 'touches', 'resources', 'kind', 'ownership', 'live',
+                       'exclusions', 'closure', 'closure_actor', 'closure_timestamp', 'closure_reason',
+                       'closure_evidence', 'owner_waiver', 'owner_qualification')
+        goal_fields = ('status', 'priority', 'source', 'focus', 'depends_on')
+        evidence = lambda d: tuple(re.findall(r'^- Evidence:[^\n]*(?:\n[ \t]+[^\n]*)*', d.body, re.M | re.I))
+        for path in sorted(paths):
+            if not path.startswith(('tasks/items/', 'tasks/goals/', 'tasks/evidence/')):
+                continue
+            entries = [tree.get(path) for tree in trees]
+            if entries[2] in entries[:2]:
+                continue  # includes a deletion present in a parent; no new value
+            if entries[2] is None:
+                return f'{path}: merge deleted a record present in both parents'
+            if not any(entries[:2]):
+                return f'{path}: merge invented a record absent from both parents'
+            if path.startswith('tasks/evidence/'):
+                return f'{path}: receipt is not a value from either merge parent'
+            documents = []
+            for entry in entries:
+                try:
+                    if entry is None or entry[0] not in (b'100644', b'100755') or entry[1] != b'blob':
+                        documents.append(None)
+                    else:
+                        documents.append(_Document(path, _blobs(repo, [entry[2].decode()])[0]))
+                except StoreError:
+                    documents.append(None)
+            left, right, merged = documents
+            if merged is None:
+                return f'{path}: merge produced an unreadable record'
+            merged.validate(goal=path.startswith('tasks/goals/'))
+            parents = [d for d in (left, right) if d is not None]
+            fields = goal_fields if path.startswith('tasks/goals/') else task_fields
+            for field in ('id', *fields):
+                if not any(merged.data.get(field) == p.data.get(field) for p in parents):
+                    return f'{path}: {field} is not a value from either merge parent'
+            if not any(evidence(merged) == evidence(p) for p in parents):
+                return f'{path}: Evidence is not a value from either merge parent'
+    except (StoreError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        return f'tasks/: cannot validate merge records: {exc}'
+    return ''
+
+
+def merge_history_error(repo, before, other, result='HEAD'):
+    """Check every step of a resolver's first-parent history, including extra commits.
+    Several valid merges may retain a value no longer in the final canonical tip.
+    Only ``other``'s ancestors are permitted as incoming merge parents.
+    """
+    try:
+        before, other, result = [commit(repo, rev) for rev in (before, other, result)]
+        if not all((before, other, result)):
+            return 'tasks/: cannot read the merge inputs'
+        previous = before
+        for line in _git(repo, 'rev-list', '--first-parent', '--reverse', '--parents',
+                         f'{before}..{result}').decode().splitlines():
+            step, *parents = line.split()
+            if not parents or parents[0] != previous or len(parents) > 2:
+                return 'tasks/: resolver did not retain the pre-merge first-parent history'
+            incoming = parents[1] if len(parents) == 2 else other
+            if len(parents) == 2:
+                _git(repo, 'merge-base', '--is-ancestor', incoming, other)
+            reason = merge_record_error(repo, previous, incoming, step)
+            if reason:
+                return reason
+            previous = step
+        if previous != result:
+            return 'tasks/: resolver did not retain the pre-merge history'
+    except (StoreError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        return f'tasks/: cannot validate merge history: {exc}'
+    return ''
 
 
 def notes(record):

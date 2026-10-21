@@ -1427,6 +1427,70 @@ finally:
             slot = state.slots(self.common)[0]
             state.write_slot(self.common, dict(slot, state='reported'), slot)
 
+    def test_worker_resolver_cannot_close_an_open_task(self):
+        import task_store
+        root, commit = self.worker()
+        module = self.module()
+        (self.repo / 'A.txt').write_text('canonical conflict\n')
+        self.git('commit', '-qam', 'canonical moved')
+        base = self.git('rev-parse', 'HEAD')
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['cause'], 'conflict')
+        report = dispatch.data_dir(self.common, state.slots(self.common)[0]) / 'report.json'
+        before = report.read_bytes()
+        result = subprocess.run(['git', '-C', str(root), 'merge', '--no-edit', base], capture_output=True)
+        self.assertEqual(result.returncode, 1)
+        self.git('checkout', '--ours', 'A.txt', cwd=root)
+        path = root / 'tasks/items/B.md'
+        path.write_text(task_store.edit(path.read_text(), {'status': 'done'}))
+        self.git('add', '.', cwd=root)
+        self.git('commit', '-qm', 'resolver invented closure', cwd=root)
+        with self.assertRaisesRegex(ValueError, 'tasks/items/B.md.*status'):
+            module.merged(self.repo, self.owner, 'A')
+        self.assertEqual(self.git('rev-parse', 'HEAD', cwd=root), commit)
+        self.assertEqual(self.git('rev-parse', 'HEAD'), base)
+        self.assertEqual(report.read_bytes(), before)
+        self.assertEqual(state.slots(self.common)[0]['state'], 'held')
+        # Multiple valid merges may retain an intermediate parent's status even
+        # when neither the original worker nor the latest canonical tip has it.
+        canonical = self.repo / 'tasks/items/B.md'
+        canonical.write_text(task_store.edit(canonical.read_text(), {'status': 'done'}))
+        self.git('commit', '-qam', 'canonical closes B')
+        result = subprocess.run(['git', '-C', str(root), 'merge', '--no-edit', 'main'], capture_output=True)
+        self.assertEqual(result.returncode, 1)  # A.txt still conflicts
+        self.git('checkout', '--ours', 'A.txt', cwd=root)
+        self.git('add', '.', cwd=root)
+        self.git('commit', '-qm', 'resolve A and retain canonical B closure', cwd=root)
+        canonical.write_text(task_store.edit(canonical.read_text(), {'status': 'superseded'}))
+        self.git('commit', '-qam', 'canonical supersedes B')
+        self.git('merge', '--no-commit', '--no-ff', 'main', cwd=root)
+        path.write_text(task_store.edit(path.read_text(), {'status': 'done'}))
+        self.git('commit', '-qam', 'retain the first parent B closure', cwd=root)
+        self.assertEqual(module.merged(self.repo, self.owner, 'A')['outcome'], 'MERGED')
+        self.assertEqual(self.record('B').status, 'superseded')
+
+    def test_planning_remerge_rejects_a_synthesized_contract_field(self):
+        import task_store
+        # Git can combine edits to separate lines inside one TOML list into a value
+        # present in neither parent, without a textual conflict or a model resolver.
+        path = self.repo / 'tasks/items/B.md'
+        text = task_store.edit(path.read_text(), {'checks': ['one', 'two', 'three', 'four', 'five']})
+        text = text.replace('checks = ["one", "two", "three", "four", "five"]',
+                            'checks = [\n"one",\n"two",\n"three",\n"four",\n"five",\n]')
+        path.write_text(text)
+        self.git('commit', '-qam', 'multiline checks')
+        self.baseline = self.git('rev-parse', 'HEAD')
+        root, _ = self.worker()
+        worker_path = root / 'tasks/items/B.md'
+        worker_path.write_text(worker_path.read_text().replace('"one",', '"session one",'))
+        self.git('commit', '-qam', 'session planning', cwd=root)
+        merge = self.git('rev-parse', 'HEAD', cwd=root)
+        path.write_text(path.read_text().replace('"five",', '"owner five",'))
+        self.git('commit', '-qam', 'owner planning')
+        head = self.git('rev-parse', 'HEAD')
+        self.assertIsNone(self.module().remerge_planning(self.repo, root, merge, head, 'A'))
+        self.assertEqual(self.git('rev-parse', 'HEAD', cwd=root), merge)
+        self.assertEqual(self.git('rev-parse', 'HEAD'), head)
+
     def test_merge_conflict_preserves_canonical_dirty_files_and_other_slot(self):
         root, commit = self.worker()
         other, other_commit = self.worker('B')

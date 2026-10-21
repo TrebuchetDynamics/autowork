@@ -1371,18 +1371,21 @@ class EngineTests(Fixture):
             (where / f'{name}.txt').write_text(name + '\n')
             git(where, 'add', '.')
             git(where, 'commit', '-qm', name)
+            if name == 'task':
+                commit = git(root, 'rev-parse', 'HEAD')
             if name == 'first':
                 resolved = git(session, 'rev-parse', 'HEAD')
                 git(root, 'merge', '-q', '--no-edit', resolved)  # what the resolver did
         runner = object.__new__(coordinator.Coordinator)
         runner.state, runner.integ, runner.child, runner.seen = self.root / 'state', str(session), None, {}
+        runner.toolset = str(ROOT)
         runner.state.mkdir()
         out = self.root / 'merge.json'
         out.write_text('{}')
         proc = subprocess.Popen(['true'])
         proc.wait()
         runner.resolvers['T'] = {'proc': proc, 'out': str(out), 'root': str(root), 'head': resolved,
-                                 'commit': 'c', 'merged_count': 0}
+                                 'commit': commit, 'merged_count': 0}
         adopted = []
         runner.adopt_merge = lambda task: adopted.append(task) or True
         runner.finish_resolvers()

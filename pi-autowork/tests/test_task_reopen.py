@@ -6,6 +6,7 @@ task's acceptance. Git merges both cleanly; the runner, not the resolver's promp
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'engine'))
@@ -94,6 +95,51 @@ class ReopenTests(LandingFixture):
         self.assertFalse(self.runner.merge_main())
         self.assertEqual(path.read_text(), edited)
         self.assertIn('could not be reopened', self.runner.merge_pending)
+
+    def test_resolver_cannot_invent_record_values_but_can_combine_notes(self):
+        path = self.integ / 'tasks/items/T.md'
+        path.write_text(task_store.set_note(path.read_text(), 'Note', 'session note'))
+        self.git(self.integ, 'commit', '-qam', 'session note')
+        main_path = self.repo / 'tasks/items/T.md'
+        main_path.write_text(task_store.set_note(main_path.read_text(), 'Note', 'owner note'))
+        self.git(self.repo, 'commit', '-qam', 'owner note')
+        main, session = self.head('main'), self.head('pi-autowork/s')
+        self.runner.tasks_cli, self.runner.verify_timeout = 'autowork tasks', 10
+
+        def resolve(*args):
+            self.git(self.integ, 'checkout', '--ours', '--', 'tasks/items/T.md')
+            path.write_text(path.read_text() + '- Owner note: owner note\n')
+            target, changes, evidence = mutation
+            record = self.integ / target
+            if changes:
+                record.write_text(task_store.edit(record.read_text(), changes,
+                                                   goal='/goals/' in target))
+            if evidence:
+                record.write_text(task_store.set_note(record.read_text(), 'Evidence', 'invented pass'))
+            self.git(self.integ, 'add', 'tasks')
+            self.git(self.integ, 'commit', '-qm', 'resolver result')
+
+        self.runner.pi_job = resolve
+        cases = [('tasks/items/T.md', {'status': 'done'}, False),
+                 ('tasks/items/T.md', {'closure_reason': 'invented close'}, False),
+                 ('tasks/items/T.md', {'acceptance': ['invented requirement']}, False),
+                 ('tasks/items/T.md', {}, True),
+                 ('tasks/goals/FIXTURE.md', {'status': 'met'}, False)]
+        for mutation in cases:
+            with self.subTest(mutation=mutation), patch('pi_autowork.coordinator.LOG.say') as log:
+                self.runner.resolved_for = ''
+                self.assertFalse(self.runner.merge_main())
+                self.assertIn(mutation[0], self.runner.merge_pending)
+                self.assertIn(mutation[0], str(log.call_args_list))
+                self.assertEqual((self.head('main'), self.head('pi-autowork/s')), (main, session))
+                self.assertEqual(self.git(self.integ, 'status', '--porcelain'), '')
+        mutation = ('tasks/items/T.md', {}, False)
+        self.runner.resolved_for = ''
+        self.assertTrue(self.runner.merge_main(), self.runner.merge_pending)
+        merged = task_queue.store(self.repo).tasks['T']
+        self.assertEqual(merged.status, 'open')
+        self.assertIn('session note', merged.body)
+        self.assertIn('owner note', merged.body)
 
     def test_a_rank_edit_keeps_the_close(self):
         self.close_on_session()
