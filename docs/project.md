@@ -574,7 +574,8 @@ future model-driven scheduled behavior must be reported separately.
 
 ## TODO-owned task priority
 
-Status: Accepted
+Status: Superseded by [Task Store v2](#task-store-v2-2026-10-20) (2026-10-20): priority moves to
+each task's `section` and `rank`; this contract holds until the cutover lands.
 
 Decision: On 2026-10-14 the user accepted that TODO.md order is the human priority
 authority and goals.json is the execution index. Synchronization is explicit and a
@@ -1774,7 +1775,7 @@ planning evidence fingerprints the inspected local package/API files.
 
 ## Compact task ledger
 
-Status: Accepted
+Status: Superseded by [Task Store v2](#task-store-v2-2026-10-20) (2026-10-20)
 
 The owner requests smaller root queue/index/history documents through future updates
 to planning, Docs Sync and their consumers. The [compact ledger plan](plans/compact-task-ledger.md)
@@ -1953,6 +1954,9 @@ Rules the implementation keeps:
 - Every field that grants execution authority (`Resources`, ownership, live
   authorization, kind) is typed; an absent field never grants permission. A check
   declared in a task file is not thereby approved to run with the coordinator's rights.
+- Authority is read only from the base revision. A worker branch that adds a task or
+  edits any task's authority fields or checks is refused or held for the coordinator,
+  never merged as bookkeeping.
 - Git status (`open`, `done`, `superseded`) is not a worker lease; the engine's private
   state stays the authority on running, held and integrating work. Closure publishes
   one bookkeeping-only commit (task status and its receipt) through the existing
@@ -1971,3 +1975,11 @@ converted by their owner, one at a time; this repository converts first, at no c
 with its queue empty.
 
 Implementation: goal TASK-STORE, tasks TOOLSET-294-f6 through TOOLSET-302-33.
+
+Delivery (decision 2026-10-20, supervisor, delegated while owner AFK): the read-only store, selector, writer and CLI, and the
+converter (TOOLSET-294-f6 to 297-41) land on main one by one; nothing the runner calls
+uses them yet. The cutover tasks (TOOLSET-298-c2, 302-33, 299-d9, 300-68 and 301-32) are
+built on the branch `task-store-v2` by an interactive session and land on main in one
+merge together with this repository's conversion: any one of them alone on main would
+stop every unconverted repository's runner, this one's included. They stay in Needs
+decision so the runner never dispatches them.
