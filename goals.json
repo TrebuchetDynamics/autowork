@@ -1066,16 +1066,6 @@
     },
     {
       "depends_on": [
-        "TOOLSET-154-d3"
-      ],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-163-f7",
-      "section": "Now",
-      "status": "open",
-      "title": "A claim question says why the claim is kept and quotes the note that holds it"
-    },
-    {
-      "depends_on": [
         "TOOLSET-265-16",
         "TOOLSET-266-7a",
         "TOOLSET-267-a0"
@@ -2774,6 +2764,16 @@
       "section": "Done",
       "status": "done",
       "title": "The memory gate counts only what a new worker needs, and agent scratch stops filling RAM-backed /tmp"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-154-d3"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-163-f7",
+      "section": "Done",
+      "status": "done",
+      "title": "A claim question says why the claim is kept and quotes the note that holds it"
     },
     {
       "depends_on": [],
