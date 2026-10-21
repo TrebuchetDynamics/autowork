@@ -17,6 +17,8 @@ import sys
 import time
 import tomllib
 
+from . import accounting
+
 JOURNAL = Path('autowork-execution') / 'journal.jsonl'
 
 
@@ -220,18 +222,28 @@ def measure(repo, days, now=None):
     from task_store import StoreError, TaskStore
     try:
         snapshot = TaskStore.at(repo, 'HEAD')
-        verified = sum(snapshot.tasks[tid].verified for tid in completed)
+        verified_ids = {tid for tid in completed if snapshot.tasks[tid].verified}
+        verified = len(verified_ids)
         unverified = sum(snapshot.tasks[tid].closure == 'coordinator_verified' and not snapshot.tasks[tid].verified
                          for tid in completed)
     except StoreError:
+        snapshot = None
+        verified_ids = set()
         verified, unverified = 0, 0
+    import execution_journal
+    try:
+        lifecycle = execution_journal.lifecycle_events(common / 'autowork-execution')['events'] if common else []
+    except (OSError, ValueError):
+        lifecycle = []
+    usage = accounting.measure(repo, since, now, tasks=snapshot.tasks if snapshot else (),
+                               verified=verified_ids, lifecycle=lifecycle)
     return {'repo': str(repo), 'closed': len(completed), 'verified_closed': verified,
             'manual_closed': len(completed) - verified - unverified,
             'unverified_closed': unverified, 'integrations': attempts,
             'held_share': round(held / attempts, 2) if attempts else None,
             'start_to_merge_minutes': round(statistics.median(merge_minutes)) if merge_minutes else None,
             'questions': owner_questions(repo, days),
-            'regressions': attributed, 'regressions_incomplete': incomplete}
+            'regressions': attributed, 'regressions_incomplete': incomplete, 'usage': usage}
 
 
 def table(rows, days):
@@ -245,6 +257,15 @@ def table(rows, days):
         held = (f"{row['held_share']:.0%} of {row['integrations']}" if row['held_share'] is not None else '-')
         merge = (f"{row['start_to_merge_minutes']} min" if row['start_to_merge_minutes'] is not None else '-')
         lines.append(f"{name:<{name_w}}  {row['closed']:>6}  {row.get('verified_closed', 0):>8}  {row.get('manual_closed', 0):>6}  {row.get('unverified_closed', 0):>10}  {held:>9}  {merge:>11}  {row['questions']:>9}")
+        if 'usage' in row:
+            usage = row['usage']
+            cost = f"${usage['measured_cost_usd']:.2f} measured"
+            if usage['cost_usd'] is None:
+                cost += f", total unknown ({usage['unknown_cost_runs']} run(s) without billing)"
+            minutes = usage['owner_minutes']
+            attention = f'{minutes:g} recorded min' if minutes is not None else 'unknown'
+            lines.append(f"  usage: {cost}; owner attention: {attention}; "
+                         f"{usage['unattributed']['runs']} unattributed run(s)")
     total = sum(r['closed'] for r in rows.values())
     asked = sum(r['questions'] for r in rows.values())
     lines.append(f'{len(rows)} runner(s): {total} task(s) closed, {asked} question(s) for the owner')
