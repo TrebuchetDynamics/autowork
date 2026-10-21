@@ -151,6 +151,21 @@ class MigrateTests(unittest.TestCase):
         (self.repo / 'goals.json').write_text(json.dumps(data, indent=2))
         self.commit()
 
+    def test_a_placeholder_live_authorization_is_not_a_grant(self):
+        text = (self.repo / 'TODO.md').read_text()
+        grant = '- Live authorization: granted 2026-10-20 for the staging deploy'
+        for value in ('none', 'n/a', 'Pending owner review', 'not yet', 'TBD', 'denied', 'unknown (ask owner)'):
+            with self.subTest(value=value):
+                (self.repo / 'TODO.md').write_text(text.replace(grant, f'- Live authorization: {value}'))
+                self.commit()
+                refused = self.migrate('--dry-run')
+                self.assertEqual(refused.returncode, 1, refused.stdout)
+                self.assertIn(f'T-004: "Live authorization: {value}" is not a grant', refused.stderr)
+        (self.repo / 'TODO.md').write_text(text)
+        self.commit()
+        self.assertEqual(self.migrate().returncode, 0)
+        self.assertEqual(TaskStore.at(self.repo, 'HEAD').tasks['T-004'].live.value, 'authorized')
+
     def test_migration_refuses_unlossless_input(self):
         dry = self.migrate('--dry-run')
         self.assertEqual(dry.returncode, 0, dry.stderr)

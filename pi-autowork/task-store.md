@@ -139,7 +139,10 @@ same selection order as the current queue before writing; then it removes TODO.m
 goals.json (no stub), keeps TODO.archive.md, and makes one local commit. Ranks are 1000 x
 the recorded human order. Typed fields keep the engine's present meaning (dependencies as
 task IDs, resources as the tokens it enforces, owner-only work without a recorded live
-authorization as `ownership = "owner"`, no Touches as `["**"]`); every other label, and
+authorization as `ownership = "owner"`, no Touches as `["**"]`); a `Live authorization` line
+becomes the typed grant `live = "authorized"` only when it states one: a negative or
+placeholder value (`none`, `n/a`, `pending …`, `not yet`, `TBD`, `denied`, …) refuses the
+conversion, naming the task, so the source is fixed first; every other label, and
 the original Ownership, Resources and Live authorization wording, is kept as a body note.
 Done and superseded tasks, and archived tasks that open work depends on, become closed
 records with no section or rank.

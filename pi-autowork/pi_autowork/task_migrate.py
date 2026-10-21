@@ -40,6 +40,15 @@ OCCUPYING = ('dispatched', 'running', 'reported', 'integrating', 'integrated', '
 TYPED_LABELS = ('Short', 'Status', 'Goal', 'Scope', 'Acceptance', 'Checks', 'Verification',
                 'Dependencies', 'Touches', 'Exclusions', 'Kind')
 KEPT_AS_NOTES = ('Ownership', 'Resources', 'Live authorization')
+# Free text becomes a typed grant only here: a value that says no, or not yet, is refused
+# (naming the task) rather than read as authorized, as any non-empty text was before.
+NOT_A_GRANT = re.compile(
+    # A bare "no" word, alone or followed by punctuation and an explanation ("none (ask)").
+    r'(?:none|no|nope|n/?a|na|nil|null|-+|—|–|\?+|tbd|tba|todo|denied|refused|revoked|withdrawn|'
+    r'missing|unknown|unauthori[sz]ed)\s*(?:[.;:,!)(—–]\s*.*)?'
+    # A phrase that says the grant is still to come, whatever follows it.
+    r'|(?:pending|awaiting|not\s+(?:yet|granted|given|recorded|authori[sz]ed)|to\s+be\s+'
+    r'(?:decided|confirmed|granted)|ask)\b.*', re.I)
 
 
 class Refused(Exception):
@@ -114,7 +123,11 @@ def _task_record(tid, title, entry, fields, rank, known):
         raise Refused(f'{tid}: Touches cannot be converted ({exc})') from None
     resources = sorted(parallel_plan._resources({'fields': fields}))
     owner_only = _owner_only(fields)
-    live = bool(fields.get('Live authorization', '').strip())
+    grant = ' '.join(fields.get('Live authorization', '').split())
+    if grant and NOT_A_GRANT.fullmatch(grant):
+        raise Refused(f'{tid}: "Live authorization: {grant}" is not a grant; write the authorization '
+                      'or remove the line, then convert')
+    live = bool(grant)
     header = dict(schema=1, id=tid, title=title, short=fields.get('Short', '').strip() or title,
                   status=entry['status'], goal=entry['goal'], section=entry['section'], rank=rank,
                   depends_on=list(deps), touches=list(touches), resources=resources,
