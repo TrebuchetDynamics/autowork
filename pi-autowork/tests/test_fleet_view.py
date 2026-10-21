@@ -68,6 +68,45 @@ class FleetViewTests(unittest.TestCase):
         self.assertEqual(fleet_view.blockers(sierra), [('blocker', 'TASK-023 blocker (2)')])
         self.assertEqual(fleet_view.summary(found.values()), [('working', 1), ('stalled', 1)])
 
+    def test_a_dead_main_check_is_interrupted_even_when_the_health_snapshot_says_running(self):
+        self.runner_state('/git/india', main_check={'state': 'running', 'rev': 'old'})
+        (self.env / 'india.env').write_text('PI_AUTOWORK_REPO=/git/india\n')
+        path = self.state / 'india' / 'main_check.json'
+        for pid, start in ((None, None), (2**30, '1'),
+                           (os.getpid(), 'not-this-process')):
+            with self.subTest(pid=pid, start=start):
+                path.write_text(json.dumps(dict(state='running', rev='abcdef123', pid=pid,
+                                                start_time=start, check_slot={'state': 'waiting'})))
+                text = fleet_view.main_check.line(self.collect()['india'].main_check)
+                self.assertIn('interrupted', text)
+                self.assertIn('abcdef1', text)
+                self.assertNotIn('running', text)
+                self.assertNotIn('waiting', text)
+
+    def test_a_main_check_of_a_superseded_revision_names_the_current_head(self):
+        repo = self.base / 'india'
+        subprocess.run(['git', 'init', '-q', '-b', 'main', str(repo)], check=True)
+        def commit():
+            subprocess.run(['git', '-C', str(repo), '-c', 'user.name=Test', '-c', 'user.email=test@example.com',
+                            'commit', '-qm', 'revision', '--allow-empty'], check=True)
+            return subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
+        old = commit()
+        head = commit()
+        self.runner_state(str(repo), main_check={'state': 'green', 'rev': old})
+        (self.env / 'india.env').write_text(f'PI_AUTOWORK_REPO={repo}\n')
+        record = dict(state='running', rev=old, pid=os.getpid(),
+                      start_time=fleet_view.main_check.start_time(os.getpid()), started=time.time())
+        path = self.state / 'india' / 'main_check.json'
+        path.write_text(json.dumps(record))
+        for rev, superseded in ((old, True), (head, False)):
+            with self.subTest(rev=rev):
+                path.write_text(json.dumps(dict(record, rev=rev)))
+                text = fleet_view.main_check.line(self.collect()['india'].main_check)
+                self.assertIn('running', text)
+                self.assertEqual('superseded' in text, superseded, text)
+                if superseded:
+                    self.assertIn(head[:7], text)
+
     def test_state_without_a_service_is_history_not_a_runner(self):
         self.runner_state('/git/gone', state='working', since=time.time())
         self.assertEqual(self.collect(), {})

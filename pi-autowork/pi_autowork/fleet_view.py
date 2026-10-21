@@ -804,7 +804,8 @@ def collect(state_root, env_dir, *, systemctl='systemctl', now=None, strict=Fals
         runner.blocker = row.get('blocker') or ''
         runner.max_workers = row.get('max_workers')
         runner.maintainer = row.get('maintainer') or {}
-        runner.main_check = row.get('main_check') or {}
+        # status.json deliberately omits the PID and may outlive a stopped runner.
+        runner.main_check = (main_check.read(runner.state_dir, runner.repo) if runner.state_dir else {}) or row.get('main_check') or {}
         runner.job = row.get('job')
         if runner.job and runner.job.get('started'):
             runner.minutes = int((now - runner.job['started']) // 60)
