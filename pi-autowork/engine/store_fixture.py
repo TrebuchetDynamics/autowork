@@ -31,9 +31,13 @@ def _ledger_for(todo):
         status = status if status in ('open', 'done', 'superseded') else 'open'
         tasks.append(dict(id=tid, title=tid, goal=FIXTURE_GOAL, status=status, depends_on=[],
                           section={'done': 'Done', 'superseded': 'Superseded'}.get(status, section or 'Now')))
-    return {'version': 1, 'goals': [dict(id=FIXTURE_GOAL, title='Fixture', source='TODO.md', status='unmet',
-                                         priority=1, depends_on=[], tasks=[t['id'] for t in tasks])],
-            'tasks': tasks}
+    # A queue with nothing left open is a met goal (an unmet one would need an open task),
+    # with the executed evidence the legacy ledger asks of a met goal.
+    goal = dict(id=FIXTURE_GOAL, title='Fixture', source='TODO.md', status='unmet', priority=1, depends_on=[],
+                tasks=[t['id'] for t in tasks])
+    if not any(t['status'] == 'open' for t in tasks):
+        goal.update(status='met', evidence=[dict(kind='executed', result='pass', ref='fixture')])
+    return {'version': 1, 'goals': [goal], 'tasks': tasks}
 
 
 def write_todo(repo, text, ledger=None, *, commit=True):
