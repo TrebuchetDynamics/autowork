@@ -307,8 +307,8 @@ class Coordinator:
         conflict the resolver merged with the session is a new revision, so the candidates the
         last batch had to skip are offered to a new batch once they merge (one check, not one
         each) instead of being held back for the process's lifetime."""
-        if optimistic.enabled():
-            return []  # optimistic landing: each reviewed candidate lands on its own, no batch gate
+        # Under optimistic landing a batch runs no full suite: it is its candidates' reviews side by
+        # side (PI_AUTOWORK_REVIEWS at once), each landing as it passed (TOOLSET-334-f9).
         size = int(os.environ.get('PI_AUTOWORK_BATCH') or 6)
         failed = self.batch_failed()
         fresh = [(t, commit) for t, commit in reported if not worker.batch_record(self.state, t).exists()

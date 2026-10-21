@@ -124,12 +124,15 @@ class LandingFlowTests(unittest.TestCase):
             os.chdir(here)
             self.assertIn('optimistic landing', review.call_args[0][4])
 
-    def test_no_batch_starts(self):
+    def test_batches_still_start_so_their_reviews_run_side_by_side(self):
+        """TOOLSET-334-f9: under optimistic landing a batch is its candidates' reviews at once."""
         from pi_autowork.coordinator import Coordinator
         with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {'PI_AUTOWORK_OPTIMISTIC': '1'}):
             runner = Coordinator.__new__(Coordinator)
             runner.state, runner.seen = Path(tmp), {}
-            self.assertEqual(runner.batch_due([('A', 'a'), ('B', 'b'), ('C', 'c')]), [])
+            runner.reexec_due = lambda: False
+            runner.batch_pending = lambda: False
+            self.assertEqual(runner.batch_due([('A', 'a'), ('B', 'b'), ('C', 'c')]), ['A', 'B', 'C'])
 
     def test_only_the_last_green_revision_is_pushed(self):
         from pi_autowork.coordinator import Coordinator

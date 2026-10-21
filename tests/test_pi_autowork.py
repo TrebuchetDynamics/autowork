@@ -1271,6 +1271,22 @@ class EngineTests(Fixture):
         self.assertIn('B: landing — passed in its batch; not reviewed again', result.stdout)
         self.assertIn('VERSION = 2', (self.repo / 'tool.py').read_text())  # main's code was kept, after them
 
+    def test_optimistic_landing_reviews_candidates_side_by_side_without_the_full_suite(self):
+        """TOOLSET-334-f9 with TOOLSET-344-7dadea23: reviews ran one at a time, 10-12 min each, while
+        nine finished tasks waited; under optimistic landing a batch is just their reviews at once."""
+        self.env['PI_AUTOWORK_BATCH'] = '6'
+        self.env['PI_AUTOWORK_OPTIMISTIC'] = '1'
+        runs = self.root / 'full-check-runs'
+        self.env['PI_AUTOWORK_VALIDATE'] = f'echo ran >> {runs}'
+        self.env['PI_AUTOWORK_MAIN_CHECK'] = 'true'  # main's own check is the gate after landing
+        self.plan({'worker:A': ['barrier'], 'worker:B': ['barrier']})
+        result = self.run_runner('--until-empty', timeout=240)
+        self.assertTrue(self.done('A', 'B', 'C'), result.stdout)
+        self.assertIn('Batch of 2 candidates (A, B)', result.stdout)
+        self.assertIn('Batch: 2 passed (A, B)', result.stdout)
+        self.assertFalse(runs.exists() and runs.read_text().count('ran'), result.stdout)  # no full suite before landing
+        self.assertEqual(sorted(r['task'] for r in self.runs('verify')), ['A', 'B', 'C'])  # each reviewed once
+
     def test_a_batched_candidate_that_fails_its_review_is_held_and_the_other_lands(self):
         self.env['PI_AUTOWORK_BATCH'] = '6'
         self.env['PI_AUTOWORK_MAIN_CHECK'] = 'true'

@@ -56,6 +56,11 @@ claim of a tagged release, completed installation or live workflow qualification
   result, reruns, the base comparison and where it came from, the verdict) in
   `full-check/<task>.gate.jsonl`, and the TUI's task and worker views show them as `runner:`
   lines between the worker's last action and the review, where they were silent.
+- **Parallel reviews under optimistic landing** (TOOLSET-334-f9). With optimistic landing the
+  runner had turned batching off, so finished tasks were reviewed one at a time, 10-12 minutes
+  each, while nine waited. Batches are back under optimistic landing without their full-suite
+  step: a batch is its candidates' reviews side by side (`PI_AUTOWORK_REVIEWS` at once,
+  default 3), each landing on its own verdict; main's full check stays the gate after landing.
 - **`install.sh` updates its checkout first.** Install and update now fast-forward the
   installer's own Git checkout (`git pull --ff-only` of its upstream) and run the pulled
   installer, so `./install.sh` never installs a stale checkout. A checkout with local changes
