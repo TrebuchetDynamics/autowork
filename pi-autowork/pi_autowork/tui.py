@@ -729,7 +729,9 @@ class FleetApp(App):
 
     # The counts come right after the name, as narrow columns that always show: after a
     # 44-column Needs they scrolled off an 80-column terminal. Needs and Now share the rest.
-    RUNNER_COLUMNS = ('Runner', 'State', 'Active', 'Mergeable', 'Waiting', 'Blocker', 'Total')
+    # Every open task is in one count column, so they add up to Total; Decision is the
+    # Needs-decision tasks, which wait for the owner.
+    RUNNER_COLUMNS = ('Runner', 'State', 'Active', 'Mergeable', 'Waiting', 'Blocker', 'Decision', 'Total')
     RUNNER_TEXT = ('Needs', 'Now')
     LANE_COLUMNS = ('Task', 'Status', 'Try', 'For', 'Quiet')
     LANE_TEXT = ('Doing',)
@@ -803,11 +805,12 @@ class FleetApp(App):
                 now = ', '.join(x for x in (fleet_view.job_text(runner.job), now) if x)
             if len(runner.lanes) > 2:
                 now += f' +{len(runner.lanes) - 2}'
-            active, mergeable, waiting, blocker, total = (str(n) for n in fleet_view.task_counts(runner))
+            active, mergeable, waiting, blocker, decision, total = (str(n) for n in fleet_view.task_counts(runner))
             rows.append({'Runner': (runner.name, ''),
                          'State': (f'{runner.state} {fleet_view.duration(runner.minutes)}'.strip(), f'bold {runner.color}'),
                          'Active': (active, 'green'), 'Mergeable': (mergeable, 'cyan'), 'Waiting': (waiting, ''),
-                         'Blocker': (blocker, 'yellow' if blocker != '0' else ''), 'Total': (total, 'bold'),
+                         'Blocker': (blocker, 'yellow' if blocker != '0' else ''),
+                         'Decision': (decision, 'yellow' if decision != '0' else ''), 'Total': (total, 'bold'),
                          'Needs': (' '.join((fleet_view.needs(runner) or '-').split()), 'yellow' if runner.questions else ''),
                          'Now': (now or '-', '')})
         self.fill(table, rows, self.RUNNER_COLUMNS, self.RUNNER_TEXT)
@@ -859,16 +862,15 @@ class FleetApp(App):
         sentence, style = fleet_view.verdict(runner)
         text.append(f'{runner.name}  ', style='bold')
         text.append(sentence + '\n', style=style)
-        active, mergeable, waiting, blocker, total = fleet_view.task_counts(runner)
+        active, mergeable, waiting, blocker, decision, total = fleet_view.task_counts(runner)
         detail_row(text, 'Tasks', f'{total} open · {active} active · {mergeable} mergeable · {waiting} waiting · {blocker} blocker'
-                   + (f' · {runner.decisions} for your decision' if runner.decisions else ''))
-        waiting = fleet_view.waiting_line(runner)
+                   + f' · {decision} for your decision')
+        waiting = fleet_view.waiting_detail(runner)
         if waiting:
-            detail_row(text, 'Waiting', f'{runner.waiting}: {waiting}')
-        if runner.held:
-            asked = {q.id for q in runner.questions}
-            detail_row(text, 'Blocker', ', '.join(f'{t} {fleet_view.blocker_detail(c, t in asked)}' if c not in fleet_view.WAIT_CAUSES
-                                          else f'{t} waits: {fleet_view.CAUSES[c]}' for t, c in runner.held), 'bold red')
+            detail_row(text, 'Waiting', waiting)
+        blockers = fleet_view.blocker_parts(runner, {q.id for q in runner.questions})
+        if blockers:
+            detail_row(text, 'Blocker', blockers, 'bold red')
         if runner.questions:  # what the owner can answer, easiest first (BLOCKERS.md)
             count = len(runner.questions)
             detail_row(text, 'Questions', fleet_view.question_summary(runner)

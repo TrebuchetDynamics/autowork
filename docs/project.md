@@ -1953,8 +1953,21 @@ Rules:
 - Engine slot states (`dispatched`, `reported`, `held`, …) stay internal names; the
   display derives the headline from them and their evidence. Runner-level states
   (working, paused, stopped, unavailable) are a separate axis and keep their labels.
+- The fleet's counts add up: every open task is in exactly one of Active, Mergeable,
+  Waiting, Blocker and Decision (the Needs-decision tasks, waiting for the owner), and
+  they sum to Total. The detail's Waiting row has the Waiting count, split into
+  labelled reasons that sum to it: commits in flight by phase (implemented, waiting for
+  review; reviewed, waiting for their merge turn; …), the queue's reasons, and overlap
+  holds.
+- A waiting task that cannot move until something is resolved is a *Blocker*, not
+  *Waiting*: its wait ends at a root that needs a person or a repair (a runner
+  blocker, a hold other than overlap, a claim, an entry not runnable as written, an
+  outside condition or Needs-decision task, a dependency cycle). The Blocker row
+  names each held task and what stops the others ("2 behind Q-1 (outside condition
+  …)").
 
-Implementation: TOOLSET-289-71.
+Implementation: TOOLSET-289-71; counts that add up: TOOLSET-351-54bd774c; stopped
+waits as Blockers: TOOLSET-352-8337d438.
 
 ## Interactive checkout writer (2026-10-20)
 

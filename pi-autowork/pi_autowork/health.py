@@ -113,6 +113,24 @@ def waiting_groups(tasks, limit=8):
     return sorted(groups.values(), key=lambda g: -g['count'])[:limit]
 
 
+def stopped(tasks, roots):
+    """(IDs, groups) of the waiting tasks that cannot move until something is resolved: their
+    wait ends at a root that needs a person or a repair. An overlap hold lifts by itself, so the
+    tasks behind it still wait; a runner blocker stops every waiting task. Groups are
+    [{label, count, tasks}], largest first."""
+    waiting = [t.get('task') for t in tasks if t.get('state') == 'waiting' and t.get('task')]
+    ids, groups = set(), []
+    for root in roots:
+        if root.get('kind') not in NEEDS_PERSON or (root.get('kind') == 'held' and root.get('cause') == 'overlap'):
+            continue
+        held = waiting if root.get('kind') == 'runner' else [t for t in root.get('tasks') or [] if t in waiting]
+        fresh = [t for t in held if t not in ids]
+        if fresh:
+            ids.update(fresh)
+            groups.append(dict(label=describe(root).rsplit(', holds ', 1)[0] + ')', count=len(fresh), tasks=fresh[:20]))
+    return ids, sorted(groups, key=lambda g: -g['count'])
+
+
 def status_error(status, now):
     """Failure text includes the age of evidence, not the age of this file write."""
     since = status['status_unavailable_since']
@@ -184,6 +202,7 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
                     + '; '.join(describe(r) for r in stuck[:5])
                     + (f' (+{len(stuck) - 5} more)' if len(stuck) > 5 else '')
                     + '. See pi-autowork.sh --status.')
+    stuck_ids, stuck_groups = stopped(snapshot.get('tasks', []), roots)
     backlog = snapshot.get('merge_backlog') or {}
     was_paused = bool((previous.get('merge_backlog') or {}).get('paused'))
     if bool(backlog.get('paused')) != was_paused:
@@ -200,11 +219,15 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
                  active_workers=snapshot.get('active_workers', 0),
                  in_flight=sum(t.get('state') in IN_FLIGHT for t in snapshot.get('tasks', [])),
                  # A task a restart paused waits to resume: counted nowhere, it fell out of the fleet's Total.
-                 waiting=sum(t.get('state') in ('waiting', 'interrupted') for t in snapshot.get('tasks', [])),
+                 # A wait that cannot clear by itself is ``stopped``, a Blocker, and not counted here.
+                 waiting=sum(t.get('state') in ('waiting', 'interrupted') and t.get('task') not in stuck_ids
+                             for t in snapshot.get('tasks', [])),
+                 stopped=len(stuck_ids), stopped_groups=stuck_groups,
                  held=[dict(task=t['task'], cause=t.get('cause'), reason=t.get('reason'))
                        for t in snapshot.get('tasks', []) if t.get('state') == 'held'],
                  roots=roots[:10], stall_roots=keys if state == 'stalled' else [],
-                 waiting_groups=waiting_groups(snapshot.get('tasks', [])), merge_backlog=backlog,
+                 waiting_groups=waiting_groups([t for t in snapshot.get('tasks', []) if t.get('task') not in stuck_ids]),
+                 merge_backlog=backlog,
                  # Every task, for the TUI's Tasks window: the groups above keep 20 of each.
                  tasks=[[t['task'], t.get('state') or '', t.get('cause') or '',
                           ' '.join(str(t.get('reason') or '').split())[:200]]
@@ -285,6 +308,7 @@ def fleet(state_root, *, now=None, service=_service):
                          since=status.get('snapshot_at') if error else status.get('since'),
                          workers=status.get('active_workers', 0),
                          waiting=status.get('waiting', 0), roots=status.get('roots', []),
+                         stopped=status.get('stopped', 0), stopped_groups=status.get('stopped_groups', []),
                          held=status.get('held', []), waiting_groups=status.get('waiting_groups', []),
                          blocker=error or status.get('blocker', ''), updated_at=status.get('updated_at'),
                          snapshot_at=status.get('snapshot_at', status.get('updated_at')),
@@ -305,7 +329,8 @@ def render(rows, *, now=None):
         word = (row['waiting_groups'][0]['label']
                 if row['state'] == HOST_WAIT and row.get('waiting_groups') else row['state'])
         lines.append(f"{row['name']:<24} service {row['service']:<9} {word}{since}; "
-                     f"{row['workers']} running, {row['waiting']} waiting")
+                     f"{row['workers']} running, {row['waiting']} waiting"
+                     + (f", {row['stopped']} stopped by a blocker" if row.get('stopped') else ''))
         if row.get('blocker', '').startswith('status unavailable since '):
             lines.append('    ' + row['blocker'])
         if row['state'] in ('stalled', 'blocked', 'not running', 'not cycling'):

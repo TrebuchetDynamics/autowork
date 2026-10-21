@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -244,6 +245,29 @@ class DispatchTests(unittest.TestCase):
                 if stat.exists():
                     self.assertEqual(stat.read_text().rsplit(')', 1)[1].split()[0], 'Z')
 
+    def stop_processes_with(self, variable, timeout=10):
+        """Kill every process whose environment holds ``variable`` and wait until none is left."""
+        marker = variable.encode() + b'\0'
+        deadline = time.monotonic() + timeout
+        while True:
+            found = []
+            for entry in Path('/proc').glob('[0-9]*'):
+                try:
+                    if marker in (entry / 'environ').read_bytes() and int(entry.name) != os.getpid():
+                        found.append(int(entry.name))
+                except (OSError, ValueError):
+                    continue
+            if not found:
+                return
+            for pid in found:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            if time.monotonic() > deadline:
+                self.fail(f'processes still running after cleanup: {found}')
+            time.sleep(0.05)
+
     def test_slot_waiting_is_not_a_stuck_command_but_running_still_is(self):
         import autowork_run
         sys.path.insert(0, str(SCRIPTS.parents[1] / 'pi-autowork'))
@@ -270,6 +294,10 @@ class DispatchTests(unittest.TestCase):
             self.addCleanup(pi.stdout.close)
             self.addCleanup(pi.wait)
             self.addCleanup(lambda: os.killpg(pi.pid, 9) if pi.poll() is None else None)
+            # Registered last, so it runs first: every process this test started, whatever session
+            # the check wrapper moved it to, carries this check root. One outlived the wrapper and
+            # wrote into the temporary directory while it was removed (Errno 39 on CI).
+            self.addCleanup(self.stop_processes_with, f'PI_AUTOWORK_CHECK_ROOT={checks}')
             self.assertIn(b'waiting for a worker check slot', pi.stdout.readline())
             row, = autowork_run.records(records)
             row.update(waiting_since=100.0, updated=100.0, admitted=None)

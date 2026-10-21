@@ -1355,12 +1355,19 @@ class ManagedRecoveryTests(unittest.TestCase):
     def test_a_fetch_aborts_a_stalled_transfer(self):
         seen = {}
         def run(argv, **kwargs):
-            seen['env'] = kwargs.get('env')
+            seen['env'], seen['stdin'] = kwargs.get('env'), kwargs.get('stdin')
             return subprocess.CompletedProcess(argv, 0, b'', b'')
         with patch.object(self.mod.subprocess, 'run', run):
             self.mod.git(self.repo, 'fetch', 'origin')
         self.assertEqual(seen['env']['GIT_CONFIG_KEY_0'], 'http.lowSpeedLimit')
         self.assertEqual(seen['env']['GIT_CONFIG_VALUE_1'], '30')
+        # Nor waits at a prompt: an SSH rewrite of the URL fails at once instead.
+        self.assertEqual(seen['env']['GIT_TERMINAL_PROMPT'], '0')
+        self.assertIn('-o BatchMode=yes', seen['env']['GIT_SSH_COMMAND'])
+        self.assertIs(seen['stdin'], subprocess.DEVNULL)
+        with patch.dict(self.mod.os.environ, {'GIT_SSH_COMMAND': 'ssh -i key'}), patch.object(self.mod.subprocess, 'run', run):
+            self.mod.git(self.repo, 'fetch', 'origin')
+        self.assertTrue(seen['env']['GIT_SSH_COMMAND'].startswith('ssh -i key -o BatchMode=yes'))
         with patch.object(self.mod.subprocess, 'run', run):
             self.mod.git(self.repo, 'status')
         self.assertIsNone(seen['env'])

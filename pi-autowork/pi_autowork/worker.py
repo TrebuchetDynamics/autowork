@@ -1057,7 +1057,10 @@ def verify_batch(state, session, script, tasks):
 
 OPTIMISTIC_NOTE = ('The runner did not run the full test suite before this review (optimistic landing): it lands '
                    'when you pass it, and main\'s full check runs afterwards and reverts it if it broke anything. '
-                   'Run the task\'s own checks and the tests nearest its changes yourself before you pass it.')
+                   'Run the task\'s own checks and the tests nearest its changes yourself before you pass it, but '
+                   'not the full suite or whole test directories, even when a Checks entry names them: main\'s full '
+                   'check after landing covers those (a review here ran the full suite for six minutes). If the '
+                   'repository\'s AGENTS.md names a tool that selects the tests a change affects, use it.')
 
 
 def gate_note(state, task, checkout):

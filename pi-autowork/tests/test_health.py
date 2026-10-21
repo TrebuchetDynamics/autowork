@@ -52,6 +52,23 @@ class HealthTests(unittest.TestCase):
                               now=1900)
         self.assertNotIn('deadlock', mixed)
 
+    def test_a_wait_that_cannot_clear_by_itself_is_stopped_not_waiting(self):
+        """TOOLSET-352-8337d438: a blocked runner showed Blocker 0 and its stuck task as Waiting. A
+        wait ending at a root that needs a person is stopped; one behind an overlap hold still waits."""
+        outside = {'id': 'Q-1', 'kind': 'outside', 'blocks': 1, 'tasks': ['A']}
+        overlap = {'id': 'T-7', 'kind': 'held', 'cause': 'overlap', 'blocks': 1, 'tasks': ['B']}
+        snap = snapshot(waiting=('A', 'B', 'C'), roots=(outside, overlap))
+        health.update(self.state, snap, now=0)
+        status = json.loads((Path(self.state) / 'status.json').read_text())
+        self.assertEqual((status['waiting'], status['stopped']), (2, 1))
+        self.assertEqual(status['stopped_groups'],
+                         [{'label': 'Q-1 (outside condition or task not in Now/Next)', 'count': 1, 'tasks': ['A']}])
+        self.assertEqual(sum(g['count'] for g in status['waiting_groups']), 2)
+        # A runner blocker stops every waiting task.
+        health.update(self.state, snapshot(waiting=('A', 'B'), roots=()), now=10, runner={'blocker': 'no model'})
+        status = json.loads((Path(self.state) / 'status.json').read_text())
+        self.assertEqual((status['waiting'], status['stopped']), (0, 2))
+
     def test_waiting_tasks_are_grouped_by_why_they_wait(self):
         """TOOLSET-166-b4: the view shows why tasks wait without calling the engine."""
         reasons = ['overlapping paths with TASK-140', 'overlapping paths with held TASK-140',

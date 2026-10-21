@@ -75,11 +75,21 @@ class GitFailure(ValueError):
 # whole timeout; a normal fetch of a profile checkout takes seconds.
 STALL = {'GIT_CONFIG_COUNT': '2', 'GIT_CONFIG_KEY_0': 'http.lowSpeedLimit', 'GIT_CONFIG_VALUE_0': '1000',
          'GIT_CONFIG_KEY_1': 'http.lowSpeedTime', 'GIT_CONFIG_VALUE_1': '30'}
+# A fetch never waits on a person either: a url.insteadOf rewrite to SSH sat at a passphrase or
+# host-key prompt, where the speed limit never applies, for the whole timeout.
+UNATTENDED = {'GIT_TERMINAL_PROMPT': '0', 'SSH_ASKPASS_REQUIRE': 'never'}
+SSH_OPTIONS = '-o BatchMode=yes -o ConnectTimeout=15'
+
+
+def fetch_env():
+    ssh = os.environ.get('GIT_SSH_COMMAND') or 'ssh'
+    return {**os.environ, **STALL, **UNATTENDED, 'GIT_SSH_COMMAND': f'{ssh} {SSH_OPTIONS}'}
 
 
 def git(repo, *args):
-    env = {**os.environ, **STALL} if args[:1] == ('fetch',) else None
-    result = subprocess.run(['git', '-C', str(repo), *args], capture_output=True, timeout=120, env=env)
+    env = fetch_env() if args[:1] == ('fetch',) else None
+    result = subprocess.run(['git', '-C', str(repo), *args], capture_output=True, timeout=120, env=env,
+                            stdin=subprocess.DEVNULL)
     if result.returncode:
         raise GitFailure(repo, args, result.returncode)
     return result.stdout

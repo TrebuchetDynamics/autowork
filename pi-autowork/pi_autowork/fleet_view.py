@@ -99,6 +99,8 @@ class Runner:
     minutes: int | None = None
     running: int = 0
     waiting: int = 0
+    stopped: int = 0  # waiting tasks that cannot move until something is resolved: Blockers
+    stopped_groups: list = field(default_factory=list)  # [{label, count, tasks}] by what stops them
     held: list = field(default_factory=list)
     roots: list = field(default_factory=list)
     state_dir: str = ''       # this runner's pi-autowork state directory
@@ -583,14 +585,62 @@ def question_summary(runner):
 
 
 def task_counts(runner):
-    """(active, mergeable, waiting, blocker, total) for a runner."""
+    """(active, mergeable, waiting, blocker, decision, total) for a runner: every open task in exactly
+    one column, so the columns add up to Total. Decision is the Needs-decision tasks, which wait
+    for the owner, not the engine. Blocker is the held tasks and the waiting tasks stopped behind
+    something that needs a person or a repair: a blocked runner showed Blocker 0 and its stuck
+    task as Waiting, as if nothing were wrong."""
     heads = [status(lane)[0] for lane in runner.lanes]
     active = heads.count(ACTIVE) if runner.lanes else runner.running
     mergeable = heads.count(MERGEABLE)
-    blocker = len(blocking(runner.held))
-    waiting = heads.count(WAITING) + runner.waiting + len(runner.held) - blocker
-    # Total is every open task: the Needs-decision ones wait for the owner, outside the columns.
-    return active, mergeable, waiting, blocker, active + mergeable + waiting + blocker + runner.decisions
+    held = len(blocking(runner.held))
+    blocker = held + runner.stopped
+    waiting = heads.count(WAITING) + runner.waiting + len(runner.held) - held
+    return active, mergeable, waiting, blocker, runner.decisions, active + mergeable + waiting + blocker + runner.decisions
+
+
+# Why a task in flight waits, as a label of the Waiting row ("7 implemented, waiting for review").
+WAIT_LABELS = {'Implemented': 'implemented, waiting for review', 'Merge turn': 'reviewed, waiting for their merge turn',
+               'Batch check': 'in a batch check', 'Check slot': 'waiting for a check slot',
+               'Paused': 'paused by a restart', 'Pending': 'pending'}
+
+
+def waiting_parts(runner):
+    """[(count, label)] of every Waiting task, so the parts add up to the Waiting count: commits in
+    flight by phase, then the queue's reasons, then overlap holds. The row showed only the queue's
+    reasons, '8: 6 on dependencies · 2 …' beside '15 waiting'."""
+    phases = {}
+    for lane in runner.lanes:
+        head, detail = status(lane)
+        if head == WAITING:
+            phases[detail] = phases.get(detail, 0) + 1
+    parts = [(n, WAIT_LABELS.get(detail, detail.lower())) for detail, n in phases.items()]
+    parts += [(g['count'], g['label']) for g in runner.waiting_groups]
+    grouped = sum(g['count'] for g in runner.waiting_groups)
+    if runner.waiting > grouped:
+        parts.append((runner.waiting - grouped, 'waiting for another reason'))
+    overlap = len(runner.held) - len(blocking(runner.held))
+    if overlap:
+        parts.append((overlap, "waiting for another task's files"))
+    return parts
+
+
+def blocker_parts(runner, asked=()):
+    """'3: B Conflict · Agent repair · 2 behind X (outside condition or task not in Now/Next)', or '':
+    the Blocker count, then each held task and what stops the waiting ones, adding up to it."""
+    held = [f'{task} {blocker_detail(cause, task in asked)}' for task, cause in blocking(runner.held)]
+    behind = [f"{g['count']} behind {g['label']}" for g in runner.stopped_groups]
+    if not held and not behind:
+        return ''
+    return f'{len(held) + runner.stopped}: ' + ' · '.join(held + behind)
+
+
+def waiting_detail(runner):
+    """'15: 7 implemented, waiting for review · 6 on dependencies · 2 wait for …', or ''."""
+    parts = waiting_parts(runner)
+    if not parts:
+        return ''
+    return f"{sum(n for n, _ in parts)}: " + ' · '.join(f'{n} {label}' for n, label in parts)
 
 
 def reviews(state_dir, proc='/proc'):
@@ -911,6 +961,7 @@ def collect(state_root, env_dir, *, systemctl='systemctl', now=None, strict=Fals
         runner.state = row['state']
         runner.minutes = int((now - row['since']) // 60) if row.get('since') and row['state'] != 'not running' else None
         runner.running, runner.waiting = row.get('workers', 0), row.get('waiting', 0)
+        runner.stopped, runner.stopped_groups = row.get('stopped', 0), row.get('stopped_groups') or []
         runner.held = [(h.get('task', '?'), h.get('cause')) for h in row.get('held', [])]
         runner.roots = [r for r in row.get('roots', []) if r.get('kind') in health.NEEDS_PERSON]
         runner.waiting_groups = row.get('waiting_groups') or []
