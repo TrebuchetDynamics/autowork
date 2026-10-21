@@ -1035,14 +1035,6 @@
       "title": "A planning hold lets repository agents repair the queue without stopping the runner"
     },
     {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-154-d3",
-      "section": "Now",
-      "status": "open",
-      "title": "Question IDs are single-line and stable, so BLOCKERS.md changes only when questions do"
-    },
-    {
       "depends_on": [
         "TOOLSET-135-16"
       ],
@@ -2734,6 +2726,14 @@
       "section": "Done",
       "status": "done",
       "title": "Widen a held task's Touches by the exact paths its worker names, then reverify the same candidate"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-154-d3",
+      "section": "Done",
+      "status": "done",
+      "title": "Question IDs are single-line and stable, so BLOCKERS.md changes only when questions do"
     },
     {
       "depends_on": [],

@@ -5433,3 +5433,30 @@ Source section: Next
 - Ownership: Toolset coordinator on the owner's request.
 - Exclusions: No push; no change to the repository's Hermes jobs.
 - Outcome (2026-10-20, closed by the owner): qualified by this repository's own released runner, which ran continuously for 54 hours, ended sessions and merged them into main (100 session merges in its runner.log; completed tasks in runs.jsonl). A fresh worker found nothing left to change. The "no push" exclusion no longer applies: the runner pushes main by design since then.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-154-d3"></a>
+
+### TOOLSET-154-d3 — Question IDs are single-line and stable, so BLOCKERS.md changes only when questions do
+
+- [x] TOOLSET-154-d3 — Question IDs are single-line and stable, so BLOCKERS.md changes only when questions do
+- Short: Stable single-line question IDs
+- Status: done
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [monitor findings](docs/plans/2026-10-16-pi-autowork-coordinator.md#fleet-monitor-findings-delivery-environment-and-stall-repair), [questions](pi-autowork/pi_autowork/questions.py) (`build`, `render`, `previous_since`, `update`).
+- Evidence (2026-10-17 00:19 monitor pass): runner B's session branch gets a `docs(blockers): questions for the owner` commit every ~2 minutes (<commit> 00:14:51, <commit> 00:16:54, <commit> 00:18:39). Each changes only `- Since:` lines, and the log repeats `Questions for the owner in BLOCKERS.md: 27 open` each time. The cause is question IDs taken from wrapped prose dependencies, which contain a newline. `render` writes them as a broken heading (`### Q-owned target and` followed by a continuation line). `previous_since` never matches that heading, so the question gets a fresh stamp every cycle. The `current` id also carries over to the next `- Since:` line, so a healthy neighbour (a fleet task) is mis-stamped too.
+- Escalation (2026-10-17 09:09 monitor pass): with landing enabled, the churn now reaches the runner's main branch. One runner merged a BLOCKERS.md-only session commit into main every ~2 minutes (`Merged … into main (1 commit(s))` at 09:07 and 09:09), each pushed. Main's history fills with noise commits, and every other worker sees main move.
+- Touches: pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_questions.py
+- Scope: Normalize every question ID and every rendered field to one line by collapsing whitespace. Give prose-condition questions a stable short ID: `COND-` plus 8 hex characters of the SHA-1 of the normalized text, with the readable text kept in `- Task:`. Make `previous_since` reset `current` on every `### ` heading and match on the normalized ID. Legacy blocks with broken headings are read leniently, by joining a heading with its continuation lines, so their first `Since` survives the migration. `update` returns the same text when only timestamps would change.
+- Acceptance: In fixtures, a dependency wrapped across lines yields one single-line heading with a `COND-` ID. Rewriting with the same question set is byte-identical and causes no commit or log line. A neighbour's `Since` is never overwritten. A legacy broken block keeps its first `Since`. Twenty consecutive cycles with an unchanged queue produce zero BLOCKERS.md commits.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_questions.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator; preserve TOOLSET-120-fc's block format, the Q-<id> headings that `/blockers` reads, and the markers.
+- Exclusions: No change to which conditions become questions (TOOLSET-129-c4 and TOOLSET-141-c4 own classification and repair); no fleet BLOCKERS.md edits by hand.
+- Planner's call: a hashed `COND-` ID rather than a truncated slug. It is stable, short, single-line and unaffected by rewrapping.
+- Planner answer (2026-10-17 09:15): run the offline inventory with `TMPDIR` set to a fresh short private directory made by `mktemp -d /tmp/aw-XXXXXX` and removed afterwards. Fixture-local Git transport inside it is allowed. This is the interim answer until TOOLSET-140-f4 makes it the default, and the same applies to every toolset task whose checks need AF_UNIX sockets.
+- Next action: Retain candidate 9074127f24cc423da758c0e7b070158a601d80db and its reports/check evidence. The prior integration tree is ambiguous and currently reused by another integration; do not reset, clean, adopt or overwrite it. After the current owner releases the integration workspace, use the supported recovery path to prepare a fresh isolated integration of this candidate, preserve old diagnostic state and rerun checks invalidated by the new tree. Candidate report passes are not a current integration pass; this is integration recovery, not a product/acceptance decision.
