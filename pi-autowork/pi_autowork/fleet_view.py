@@ -170,8 +170,9 @@ def _split_phase(text):
     return ' '.join(words[:3]), '; '.join(x for x in (' '.join(words[3:]), rest) if x)
 
 
-def _actions(state_dir, task, now):
-    """The task's Pi session actions, newest first: (text, seconds ago), from its transcript."""
+def _actions(state_dir, task, now, size=262144):
+    """The task's Pi session actions, newest first: (text, seconds ago, epoch time), from the last
+    ``size`` bytes of its transcript."""
     sessions = Path(state_dir) / 'sessions'
     try:
         files = [f for f in sessions.iterdir()
@@ -180,7 +181,7 @@ def _actions(state_dir, task, now):
         return
     if not files:
         return
-    for line in reversed(_tail(max(files, key=lambda f: f.stat().st_mtime), 262144)):
+    for line in reversed(_tail(max(files, key=lambda f: f.stat().st_mtime), size)):
         try:
             event = json.loads(line)
         except ValueError:
@@ -203,31 +204,38 @@ def _actions(state_dir, task, now):
                 text = 'said: ' + ' '.join(part['text'].split())
         if not text:
             continue
-        age = None
+        age = at = None
         try:
             from datetime import datetime
-            age = int(now - datetime.fromisoformat(event['timestamp'].replace('Z', '+00:00')).timestamp())
+            at = datetime.fromisoformat(event['timestamp'].replace('Z', '+00:00')).timestamp()
+            age = int(now - at)
         except (KeyError, ValueError, TypeError):
             pass
-        yield text, age
+        yield text, age, at
 
 
 def _activity(state_dir, task, now):
     """The last thing the task's Pi session did: (text, seconds ago)."""
-    for text, age in _actions(state_dir, task, now):
+    for text, age, _ in _actions(state_dir, task, now):
         return short(text, 90), age
     return '', None
 
 
 def recent_actions(runner, task, n=10, now=None):
-    """The task's last ``n`` actions, newest first, in plain words: [(text, seconds ago)]."""
+    """The task's last ``n`` actions, oldest first as in a log, in plain words: [(text, seconds ago)]."""
+    return [(text, age) for text, age, _ in action_log(runner, task, n, now)]
+
+
+def action_log(runner, task, n=500, now=None, size=2097152):
+    """The task's last ``n`` actions, oldest first: [(text, seconds ago, epoch time)], read from the
+    last ``size`` bytes of its transcript (a long attempt's transcript runs to megabytes)."""
     now = time.time() if now is None else now
     out = []
-    for text, age in _actions(runner.state_dir, task, now) if runner.state_dir else ():
-        out.append((doing_text(text), age))
+    for text, age, at in _actions(runner.state_dir, task, now, size) if runner.state_dir else ():
+        out.append((doing_text(text), age, at))
         if len(out) >= n:
             break
-    return out
+    return out[::-1]
 
 
 TESTS = re.compile(r'\b(unittest|pytest|check\.py|go test|cargo test|npm (run )?test|flutter test|dart test|'
