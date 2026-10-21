@@ -1487,6 +1487,18 @@ class DrainClockTests(unittest.TestCase):
                 journal.write(json.dumps({'timestamp': 500, 'event': 'dispatch_observed', 'waiting': []}) + '\n')
             self.assertEqual(dispatch.waiting_streaks(common, now=1000), {})
         self.assertEqual(dispatch.drain_after({'PI_AUTOWORK_DRAIN_AFTER': '60'}), 60)
+
+    def test_the_drain_clock_survives_a_change_of_wait_reason(self):
+        """The split task's reason alternated between running alone and a shared file with an
+        unlanded commit; each switch restarted its clock and it never drained the pool."""
+        with tempfile.TemporaryDirectory() as folder:
+            common = Path(folder)
+            alone = {'id': 'X', 'reason': 'live/exclusive resource; must run alone (beside RUN)'}
+            shared = {'id': 'X', 'reason': 'shares coordinator.py with T; starts after it lands'}
+            events = [(100, []), (200, [alone]), (300, [shared]), (400, [alone]), (450, [shared])]  # the first line is skipped as possibly cut
+            (common / 'journal.jsonl').write_text(''.join(
+                json.dumps({'timestamp': t, 'event': 'dispatch_observed', 'waiting': w}) + '\n' for t, w in events))
+            self.assertEqual(dispatch.waiting_streaks(common, now=1000), {'X': 800})
         self.assertEqual(dispatch.drain_after({}), 1800)
 
 

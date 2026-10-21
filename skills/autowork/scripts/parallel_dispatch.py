@@ -978,9 +978,13 @@ def waiting_streaks(common, now=None):
             event = json.loads(line)
         except ValueError:
             continue
-        # The drain clock: waiting as a task that must run alone, beside running work.
-        ids = {v.get('id') for v in event.get('waiting') or []
-               if isinstance(v, dict) and 'must run alone (beside ' in str(v.get('reason', ''))}
+        # The drain clock starts when a task waits to run alone beside running work and keeps
+        # running while it waits for any reason: TOOLSET-291-ae's reason alternated with "shares
+        # a file with an unlanded commit", each switch restarted the clock, and lower-ranked work
+        # took the slots for hours. It ends when the task is no longer waiting (it ran).
+        waiting = [v for v in event.get('waiting') or [] if isinstance(v, dict)]
+        alone = {v.get('id') for v in waiting if 'must run alone (beside ' in str(v.get('reason', ''))}
+        ids = alone | {v.get('id') for v in waiting if v.get('id') in since}
         since = {tid: since.get(tid, event.get('timestamp', now)) for tid in ids}
     return {tid: now - start for tid, start in since.items()}
 

@@ -319,6 +319,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- The drain clock of a task that must run alone keeps running while the task waits for any
+  reason; it restarted whenever the reason changed ("shares a file with an unlanded commit"
+  and back), so the task never drained the pool and lower-ranked work kept the slots.
 - Integration order inherits priority from dependents: a finished commit ranks as high as
   the highest-priority open task that depends on it, directly or through others. A commit
   ranked 36th of 77 waited a day behind higher-ranked commits while 15 tasks, five of them
