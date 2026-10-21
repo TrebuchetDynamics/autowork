@@ -2073,8 +2073,8 @@ finally:
         module = self.module()
         original = module.git
         from unittest.mock import patch
-        def interrupt(repo, *argv):
-            value = original(repo, *argv)
+        def interrupt(repo, *argv, **kwargs):
+            value = original(repo, *argv, **kwargs)
             if Path(repo) == self.repo and argv[:2] == ('merge', '--ff-only'):
                 raise KeyboardInterrupt
             return value
@@ -2123,6 +2123,63 @@ finally:
         self.assertEqual(result['outcome'], 'INTEGRATED', result)
         self.assertEqual(self.git('rev-parse', 'HEAD^1'), head)
         self.assertEqual(state.slots(self.common)[0]['attempt'], 1)
+
+    def test_integration_discards_only_ignored_bytecode_before_the_vendor_check(self):
+        import shutil
+        source = Path(__file__).resolve().parents[2]
+        shutil.copy2(source / 'install_skills.py', self.repo / 'install_skills.py')
+        skill = self.repo / 'skills/autowork'
+        skill.mkdir(parents=True)
+        (skill / 'SKILL.md').write_text('Fixture skill\n')
+        (self.repo / '.gitignore').write_text('__pycache__/\n*.pyc\n')
+        tracked = self.repo / 'kept/__pycache__/tracked.pyc'
+        tracked.parent.mkdir(parents=True)
+        tracked.write_text('tracked bytes\n')
+        (tracked.parent / 'notes.txt').write_text('tracked notes\n')
+        self.git('add', '.')
+        self.git('add', '-f', 'kept/__pycache__/tracked.pyc', 'kept/__pycache__/notes.txt')
+        self.git('commit', '-qm', 'vendor fixture and tracked cache paths')
+        self.baseline = self.git('rev-parse', 'HEAD')
+        self.worker()
+        module = self.module()
+        merge_candidate = module.merge_candidate
+
+        def merge_with_leftovers(root, slot, baseline):
+            result = merge_candidate(root, slot, baseline)
+            cache = root / 'skills/autowork/scripts/__pycache__'
+            cache.mkdir(parents=True)
+            (cache / 'old.pyc').write_bytes(b'cached')
+            (root / 'kept/__pycache__/ignored.pyc').write_bytes(b'cached')
+            (root / 'kept/__pycache__/private.txt').write_text('ignored non-cache\n')
+            (root / 'untracked.txt').write_text('untracked non-cache\n')
+            (root / 'untracked.pyo').write_text('unignored bytecode\n')
+            return result
+
+        # The vendor invariant is checked through the real installer, after proving that
+        # checkout cleanup itself ran (the installer's filtering must not mask its absence).
+        command = [sys.executable, '-c', '''
+from pathlib import Path
+import tempfile
+import install_skills
+assert not Path('skills/autowork/scripts').exists()
+assert not Path('kept/__pycache__/ignored.pyc').exists()
+for path, text in [('kept/__pycache__/tracked.pyc', 'tracked bytes'),
+                   ('kept/__pycache__/notes.txt', 'tracked notes'),
+                   ('kept/__pycache__/private.txt', 'ignored non-cache'),
+                   ('untracked.txt', 'untracked non-cache'),
+                   ('untracked.pyo', 'unignored bytecode')]:
+    assert Path(path).read_text().strip() == text, path
+with tempfile.TemporaryDirectory() as td:
+    home = Path(td)
+    assert install_skills.install(Path('skills'), [('fixture', home)]) == 0
+    assert not (home / 'skills/autowork/scripts').exists()
+# Validation may leave no untracked files; remove only this test's probes.
+Path('untracked.txt').unlink()
+Path('untracked.pyo').unlink()
+''']
+        with patch.object(module, 'merge_candidate', side_effect=merge_with_leftovers):
+            result = module.integrate(self.repo, self.owner, 'A', command, 30)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
 
     def test_an_unlanded_candidate_whose_integration_tree_has_review_files_merges_again(self):
         """A restart left the review's files in the integration tree: held as changed, the

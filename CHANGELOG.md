@@ -29,6 +29,13 @@ claim of a tagged release, completed installation or live workflow qualification
   still declares a budget is not held for it. Cost and tokens are still recorded per
   run in `runs.jsonl`, for measurement only; timeouts, runtime, cycle and failure
   limits and the owner's authority over spending money are unchanged.
+- **Merge train.** While a batch runs its full check, candidates that finish meanwhile board
+  the next car: a batch built on the running batch's chain tip (published before its check)
+  and checked beside it, needing only one candidate. Its verdicts hold for the trees the
+  batch ahead lands as, so its candidates land right after that batch without a review of
+  their own. If the batch ahead does not pass as checked, the car stops and its recorded
+  verdicts are dropped; while a car runs, only the chain ahead lands and the session takes
+  nothing from main. `PI_AUTOWORK_TRAIN=0` turns it off.
 - **Faster integration.** Workers, everything they start and the background main check run
   at nice 10, so the review and integration check every finished task waits on keep the
   CPU. `scripts/check.py` sizes its pool from CPU busy at normal priority (`/proc/stat`)

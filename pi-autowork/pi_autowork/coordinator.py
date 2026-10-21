@@ -340,26 +340,107 @@ class Coordinator:
             path.unlink(missing_ok=True)
         return found
 
-    def start_batch(self, tasks):
+    def start_batch(self, tasks, on=None, revisions=None):
         """TOOLSET-258-07: one full check on the candidates' merged tree and their reviews side
-        by side, as a child the loop polls like a review; the engine then lands each one."""
+        by side, as a child the loop polls like a review; the engine then lands each one.
+
+        With ``on`` (the tip of the batch still being checked), the next car of a merge train:
+        built on that tip and checked beside it, so its verdicts hold once the batch ahead lands
+        as checked; it runs as self.train while the batch ahead keeps self.integration."""
         out = tempfile.NamedTemporaryFile(dir=self.state / 'runs', prefix='batch.', delete=False)
         out.close()
+        tip = Path(out.name).with_suffix('.tip')  # where the batch publishes its chain's tip
         args = ['/bin/bash', self.process_script, '--verify-batch', str(self.state), str(self.integ),
                 self.process_script, *tasks]
+        env = dict(os.environ, PI_AUTOWORK_BATCH_TIP=str(tip), **({'PI_AUTOWORK_BATCH_ON': on} if on else {}))
         with open(out.name, 'w') as stream, open(self.state / 'engine.err', 'a') as err:
-            child = subprocess.Popen(args, stdout=stream, stderr=err, stdin=subprocess.DEVNULL, cwd=self.integ)
-        self.integration = {'task': self.BATCH, 'proc': child, 'out': out.name, 'started': time.time(),
-                            'members': list(tasks)}
+            child = subprocess.Popen(args, stdout=stream, stderr=err, stdin=subprocess.DEVNULL, cwd=self.integ,
+                                     env=env)
+        job = {'task': self.BATCH, 'proc': child, 'out': out.name, 'started': time.time(),
+               'members': list(tasks), 'tip': str(tip), 'on': on,
+               'revisions': list(revisions if revisions is not None else getattr(self, 'batch_revisions', []))}
         self.snapshot = None
+        if on:
+            self.train = job
+            LOG.say(f'Merge train: {len(tasks)} more candidate(s) ({", ".join(tasks)}) checked on top of the '
+                    'batch still running, beside it')
+            return
+        self.integration = job
         self.batch_members = list(tasks)
         LOG.say(f'Batch of {len(tasks)} candidates ({", ".join(tasks)}): one full check on their merged tree, '
                 'their reviews side by side')
 
-    def batch_done(self, result):
+    train = None  # the merge train's next car, checked beside self.integration's batch
+
+    def board_train(self, rows):
+        """While a batch runs its long check, start the next car on its published tip with the
+        fresh candidates it does not hold (PI_AUTOWORK_TRAIN=0 turns this off)."""
+        job = self.integration
+        if (self.train or not job or job['task'] != self.BATCH or self.stop or self.reexec_due()
+                or worker.setting('PI_AUTOWORK_TRAIN', 1) < 1):
+            return
+        try:
+            tip = json.loads(Path(job['tip']).read_text())['tip']
+        except (OSError, ValueError, KeyError, TypeError):
+            return  # its chain is not built yet
+        failed, ahead = self.batch_failed(), set(job['members'])
+        cars = [(t, commit) for t, commit in batchable(rows)
+                if t not in ahead and commit and f'{t}@{commit}' not in failed
+                and next((r for r in rows if r.get('task') == t), {}).get('state') == 'reported'
+                and not worker.batch_record(self.state, t).exists()]
+        cars = cars[:max(1, int(os.environ.get('PI_AUTOWORK_BATCH') or 6))]
+        if cars:
+            self.start_batch([t for t, _ in cars], on=tip, revisions=[f'{t}@{c}' for t, c in cars])
+
+    @staticmethod
+    def batch_clean(result):
+        """Every candidate the batch chained passed: it lands as the tree the next car was built on."""
+        tasks = result.get('tasks') or []
+        return result.get('outcome') == 'BATCH' and bool(tasks) and set(result.get('passed') or []) == set(tasks)
+
+    def finish_train(self):
+        """Record the next car's verdicts once it ends; they land after the batch ahead, so they
+        wait until that batch's own verdicts and landing order are recorded."""
+        job = self.train
+        if not job or job['proc'].poll() is None or self.session_busy():
+            return
+        self.train = None
+        try:
+            result = json.loads(Path(job['out']).read_text())
+        except (OSError, ValueError):
+            result = {}
+        for path in (job['out'], job['tip']):
+            Path(path).unlink(missing_ok=True)
+        if isinstance(result, dict) and result:
+            self.batch_done(result, job)
+
+    def stop_train(self, why=''):
+        job, self.train = self.train, None
+        if not job:
+            return
+        if job['proc'].poll() is None:
+            job['proc'].terminate()
+            try:
+                job['proc'].wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                job['proc'].kill()
+        for path in (job['out'], job['tip']):
+            Path(path).unlink(missing_ok=True)
+        # Verdicts its reviews already recorded hold for a tree that will not exist; left, they
+        # kept these candidates out of every batch for the records' two hours.
+        for task in job['members']:
+            worker.batch_record(self.state, task).unlink(missing_ok=True)
+        if why:
+            LOG.say(f'Merge train: stopped the next car ({", ".join(job["members"])}): {why}; they are checked again')
+
+    def batch_done(self, result, job=None):
+        """Record a batch's outcome; ``job`` is a merge train's car, whose candidates land after
+        the chain of the batch ahead."""
+        members = job['members'] if job else getattr(self, 'batch_members', [])
         if result.get('outcome') == 'BATCH_GATE_FAILED':
-            failure = f'Batch: the full check failed on the merged tree ({str(result.get("reason") or "")[:300]}); '
-            revisions = {r.split('@')[0]: r for r in getattr(self, 'batch_revisions', [])}
+            failure = (f'{"Merge train" if job else "Batch"}: the full check failed on the merged tree '
+                       f'({str(result.get("reason") or "")[:300]}); ')
+            revisions = {r.split('@')[0]: r for r in (job['revisions'] if job else getattr(self, 'batch_revisions', []))}
             checked = [revisions[t] for t in result.get('tasks') or [] if t in revisions]
             suspects = [revisions[t] for t in result.get('suspects') or [] if t in revisions]
             if suspects and 2 * len(suspects) <= len(checked):
@@ -394,17 +475,23 @@ class Coordinator:
             parts.append(f'left out (conflict): {", ".join(result["skipped"])}')
         if result.get('reason'):
             parts.append(str(result['reason']))
-        later = [t for t in getattr(self, 'batch_members', []) if t not in (result.get('tasks') or [])
+        later = [t for t in members if t not in (result.get('tasks') or [])
                  and t not in (result.get('skipped') or [])]
         if later:  # past the batch size: they were neither checked nor reported before (11 of 17)
             parts.append(f'{len(later)} wait for the next batch')
-        LOG.say('Batch: ' + '; '.join(parts) + ' — landing them now')
-        # The order they were verified in: each verdict holds only for its step of that chain.
+        LOG.say(('Merge train: ' if job else 'Batch: ') + '; '.join(parts)
+                + (' — landing them after the batch ahead' if job else ' — landing them now'))
+        # The order they were verified in: each verdict holds only for its step of that chain. A
+        # car's chain starts where the batch ahead ends: it lands after what of that is left.
         order = [t for t in result.get('tasks') or [] if worker.batch_record(self.state, t).exists()]
-        (self.state / 'batch-order.txt').write_text('\n'.join(order) + '\n')
+        ahead = [t for t in self.batch_chain() if t not in order] if job else []
+        (self.state / 'batch-order.txt').write_text('\n'.join(ahead + order) + '\n')
         # Offered first, out of priority order: the engine holds a conflict at once, and the
         # hold is what starts the resolver. Asked after a long review, they waited hours.
-        (self.state / 'batch-conflicts.txt').write_text('\n'.join(result.get('skipped') or []) + '\n')
+        skipped = list(result.get('skipped') or [])
+        if job:
+            skipped = [t for t in self.batch_conflicts() if t not in skipped] + skipped
+        (self.state / 'batch-conflicts.txt').write_text('\n'.join(skipped) + '\n')
 
     def batch_conflicts(self):
         """Candidates the last batch left out because they do not merge with the session."""
@@ -508,6 +595,7 @@ class Coordinator:
 
     def stop_integration(self):
         """On a stop: end the review; the engine's recovery verifies the commit again later."""
+        self.stop_train()
         job, self.integration = self.integration, None
         self.snapshot = None
         if job and job['proc'].poll() is None:
@@ -563,7 +651,7 @@ class Coordinator:
 
     def in_flight(self):
         # A held conflict whose resolution runs is still moving: the loop must come back for it.
-        return bool(self.resolvers) or any(t.get('state') in IN_FLIGHT for t in self.tasks())
+        return bool(self.resolvers or self.train) or any(t.get('state') in IN_FLIGHT for t in self.tasks())
 
     @property
     def resolvers(self):
@@ -648,7 +736,7 @@ class Coordinator:
 
     def background_jobs(self):
         """Pi jobs running beside the loop: merge resolutions and a DOCS-MAINTAINER re-cut."""
-        return [*self.resolvers.values(), *([self.maintainer_job] if self.maintainer_job else [])]
+        return [*self.resolvers.values(), *[job for job in (self.maintainer_job, self.train) if job]]
 
     def on_reload(self, *_):
         """SIGHUP (`autowork restart`, `systemctl reload`): re-execute on the current release and
@@ -1386,8 +1474,9 @@ class Coordinator:
         reaches; a merge that still fails is a runner blocker the owner sees. A refused ledger is an
         exception: task slots cannot settle until the owner's repair reaches the session, so the
         owner's planning edits are committed even beside work in flight. A merge resolution keeps
-        the session still: its merge is adopted only onto the revision it merged."""
-        if self.resolvers:
+        the session still: its merge is adopted only onto the revision it merged. So does a merge
+        train's car: its verdicts hold only for the tree the chain ahead lands as."""
+        if self.resolvers or self.train:
             return
         if self.integ and (not self.in_flight() or self.ledger_errors):
             # The owner's quiet planning edits (answers to held tasks) are committed even when
@@ -1609,11 +1698,14 @@ class Coordinator:
         if self.stop:
             return
         if self.session_busy():
+            self.board_train(rows)  # the next batch, checked on top of this one beside it
             return  # one review at a time; it is collected when it ends
         handled, deferred = set(), []
         finished = self.collect_integration()
         if finished and finished[0] == self.BATCH:
             self.batch_done(finished[1])
+            if self.train and not self.batch_clean(finished[1]):
+                self.stop_train('the batch ahead did not pass as checked')
         elif finished:
             handled.add(finished[0])
             self.integrated(*finished, resolve_conflicts=False)
@@ -1621,6 +1713,7 @@ class Coordinator:
                 deferred.append(finished[0])
             if self.stop:
                 return
+        self.finish_train()  # after the batch ahead recorded its landing order
         self.reverify_held(rows)
         for task in [r['task'] for r in rows if r.get('state') == 'integrated' and r['task'] not in handled]:
             if self.stop:
@@ -1639,7 +1732,13 @@ class Coordinator:
         conflicts = [t for t in self.batch_conflicts() if t in queue and t not in chain]
         # Verified together: they land first, in order; then the batch's conflicts are held for the resolver.
         queue = chain + conflicts + [t for t in queue if t not in chain and t not in conflicts]
-        batch = self.batch_due(batchable(rows, handled))
+        if self.train:
+            # A car is checked on the tree the chain ahead lands as: only that chain lands, and
+            # conflicts are held, until it ends. Any other review would move the session under it.
+            queue = [t for t in queue if t in chain or t in conflicts]
+            if not queue:
+                return
+        batch = [] if self.train else self.batch_due(batchable(rows, handled))
         if batch:
             self.start_batch(batch)
             return  # it runs beside the loop; its candidates land when it ends
@@ -2736,12 +2835,13 @@ class Coordinator:
         are adopted. Not while a review or a Pi job runs, nor once a review has ended but its
         answer is not read yet (TOOLSET-187-1d: a reload deferred behind a review re-executed the
         moment it ended and lost it): the cycle reads it, and a later cycle re-executes."""
-        busy = self.integration or self.child or self.resolvers or self.maintainer_job
+        busy = self.integration or self.child or self.resolvers or self.maintainer_job or self.train
         landing = [] if busy else self.batch_landing()
         if busy or landing:
             what = (f"the review of {self.integration['task']}" if self.integration else
                     f"the merge resolution of {', '.join(sorted(self.resolvers))}" if self.resolvers else
                     f'the {maintainer.ROLE} re-cut' if self.maintainer_job else
+                    f"the merge train's check of {', '.join(self.train['members'])}" if self.train else
                     'a Pi job' if self.child else '')
             what = f'{what} to end' if what else f"{', '.join(landing)} to land (passed in a batch)"
             if self.seen.get('reexec-pending') != what:

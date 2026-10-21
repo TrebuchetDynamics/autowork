@@ -85,6 +85,11 @@ def install(source, profiles, *, dry_run=False, report=print, skills=None):
                 with tempfile.TemporaryDirectory(prefix='.install-skills-', dir=destination) as temporary:
                     staged = Path(temporary) / skill.name
                     shutil.copytree(skill, staged, ignore=ignore)
+                    # Ignore rules can leave obsolete parents containing no support files.
+                    for directory, _, _ in os.walk(staged, topdown=False):
+                        directory = Path(directory)
+                        if directory != staged and not any(directory.iterdir()):
+                            directory.rmdir()
                     try:
                         _publish(staged, target)
                     except OSError:

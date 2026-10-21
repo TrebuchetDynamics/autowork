@@ -1224,6 +1224,29 @@ class EngineTests(Fixture):
         self.assertEqual(runs.read_text().count('ran'), 2, result.stdout)
         self.assertEqual(sorted(r['task'] for r in self.runs('verify')), ['A', 'B', 'C'])  # each reviewed once
 
+    def test_a_candidate_finished_during_a_batch_check_rides_the_merge_train(self):
+        """A task that finished while a batch ran its long check waited for that batch to land,
+        then for a check of its own. It is now checked on top of the batch, beside it, and lands
+        right after it on that verdict."""
+        self.repo = self.make_repo(self.root / 'train', [('A', None), ('B', None), ('C', 'A'), ('D', None)])
+        self.env['FAKE_MAIN_REPO'] = str(self.repo)
+        self.env['PI_AUTOWORK_BATCH'] = '6'
+        self.env['PI_AUTOWORK_MAIN_CHECK'] = 'true'
+        runs = self.root / 'full-check-runs'
+        self.env['PI_AUTOWORK_VALIDATE'] = f'echo ran >> {runs}; sleep 12'  # long enough for D to finish
+        self.plan({'worker:A': ['barrier'], 'worker:B': ['barrier'], 'worker:D': ['slow']})
+        result = self.run_runner('--until-empty', '--workers', '3', timeout=300)
+        self.assertTrue(self.done('A', 'B', 'C', 'D'), result.stdout)
+        self.assertIn('Batch of 2 candidates (A, B)', result.stdout)
+        self.assertIn('Merge train: 1 more candidate(s) (D) checked on top of the batch still running', result.stdout)
+        # Boarded while the batch ahead was still checking, landed after it on its own verdict.
+        self.assertLess(result.stdout.index('Merge train: 1 more'), result.stdout.index('Batch: 2 passed (A, B)'),
+                        result.stdout)
+        self.assertIn('D: landing — passed in its batch; not reviewed again', result.stdout)
+        self.assertLess(result.stdout.index('B: integrated'), result.stdout.index('D: integrated'), result.stdout)
+        self.assertEqual(sorted(r['task'] for r in self.runs('verify')), ['A', 'B', 'C', 'D'], result.stdout)
+        self.assertEqual(runs.read_text().count('ran'), 3, result.stdout)  # A+B, A+B+D, then C alone
+
     def test_a_worker_that_edits_its_own_task_file_is_held_and_never_lands_it(self):
         """A worker cannot change the contract it is judged against (TOOLSET-302-33)."""
         self.plan({'worker:A': ['ledger_barrier'], 'worker:B': ['barrier']})

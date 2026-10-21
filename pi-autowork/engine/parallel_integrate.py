@@ -665,6 +665,32 @@ def require_no_writers(repo, files=None):
                          + '; '.join(describe(w) for w in blocking[:3]))
 
 
+def prune_ignored_bytecode(root):
+    """Drop only ignored, untracked Python bytecode and its now-empty parents.
+
+    Never blanket-clean ignored files: they may be dependencies or private data.
+    Git supplies the untracked set, so even tracked cache files are preserved.
+    This runs only in the coordinator's exclusive integration checkout.
+    """
+    ignored = git(root, 'ls-files', '--others', '--ignored', '--exclude-standard', '-z', raw=True)
+    for name in ignored.split(b'\0'):
+        if not name:
+            continue
+        path = root / os.fsdecode(name)
+        if path.suffix not in {'.pyc', '.pyo'} or path.is_symlink() or not path.is_file():
+            continue
+        if any((root / parent).is_symlink() for parent in path.relative_to(root).parents):
+            continue
+        path.unlink()
+        parent = path.parent
+        while parent != root:
+            try:
+                parent.rmdir()
+            except OSError:  # A tracked or non-cache file (or another directory) remains.
+                break
+            parent = parent.parent
+
+
 def integration_worktree(repo, common, baseline):
     path = worktree_path(repo, 'autowork-integration')
     if path.exists():
@@ -826,6 +852,7 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
                     # can only recover this exact candidate, never infer a landing.
                     slot = state.write_slot(common, dict(slot, integration=integration, checks=None,
                                                          ledger_edit_dropped=dropped), slot)
+                prune_ignored_bytecode(root)
                 inputs = {p: execution.digest(root / p) for p in (execution.task_path(task),)}
                 check = execution.bounded_command(argv, root, common, task, timeout, inputs,
                             receipt_context={'integration_commit': merge, **state.journal.context(common, slot)},

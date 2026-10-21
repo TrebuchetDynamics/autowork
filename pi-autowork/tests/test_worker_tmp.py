@@ -1063,6 +1063,79 @@ class BatchLandingTests(unittest.TestCase):
                     now[0] += 61
                     self.assertTrue(runner.overlap_idles())
 
+    def merge_train_runner(self, folder, ahead_running=True):
+        """A runner with a batch of A and B checking, its tip published, and C and D reported."""
+        runner, coordinator = self.runner(folder, {})  # no verdicts recorded yet
+        rows = [{'task': t, 'state': 'reported', 'commit': f'{t.lower()}1'} for t in 'ABCD']
+        runner.tasks = lambda snapshot=None: rows
+        runner.stop = False
+        runner.reexec_due = lambda: False
+        tip = Path(folder) / 'ahead.tip'
+        tip.write_text(json.dumps({'tip': 'abc123', 'tasks': ['A', 'B']}))
+        ahead = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)' if ahead_running else 'pass'])
+        self.addCleanup(lambda: ahead.poll() is None and ahead.kill())
+        if not ahead_running:
+            ahead.wait()
+        runner.integration = {'task': runner.BATCH, 'proc': ahead, 'members': ['A', 'B'], 'tip': str(tip)}
+        return runner, coordinator, rows
+
+    def test_the_next_car_boards_on_the_tip_of_the_batch_still_checking(self):
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator, rows = self.merge_train_runner(folder)
+            started = []
+            runner.start_batch = lambda tasks, on=None, revisions=None: started.append((tasks, on, revisions))
+            runner.board_train(rows)
+            self.assertEqual(started, [(['C', 'D'], 'abc123', ['C@c1', 'D@d1'])])
+            started.clear()
+            with patch.dict(os.environ, PI_AUTOWORK_TRAIN='0'):
+                runner.board_train(rows)
+            self.assertEqual(started, [])  # turned off
+            Path(runner.integration['tip']).unlink()
+            runner.board_train(rows)
+            self.assertEqual(started, [])  # the batch ahead has no chain yet
+
+    def test_a_car_on_a_batch_that_did_not_pass_is_stopped_and_its_verdicts_dropped(self):
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator, _ = self.merge_train_runner(folder)
+            car = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
+            self.addCleanup(lambda: car.poll() is None and car.kill())
+            out = Path(folder) / 'car.out'
+            out.write_text('')
+            runner.train = {'proc': car, 'out': str(out), 'tip': str(Path(folder) / 'car.tip'), 'members': ['C']}
+            coordinator.worker.batch_record(runner.state, 'C').write_text(json.dumps({'ok': True, 'at': time.time()}))
+            self.assertTrue(runner.batch_clean({'outcome': 'BATCH', 'tasks': ['A', 'B'], 'passed': ['A', 'B']}))
+            for result in ({'outcome': 'BATCH', 'tasks': ['A', 'B'], 'passed': ['B'], 'held': ['A']},
+                           {'outcome': 'BATCH_GATE_FAILED', 'tasks': ['A', 'B']}):
+                self.assertFalse(runner.batch_clean(result))
+            with patch.object(coordinator.LOG, 'say'):
+                runner.stop_train('the batch ahead did not pass as checked')
+            self.assertIsNotNone(car.poll())
+            self.assertIsNone(runner.train)
+            self.assertFalse(coordinator.worker.batch_record(runner.state, 'C').exists())
+
+    def test_a_cars_verdicts_land_after_the_chain_ahead(self):
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator, _ = self.merge_train_runner(folder, ahead_running=False)
+            runner.integration = None
+            for task in 'ABC':
+                coordinator.worker.batch_record(runner.state, task).write_text(json.dumps({'ok': True, 'at': time.time()}))
+            (runner.state / 'batch-order.txt').write_text('A\nB\n')
+            car = subprocess.Popen([sys.executable, '-c', 'pass'])
+            car.wait()
+            out = Path(folder) / 'car.out'
+            out.write_text(json.dumps({'outcome': 'BATCH', 'tasks': ['C'], 'passed': ['C'], 'held': [], 'skipped': []}))
+            runner.train = {'proc': car, 'out': str(out), 'tip': str(Path(folder) / 'car.tip'), 'members': ['C'],
+                            'revisions': ['C@c1']}
+            runner.session_busy = lambda: True
+            runner.finish_train()
+            self.assertIsNotNone(runner.train)  # the batch ahead still running: its order comes first
+            runner.session_busy = lambda: False
+            with patch.object(coordinator.LOG, 'say') as said:
+                runner.finish_train()
+            self.assertIsNone(runner.train)
+            self.assertEqual(runner.batch_chain(), ['A', 'B', 'C'])
+            self.assertIn('landing them after the batch ahead', said.call_args[0][0])
+
     def test_the_overlap_re_cut_runs_beside_the_loop(self):
         """Its Pi job held reviews, landings and dispatch for five minutes at a time while workers
         were busy; it now runs beside the loop and merges once the session may move."""
