@@ -1,17 +1,17 @@
 # Autowork
 
 <p align="center">
-  <img src="assets/readme/hero.svg" width="100%" alt="Autowork: your repository is the workspace. TODO.md holds the work queue; /autowork implements eligible tasks and checks each change. Conceptual workflow, not a run receipt.">
+  <img src="assets/readme/hero.svg" width="100%" alt="Autowork: your repository is the workspace. tasks/ holds the work queue; /autowork implements eligible tasks and checks each change. Conceptual workflow, not a run receipt.">
 </p>
 
 **Plan with an agent. Keep the decisions in Git. Pick up the next ready task.**
 
 Autowork connects planning, documentation and verified repository work around
-one shared queue: `TODO.md`. Use it in **Hermes, Claude Code, Codex or Pi**.
+one shared queue: the repository's `tasks/` store. Use it in **Hermes, Claude Code, Codex or Pi**.
 
-[Install](#install) · [First use](#first-use-in-your-project) ·
+[Why Autowork](#why-autowork) · [Install](#install) · [First use](#first-use-in-your-project) ·
 [Pi pipeline](#pi-autowork-pipeline) · [Commands](#what-you-can-do) · [Safety](#read-before-installing) ·
-[Documentation](#documentation)
+[Status](#project-status) · [Documentation](#documentation)
 
 **Hermes CLI**, after installation (illustrative, not a run receipt):
 
@@ -30,6 +30,28 @@ one shared queue: `TODO.md`. Use it in **Hermes, Claude Code, Codex or Pi**.
 **Fleet management and the Hermes scheduler integration are Hermes-only.** Portable
 adapters use their host's scheduling facilities; they install no Hermes scheduler
 and do not guarantee background execution after a session ends.
+
+## Why Autowork
+
+Many tools can start several coding agents. Autowork is a persistent development
+control loop: **you define intent, Autowork coordinates execution, agents implement
+and review, and verified changes reach Git**, followed by the next ready task.
+
+- **Intent lives in your repository.** Goals and tasks are files in `tasks/`,
+  reviewed and versioned like code, not rows in an external service.
+- **One workflow, four hosts.** Hermes, Claude Code, Codex and Pi run the same
+  planning, documentation and execution skills.
+- **Execution discipline.** Only typed fields grant authority; dependency, file-scope
+  and resource gates decide what runs in parallel; a task closes only with checked
+  evidence; a restarted runner adopts its live workers instead of starting duplicates.
+- **Documentation drives the queue.** `/docs_sync` keeps requirements and tasks in
+  step, and prepares the task store itself: it converts an old `TODO.md` queue,
+  starts a new one from accepted plans, and reports what needs repair.
+- **Unattended, and idle for free.** Runners keep working while you do something else;
+  an empty queue waits without a model call.
+
+How it compares with established orchestrators is not yet benchmarked. See
+[project status](#project-status).
 
 ## Read before installing
 
@@ -51,6 +73,9 @@ policy-neutral command bridge.**
   upstream sources. Scans or missing dependencies can leave setup incomplete.
 - There is **no automatic restoration of previous configuration** on uninstall.
   Back up profile configurations first; see [removal and recovery](docs/uninstall.md).
+- With approvals off and unattended runners, **give agents no production
+  credentials** and start with repositories where an automatic local commit and
+  push is acceptable.
 
 The runtime-policy opt-out prevents policy changes **during plugin loading and
 setup**. Full setup still applies OMH memory defaults and external integrations;
@@ -194,11 +219,12 @@ with `--dry-run`;** the shell preview above does not boot Hermes. See
 ## How it works
 
 <p align="center">
-  <img src="assets/readme/workflow.svg" width="100%" alt="Plan accepted work, queue it in TODO.md, execute an eligible task, and report checks and delivery. Further work requires the caller's authority; this diagram does not promise a background scheduler.">
+  <img src="assets/readme/workflow.svg" width="100%" alt="Plan accepted work, queue it in tasks/, execute an eligible task, and report checks and delivery. Further work requires the caller's authority; this diagram does not promise a background scheduler.">
 </p>
 
-1. **Plan and queue.** Planning saves decisions and tasks to `TODO.md`; Docs Sync
-   keeps the documents and any existing task index consistent. Planning alone
+1. **Plan and queue.** Planning saves decisions to the docs and tasks to `tasks/`
+   with `autowork tasks`; Docs Sync keeps the documents consistent and prepares the
+   store (`autowork tasks prepare`) before it reconciles tasks. Planning alone
    never starts implementation or schedules work. `read-only`, `chat-only`,
    `no-write` and `--dry-run` requests write nothing.
 2. **Execute and report.** Autowork prioritizes accepted runnable tasks, implements
@@ -218,7 +244,7 @@ The Linux runner is separate from a one-shot skill invocation: you start it expl
 installing the Pi package does not start workers, a service or a Hermes cron job.
 
 ```text
-TODO.md (+ goals.json)
+tasks/ (one file per task and goal)
                  ↓
 Dependency / scope / resource gates
                  ↓
@@ -262,7 +288,7 @@ Each repository's runner is a **systemd user service**, managed with the `autowo
 command. Bare `autowork` opens the live TUI: every runner with what it needs from
 you (its open questions), its workers in flight, blockers and log, with keys to
 start, stop, pause, restart and set the model; `d` browses directories and starts a
-service for any repository with `TODO.md` and `goals.json` on its main branch.
+service for any repository with a `tasks/` store committed on its main branch.
 
 ```sh
 autowork                      # the live TUI
@@ -297,7 +323,7 @@ Examples use **Hermes CLI**. Portable workflows use the host-specific prefixes a
 - **Answer blockers:** `/blockers [repo|runner]` (also `/autowork blockers`,
   `/plan_with_me blockers`) reconciles routine planning issues first, then asks
   only for missing owner decisions or inputs, easiest first. Resolutions become
-  TODO.md planning for the runners; an idle reviewed candidate needs no new
+  task-record edits for the runners; an idle reviewed candidate needs no new
   ownership choice when local integration is already authorized.
 - **Keep the repository coherent:** `/docs-sync Record the accepted cache design`
   maintains docs and tasks with acceptance criteria and dependencies.
@@ -338,16 +364,23 @@ protocols load only when needed; registration is not proof a technique was appli
 
 ## Your work queue
 
-`TODO.md` holds accepted scope, task priority, checks and progress. Reorder complete
-task blocks there, then run **Docs Sync** to reconcile any `goals.json` index.
+`tasks/` holds accepted scope, task priority, checks and progress: one file per task
+(`tasks/items/<ID>.md`) and per goal (`tasks/goals/<ID>.md`). Edit them with
+`autowork tasks` (`list`, `show`, `add`, `field`, `move`, `place`, `done`, ...), which
+validates the whole store and never commits; commit the result like any change.
+You never set the store up by hand: `/docs_sync` runs `autowork tasks prepare` first,
+which converts a repository that still has `TODO.md` and `goals.json` (one proven local
+commit; it refuses while work is in flight), finishes an interrupted conversion, and in
+a new repository lists the accepted plan headings that goals may come from. `autowork
+tasks prepare --check` reports the same without writing anything.
 Contributors can use ordinary Git and project tools; see
 [working on a task](docs/contributing.md#work-on-a-repository-task).
 
 An illustrative completion report—not a recorded test result:
 
 ```text
-CACHE — COMPLETED; 1 TODO task completed
-Task: TODO.md CACHE-01 — Add bounded cache storage.
+CACHE — COMPLETED; 1 task completed
+Task: tasks/items/CACHE-01.md — Add bounded cache storage.
 Changed: cache implementation, tests and docs/cache.md.
 Checks: cache acceptance tests passed; required review passed.
 Next: CACHE-02 — Verify eviction behavior [eligible, not started].
@@ -355,38 +388,39 @@ Delivery: local commit <SHA>; not pushed, as requested.
 ```
 
 <details>
-<summary><strong>Complete illustrative task body</strong></summary>
+<summary><strong>Complete illustrative task record</strong></summary>
 
-This is a consumer-project example, not a task to run in Toolset. Replace the owner,
-accepted source, paths and check with your project's actual values. It includes the
-Goal, Sources and Ownership fields from the
-[full task-authoring format](skills/docs-sync/references/document-scaffold.md#first-task-index-initialization):
+This is a consumer-project example, not a task to run in Toolset. Replace the goal,
+accepted source, paths and check with your project's actual values. The fields are the
+[task store schema](pi-autowork/task-store.md#file-schema); `autowork tasks add` writes
+them for you:
 
 ```markdown
-# TODO
-
-## Accepted cache design
-
-Status: Accepted
-
-Bound cache memory by evicting the oldest entry when its capacity is exceeded.
-
-## Now
-
-- [ ] CACHE-01 — Add bounded cache storage
-  Goal: CACHE — Bound cache memory use.
-  Sources: [Accepted cache design](#accepted-cache-design)
-  Scope: src/cache, tests/test_cache.py and docs/cache.md; no new dependencies.
-  Acceptance: entries beyond the limit are evicted oldest-first.
-  Checks: `pytest tests/test_cache.py`
-  Dependencies: None.
-  Ownership: Project maintainer
-  Status: open
++++
+schema = 1
+id = "CACHE-01"
+title = "Add bounded cache storage"
+short = "Bounded cache storage"
+status = "open"
+goal = "CACHE"
+section = "Now"
+rank = 1000
+depends_on = []
+touches = ["src/cache/", "tests/test_cache.py", "docs/cache.md"]
+resources = []
+kind = "implementation"
+ownership = "worker"
+scope = "Bound cache memory by evicting the oldest entry; no new dependencies."
+acceptance = ["entries beyond the limit are evicted oldest-first"]
+checks = ["pytest tests/test_cache.py"]
+exclusions = []
++++
+- Sources: [Accepted cache design](docs/cache.md#accepted-cache-design)
 ```
 
-Index migration, revision guards and exact helper paths belong in the
+Helper paths belong in the
 [task-management reference](docs/reference.md#repository-helpers-used-by-workflows),
-not the quickstart. See the [TODO work-center contract](skills/shared/TODO-WORKCENTER.md)
+not the quickstart. See the [task-record rules](skills/shared/TODO-WORKCENTER.md)
 and [reporting contract](skills/autowork/references/dispatch-and-reporting.md):
 `COMPLETED` means verified acceptance and closure, not merely a passing build.
 
@@ -436,9 +470,23 @@ repository's workers, holds and waiting reasons. `/autowork plugin status` repor
 registrations and setup gaps; Hermes' `/toolsets` is a different tool-group inventory. No registration or package test proves model
 output quality, Git delivery or live Telegram execution.
 
+## Project status
+
+The design is ambitious and the offline evidence is broad, but **sustained live
+reliability is not yet proven**. An outside assessment (2026-10-21) rated the concept
+and potential value highly and proven reliability at 5/10. Its main warnings are to
+avoid spending more effort improving Autowork than building products with it, and to
+take the permissive defaults seriously. The next step is a 30-day evaluation on
+real repositories with controlled permissions: tasks completed without intervention,
+regressions, owner attention and cost per verified task, time to merge, and crash
+recovery. `autowork scorecard` measures part of this today. See
+[Is Autowork worth it?](docs/evaluation.md) for the assessment, targets and the gaps
+still to instrument.
+
 ## Documentation
 
-- [Product scope and architecture](docs/project.md) · [Work queue](TODO.md) · [Changelog](CHANGELOG.md)
+- [Product scope and architecture](docs/project.md) · [Work queue](tasks/) · [Changelog](CHANGELOG.md)
+- [Is Autowork worth it? Assessment and 30-day evaluation](docs/evaluation.md)
 - [Installation, profile scope and policy opt-out](docs/installation.md)
 - [Commands, Autoresearch and the engineering workflow](docs/workflows.md)
 - [Command and configuration reference](docs/reference.md) · [Troubleshooting](docs/troubleshooting.md)

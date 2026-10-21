@@ -151,14 +151,21 @@ setup from the new location (setup and update refuse a dangling link); see [upda
 By design: documentation and planning never start implementation. Run
 `/autowork` for the task you want built; see [workflows](workflows.md#commands).
 
-### Autowork reports `PRIORITY_DRIFT` or `UNMIGRATED`
+### Autowork says `no tasks/ store: run autowork migrate`
 
-`TODO.md` task order changed since the last recorded priority, or the project has
-not recorded one yet. Scheduled Autowork's skill instructs it to run `reorder` on drift (no script does
-this automatically); manually, run
-the commands the report prints (`goals.py reorder`, or a one-time
-`goals.py bootstrap-order` for `UNMIGRATED`). See
-[TODO-owned task priority](project.md#todo-owned-task-priority).
+The repository still keeps its tasks in `TODO.md` and `goals.json`, which nothing reads.
+Commit or set aside planning edits, let running work finish, then run `/docs_sync` in the
+repository (or `autowork tasks prepare <repo>`, or `autowork migrate <repo>`): it converts
+the queue to `tasks/` in one local commit and refuses, writing nothing, while work is in
+flight. A conversion that was interrupted resumes on the next run. See
+[Task Store v2](project.md#task-store-v2-2026-10-20).
+
+### `autowork tasks validate` reports an error
+
+Each error names a task or goal file and line (`tasks/items/T-1.md:7: unknown goal G`);
+the whole store is refused until it is fixed, so the runner selects nothing meanwhile.
+Fix that file (`autowork tasks field` or an editor) and run
+`autowork tasks validate --worktree` again before committing.
 
 ### `docs.py check` reports findings
 

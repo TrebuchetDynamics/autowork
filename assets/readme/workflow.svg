@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="180" viewBox="0 0 1200 180" role="img" aria-labelledby="title desc">
   <title id="title">Plan, queue, execute, report</title>
-  <desc id="desc">Plan accepted work, queue it in TODO.md, execute an eligible task with /autowork, and report checks and delivery separately. The next authorized run uses the remaining queue.</desc>
+  <desc id="desc">Plan accepted work, queue it in tasks/, execute an eligible task with /autowork, and report checks and delivery separately. The next authorized run uses the remaining queue.</desc>
   <rect width="1200" height="180" rx="16" fill="#101a18"/>
   <g font-family="ui-monospace, 'DejaVu Sans Mono', monospace" font-size="22" fill="#aab8ae">
     <text x="64" y="48">01</text><text x="322" y="48">02</text>

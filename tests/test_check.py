@@ -41,13 +41,13 @@ class OfflineCheckTests(unittest.TestCase):
         self.write('pi-autowork/engine/test_task_execution.py', sentinel)
         self.write('vendor/examples/test_external.py', sentinel)
         self.write('skills/autowork/references/vendor/test_external.py', sentinel)
-        self.write('skills/docs-sync/scripts/test_goal_gap_regression.py', sentinel)
+        self.write('tests/integration_bundle.py', sentinel)
         self.write('tests/integration_plugin.py', sentinel)
         result = self.run_check('--list')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('RUN tests/test_unit.py', result.stdout)
         self.assertIn('RUN pi-autowork/engine/test_task_execution.py', result.stdout)
-        self.assertIn('EXCLUDE skills/docs-sync/scripts/test_goal_gap_regression.py [model]', result.stdout)
+        self.assertIn('EXCLUDE tests/integration_bundle.py [integration]', result.stdout)
         self.assertIn('EXCLUDE tests/integration_plugin.py [integration]', result.stdout)
         self.assertNotIn('test_external.py', result.stdout)
         self.assertNotIn('unsafe import', result.stdout + result.stderr)
@@ -109,8 +109,8 @@ class Check(unittest.TestCase):
                      'PI_AUTOWORK_MAIN_CHECK', 'AUTOWORK_CACHE'):
             self.assertFalse(name in os.environ, name + ' leaked into offline tests')
 ''')
-        self.write('skills/docs-sync/scripts/test_goal_gap_regression.py',
-                   "raise RuntimeError('live model imported')\n")
+        self.write('tests/integration_bundle.py',
+                   "raise RuntimeError('live integration imported')\n")
         env = dict(os.environ, CONTAINMENT_LINUX_TESTS='1', RUN_CONTROLLER_BRIDGE_LINUX='1',
                    HERMES_NATIVE_HANDOFF_TEST='1', HERMES_NATIVE_REGISTRATION_TEST='1',
                    PI_AUTOWORK_MAIN_CHECK='false', AUTOWORK_CACHE='/elsewhere')
@@ -299,7 +299,7 @@ class Check(unittest.TestCase):
         self.assertEqual(failed.returncode, 1, failed.stdout + failed.stderr)
         self.assertIn('shard failure', failed.stdout)
         for path in ('tests/missing.py', 'vendor', '../outside',
-                     'skills/docs-sync/scripts/test_goal_gap_regression.py'):
+                     'tests/integration_bundle.py'):
             with self.subTest(invalid=path):
                 result = self.run_check('tests/test_pi_autowork.py', path)
                 self.assertEqual(result.returncode, 2, result.stdout + result.stderr)

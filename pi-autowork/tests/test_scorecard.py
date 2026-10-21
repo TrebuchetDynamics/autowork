@@ -12,6 +12,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import scorecard  # noqa: E402
 
 DAY = 86400
+GOAL = ('+++\nschema = 1\nid = "G"\ntitle = "g"\npriority = 1\nsource = "docs/plan.md#g"\n'
+        'status = "unmet"\nfocus = false\n+++\n')
+
+
+def record(tid, status):
+    return '\n'.join(['+++', 'schema = 1', f'id = "{tid}"', f'title = "{tid}"', f'short = "{tid}"',
+                      f'status = "{status}"', 'goal = "G"', 'section = "Now"', 'rank = 1000', 'depends_on = []',
+                      'touches = ["a.py"]', 'resources = []', 'kind = "implementation"', 'ownership = "worker"',
+                      'scope = "x"', 'acceptance = ["x"]', 'checks = ["true"]', 'exclusions = []', '+++', ''])
+
+
+def store(**statuses):
+    return {'tasks/goals/G.md': GOAL, **{f"tasks/items/{t.replace('_', '-')}.md": record(t.replace('_', '-'), status)
+                                         for t, status in statuses.items()}}
 
 
 class ScorecardTests(unittest.TestCase):
@@ -23,11 +37,16 @@ class ScorecardTests(unittest.TestCase):
         self.now = time.time()
 
     def commit(self, path, text, age_days):
-        (self.repo / path).parent.mkdir(parents=True, exist_ok=True)
-        (self.repo / path).write_text(text)
+        self.commit_files({path: text}, age_days)
+
+    def commit_files(self, files, age_days):
+        for path, text in files.items():
+            (self.repo / path).parent.mkdir(parents=True, exist_ok=True)
+            (self.repo / path).write_text(text)
         when = f'@{int(self.now - age_days * DAY)} +0000'
         env = dict(os.environ, GIT_AUTHOR_DATE=when, GIT_COMMITTER_DATE=when)
-        subprocess.run(['git', '-C', str(self.repo), 'add', path], check=True)
+        path = ' '.join(sorted(files))
+        subprocess.run(['git', '-C', str(self.repo), 'add', '--', *files], check=True)
         subprocess.run(['git', '-C', str(self.repo), '-c', 'user.name=t', '-c', 'user.email=t@example.invalid',
                         'commit', '-q', '-m', f'update {path}'], check=True, env=env)
 
@@ -39,10 +58,9 @@ class ScorecardTests(unittest.TestCase):
                                 for age, task, before, after in events))
 
     def test_a_week_of_one_runner(self):
-        self.commit('TODO.archive.md', '- [x] **OLD-1** — closed long ago\n', age_days=10)
-        # Closed this week, in both archive styles; a rewrite that re-adds OLD-1 does not count it.
-        self.commit('TODO.archive.md', '- [x] **OLD-1** — closed long ago\n- [x] **T-2 — done**\n'
-                                       '- [x] `T-3` — done\n- [ ] T-4 — still open\n', age_days=1)
+        self.commit_files(store(OLD_1='done', T_2='open', T_3='open', T_4='open'), age_days=10)
+        # Closed this week, however: a task already done before the window does not count.
+        self.commit_files(store(OLD_1='done', T_2='done', T_3='done', T_4='open'), age_days=1)
         self.commit('BLOCKERS.md', '### Q-T-5 — USER_DECISION\n### Q-T-6 — USER_DECISION\n', age_days=2)
         self.commit('BLOCKERS.md', '### Q-T-5 — USER_DECISION\n', age_days=1)  # a repeat is one question
         self.journal((300, 'T-2', None, 'dispatched'), (290, 'T-2', 'dispatched', 'running'),
@@ -56,6 +74,12 @@ class ScorecardTests(unittest.TestCase):
         self.assertEqual((row['integrations'], row['held_share']), (3, 0.33))
         self.assertEqual(row['start_to_merge_minutes'], 130)  # median of 180 and 80 minutes
         self.assertEqual(row['questions'], 2)
+
+    def test_a_window_across_the_conversion_counts_from_it(self):
+        self.commit('TODO.archive.md', '- [x] **OLD-1** — closed long ago\n', age_days=10)
+        self.commit_files(store(OLD_1='done', T_2='open'), age_days=5)  # the conversion closes nothing
+        self.commit_files(store(OLD_1='done', T_2='done'), age_days=1)
+        self.assertEqual(scorecard.measure(self.repo, 7, now=self.now)['closed'], 1)
 
     def test_a_repository_without_history_or_journal_scores_zero(self):
         row = scorecard.measure(self.repo, 7, now=self.now)

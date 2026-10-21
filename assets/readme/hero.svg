@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="460" viewBox="0 0 1200 460" role="img" aria-labelledby="title desc">
   <title id="title">Autowork — your repository, one work queue</title>
-  <desc id="desc">Repository workflows built around TODO.md. Plan accepted tasks, execute with /autowork, and verify each change. This is a conceptual workflow, not an execution receipt.</desc>
+  <desc id="desc">Repository workflows built around the tasks/ store. Plan accepted tasks, execute with /autowork, and verify each change. This is a conceptual workflow, not an execution receipt.</desc>
   <rect width="1200" height="460" rx="16" fill="#101a18"/>
   <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
     <text x="64" y="66" font-size="22" letter-spacing="3" fill="#aab8ae">REPOSITORY WORKFLOWS</text>
@@ -13,7 +13,7 @@
   </g>
   <path d="M64 316 H1136" stroke="#364b43" stroke-width="2"/>
   <g id="work-queue" font-family="ui-monospace, 'DejaVu Sans Mono', monospace" font-size="40" fill="#b7e88c">
-    <text x="64" y="394">TODO.md</text>
+    <text x="64" y="394">tasks/</text>
     <text x="400" y="394">/autowork</text>
     <text x="876" y="394">checks</text>
   </g>

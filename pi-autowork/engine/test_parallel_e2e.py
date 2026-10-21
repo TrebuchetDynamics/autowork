@@ -12,6 +12,8 @@ import tempfile
 import time
 import unittest
 
+import store_fixture
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import parallel_status as status
 from gate_skip import skip_if_gated
@@ -27,7 +29,7 @@ report = Path(re.search(r'^Report file: (.+)$', text, re.M)[1])
 started = time.time()
 if task == 'C':
     assert Path('A.txt').read_text() == 'done A\\n'
-    assert '- [x] A' in Path('TODO.archive.md').read_text()
+    assert 'status = "done"' in Path('tasks/items/A.md').read_text()
 if barrier == 'yes' and task in ('A', 'B'):
     root = report.parents[3]
     (root / ('ready-' + task)).write_text('ready')
@@ -73,14 +75,14 @@ class ABCWorkload:
         self.worker = self.root / 'fake_worker.py'
         self.worker.write_text(WORKER)
         (self.repo / 'check_fixture.py').write_text(CHECK)
-        (self.repo / 'TODO.md').write_text('# TODO\n\n## Next\n\n' + '\n'.join(
+        todo = '# TODO\n\n## Next\n\n' + '\n'.join(
             f'- [ ] {t} — Task {t}\n  Scope: Complete {t}.txt\n  Touches: {t}.txt\n'
             f'  Acceptance: Fixture check passes\n  Checks: python3 check_fixture.py\n'
-            f'  Dependencies: {"A" if t == "C" else "None"}.\n  Status: open\n' for t in 'ABC'))
+            f'  Dependencies: {"A" if t == "C" else "None"}.\n  Status: open\n' for t in 'ABC')
         for t in 'ABC':
             (self.repo / (t + '.txt')).write_text('base\n')
         self.git('add', '.')
-        self.git('commit', '-qm', 'fixture baseline')
+        store_fixture.write_todo(self.repo, todo)
         self.common = self.repo / '.git/autowork-execution'
         return self
 
@@ -138,8 +140,8 @@ class ABCWorkload:
                                       '--run', sys.executable, 'check_fixture.py')
                     if result['outcome'] != 'INTEGRATED':
                         raise AssertionError(result)
-                    self.cli('--parallel-close', task, '--owner-pid', str(os.getpid()))
-                    self.git('add', 'TODO.md', 'TODO.archive.md')
+                    closure = self.cli('--parallel-close', task, '--owner-pid', str(os.getpid()))
+                    self.git('add', *closure['files'])
                     self.git('commit', '-qm', 'close ' + task)
                     closed.append(task)
             if len(closed) < 3:
@@ -260,10 +262,11 @@ class StatusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             subprocess.run(['git', 'init', '-q', str(repo)], check=True)
-            (repo / 'TODO.md').write_text('# TODO\n\n## Next\n\n- [ ] X — Missing checks\n  Scope: x\n'
-                                          '  Dependencies: None.\n  Status: open\n')
+            store_fixture.write_todo(repo, '# TODO\n\n## Next\n\n- [ ] X — Missing checks\n  Scope: x\n'
+                                           '  Dependencies: None.\n  Status: open\n')
             rows = status.pending_tasks(repo)
-            self.assertEqual(rows[0]['reason'], 'not runnable: needs unique Scope, Acceptance and Checks fields')
+            self.assertEqual(rows[0]['reason'],
+                             'not runnable: needs Scope, Acceptance, Checks and Touches (draft: acceptance, checks)')
             found = status.roots([dict(task=r['id'], state='waiting', blocked_by=r['blocked_by'],
                                        root_kind=r.get('root_kind')) for r in rows])
             self.assertEqual([(r['id'], r['kind']) for r in found], [('X', 'contract')])
@@ -325,8 +328,9 @@ class StatusTests(unittest.TestCase):
             fixture.common.mkdir()
             event = dict(timestamp=100, event='dispatch_observed', waiting=[dict(id='C', reason='dependency: A')])
             (fixture.common / 'journal.jsonl').write_text(json.dumps(event) + '\n')
-            todo = fixture.repo / 'TODO.md'
-            todo.write_text(todo.read_text().replace('- [ ] A', '- [x] A'))
+            record = fixture.repo / 'tasks/items/A.md'
+            record.write_text(record.read_text().replace('status = "open"', 'status = "done"'))
+            fixture.git('commit', '-qam', 'A closed')
             value = fixture.cli('--parallel-status', '--json')
             self.assertEqual(next(r for r in value['tasks'] if r['task'] == 'C')['reason'], 'awaiting dispatch')
             p = subprocess.run([sys.executable, str(CLI), str(fixture.repo), '--parallel-status'],

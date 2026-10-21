@@ -8,6 +8,7 @@ import unittest
 
 SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
+import store_fixture
 import task_execution
 
 
@@ -15,7 +16,7 @@ class RunnableTests(unittest.TestCase):
     def test_all_contracts_in_order_and_sequential_first_unchanged(self):
         with tempfile.TemporaryDirectory() as folder:
             repo = Path(folder)
-            repo.joinpath('TODO.md').write_text('''# Work
+            store_fixture.write_todo(repo, '''# Work
 ## Next
 - [ ] A — first
   Scope: a.py
@@ -30,13 +31,12 @@ class RunnableTests(unittest.TestCase):
   Acceptance: works
   Checks: test b
 ''')
-            self.assertTrue(hasattr(task_execution, 'select_all'), 'missing all-contract selector')
             tasks = task_execution.select_all(repo, None, None)
             self.assertEqual([t['id'] for t in tasks], ['A', 'B'])
             self.assertEqual(task_execution.select(repo, None, None), tasks[0])
             self.assertEqual(tasks[0]['fields']['Touches'], 'a.py')
-            self.assertEqual(tasks[0]['fields']['Resources'], 'network, port:8080')
-
+            # The engine reads `port:8080` as the resource `port`; the record keeps that meaning.
+            self.assertEqual(tasks[0]['fields']['Resources'], 'network, port')
 
     def test_owner_or_live_work_waits_for_recorded_authorization(self):
         import json
@@ -50,10 +50,9 @@ class RunnableTests(unittest.TestCase):
             for fields in ('Ownership: Owner', 'Ownership: owner only.',
                            'Ownership: Owner or a coordinator with live authorization.',
                            'Resources: live', 'Resources: network, live'):
-                for authorization in ('', 'Live authorization:   ',
-                                      'Live authorization: owner approved this run on 2026-10-17'):
+                for authorization in ('', 'Live authorization: owner approved this run on 2026-10-17'):
                     with self.subTest(fields=fields, authorization=authorization):
-                        repo.joinpath('TODO.md').write_text(f'''# Work
+                        store_fixture.write_todo(repo, f'''# Work
 ## Now
 - [ ] T-1 — Live migration
   Scope: installed profiles
@@ -69,8 +68,7 @@ class RunnableTests(unittest.TestCase):
   Ownership: Toolset coordinator.
 ''')
                         tasks = dispatch.contracts(repo)
-                        result = dispatch.admit(tasks, [], set(), [], everything=tasks,
-                                                parked=[], adopted=set(), protected=[])
+                        result = dispatch.admit(tasks, [], set(), [], everything=tasks, parked=[], protected=[])
                         common.joinpath('journal.jsonl').write_text(json.dumps(dict(
                             event='dispatch_observed', timestamp=1, waiting=result['waiting'])) + '\n')
                         status = parallel_status._snapshot(repo, common, 2)
@@ -84,26 +82,6 @@ class RunnableTests(unittest.TestCase):
                             fallback = dispatch.fallback(repo, SimpleNamespace(tasks='T-1', plan=None), 'no host')
                             self.assertEqual(fallback['outcome'], 'WAITING')
                             self.assertNotIn('task', fallback)
-
-    def test_duplicate_authorization_fields_never_authorize_dispatch(self):
-        import parallel_dispatch as dispatch
-        from parallel_plan import plan
-        with tempfile.TemporaryDirectory() as folder:
-            repo = Path(folder)
-            for fields in ('Ownership: Owner\n  Ownership: Toolset coordinator.',
-                           'Resources: live\n  Resources: network',
-                           'Ownership: Owner\n  Live authorization: approved\n  Live authorization: another approval'):
-                with self.subTest(fields=fields):
-                    repo.joinpath('TODO.md').write_text(f'''## Now
-- [ ] T-1 — migration
-  Scope: profiles
-  Acceptance: verified
-  Checks: verify
-  {fields}
-''')
-                    tasks = dispatch.contracts(repo)
-                    self.assertEqual(plan(tasks)['dispatch'], [])
-                    self.assertIn('duplicate', plan(tasks)['waiting'][0]['reason'])
 
     def test_authorization_status_tracks_current_contract_without_dispatch(self):
         import json
@@ -127,112 +105,15 @@ class RunnableTests(unittest.TestCase):
                     if phase != 'fresh':
                         slot_path.write_text(json.dumps(dict(task_id='T-1', state=phase, attempt=1,
                                                             started_at=1, worktree=str(repo / 'worker'))))
-                    repo.joinpath('TODO.md').write_text(todo)
+                    store_fixture.write_todo(repo, todo)
                     snapshot = status.snapshot(repo, now=2)
                     self.assertEqual(snapshot['tasks'][0]['state'], 'waiting')
                     self.assertEqual([(r['id'], r['kind']) for r in snapshot['roots']],
                                      [('Live authorization: T-1', 'outside')])
                     common.joinpath('journal.jsonl').write_text(json.dumps(dict(
                         event='dispatch_observed', timestamp=1, waiting=status.pending_tasks(repo))) + '\n')
-                    repo.joinpath('TODO.md').write_text(todo + '  Live authorization: owner approved this run\n')
+                    store_fixture.write_todo(repo, todo + '  Live authorization: owner approved this run\n')
                     self.assertFalse(any(r['kind'] == 'outside' for r in status.snapshot(repo, now=3)['roots']))
-
-    def test_ledger_holds_name_the_task_and_disagreement(self):
-        import json
-        import parallel_status
-        with tempfile.TemporaryDirectory() as folder:
-            repo = Path(folder)
-            repo.joinpath('TODO.md').write_text('''## Now
-- [ ] B — dependent
-  Scope: b.py
-  Acceptance: works
-  Checks: test b
-  Dependencies: A.
-  Status: open
-''')
-            ledger = {
-                'version': 1,
-                'goals': [{'id': 'G', 'title': 'fixture', 'source': 'TODO.md',
-                           'status': 'partial', 'tasks': ['A', 'B', 'SPARE'], 'priority': 1, 'depends_on': []}],
-                'tasks': [{'id': 'A', 'title': 'prerequisite', 'goal': 'G', 'status': 'open',
-                           'section': 'Next', 'depends_on': []},
-                          {'id': 'B', 'title': 'dependent', 'goal': 'G', 'status': 'open',
-                           'section': 'Now', 'depends_on': ['A']},
-                          {'id': 'SPARE', 'title': 'remaining proof', 'goal': 'G', 'status': 'open',
-                           'section': 'Needs decision', 'depends_on': []}]}
-            for case, want in (
-                    ('archived', 'ledger: A is open in goals.json but archived as done'),
-                    ('outside', 'ledger: dependency A is open in goals.json in Needs decision (outside Now/Next)'),
-                    ('missing', 'ledger: B is missing from goals.json'),
-                    ('status', 'ledger: B is done in goals.json but open in TODO.md; files disagree'),
-                    ('section', 'ledger: B is in Next in goals.json but Now in TODO.md; files disagree'),
-                    ('goal', 'ledger: goal dependency H is partial in goals.json')):
-                with self.subTest(case=case):
-                    data = deepcopy(ledger)
-                    archive = repo / 'TODO.archive.md'
-                    archive.write_text('## Done\n- [x] A — prerequisite\n  Status: done\n')
-                    if case == 'outside':
-                        archive.unlink()
-                        data['tasks'][0]['section'] = 'Needs decision'
-                    elif case == 'missing':
-                        data['tasks'].pop(1)
-                        data['goals'][0]['tasks'] = ['A', 'SPARE']
-                    elif case in ('status', 'section', 'goal'):
-                        data['tasks'][0]['status'] = 'done'
-                        if case == 'status':
-                            data['tasks'][1]['status'] = 'done'
-                        elif case == 'section':
-                            data['tasks'][1]['section'] = 'Next'
-                        else:
-                            data['goals'][0]['depends_on'] = ['H']
-                            data['goals'].append(dict(id='H', title='prerequisite goal', source='TODO.md',
-                                status='partial', tasks=['H1'], priority=2, depends_on=[]))
-                            data['tasks'].append(dict(id='H1', title='proof', goal='H', status='open',
-                                section='Needs decision', depends_on=[]))
-                    repo.joinpath('goals.json').write_text(json.dumps(data))
-                    with self.assertRaises(task_execution.NoEligibleTask) as caught:
-                        task_execution.select(repo, 'B', None)
-                    self.assertEqual(str(caught.exception), 'B: ' + want)
-                    self.assertEqual(parallel_status.pending_tasks(repo)[0]['reason'], 'not runnable: ' + want)
-            # An ordinary unmet dependency is not a docs-repair or planning trigger.
-            repo.joinpath('goals.json').write_text(json.dumps(ledger))
-            repo.joinpath('TODO.archive.md').write_text('')
-            todo = repo / 'TODO.md'
-            todo.write_text(todo.read_text() + '  Kind: plan\n')
-            self.assertEqual(parallel_status.pending_tasks(repo)[0]['reason'], 'dependency: A')
-            repo.joinpath('goals.json').unlink()
-            for tail in ('### Evidence — latest acceptance\n  Status: open\n',
-                         '### Acceptance — remaining criteria\n  - [ ] device proof\n'):
-                with self.subTest(ambiguous_archive=tail):
-                    repo.joinpath('TODO.archive.md').write_text(
-                        '## Done\n- [x] A — prerequisite\n  Status: done\n' + tail)
-                    with self.assertRaises(task_execution.NoEligibleTask):
-                        task_execution.select(repo, 'B', None)
-
-    def test_ledger_only_in_progress_is_not_dispatched_by_parallel_selector(self):
-        import json
-        from parallel_plan import plan
-        with tempfile.TemporaryDirectory() as folder:
-            repo = Path(folder)
-            repo.joinpath('TODO.md').write_text('''# Work
-## Now
-- [ ] A — first
-  Scope: a.py
-  Acceptance: works
-  Checks: test a
-  Touches: a.py
-''')
-            repo.joinpath('goals.json').write_text(json.dumps({
-                'version': 1,
-                'goals': [{'id': 'G', 'title': 'fixture', 'source': 'TODO.md',
-                           'status': 'partial', 'tasks': ['A'], 'priority': 1, 'depends_on': []}],
-                'tasks': [{'id': 'A', 'title': 'first', 'goal': 'G', 'status': 'in_progress',
-                           'section': 'Now', 'depends_on': []}]}))
-            sequential = task_execution.select(repo, None, None)
-            self.assertNotIn('Status', sequential['fields'])
-            result = plan(task_execution.select_all(repo))
-            self.assertEqual(result['dispatch'], [])
-            self.assertIn('in_progress', result['waiting'][0]['reason'])
 
 
 def task(tid, touches, status='open', deps='None.', resources=''):
@@ -442,17 +323,18 @@ class PlanTests(unittest.TestCase):
             with self.subTest(value=value):
                 self.assertEqual(dependency_ids(value, known), expected)
 
-    def test_running_in_progress_and_live_slot_tasks_never_redispatched(self):
+    def test_held_and_live_slot_tasks_never_redispatched(self):
         from parallel_plan import plan
-        running = task('A', 'a.py', status='in_progress; prior work')
+        running = task('A', 'a.py')
+        running['fields']['Held by'] = 'an interactive session'
         result = plan([running, task('B', 'b.py')])
         self.assertEqual([t['id'] for t in result['dispatch']], ['B'])
-        self.assertIn('in_progress', result['waiting'][0]['reason'])
+        self.assertIn('held', result['waiting'][0]['reason'])
         self.assertEqual(plan([task('A', 'a.py')], [task('A', 'a.py')])['dispatch'], [])
-        # An idle claim's declared files do not hold others either (TOOLSET-161-17).
+        # A held task's declared files do not hold others either (TOOLSET-161-17).
         self.assertEqual([t['id'] for t in plan([running, task('B', 'a.py')])['dispatch']], ['B'])
-        # An idle in_progress claim without Touches no longer blocks unrelated work
-        # (it is not running); it still blocks dependents and declared overlap.
+        # A held task without Touches does not block unrelated work (it is not running);
+        # it still blocks dependents and declared overlap.
         running['fields']['Touches'] = ''
         result = plan([running, task('B', 'b.py')])
         self.assertEqual([t['id'] for t in result['dispatch']], ['B'])

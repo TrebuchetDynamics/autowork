@@ -1,7 +1,7 @@
 # Complete outcomes with fewer handoffs
 
 Before implementation, choose a coherent delivery batch under the current
-TODO task. The coordinator decides implementation order, reversible design choices,
+task. The coordinator decides implementation order, reversible design choices,
 test selection and batch boundaries without asking for approval already granted.
 The default one-slice limit is an outcome limit, not a one-file work limit.
 
@@ -31,7 +31,7 @@ original candidate and avoid an overlapping replacement worker.
 
 ## Spend verification on changed behavior
 
-Keep one concise remaining-work checklist in the existing TODO body or receipt:
+Keep one concise remaining-work checklist in the existing task record's notes or receipt:
 `Required outcome | remaining code/tests | acceptance evidence | batch or split reason`.
 Separate optional hardening from required acceptance. A guard-only batch must name
 the acceptance failure it repairs and the product change it unlocks. After it passes,
@@ -86,7 +86,7 @@ not a scheduler guarantee or measured throughput improvement.
 Lead with delivered behavior and its verified commit/integration/publication stage.
 Example: “Delivered: Linux journeys no longer require the retired transport.
 Parent TASK-ID remains open: service and packaging removal still pending.”
-A shipped slice counts as a delivered slice, not a completed parent TODO. Show
+A shipped slice counts as a delivered slice, not a completed parent task. Show
 parent status and remaining outcomes separately; retain verified completion counts
 without making “0 parent tasks” the headline for a real delivery. Never invent a
 percentage, total slice count, finish time or parent completion. No implementation,

@@ -24,8 +24,8 @@ class EngineeringVendorTests(unittest.TestCase):
             self.assertEqual(module.install(ROOT / 'skills', [('fixture', home)], skills=selected, report=lambda _: None), 0)
             self.assertTrue((home / 'skills/autowork/SKILL.md').is_file())
             self.assertFalse((home / 'skills/autowork/scripts').exists())
-            self.assertEqual((home / 'skills/docs-sync/scripts/goals.py').read_bytes(),
-                             (ROOT / 'skills/docs-sync/scripts/goals.py').read_bytes())
+            self.assertEqual((home / 'skills/docs-sync/scripts/docs.py').read_bytes(),
+                             (ROOT / 'skills/docs-sync/scripts/docs.py').read_bytes())
             result = subprocess.run(['python3', str(ROOT / 'pi-autowork/engine/owner_cycle.py'), '--help'],
                                     capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stderr)

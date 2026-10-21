@@ -1,0 +1,125 @@
+{
+  "goals": [
+    {
+      "depends_on": [],
+      "evidence": [],
+      "id": "G2",
+      "priority": 1,
+      "source": "TODO.md",
+      "status": "partial",
+      "tasks": [
+        "T-002",
+        "T-004"
+      ],
+      "title": "Two"
+    },
+    {
+      "depends_on": [],
+      "evidence": [],
+      "id": "G1",
+      "priority": 2,
+      "source": "TODO.md",
+      "status": "unmet",
+      "tasks": [
+        "T-001",
+        "T-003",
+        "T-005",
+        "T-007"
+      ],
+      "title": "One"
+    },
+    {
+      "depends_on": [],
+      "evidence": [
+        {
+          "kind": "executed",
+          "ref": "fixture check",
+          "result": "pass"
+        }
+      ],
+      "id": "G3",
+      "priority": 3,
+      "source": "TODO.md",
+      "status": "met",
+      "tasks": [
+        "T-006"
+      ],
+      "title": "Three"
+    }
+  ],
+  "primary_milestone": "G2",
+  "priority_order": {
+    "schema": 1,
+    "tasks": [
+      "T-002",
+      "T-001",
+      "T-003",
+      "T-004",
+      "T-005",
+      "T-007"
+    ]
+  },
+  "tasks": [
+    {
+      "depends_on": [],
+      "goal": "G1",
+      "id": "T-001",
+      "section": "Now",
+      "status": "open",
+      "title": "T-001"
+    },
+    {
+      "depends_on": [
+        "T-001"
+      ],
+      "goal": "G2",
+      "id": "T-002",
+      "section": "Now",
+      "status": "open",
+      "title": "T-002"
+    },
+    {
+      "depends_on": [],
+      "goal": "G1",
+      "id": "T-003",
+      "section": "Now",
+      "status": "open",
+      "title": "T-003"
+    },
+    {
+      "depends_on": [],
+      "goal": "G2",
+      "id": "T-004",
+      "section": "Next",
+      "status": "open",
+      "title": "T-004"
+    },
+    {
+      "depends_on": [
+        "T-006"
+      ],
+      "goal": "G1",
+      "id": "T-005",
+      "section": "Next",
+      "status": "open",
+      "title": "T-005"
+    },
+    {
+      "depends_on": [],
+      "goal": "G1",
+      "id": "T-007",
+      "section": "Needs decision",
+      "status": "open",
+      "title": "T-007"
+    },
+    {
+      "depends_on": [],
+      "goal": "G3",
+      "id": "T-006",
+      "section": "Done",
+      "status": "done",
+      "title": "T-006"
+    }
+  ],
+  "version": 1
+}

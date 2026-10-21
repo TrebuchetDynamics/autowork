@@ -1,4 +1,4 @@
-"""Small TODO execution boundary. Repository files remain the task authority.
+"""Small task execution boundary. The repository's tasks/ store remains the task authority.
 
 Private state contains a live process lease and command receipts, never task
 statuses. A successful command is not task acceptance, review or completion.
@@ -6,11 +6,8 @@ statuses. A successful command is not task acceptance, review or completion.
 import argparse
 import ctypes
 from contextlib import contextmanager
-from copy import deepcopy
-from functools import lru_cache
 import fcntl
 import hashlib
-import importlib.util
 import json
 import math
 import os
@@ -24,121 +21,12 @@ import tempfile
 import time
 import uuid
 
-import parallel_plan
+import task_queue
 from worktree_paths import canonical_root, worktree_path
 
 
 class NoEligibleTask(ValueError):
-    """No TODO task passes selection; the queue is idle rather than malformed."""
-
-
-class PriorityDriftError(ValueError):
-    """Default selection would run a stale order; reconcile before selecting."""
-    def __init__(self, status):
-        self.status = status
-        super().__init__(status['action'])
-
-
-@lru_cache(maxsize=1)
-def goals_module():
-    path = Path(__file__).resolve().parents[2] / 'skills/docs-sync/scripts/goals.py'
-    spec = importlib.util.spec_from_file_location('todo_goals', path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def file_content(path):
-    """Read bytes, not mtime/size: same-size edits and atomic replacements matter."""
-    path = Path(path).absolute()
-    blob = path.read_bytes()
-    return str(path), hashlib.sha256(blob).digest(), blob
-
-
-@lru_cache(maxsize=32)
-def _task_document(content):
-    text = content[2].decode().replace('\r\n', '\n').replace('\r', '\n')
-    return text, goals_module().task_bodies(text)
-
-
-def task_bodies(path):
-    """A caller-owned view of the cached parse, keyed by path and bytes digest."""
-    return deepcopy(_task_document(file_content(path))[1])
-
-
-def _contract_parts(body):
-    return _cached_contract_parts(body.strip())
-
-
-@lru_cache(maxsize=1024)
-def _cached_contract_parts(body):
-    goals = goals_module()
-    labels = tuple(re.findall(r'^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?([A-Za-z][A-Za-z /-]*):',
-                              goals.task_prose(body), re.M))
-    return goals.task_fields(body), labels
-
-
-def contract_fields(body):
-    return deepcopy(_contract_parts(body)[0])
-
-
-def contract_labels(body):
-    return _contract_parts(body)[1]
-
-
-@lru_cache(maxsize=1)
-def archive_module():
-    path = Path(__file__).resolve().parents[2] / 'skills/docs-sync/scripts/todo_archive.py'
-    spec = importlib.util.spec_from_file_location('todo_archive_owner', path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-@lru_cache(maxsize=16)
-def _archive_navigation(content):
-    text, bodies = _task_document(content)
-    return archive_module().navigation(text, goals_module().markdown_prose(text), set(bodies))
-
-
-def archive_file(repo):
-    """The TODO history owner as Docs Sync chooses it: a linked archive such as
-    docs/TODO-archive.md, else TODO.archive.md. Task sources never select it."""
-    try:
-        return Path(repo) / archive_module().archive_owner(
-            Path(repo), _archive_navigation(file_content(Path(repo) / 'TODO.md')))
-    except SystemExit as exc:
-        raise ValueError(str(exc)) from exc
-
-
-def archived_done(repo):
-    """IDs closed in the TODO archive; an ambiguous archive closes nothing."""
-    try:
-        archive = archive_file(repo)
-    except ValueError:
-        return set()
-    if not archive.is_file():
-        return set()
-    return set(_archived_done(file_content(archive)))
-
-
-@lru_cache(maxsize=16)
-def _archived_done(content):
-    text, bodies = _task_document(content)
-    archive = archive_module()
-    prose = re.sub(r'<!--.*?-->', lambda m: re.sub(r'[^\r\n]', ' ', m[0]),
-                   goals_module().markdown_prose(text), flags=re.S)
-    records, _ = archive.entries(text, prose, set(bodies))
-    # Only independently closed heading-only tasks delimit checkbox bodies.
-    # An Evidence/Acceptance subsection must retain its overlap and ambiguity.
-    headings = {tid for start, end, tid, mark in records
-                if mark is None and archive.explicitly_closed(prose[start:end], mark)}
-    records, _ = archive.entries(text, prose, set(bodies) | headings)
-    return frozenset(tid for start, end, tid, mark in records
-                     if sum(row[2] == tid for row in records) == 1
-                     and not any(other_start < end and start < other_end
-                                 for other_start, other_end, other_id, _ in records if other_id != tid)
-                     and archive.explicitly_closed(prose[start:end], mark))
+    """No task passes selection; the queue is idle rather than malformed."""
 
 
 def unique(pairs):
@@ -531,180 +419,34 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
 
 
-def select(repo, requested, plan):
-    # Keep sequential selection lazy: later contracts cannot change its result.
-    return next(_contracts(repo, requested, plan))
-
-
-def select_all(repo, requested=None, plan=None):
-    """Return every passing contract in priority order using sequential checks."""
-    return list(_contracts(repo, requested, plan, parallel=True))
-
-
-@lru_cache(maxsize=16)
-def _ledger_document(content):
-    goals = goals_module()
-    try:
-        data = goals.parse_ledger(content[2].decode())
-    except json.JSONDecodeError as exc:
-        raise SystemExit(f'goals.json:{exc.lineno}:{exc.colno}: malformed JSON') from exc
-    except ValueError as exc:
-        raise SystemExit(str(exc)) from exc
-    problems = goals.shape_errors(data)
-    if problems:
-        raise SystemExit('\n'.join(problems))
-    return data
-
-
-def task_ledger(repo):
-    path = repo / 'goals.json'
-    return deepcopy(_ledger_document(file_content(path))) if path.exists() else None
-
-
-@lru_cache(maxsize=16)
-def _queue_inputs(todo_content, ledger_content):
-    goals = goals_module()
-    text, bodies = _task_document(todo_content)
-    ledger = deepcopy(_ledger_document(ledger_content)) if ledger_content else None
-    if ledger:
-        problems = goals.errors(ledger)
-        if problems:
-            raise ValueError('invalid goals.json: ' + '; '.join(problems))
-        ledger = goals.normalize(ledger)
-        # Reuse the content-keyed parse explicitly, regardless of the queue's module.
-        picks, priority = goals.queue(ledger, text, allow_drift=True, bodies=bodies)
-        ordered = [task['id'] for task, _ in picks]
-        indexed = {task['id']: task for task in ledger['tasks']}
-    else:
-        ordered = sorted(bodies, key=lambda key: {'Now': 0, 'Next': 1}.get(bodies[key][0][2], 2))
-        indexed = {}
-        priority = {'state': 'todo_only'}
-    executable = set(indexed) if ledger else {key for key, items in bodies.items()
-                                             if any(item[2] in ('Now', 'Next') for item in items)}
-    return dict(bodies=bodies, ledger=ledger, ordered=ordered, indexed=indexed,
-                priority=priority, executable=executable, known=set(bodies) | set(indexed))
-
-
-def selection_inputs(repo):
-    """Shared read-only queue context; task output is copied before returning to callers."""
-    ledger = repo / 'goals.json'
-    return _queue_inputs(file_content(repo / 'TODO.md'), file_content(ledger) if ledger.exists() else None)
-
-
-def dependency_done(repo, inputs):
-    done = {key for key, items in inputs['bodies'].items() if items[0][1].lower() == 'x'}
-    done.update(archived_done(repo))
-    done.update(key for key, task in inputs['indexed'].items() if task['status'] == 'done')
-    return done
-
-
-def ledger_reason(repo, tid, inputs, fields, section, *, include_dependencies=True):
-    """Explain the same ledger gates as goals.queue; never relax admission."""
-    indexed = inputs['indexed']
-    task = indexed.get(tid)
-    if task is None:
-        return f'ledger: {tid} is missing from goals.json'
-    archived = archived_done(repo)
-    if task['status'] != 'done' and tid in archived:
-        return f"ledger: {tid} is {task['status']} in goals.json but archived as done"
-    status = re.split(r'[;\.\s]', fields.get('Status', task['status']))[0]
-    if status != task['status']:
-        return f"ledger: {tid} is {task['status']} in goals.json but {status} in TODO.md; files disagree"
-    if task['section'] != section:
-        return f"ledger: {tid} is in {task['section']} in goals.json but {section} in TODO.md; files disagree"
-    if task['status'] in ('done', 'superseded'):
-        return f"ledger: {tid} is {task['status']} in goals.json but unchecked in TODO.md"
-    for dep in task['depends_on']:
-        prerequisite = indexed.get(dep)
-        if prerequisite is None:
-            return f'ledger: dependency {dep} is missing from goals.json'
-        if prerequisite['status'] == 'done':
-            continue
-        if dep in archived:
-            return f"ledger: {dep} is {prerequisite['status']} in goals.json but archived as done"
-        reason = f"ledger: dependency {dep} is {prerequisite['status']} in goals.json"
-        if prerequisite['section'] not in ('Now', 'Next'):
-            return reason + f" in {prerequisite['section']} (outside Now/Next)"
-        if include_dependencies:
-            return reason
-    goals = {g['id']: g for g in inputs['ledger']['goals']}
-    goal = goals[task['goal']]
-    if goal['status'] == 'met':
-        return f"ledger: goal {goal['id']} is met in goals.json but {tid} is unfinished in TODO.md"
-    for dep in goal['depends_on']:
-        if include_dependencies and goals[dep]['status'] != 'met':
-            return f"ledger: goal dependency {dep} is {goals[dep]['status']} in goals.json"
-    return None
-
-
-def contract_reason(repo, tid, inputs, done, plan=None):
-    """The sequential eligibility rules, also used by the one-pass status reader."""
-    goals = goals_module()
-    bodies, indexed = inputs['bodies'], inputs['indexed']
-    if tid not in bodies:
-        return 'missing TODO contract'
-    body, mark, section = bodies[tid][0]
-    fields, labels = _contract_parts(body)
-    if (any(labels.count(label) > 1 for label in ('Scope', 'Acceptance', 'Checks', 'Verification', 'Dependencies', 'Status', 'Sources'))
-            or all(label in labels for label in goals.CHECK_LABELS)):
-        return 'duplicate task contract fields'
-    if mark.lower() == 'x' or section not in ('Now', 'Next'):
-        return 'completed or decision-held'
-    if inputs['ledger'] and (reason := ledger_reason(repo, tid, inputs, fields, section)):
-        return reason
-    if not (fields.get('Scope') and fields.get('Acceptance') and goals.task_checks(fields)):
-        return 'needs unique Scope, Acceptance and Checks fields'
-    deps = fields.get('Dependencies', 'None.').strip().strip('.').strip()
-    ids = parallel_plan.dependency_ids(deps, inputs['known'])
-    if ids and any(item not in done() for item in ids):
-        return f'unresolved dependency {deps}'
-    if plan:
-        sources = re.findall(r'\]\(([^)]+)\)', fields.get('Sources', ''))
-        if plan not in sources:
-            return 'not linked to the named plan'
-        path, _, anchor = plan.partition('#')
-        source = local_path(repo, path)
-        if not source.is_file():
-            raise ValueError('named plan does not exist')
-        if anchor and anchor not in {re.sub(r'[^\w -]', '', heading.lower()).replace(' ', '-')
-                                    for heading in re.findall(r'^#+\s+(.+)', source.read_text(), re.M)}:
-            raise ValueError('named plan heading does not exist')
-    return None
-
-
-def _contracts(repo, requested, plan, *, parallel=False):
-    # Keep sequential selection lazy: later contracts cannot change its result.
+def _checked_request(requested):
     wanted = requested.split(',') if requested else None
     if wanted and (len(set(wanted)) != len(wanted) or
                    any(not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', item) for item in wanted)):
-        raise ValueError('--tasks must name unique TODO IDs')
-    inputs = selection_inputs(repo)
-    bodies, indexed = inputs['bodies'], inputs['indexed']
-    # Named tasks and an owner's active claim remain explicit; only default
-    # selection would execute a stale priority, so only it stops on drift.
-    if not wanted and inputs['priority']['state'] == 'drift':
-        raise PriorityDriftError(deepcopy(inputs['priority']))
-    if any(len(bodies[key]) != 1 for key in inputs['executable'].union(wanted or ()) if key in bodies):
-        raise ValueError('duplicate TODO task IDs; reconcile the repository contract')
-    done = lru_cache(maxsize=1)(lambda: dependency_done(repo, inputs))
-    accepted, reasons = False, []
-    for tid in (wanted or inputs['ordered']):
-        if reason := contract_reason(repo, tid, inputs, done, plan):
-            reasons.append(f'{tid}: {reason}')
-            continue
-        body, mark, section = bodies[tid][0]
-        fields = contract_fields(body)
-        if not parallel and fields.get('Kind', '').strip().lower() == 'plan':
-            reasons.append(f'{tid}: ready for planning (maintainer only)')
-            continue
-        if parallel and inputs['ledger'] and 'Status' not in fields:
-            fields['Status'] = indexed[tid]['status']
-        yield {'id': tid, 'title': body.splitlines()[0].strip(' —:-'),
-               'section': section, 'contract': body.strip(), 'fields': fields,
-               'priority': deepcopy(inputs['priority'])}
-        accepted = True
-    if not accepted:
-        raise NoEligibleTask('; '.join(reasons) or 'no eligible TODO task; inspect source and record a bounded improvement')
+        raise ValueError('--tasks must name unique task IDs')
+
+
+def select(repo, requested, plan):
+    """The first selectable task at HEAD, planning tasks excepted (sequential execution)."""
+    _checked_request(requested)
+    chosen, reasons = task_queue.selectable(repo, requested, plan, sequential=True)
+    if not chosen:
+        raise NoEligibleTask('; '.join(reasons) or 'no eligible task; inspect source and record a bounded improvement')
+    return chosen[0]
+
+
+def select_all(repo, requested=None, plan=None):
+    """Every selectable task at HEAD in priority order, planning tasks included."""
+    _checked_request(requested)
+    chosen, reasons = task_queue.selectable(repo, requested, plan)
+    if not chosen:
+        raise NoEligibleTask('; '.join(reasons) or 'no eligible task; inspect source and record a bounded improvement')
+    return chosen
+
+
+def task_path(task_id):
+    """The task file a contract comes from, relative to the repository."""
+    return f'tasks/items/{task_id}.md'
 
 
 def command(args, repo, state, common, task, lease, lock_fd):
@@ -729,7 +471,7 @@ def command(args, repo, state, common, task, lease, lock_fd):
     elif args.budget_seconds is not None:
         budget = {'allocation': args.budget_seconds, 'remaining': args.budget_seconds, 'pending': False}
         timeout = min(timeout, args.budget_seconds)
-    paths = ['TODO.md'] + (['goals.json'] if (repo / 'goals.json').exists() else []) + args.source_path
+    paths = [task_path(task['id'])] + args.source_path
     if args.plan:
         paths.append(args.plan.split('#', 1)[0])
     before = {name: digest(local_path(repo, name)) for name in dict.fromkeys(paths)}
@@ -952,10 +694,12 @@ def execute(args):
         requested = args.tasks
         if not requested and claim and active_owner(claim) and claim['owner'] == owner:
             requested = claim.get('task_id')
-        selection_paths = ['TODO.md', 'goals.json'] + ([args.plan.split('#', 1)[0]] if args.plan else [])
-        selected_inputs = {path: digest(local_path(repo, path)) for path in selection_paths}
+        plan_paths = [args.plan.split('#', 1)[0]] if args.plan else []
+        selected_inputs = {'tasks': task_queue.commit(repo)}
+        selected_inputs.update({path: digest(local_path(repo, path)) for path in plan_paths})
         task = select(repo, requested, args.plan)
-        if selected_inputs != {path: digest(local_path(repo, path)) for path in selection_paths}:
+        if selected_inputs != {'tasks': task_queue.commit(repo),
+                               **{path: digest(local_path(repo, path)) for path in plan_paths}}:
             raise ValueError('repository task inputs changed during selection; reread current files')
         result = {'outcome': 'READY', 'task': task, 'completed_tasks': [], 'workspace': str(repo),
                   'priority': task.pop('priority')}
@@ -995,7 +739,7 @@ def execute(args):
             result.update(command(args, repo, state, common, task, lease, fd))
         else:
             result['outcome'] = 'EXECUTE'
-            result['reason'] = 'Current coordinator owns this TODO task; implement, check, review and record completion in repository files.'
+            result['reason'] = 'Current coordinator owns this task; implement, check, review and record completion in repository files.'
         return result
 
 
@@ -1057,8 +801,6 @@ def parallel_main(args):
             result = parallel_integrate.dispatch_with_retries(args)
     except BlockingIOError:
         result = {'outcome': 'BUSY', 'reason': 'Repository execution lock is held by a live operation.'}
-    except PriorityDriftError as exc:
-        result = dict(exc.status, outcome='PRIORITY_DRIFT', reason=str(exc))
     except subprocess.TimeoutExpired as exc:
         result = host_busy(exc)
     except (ValueError, OSError, subprocess.SubprocessError, SystemExit) as exc:
@@ -1099,9 +841,6 @@ def main(argv=None):
                           help='Stop a worker after this many seconds (default 3600).')
     parallel.add_argument('--min-free-mem-mb', type=int, default=1500,
                           help='Start a worker only with this much MemAvailable per running worker plus one.')
-    parallel.add_argument('--adopt-idle-claims', type=float, default=0, metavar='SECONDS',
-                          help='Dispatch in_progress claims idle this long: no task, branch or worktree change '
-                               'and no live agent (0, the default, never adopts).')
     parallel.add_argument('--base-ref', help='The branch this session lands on: a task closed there is closed here '
                                              '(its worker stops, its commit is set aside).')
     parallel.add_argument('--wait', action='store_true',
@@ -1171,8 +910,6 @@ def main(argv=None):
         result = execute(args)
     except BlockingIOError:
         result = {'outcome': 'BUSY', 'reason': 'Repository or helper publication lock is held by a live operation.'}
-    except PriorityDriftError as exc:
-        result = dict(exc.status, outcome='PRIORITY_DRIFT', reason=str(exc))
     except subprocess.TimeoutExpired as exc:
         result = host_busy(exc)
     except (ValueError, OSError, subprocess.SubprocessError, SystemExit) as exc:

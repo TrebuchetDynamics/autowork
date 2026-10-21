@@ -1,9 +1,10 @@
 # Direct repository execution
 
-`owner_cycle.py` is the public entry point for card-free TODO selection and local
+`owner_cycle.py` is the public entry point for card-free task selection and local
 coordination. It does not query Kanban, invoke native handoff/review, or implicitly
-change TODO/goals status. TODO.md owns product requirements; goals.json is optional.
-Private receipts preserve coordination and evidence, never a second task board.
+change task or goal status. `tasks/` owns product requirements: one record per task in
+`tasks/items/`, one per goal in `tasks/goals/`. Private receipts preserve coordination
+and evidence, never a second task board.
 
 ## Current session
 
@@ -35,13 +36,12 @@ paths are rejected. Generic command receipts are not reusable acceptance proofs.
 broad repository work; `--scope tasks` retains task-only scope. Check selected
 scope, dependencies, acceptance and sources before implementation.
 
-Default selection stops with `PRIORITY_DRIFT` (and claims nothing) when TODO.md's
-order of unfinished tasks differs from goals.json's recorded `priority_order`; the
-result lists the TODO and recorded orders and the moved, added, missing and
-duplicated IDs. A named `--tasks` filter or the owner's active claim continues and
-reports `priority.state: drift`. Every result carries `priority.state`: `synced`,
-`drift`, `unmigrated` (legacy goal-priority order, with the bootstrap action) or
-`todo_only`. `goals.py next`, backlog checks and retry selection use the same guard.
+Selection reads `tasks/` at the base commit. Order is section (Now before Next), then
+rank, gated by goal focus, priority and dependencies; there is no separate recorded
+order to drift from, and moving a task is editing its rank. A record missing contract
+fields is a draft and is never selected; a task with a current `Held by:` note is
+never selected. `autowork tasks why ID` explains a pick or a skip. A repository
+without `tasks/` selects nothing and the result says to run `autowork migrate` once.
 
 ## Bounded command
 
@@ -55,10 +55,10 @@ It runs that foreground command under the shared repository lock and retains its
 argv, executable and selected file hashes. Detached descendants are stopped at command
 exit; leftover children make the result unsuccessful. This is cooperative local
 process cleanup, not a hostile-code sandbox. The optional `--budget-seconds` caps
-cumulative command walltime for this TODO ID; an interrupted pending receipt requires
+cumulative command walltime for this task ID; an interrupted pending receipt requires
 usage reconciliation and a later tick cannot refill it.
 It retains execution evidence;
-it never closes the TODO task. A command-only invocation needs no persistent PID
+it never closes the task. A command-only invocation needs no persistent PID
 unless recovering that owner's existing claim. This bundled runner currently requires Linux process inspection for durable ownership
 and bounded descendant cleanup. Other hosts execute directly through their own
 supported workspace coordination and command controls; do not invent process proof. Preserve command/session/log/final-exit evidence;

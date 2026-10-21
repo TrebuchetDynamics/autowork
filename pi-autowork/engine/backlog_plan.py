@@ -4,6 +4,9 @@ import hashlib
 import json
 from pathlib import Path
 from progress_runtime import private_path, write
+import task_queue
+import task_select
+from task_store import StoreError
 
 
 def key(cycle):
@@ -11,7 +14,22 @@ def key(cycle):
     return hashlib.sha256(json.dumps(bound,sort_keys=True).encode()).hexdigest()
 
 
+def ready_queue(cycle):
+    """The consumer's selectable tasks now, from its store at the cycle's revision (HEAD
+    without one): [] when it has none, None when the store cannot be read. A queue written
+    into the cycle by hand is never trusted; this is its only producer."""
+    consumer = cycle.get('consumer')
+    if not isinstance(consumer, str) or not Path(consumer).is_dir():
+        return None
+    try:
+        snapshot = task_queue.store(Path(consumer), cycle.get('revision') or 'HEAD')
+    except StoreError:
+        return None
+    return [{'id': t.id, 'title': t.title, 'goal': t.goal} for t in task_select.order(snapshot)][:3]
+
+
 def decide(cycle, state):
+    queue = ready_queue(cycle)
     gate=cycle.get('recovery',{}).get('gate')
     if cycle.get('coordination_mode') == 'autonomous' and gate in ('ledger', 'ownership', 'owner_authority'):
         return {'action': 'repair_local_inputs' if gate != 'ownership' else 'reconcile_live_work',
@@ -37,7 +55,7 @@ def decide(cycle, state):
                     'reason': 'Accepted task is ready; missing handoff artifacts are routine preparation, not a research gap',
                     'handoff': 'Build the contract, immutable base and source snapshot from this accepted task, then retry native admission. Research only a concrete unresolved choice; preserve any prior failure receipt.'}
         return decision
-    if not held_inputs and cycle.get('backlog_ready', True) and (cycle.get('ready_queue') or cycle.get('selected_task')):
+    if not held_inputs and cycle.get('backlog_ready', True) and (queue or cycle.get('selected_task')):
         return {'action':'execute_ready_work','reason':'Use the existing accepted task before planning'}
     if gate=='ledger':
         return {'action':'integrate_existing_inputs','reason':'Reconcile canonical backlog with its owner; do not create another detached plan'}
@@ -57,7 +75,7 @@ def decide(cycle, state):
     if gate in ('refused','owner_authority','source_freshness','prerequisites','candidate'):
         return {'action':'repair_execution_inputs','reason':'Planning cannot supply missing authority or execution prerequisites'}
     poor_contract=gate in ('accepted_body_repair','accepted_metadata_repair')
-    empty_queue = cycle.get('ready_queue') == [] and not cycle.get('selected_task')
+    empty_queue = queue == [] and not cycle.get('selected_task')
     if poor_contract or empty_queue or cycle.get('unchanged_runs',0)>=2:
         return planning_decision(cycle, state, 'Observed empty queue, incomplete task contract or repeated hold')
     return {'action':'recover_first','reason':'Attempt ordinary recovery before opening a planning pass'}

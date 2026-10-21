@@ -44,7 +44,7 @@ class BlockersContract(unittest.TestCase):
     def test_answers_are_planning_not_runner_management(self):
         for phrase in ('never starts, stops, restarts or reconfigures a runner',
                        'never launches a competing execution or repair session', 'never kills a session',
-                       'never pushes', "Edit that task's TODO.md entry", "never edit inside the runner's marked block",
+                       'never pushes', "Edit that task's record: `autowork tasks field", "never edit inside the runner's marked block",
                        'route separately requested publication through Git Commit Push', '--set-aside TASK` belong to the runner'):
             self.assertIn(phrase, self.ref)
 
@@ -65,7 +65,7 @@ class BlockersContract(unittest.TestCase):
 
 
     def test_classifies_causes_and_delivers_recoveries_before_claiming_progress(self):
-        for phrase in ('Classify each hold by cause', 'Resources: exclusive',
+        for phrase in ('Classify each hold by cause', 'the `exclusive` resource',
                        'never strip exclusivity in bulk', 'Never repeat a recovery that already failed',
                        'Protect the agreed priority', 'local uncommitted edit is not a delivered recovery',
                        'One task starting does not unblock the queue'):

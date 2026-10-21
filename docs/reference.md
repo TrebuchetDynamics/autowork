@@ -78,7 +78,8 @@ relative to this repository.
 
 | Helper | Commands | Reference |
 | --- | --- | --- |
-| [`skills/docs-sync/scripts/goals.py`](../skills/docs-sync/scripts/goals.py) | `init`, `validate`, `fmt`, `render`, `revision`, `archive`, `next`, `reorder`, `bootstrap-order`, `focus`, `task`, `supersede`, `section`, `new-id`, `add-task`, `redact`, `evidence`, `backlog-check` | `goals.py --help`; [document scaffold](../skills/docs-sync/references/document-scaffold.md#first-task-index-initialization) |
+| `autowork tasks` ([source](../pi-autowork/pi_autowork/task_commands.py)) | `prepare`, `list`, `show`, `why`, `validate`, `new-id`, `add`, `field`, `place`, `move`, `hold`, `release`, `done`, `supersede`, `goal` ([`prepare` source](../pi-autowork/pi_autowork/task_prepare.py)) | `autowork tasks --help`; [task store](../pi-autowork/task-store.md) |
+| `autowork migrate` ([source](../pi-autowork/pi_autowork/task_migrate.py)) | convert a TODO.md + goals.json repository to `tasks/` once | [converting a repository](../pi-autowork/task-store.md#converting-a-repository-autowork-migrate) |
 | [`skills/docs-sync/scripts/docs.py`](../skills/docs-sync/scripts/docs.py) | `validate`, `check`, `stale`, `profiles` | `docs.py --help`; [role manifest](../skills/docs-sync/references/document-scaffold.md#optional-role-manifest) |
 
 ## Worker long checks: `autowork-run`
@@ -120,8 +121,8 @@ when the edits could merge without a conflict. If the paths do not overlap,
 the session merges and pushes normally, leaving the owner's working-tree and
 staged changes uncommitted.
 
-The owner-planning sweep still commits `TODO.md`, `TODO.archive.md`, `goals.json`
-and `BLOCKERS.md` (including the repository's configured TODO archive) once their
+The owner-planning sweep still commits task and goal files under `tasks/` and
+`BLOCKERS.md` once their
 content has stayed unchanged for `PI_AUTOWORK_PLANNING_QUIET` seconds (default
 `600`) and no process holds them open for writing. Unfinished Git operations
 are left alone. This main-checkout boundary does not change recovery commits
@@ -134,8 +135,8 @@ Source: [`parallel_plan.py`](../pi-autowork/engine/parallel_plan.py),
 [`coordinator.py`](../pi-autowork/pi_autowork/coordinator.py); accepted
 [rolling planning design](plans/2026-10-18-rolling-planning.md#rolling-planning-design).
 
-A normal TODO contract may add `Kind: plan`, `Goal: <goal ID>` and
-`Plan round: N of M` (default `1 of 10`). Once its dependencies are done, the
+A task record may set `kind = "plan"` (with its `goal`) and a `Plan round: N of M`
+note (default `1 of 10`). Once its dependencies are done, the
 engine reports **ready for planning** rather than allocating a code-worker
 worktree. Sequential execution also leaves it to the maintainer.
 
@@ -228,5 +229,5 @@ available. This is a wait, not a request for a decision.
 | `ROOT/maintenance/toolset-update/pinned/NAME-*/` | `hermes autowork pin` | One pin: `record.json` (profile, link, checkout, revision), the saved `link`, and after unpinning the kept clone (`unpinned-*`). |
 | `ROOT/maintenance/toolset-update/run.log` | Updater | Output of updates started with `/autowork update` and of gateway restarts the updater requests; terminal `hermes autowork update` prints to the terminal. |
 | `/run/user/UID/autowork-checks-UID/` | Pi runner and worker checks | Shared per-user slot locks and runner FIFO waiter tickets, independent of repository, `$XDG_RUNTIME_DIR` and task `$TMPDIR`; falls back to `/var/tmp/autowork-checks-UID/` when the runtime directory is unavailable. Worker checks use separate `worker-slot-*` locks. `PI_AUTOWORK_CHECK_ROOT` overrides the private directory for fixtures or isolated hosts. Slot locks live with their file descriptors, including in the check subprocess: a dead check cannot leave a stale lock. Do not delete slot/mutex files while runners are active. |
-| `TODO.md`, `goals.json`, `TODO.archive.md` (project) | Docs Sync, Autowork | Work queue, its machine index and completed-task history. |
+| `tasks/items/`, `tasks/goals/`, `tasks/evidence/` (project) | `autowork tasks`, Autowork | The task store: one file per task and per goal, and the receipts of verified closes. `TODO.archive.md`, where it exists, is frozen history. |
 | `docs/roles.json` (project, optional) | Docs Sync | Document role manifest. |

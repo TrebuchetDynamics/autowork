@@ -21,12 +21,12 @@ from .common import git
 
 ROLE = 'DOCS-MAINTAINER'
 PLANNING_CAUSES = ('scope', 'scope_request', 'blocker', 'contract_changed', 'no_change')
-PLANNING_FILES = ('TODO.md', 'goals.json', 'BLOCKERS.md', 'TODO.archive.md', 'CHANGELOG.md')
-PLANNING_DIRS = ('docs/tasks/',)
+PLANNING_FILES = ('BLOCKERS.md', 'CHANGELOG.md')
+# Task and goal records; never tasks/evidence/, whose receipts only a verified close writes.
+PLANNING_DIRS = ('tasks/items/', 'tasks/goals/', 'docs/tasks/')
 LIMIT = 12
 PLAN_TASK_LIMIT = 8
 PLAN_ROUNDS = 10
-REPLAY_REFUSED = 'archive replay refused: '
 
 
 def triggers(rows, main=None, findings=None, reported_flakes=(), ledger_errors=(), limit=LIMIT):
@@ -36,7 +36,7 @@ def triggers(rows, main=None, findings=None, reported_flakes=(), ledger_errors=(
     errors = sorted({' '.join(str(e).split()) for e in ledger_errors if str(e).strip()})
     if errors:
         # Do not let changing task holds/main commits retrigger the same ledger repair.
-        return [('LEDGER', 'invalid goals.json', '\n'.join(errors))]
+        return [('LEDGER', 'invalid task store', '\n'.join(errors))]
     found = []
     evidence = (main or {}).get('evidence') or ''
     bundle = f'; evidence bundle: {evidence}' if evidence else ''
@@ -80,83 +80,6 @@ def triggers(rows, main=None, findings=None, reported_flakes=(), ledger_errors=(
     return sorted(found)[:limit]
 
 
-def archive_closures(repo, execution):
-    """Replay only unique, explicitly done history, including archive-only IDs."""
-    repo = Path(repo)
-    ledger = execution.task_ledger(repo)
-    if not ledger:
-        return []
-    bodies = execution.task_bodies(repo / 'TODO.md')
-    done = execution.archived_done(repo)
-    return [(t['id'], 'archive close', f"ledger: {t['id']} is {t['status']} in goals.json but archived as done")
-            for t in ledger['tasks'] if t['status'] in ('open', 'in_progress') and t['id'] in done
-            and len(bodies.get(t['id'], [])) <= 1
-            and not any(re.search(r'^[ \t]*[-*] \[ \]', execution.goals_module().task_prose(body), re.M)
-                        for body, _, _ in bodies.get(t['id'], []))]
-
-
-def replay_archive(repo, names, execution, goals_cli):
-    """Mechanical work inside the maintainer checkout; no acceptance is inferred.
-
-    goals.py owns ledger mutation and archival. The exact live body is marked under
-    its coordination/atomic-write guard, just as the engine's verified close does.
-    The transaction caller discards the checkout if any step fails.
-    """
-    repo = Path(repo)
-    current = {task for task, _, _ in archive_closures(repo, execution)}
-    if not set(names) <= current:
-        return False, 'archive completion evidence changed'
-    goals = execution.goals_module()
-    try:
-        for task in names:
-            result = goals_cli('task', str(repo), task, 'done')
-            if result.returncode:
-                return False, result.stdout + result.stderr
-            with goals.coordination(repo):
-                todo = repo / 'TODO.md'
-                before = todo.read_bytes()
-                text = before.decode()
-                blocks = [b for b in goals.task_blocks(text) if b['id'] == task]
-                if len(blocks) > 1:
-                    return False, f'{task}: duplicate live entry'
-                if blocks:
-                    block = blocks[0]
-                    body = text[block['start']:block['end']]
-                    prose = goals.task_prose(body)
-                    marks = [m for m in re.finditer(goals.TASK_MARK, prose, re.M) if m[2] == task]
-                    statuses = list(re.finditer(
-                        r'(?m)^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?Status:(?:\*\*)?[ \t]*([^\r\n]*)', prose))
-                    if len(marks) != 1 or len(statuses) > 1:
-                        return False, f'{task}: ambiguous live checkbox or Status'
-                    replacements = [(marks[0].start(1), marks[0].end(1), 'x')]
-                    replacements += [(m.start(1), m.end(1), 'done') for m in statuses]
-                    for start, end, value in sorted(replacements, reverse=True):
-                        body = body[:start] + value + body[end:]
-                    goals.atomic_write(todo, text[:block['start']] + body + text[block['end']:], expected_bytes=before)
-        result = goals_cli('archive', str(repo))
-        if result.returncode:
-            return False, result.stdout + result.stderr
-        remaining = execution.task_bodies(repo / 'TODO.md')
-        if any(task in remaining for task in names):
-            return False, 'archive did not move the repaired live entries'
-        return True, ''
-    except (OSError, ValueError, SystemExit) as exc:
-        return False, str(exc)
-
-
-def archive_rejections(state, closures, *, entries, reasons):
-    """A failed mechanical replay becomes one substantive repair, even without a live row."""
-    run = last(state)
-    ids = set(run.get('task_ids', [])) | set(entries)
-    rejected = []
-    for item in closures:
-        receipt = run.get('items', {}).get(item_key(item), {})
-        if (matches(receipt, item, entries.get(item[0], {}), reasons, ids)
-                and receipt.get('outcome', '').startswith(REPLAY_REFUSED)):
-            rejected.append((item[0], 'archive close refused', receipt['outcome']))
-    return rejected
-
-
 def overlap(row):
     """The dispatcher's wait for a file another task names (parallel_plan), or ''."""
     reason = ' '.join(str(row.get('reason') or '').split())
@@ -186,24 +109,21 @@ def planning_only(paths):
 PROMPT = (
     'You are the DOCS-MAINTAINER of {repo}: you repair task docs so that held and unrunnable tasks can '
     'run again, without the owner. The runner cannot run these tasks as they are written:\n{items}\n'
-    'For archive close refused: model-free replay of explicitly done history could not finish with a valid ledger. '
-    'Read the named task in the TODO archive and repair the exact reported invariant from source evidence; '
-    'a task close is not proof that its goal is met. Never invent passing evidence or check off remaining acceptance. '
-    'For ledger edit: the task integrated, but its candidate\'s ledger edits (including resolver edits) '
-    'were left out. Review the saved patch against the current ledger; the task may already be archived. '
-    'Apply only justified changes through the docs-sync ledger tools, or drop the proposal. Never apply '
+    'For ledger edit: the task integrated, but its candidate\'s edits to task files (including resolver edits) '
+    'were left out. Review the saved patch against the current task files; the task may already be closed. '
+    'Apply only justified changes with {tasks}, or drop the proposal. Never apply '
     'the patch automatically or undo newer planning or task closure. '
-    'For each one, read its TODO.md entry, its Sources and accepted plans, and the worker\'s report under '
+    'For each one, read its record (tasks/items/<task>.md), its Sources and accepted plans, and the worker\'s report under '
     '.git/autowork-execution/slot-data/<task>/ when there is one. Then, only from that evidence: restate '
     'an ambiguous contract; correct Touches, Checks or Dependencies (a worker that names the exact files '
     'it needs is evidence); fill a missing required field from the task\'s own sources; split an oversized '
     'task; restate a contract that demands what no one provides (a coordinator receipt, handoff, registry or '
     'verification the repository has no mechanism for) to what an unattended worker can do, and let it repair a '
     'defect already in the code that stops its checks; '
-    'supersede a duplicate with python3 {goals} supersede; re-sort to unblock a dependency chain, '
+    'supersede a duplicate with {tasks} supersede; re-sort to unblock a dependency chain, '
     'preferring to split off independent parts with disjoint Touches '
-    '(never above the owner\'s first tasks in Now). For LEDGER (goals.py validate errors): repair the ledger '
-    'and its planning docs from repository evidence. An unverified goal with no open task needs a task for '
+    '(never above the owner\'s first tasks in Now). For LEDGER ({tasks} validate errors): repair the named '
+    'task and goal files from repository evidence. An unverified goal with no open task needs a task for '
     'its remaining proof, or an evidence-backed status correction; never invent proof or mark it verified '
     'just to pass validation. For MAIN (flaky test): the test failed in the full run '
     'but passed alone on three different revisions. Unless an open task already covers it, add one test-hardening '
@@ -218,7 +138,7 @@ PROMPT = (
     'a resolver run and a second review): you may add, remove, merge and split tasks that have not started, and '
     'reorder them, so that what runs next has disjoint Touches. Prefer, in order: merge it into the other task '
     'when that one has not started either (combine Scope, Touches, Acceptance and Checks into one entry and '
-    'supersede the other with python3 {goals} supersede); split the shared-file part into a follow-up task that '
+    'supersede the other with {tasks} supersede); split the shared-file part into a follow-up task that '
     'depends on the other task, so the rest starts now with Touches that no longer name that file; supersede it '
     'when the other task already delivers it; otherwise make the order explicit in Dependencies. Never edit the '
     'entry of a task that is running or whose commit waits to land; keep every Acceptance item in whichever task '
@@ -226,14 +146,14 @@ PROMPT = (
     'For repeated quick hold: three consecutive attempts held within ten minutes on the same missing input. '
     'This blocker gets one repair, not repeated cosmetic entry edits. Restate the task so the named missing '
     'input is produced (add a producer task and dependency), or move it to Needs decision. Only when the '
-    'blocker is addressed, add `Blocker resolution: <fingerprint from the item>; <producer task or decision '
-    'evidence>` to its entry; other entry edits cannot restart it. Never invent an input or receipt. '
+    'blocker is addressed, add the note `Blocker resolution: <fingerprint from the item>; <producer task or decision '
+    'evidence>` to its record with {tasks} field; other entry edits cannot restart it. Never invent an input or receipt. '
     'For held: no_change (the worker ran the task and found nothing to change; its report says why): when '
     'the report\'s evidence shows the Acceptance is already met, close the task as done with that evidence '
-    'through {goals}; otherwise restate the task so it names the change to make. '
+    'with {tasks} done --evidence; otherwise restate the task so it names the change to make. '
     'For MAIN (main red, main fails its full offline check): unless an '
-    'open task already covers those failures, add one repair task first in Now with python3 {goals} add-task '
-    'and write its entry with the failing tests, commits and named evidence bundle revision directory as Evidence. '
+    'open task already covers those failures, add one repair task with {tasks} add, move it first in Now, '
+    'and give it the failing tests, commits and named evidence bundle revision directory as Evidence. '
     'For every MAIN item, read the bundle in place (main_check.json, main-check.log, main-check.exit, '
     'main-check-reruns.log and flaky_history.json); never copy it into worktrees or commits. '
     'If an open repair or hardening task already covers the same failing tests, update its Evidence '
@@ -244,28 +164,29 @@ PROMPT = (
     'whose Acceptance lists the reviewer\'s findings, or restate it so the findings are explicit; keep every '
     'Acceptance item, and leave it as it is if a finding needs a product decision. Never change product scope or Acceptance, grant '
     'authority, credentials or spending, or decide a product question: leave such a task as it is. Use '
-    '/skill:docs-sync and its goals.py commands for TODO.md and goals.json, run python3 {goals} validate . '
-    'and fix what it reports, edit only TODO.md, goals.json, BLOCKERS.md, TODO.archive.md, CHANGELOG.md and docs/tasks/, '
+    '{tasks} (add, field, place, move, done, supersede) for task files, run {tasks} validate --worktree . '
+    'and fix what it reports, edit only tasks/items/, tasks/goals/, BLOCKERS.md, CHANGELOG.md and docs/tasks/, '
     'and commit once on this checkout with a message that gives each change\'s reason. Do not push or '
     'switch branches. End with one line: PI_AUTOWORK_RESULT: completed or PI_AUTOWORK_RESULT: blocked, '
     'then the tasks you changed.')
 
 
-def prompt(found, repo, goals):
+def prompt(found, repo, tasks):
+    """``tasks`` is the command line of the store's CLI (`autowork tasks`)."""
     items = '\n'.join(f'- {task} ({kind}): {why}' for task, kind, why in found)
-    message = PROMPT.format(repo=repo, items=items, goals=goals)
+    message = PROMPT.format(repo=repo, items=items, tasks=tasks)
     if any(kind == 'plan' for _, kind, _ in found):
         message += (
             '\nFor the single plan trigger, run /skill:plan-for-me on that entry\'s Scope, not a backlog sweep. '
             'Read its Goal, Sources and Dependencies, the finished batch\'s reports under the execution '
-            'common directory\'s slot-data/, the current code and the goal\'s remaining proof in goals.json. '
+            'common directory\'s slot-data/, the current code and the goal\'s remaining proof in tasks/goals/. '
             f'Save at most {PLAN_TASK_LIMIT} new tasks TOTAL (including the successor planning task), '
             'all under the entry\'s Goal. Never truncate an oversized proposal: revise the batch or fail planning. '
             'Put owner-only gaps in Needs decision with their one Question; continue with independent building tasks. '
-            'Close the current planning task as done, preserving its evidence in TODO.md or its archive. '
+            'Close the current planning task with ' + tasks + ' done --evidence. '
             f'Read Plan round: N of M (default 1 of {PLAN_ROUNDS}). If the goal is not met, N < M and '
-            'there is a new building task, finish the batch with exactly one open Kind: plan task, '
-            'Plan round: N+1 of M, depending on EVERY new building task (not Needs decision items). '
+            'there is a new building task, finish the batch with exactly one open task of kind plan with the '
+            'note Plan round: N+1 of M, depending on EVERY new building task (not Needs decision items). '
             'If N == M or there is no new building task, save NO successor planning task. In those stopping '
             'cases, unless executed evidence proves the goal met under the existing ledger rules, write one stop question '
             'in BLOCKERS.md under ### Q-<current planning task ID> — Planning stopped, naming the Goal '
@@ -290,24 +211,10 @@ def goal_id(fields):
     return (fields.get('Goal', '').split() or [''])[0].rstrip('.')
 
 
-def plan_entries(repo, goals, archive):
-    """Include archived and ledger-only IDs so neither hiding nor reusing IDs evades the cap."""
-    result = entries(archive.read_text(), goals) if archive.exists() else {}
-    result.update(entries((Path(repo) / 'TODO.md').read_text(), goals))
-    path = Path(repo) / 'goals.json'
-    if path.exists():
-        data = goals.parse_ledger(path.read_text())
-        problems = goals.shape_errors(data)
-        if problems:
-            raise ValueError('; '.join(problems))
-        for task in data['tasks']:
-            result.setdefault(task['id'], dict(fields={'Goal': task.get('goal', ''),
-                                                       'Section': task.get('section', ''),
-                                                       'Status': task.get('status', '')}))
-    return result
-
-
-def plan_error(found, before, after, repo, dependency_ids):
+def plan_error(found, before, after, repo, dependency_ids, goal_status):
+    """``before``/``after`` are entries() of the store before and after the proposal (closed
+    tasks stay in the store, so a reused ID is never new); ``goal_status`` is {goal: status}
+    after it."""
     """Refuse an invalid model proposal as a whole, before its planning commit lands."""
     plans = [task for task, kind, _ in found if kind == 'plan']
     if not plans:
@@ -335,15 +242,13 @@ def plan_error(found, before, after, repo, dependency_ids):
         return 'new tasks must stay under the planning task goal'
     if any(f.get('Section') not in ('Now', 'Next', 'Needs decision') or f.get('Checkbox') != ' '
            or f.get('Status', 'open') != 'open' for f in new.values()):
-        return 'new tasks must have open TODO entries in Now, Next or Needs decision'
+        return 'new tasks must be open in Now, Next or Needs decision'
     successors = {tid: f for tid, f in new.items() if f.get('Kind', '').strip().lower() == 'plan'}
     building = {tid for tid, f in new.items() if tid not in successors and f.get('Section') in ('Now', 'Next')}
     decisions = [f for f in new.values() if f.get('Section') == 'Needs decision']
     if any('?' not in '\n'.join(f.values()) for f in decisions):
         return 'Needs decision items must name their question'
-    path = Path(repo) / 'goals.json'
-    data = json.loads(path.read_text()) if path.exists() else {}
-    met = any(g.get('id') == goal and g.get('status') == 'met' for g in data.get('goals', []))
+    met = goal_status.get(goal) == 'met'
     if not met and round_ < maximum and building:
         if len(successors) != 1:
             return 'the unfinished goal needs exactly one successor planning task'
@@ -389,16 +294,14 @@ RETRYABLE = 'refused: it conflicts with the session'
 TRIES = 2
 
 
-def entries(todo, goals):
-    """Entry digests and named fields, using the same task parser as the engine."""
+def entries(snapshot, task_queue):
+    """{task: digest (its record revision) and the fields the engine reads} for every task in a
+    TaskStore, closed ones included. ``Checkbox`` is 'x' for a done or superseded task."""
     result = {}
-    for task, bodies in goals.task_bodies(todo).items():
-        body, mark, section = bodies[0]
-        fields = dict(goals.task_fields(body), Title=body.partition('\n')[0].strip(),
-                      Checkbox=mark, Section=section)
-        content = [(text.rstrip(), checkbox, heading) for text, checkbox, heading in bodies]
-        digest = hashlib.sha256(json.dumps(content).encode()).hexdigest()
-        result[task] = dict(digest=digest, fields=fields, count=len(bodies))
+    for task, record in snapshot.tasks.items():
+        fields = dict(task_queue.fields(record), Title=record.title, Section=record.section or '',
+                      Checkbox='x' if record.status in ('done', 'superseded') else ' ')
+        result[task] = dict(digest=record.record_revision, fields=fields, count=1)
     return result
 
 
@@ -413,7 +316,7 @@ def reason_class(why, task_ids=()):
 def item_key(item):
     if item[1] == 'repeated quick hold':
         return 'quick-hold:' + item[0] + ':' + item[2].split(';', 1)[0]
-    return key([item]) if item[0] in ('MAIN', 'LEDGER') or item[1] in ('ledger edit', 'archive close', 'archive close refused') else 'task:' + item[0]
+    return key([item]) if item[0] in ('MAIN', 'LEDGER') or item[1] == 'ledger edit' else 'task:' + item[0]
 
 
 def main_evidence(item):

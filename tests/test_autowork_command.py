@@ -6,12 +6,19 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 AUTOWORK = ROOT / 'pi-autowork' / 'bin' / 'autowork'
+sys.path.insert(0, str(ROOT / 'pi-autowork' / 'engine'))
+import store_fixture  # noqa: E402
+import task_store  # noqa: E402
+
+GOAL = ('+++\nschema = 1\nid = "G"\ntitle = "Fixture"\npriority = 1\nsource = "docs/plan.md"\n'
+        'status = "unmet"\nfocus = false\n+++\n')
 
 # The fake systemctl keeps each unit's active/enabled state in files and logs every call.
 SYSTEMCTL = r'''#!/usr/bin/env bash
@@ -83,12 +90,13 @@ class AutoworkCommandTests(unittest.TestCase):
                         AUTOWORK_JOURNALCTL=str(base / 'bin/journalctl'), AUTOWORK_PI=str(base / 'bin/pi'),
                         AUTOWORK_COLOR='never', AUTOWORK_TUI='0', COLUMNS='160')
 
-    def make_repo(self, name, files=('TODO.md', 'goals.json')):
+    def make_repo(self, name, files=('tasks/goals/G.md',)):
         repo = self.base / name
         repo.mkdir()
         subprocess.run(['git', 'init', '-q', '-b', 'main', str(repo)], check=True)
         for f in files:
-            (repo / f).write_text('{}\n' if f.endswith('.json') else '# TODO\n')
+            (repo / f).parent.mkdir(parents=True, exist_ok=True)
+            (repo / f).write_text(GOAL if f.startswith('tasks/') else '# TODO\n')
         subprocess.run(['git', '-C', str(repo), 'add', '-A'], check=True)
         subprocess.run(['git', '-C', str(repo), '-c', 'user.name=T', '-c', 'user.email=t@example.invalid',
                         'commit', '-qm', 'planning'], check=True)
@@ -188,37 +196,42 @@ class AutoworkCommandTests(unittest.TestCase):
         self.assertIn('ALPHA-1', one.stdout)
         self.assertNotIn('BETA-2', one.stdout)
 
-    def test_move_re_sorts_an_open_task_in_todo(self):
-        """The Tasks window's Up and Down: TODO.md order is the priority the runner records."""
-        (self.repo / 'TODO.md').write_text('# TODO\n\n## Now\n\n- [ ] A-1 — First\n\n- [ ] A-2 — Second\n')
-        result = self.aw('move', 'A-2', 'up', str(self.repo))
+    def test_tasks_move_re_sorts_an_open_task_by_its_rank(self):
+        """The Tasks window's Up and Down: a task's rank is the priority."""
+        store_fixture.write_todo(self.repo, '# TODO\n\n## Now\n\n- [ ] A-1 — First\n\n- [ ] A-2 — Second\n')
+        result = self.aw('tasks', 'move', 'A-2', 'up', str(self.repo))
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('ok A-2 moved up', result.stdout)
-        text = (self.repo / 'TODO.md').read_text()
-        self.assertLess(text.index('A-2'), text.index('A-1'))
-        result = self.aw('move', 'A-2', 'up', str(self.repo))
+        self.assertIn('ok A-2 rank', result.stdout)
+        ranks = {t.id: t.rank for t in task_store.TaskStore.at(self.repo, 'HEAD').tasks.values()}
+        moved = task_store.TaskStore.at(self.repo, self.commit_tasks()).tasks
+        self.assertLess(moved['A-2'].rank, moved['A-1'].rank, ranks)
+        result = self.aw('tasks', 'move', 'A-2', 'up', str(self.repo))
         self.assertEqual(result.returncode, 1)
-        self.assertIn('A-2 is already first in Now; no write', result.stdout)
+        self.assertIn('A-2 is already at the top of Now', result.stderr)
 
-    def test_owner_answers_and_new_tasks_go_through_goals(self):
-        """The TUI's answers, section moves and new tasks: TODO.md, and goals.json where it lists tasks."""
-        (self.repo / 'SPEC.md').write_text('# Slice\n\nStatus: Accepted\n')
-        (self.repo / 'goals.json').write_text(json.dumps({'version': 1, 'goals': [
-            {'id': 'G1', 'title': 'Works', 'source': 'SPEC.md#slice', 'status': 'unmet', 'tasks': ['A-1']}],
-            'tasks': [{'id': 'A-1', 'goal': 'G1', 'title': 'First', 'status': 'open', 'section': 'Now'}]}))
-        (self.repo / 'TODO.md').write_text('# TODO\n\n## Now\n\n- [ ] A-1 — First\n- Status: open\n\n'
-                                           '## Next\n\n## Needs decision\n')
-        result = self.aw('field', 'A-1', 'Owner decision', '2026-10-20: ship it', str(self.repo))
+    def commit_tasks(self):
+        subprocess.run(['git', '-C', str(self.repo), 'add', '-A', '--', 'tasks'], check=True)
+        subprocess.run(['git', '-C', str(self.repo), '-c', 'user.name=T', '-c', 'user.email=t@example.invalid',
+                        'commit', '-qm', 'tasks'], check=True)
+        return 'HEAD'
+
+    def test_owner_answers_and_new_tasks_go_through_autowork_tasks(self):
+        """The TUI's answers, section moves and new tasks are writes to the task store."""
+        store_fixture.write_todo(self.repo, '# TODO\n\n## Now\n\n- [ ] A-1 — First\n  Status: open\n')
+        result = self.aw('tasks', 'field', 'A-1', 'Owner decision', '2026-10-20: ship it', str(self.repo))
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        result = self.aw('place', 'A-1', 'Needs decision', str(self.repo), '--decision', '2026-10-20: deferred: later')
+        result = self.aw('tasks', 'place', 'A-1', 'Needs decision', str(self.repo), '--decision',
+                         '2026-10-20: deferred: later')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        text = (self.repo / 'TODO.md').read_text()
-        self.assertLess(text.index('## Needs decision'), text.index('- [ ] A-1'))
+        text = (self.repo / 'tasks/items/A-1.md').read_text()
+        self.assertIn('section = "Needs decision"', text)
         self.assertIn('- Owner decision: 2026-10-20: deferred: later\n', text)
-        result = self.aw('add-task', '--title', 'Second', '--short', 'Second', '--goal', 'G1', str(self.repo))
+        result = self.aw('tasks', 'add', '--title', 'Second', '--short', 'Second', '--goal',
+                         store_fixture.FIXTURE_GOAL, '--section', 'Next', str(self.repo))
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('## Next\n\n### A-', (self.repo / 'TODO.md').read_text())
-        self.assertEqual(len(json.loads((self.repo / 'goals.json').read_text())['tasks']), 2)
+        added = result.stdout.split()[-1]
+        self.assertIn('section = "Next"', (self.repo / 'tasks/items' / f'{added}.md').read_text())
+        self.assertEqual(len(task_store.TaskStore.at(self.repo, self.commit_tasks()).tasks), 2)
 
     def test_blockers_starts_the_agent_in_the_repository(self):
         """From the TUI or the home directory, Claude Code asked to trust the whole home
@@ -246,15 +259,15 @@ class AutoworkCommandTests(unittest.TestCase):
         bare = self.make_repo('bare', files=('TODO.md',))
         result = self.aw('start', str(bare))
         self.assertEqual(result.returncode, 1)
-        self.assertIn('needs goals.json', result.stderr)
-        self.assertIn('Create goals.json from TODO.md', result.stderr)
-        subprocess.run(['git', '-C', str(self.repo), 'rm', '--cached', 'TODO.md', 'goals.json'], check=True,
+        self.assertIn('needs tasks', result.stderr)
+        self.assertIn('autowork migrate', result.stderr)
+        subprocess.run(['git', '-C', str(self.repo), 'rm', '-r', '--cached', 'tasks'], check=True,
                        capture_output=True)
         subprocess.run(['git', '-C', str(self.repo), '-c', 'user.name=T', '-c', 'user.email=t@example.invalid',
                         'commit', '-qm', 'planning only on disk'], check=True)
         result = self.aw('start', str(self.repo))
         self.assertEqual(result.returncode, 1)
-        self.assertIn('commit TODO.md and goals.json on main first', result.stderr)
+        self.assertIn('commit tasks/ on main first', result.stderr)
         subprocess.run(['git', '-C', str(self.repo), 'checkout', '-q', '-b', 'feature'], check=True)
         self.assertIn('main checked out', self.aw('start', str(self.repo)).stderr)
         self.assertIn('not ready', self.aw('start', str(self.base)).stderr)

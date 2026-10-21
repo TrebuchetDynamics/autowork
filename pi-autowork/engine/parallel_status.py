@@ -10,9 +10,10 @@ from pathlib import Path
 import re
 import time
 
-import parallel_claims
 import parallel_dispatch as dispatch
 import parallel_plan
+import task_select
+import task_queue
 import parallel_state as state
 import task_execution as execution
 
@@ -98,61 +99,34 @@ def pending_tasks(repo, known=()):
 
 
 def _pending_tasks(repo, known=()):
-    """Pending rows plus current completion/deferral evidence from the same checkout."""
-    todo = repo / 'TODO.md'
-    if not todo.exists():
-        return [], set(), set()
-    goals = execution.goals_module()
-    bodies = execution.task_bodies(todo)
-    done = {task for task, items in bodies.items() if len(items) == 1 and items[0][1].lower() == 'x'}
-    done.update(execution.archived_done(repo))
-    indexed = {}
-    if (repo / 'goals.json').exists():
-        indexed = {t['id']: t for t in goals.normalize(execution.task_ledger(repo))['tasks']}
-        done.update(task for task, value in indexed.items() if value['status'] == 'done')
-    # Named selection tolerates priority drift. Build its eligibility context once,
-    # retaining the historical status behavior for semantically invalid ledgers.
+    """Pending rows plus current completion/deferral evidence, from the store at HEAD."""
     try:
-        inputs = execution.selection_inputs(repo)
-        if any(len(inputs['bodies'][key]) != 1 for key in inputs['executable'] if key in bodies):
-            inputs = None
-    except (ValueError, OSError):
-        inputs = None
-    deferred = goals.deferred_tasks(bodies)
-    known_ids = set(bodies) | set(indexed)
-    selection_done = {key for key, items in bodies.items() if items[0][1].lower() == 'x'} | done
+        snapshot = task_queue.store(repo)
+    except task_queue.Unconverted:
+        return [], set(), set()
+    done = {t.id for t in snapshot.tasks.values() if t.status == 'done'}
+    deferred = task_queue.deferred(snapshot)
     result = []
-    for task, items in bodies.items():
-        if task in known or not any(item[2] in ('Now', 'Next') for item in items):
+    open_tasks = sorted((t for t in snapshot.tasks.values() if t.status == 'open'),
+                        key=lambda t: (task_select.SECTION_RANK.get(t.section, 9), t.rank or 0, t.id))
+    for record in open_tasks:
+        task = record.id
+        if task in known or record.section not in ('Now', 'Next'):
             continue
-        if len(items) != 1:
-            raise ValueError('duplicate TODO task IDs in parallel status')
-        body, mark, section = items[0]
-        # A ledger-only close with an unchecked live entry is a disagreement,
-        # not a reason to hide the entry from the maintainer.
-        if mark.lower() == 'x' or section not in ('Now', 'Next'):
-            continue
-        fields = execution.contract_fields(body)
-        contract = dispatch.authorization_contract(dict(id=task, fields=fields, contract=body))
+        contract = task_queue.contract(record, snapshot)
         if gate := parallel_plan.authorization_wait(contract):
             result.append(gate)
             continue
-        ids = parallel_plan.dependency_ids(fields.get('Dependencies', 'None.'), known_ids)
-        unresolved = sorted(ids - done)
-        running = fields.get('Status', indexed.get(task, {}).get('status', '')).startswith('in_progress')
-        reason = ('sequential task in progress' if running else 'dependency: ' + ', '.join(unresolved)
+        unresolved = sorted(set(record.depends_on) - done)
+        holder = task_select.held_by(record)
+        reason = ('held by ' + holder if holder else 'dependency: ' + ', '.join(unresolved)
                   if unresolved else 'awaiting dispatch')
-        row = dict(id=task, reason=reason, blocked_by=[task] if running else unresolved)
-        if inputs is not None:
-            # Ordinary dependencies still wait for their workers; only a ledger
-            # disagreement overrides that wait with a maintainer trigger.
-            why = (execution.contract_reason(repo, task, inputs, lambda: selection_done)
-                   if reason == 'awaiting dispatch' else
-                   execution.ledger_reason(repo, task, inputs, fields, section, include_dependencies=False)
-                   if inputs['ledger'] else None)
+        row = dict(id=task, reason=reason, blocked_by=[task] if holder else unresolved)
+        if reason == 'awaiting dispatch':
+            why = task_queue.reason(snapshot, task)
             if why:
                 row.update(reason='not runnable: ' + why, blocked_by=[task], root_kind='contract')
-            elif reason == 'awaiting dispatch' and fields.get('Kind', '').strip().lower() == 'plan':
+            elif record.kind.value == 'plan':
                 row['reason'] = 'ready for planning'
         # A claim blocks as itself; a dependency by what it names; otherwise nothing.
         result.append(row)
@@ -180,7 +154,7 @@ def _ends(tid, by_id, seen):
 def roots(rows):
     """What ultimately holds waiting tasks: follow ``blocked_by`` to its end.
 
-    Kinds: ``held`` (needs a person), ``claim`` (in_progress elsewhere), ``contract`` (its
+    Kinds: ``held`` (needs a person), ``claim`` (a `Held by:` note holds it), ``contract`` (its
     TODO entry is not runnable as written), ``outside``
     (a dependency that is no Now/Next task: an outside condition, or a task held in
     Needs decision), ``cycle`` (tasks waiting on each other), ``running``/``integrating``/``restarting`` (moving work). Each
@@ -270,11 +244,11 @@ def _snapshot(repo, common, now):
         task = item['id']
         observations = [e['timestamp'] for e in events if e['event'] == 'dispatch_observed'
                         and any(v['id'] == task for v in e['waiting'])]
-        # TODO.md tells today's dependencies; the last dispatch observation tells the rest.
-        # A dependency reason, then or now, is always taken from TODO.md as it is now.
+        # The store at HEAD tells today's dependencies; the last dispatch observation tells the rest.
+        # A dependency reason, then or now, is always taken from the store as it is now.
         dependency = (item['blocked_by'] and item['blocked_by'] != [task]) \
             or pending.get(task, {}).get('reason', '').startswith('dependency:')
-        # Authorization is current TODO state, never a stale dispatch observation:
+        # Authorization is the record's current typed field, never a stale dispatch observation:
         # recording it must remove the question without requiring another dispatch.
         authorization = any(by.startswith('Live authorization: ')
                             for by in pending.get(task, {}).get('blocked_by', []))
@@ -282,7 +256,7 @@ def _snapshot(repo, common, now):
         if not previous_blockers:
             # Older observations may name an owner only in the reason. Require positive
             # completion evidence, never merely an absent slot, before discarding a wait.
-            owner = re.match(r'^overlapping paths with (?:(?:in_progress|interrupted) )?(\S+)',
+            owner = re.match(r'^overlapping paths with (?:(?:held|interrupted) )?(\S+)',
                              pending.get(task, {}).get('reason', ''))
             previous_blockers = [owner[1]] if owner else []
         obsolete = previous_blockers and all(by in done for by in previous_blockers)
@@ -294,16 +268,15 @@ def _snapshot(repo, common, now):
                          blocked_by=list(source.get('blocked_by', item['blocked_by'])),
                          **({'root_kind': item['root_kind']} if item.get('root_kind') else {})))
     root_rows = roots(rows)
-    claims = [root['id'] for root in root_rows if root['kind'] == 'claim']
-    # Legacy observations do not establish an adoption policy; the engine defaults to disabled.
-    idle_after = observed.get('adopt_idle_claims', 0)
-    evidence = parallel_claims.claim_status(repo, claims, idle_after, now=now)
+    try:
+        snapshot = task_queue.store(repo)
+    except task_queue.Unconverted:
+        snapshot = None
     for root in root_rows:
-        if root['kind'] == 'claim':
-            detail = {key: value for key, value in evidence[root['id']].items() if key != 'evidence'}
-            root.update(detail)
-            if detail.get('adoptable_after') == 0:
-                root['reason'] = 'adopted when a worker slot frees'
+        if root['kind'] == 'claim' and snapshot is not None and root['id'] in snapshot.tasks:
+            holder = task_select.held_by(snapshot.tasks[root['id']])
+            if holder:
+                root['held_by'] = holder  # the record's `Held by:` note: removed or expired, it runs
         if root['kind'] == 'outside' and root['id'] in deferred:
             root['deferred'] = True  # same root kind, already answered by the owner
     deferred_roots = {r['id'] for r in root_rows if r.get('deferred')}

@@ -75,9 +75,9 @@ hold separate from ordinary engineering choices that can already be made.
    `repair_execution_inputs` describes the original task, not coverage of all
    maintenance areas. Reuse that task's evidence while exploring a distinct seam;
    never run the same planner again on identical scope/evidence. Do not bypass a
-   global canonical-ledger or integration-owner conflict by creating a second one.
-5. Reuse existing tasks before adding at most three evidence-backed tasks to
-   canonical TODO.md and any existing goals.json index. Each needs source evidence, user
+   global task-store or integration-owner conflict by creating a second one.
+5. Reuse existing tasks before adding at most three evidence-backed tasks with
+   `autowork tasks add` (then `autowork tasks validate --worktree .` and a commit). Each needs source evidence, user
    benefit, bounded files, dependencies, ownership, acceptance and checks. Record
    new decisions as agent decisions under the current repository-development
    request, not as historical user approvals. Missing supporting tools get bounded
@@ -103,4 +103,4 @@ checked and the precise remaining hold. Follow existing quiet/no-change scheduli
 policy; never promise perpetual changes or fabricate work to avoid a zero count.
 When every disjoint candidate shares a real missing input, escalate that one input
 with its owner instead of producing another broad audit. Planning, repaired metadata
-and queued workers remain separate from completed TODO tasks in the final report.
+and queued workers remain separate from completed tasks in the final report.

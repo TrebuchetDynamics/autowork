@@ -26,31 +26,32 @@ service, so the work goes on after this session ends:
 4. Do the work by hand in this session, as described below, only when the service
    can't run. That means: no `autowork` command, no systemd user session, `autowork
    start` fails, or the runner stops at once. Say why in one line first. If `autowork
-   start` says the repository isn't ready (for example, no TODO.md yet), fix that first
-   with [Docs Sync](../docs-sync/SKILL.md), then start the runner.
+   start` says the repository isn't ready (for example, no `tasks/` store yet), fix
+   that first (`autowork tasks prepare .` converts an existing TODO.md and goals.json once;
+   otherwise plan tasks with [Docs Sync](../docs-sync/SKILL.md)), then start the runner.
 
 Work in this session instead only when the user asks for it ("here", "in this session",
 "by hand"), when the request is read-only, or when the scope is one named task the user
 wants done now.
 
-At verified closeout and initial reconciliation of completed bodies, automatically
-move those bodies from TODO.md to `TODO.archive.md` (or the established archive).
-Reconcile the task checkbox/Status and ledger, then run the bundled
-[goals helper](../../../skills/docs-sync/scripts/goals.py) with `archive <repo>`.
-Without goals.json, inspect completion checks and pass the verified closed IDs as
-`archive <repo> --verified-tasks ID1,ID2`. Preserve ledger records/evidence and report
-retained conflicts. Follow the [archive contract](../../../skills/docs-sync/references/todo-archive.md);
-explicit read-only runs write nothing.
+`tasks/` is the one task store: `tasks/items/<ID>.md` per task, `tasks/goals/<ID>.md`
+per goal, and `tasks/evidence/<ID>.toml` for the receipt of a verified close. Every
+edit goes through `autowork tasks` (it writes the working tree only and validates the
+whole store). Selection reads `tasks/` at the base commit: section (Now before Next),
+then rank, gated by goal focus, priority and dependencies; `autowork tasks why ID`
+explains a pick. A claim is a `Held by:` note (`autowork tasks hold ID --by WHO`,
+lifted by `autowork tasks release ID`). An existing `TODO.archive.md` is frozen
+history, never written. Explicit read-only runs write nothing.
 
-1. Read repo instructions, TODO.md, accepted plans and current changes. Reconcile
+1. Read repo instructions, `autowork tasks list`, accepted plans and current changes. Reconcile
    active work and approved candidates before choosing another task. Finish authorized
    closeout after checks/review; local integration and publication are distinct.
 2. Choose a dependency-ready accepted task. If none exists, inspect a bounded seam
    for a useful bug, test, UI, documentation or refactoring improvement. Use
    [Plan For Me](../plan-for-me/SKILL.md) only when planning/research is needed;
-   an obvious repair needs no extra ceremony. Record a complete TODO task via
-   [Docs Sync](../docs-sync/SKILL.md), including `Touches:` for the paths the inspected
-   seam may change, then execute within the user's scope.
+   an obvious repair needs no extra ceremony. Record a complete task with
+   `autowork tasks add` (including `--touches` for the paths the inspected seam may
+   change), run `autowork tasks validate --worktree .`, then execute within the user's scope.
    For a ready task, compose reconciliation, accepted body, explicit bounded
    code/docs/tests/dependency sources and a short execution contract in one host-native
    preparation step. Retain objective/scope, acceptance/checks, source/base,
@@ -86,8 +87,7 @@ explicit read-only runs write nothing.
 4. Assess doc impact from the verified diff, Acceptance and actual docs. Record
    `not_needed` with reason, `updated` with paths/readback/checks, or `pending` with
    the gap and resume action. Resolve this host's bundled [Docs Sync](../docs-sync/SKILL.md)
-   and run scoped Maintain only for a concrete delta, not a full bootstrap or just
-   archive rendering. Update in-scope component docs; route shared-doc gaps to the
+   and run scoped Maintain only for a concrete delta, not a full bootstrap. Update in-scope component docs; route shared-doc gaps to the
    coordinator/DOCS-MAINTAINER. Follow the shared [documentation closeout](../../../skills/shared/ENGINEERING-CYCLE.md#one-canonical-backlog-one-executor-one-closure-owner):
    preserve foreign dirty docs, reconcile moved inputs and keep implementation with
    pending evidence on failure/interruption, without replaying it. Needed closeout
@@ -100,14 +100,15 @@ explicit read-only runs write nothing.
    verify integration on the canonical `main` or `master`, then remove the task's
    worktree with `pi-autowork/engine/worktree_closeout.py CANONICAL --worktree PATH --apply`. Preserve active, dirty, unmerged and recovery-bearing
    worktrees; report integration/cleanup pending until the remaining steps succeed.
-5. Reconcile task status and evidence in TODO.md and any existing goals.json. Do not
-   close a whole feature from a partial slice. Report completed task, checks, commit,
+5. Close the task only after verified acceptance: the engine's verified close writes
+   `status = "done"` plus its receipt in one commit; without the engine use
+   `autowork tasks done ID --evidence TEXT`. Do not close a whole feature from a partial slice. Report completed task, checks, commit,
    next task and exact remaining blocker. Default is one completed slice; continue
    across tasks when the user's mandate explicitly requests it.
 
 `/autowork blockers [repo|name]` is [`/blockers`](../blockers/SKILL.md): routine planning
 repairs first, then genuine owner questions, easiest first; resolutions become
-TODO.md planning, never execution. A task may
+planning through `autowork tasks`, never execution. A task may
 read runner state (`autowork ls`, `autowork status NAME`). Only the start step above
 starts a runner. Nothing here stops or reconfigures one.
 

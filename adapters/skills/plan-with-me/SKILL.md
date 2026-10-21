@@ -43,9 +43,10 @@ Save explicit answers in existing requirement/spec documents when permitted. At
 finish, summarize scope, non-goals, acceptance and open questions. Ask for approval
 only if your synthesis adds material unaccepted intent and the user has not said
 stop/finish; otherwise leave that intent open without another question. Reconcile
-accepted decisions through [Docs Sync](../docs-sync/SKILL.md): full TODO.md tasks, priorities,
-dependencies, checks and `Touches:`. Run the planning craft's builder check on the saved tasks
-and lint them with `goals.py plan-lint <repo> --tasks IDS` before reporting them ready.
+accepted decisions into their document owners and complete task records with `autowork tasks
+add`/`goal` ([work center](../../../skills/shared/TODO-WORKCENTER.md)): placement, dependencies,
+checks and `touches`. Run the planning craft's builder check on the saved tasks, then run
+`autowork tasks validate --worktree .` and commit the batch once before reporting it ready.
 Bring only unanswered consequential builder questions back to the user; settle
 repository facts and routine details yourself, without reopening accepted answers.
 Do not start implementation merely because a plan exists.

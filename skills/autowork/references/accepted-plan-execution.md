@@ -24,10 +24,10 @@ an accepted plan or named task. A plan review or design approval alone is not ex
 
 ## Procedure
 
-1. Read the named accepted plan, repository instructions, any existing goals.json and
-   complete TODO task bodies (or their established tracker equivalents). Reuse IDs,
+1. Read the named accepted plan, repository instructions, its goals in `tasks/goals/`
+   and complete task records in `tasks/items/` (or their established tracker equivalents). Reuse IDs,
    dependency edges, exclusions, acceptance and owners. Skip new brainstorming or
-   docs-sync bootstrap when that backlog is usable. For a real missing decision,
+   docs-sync planning when that backlog is usable. For a real missing decision,
    use `grill-me`; for a missing durable contract, use narrow `docs-sync` Maintain.
 2. Record the explicit implementation request and its limits. Map the bounded
    plan to existing task IDs; do not create copies or book unapproved alternatives.

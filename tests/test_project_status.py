@@ -74,7 +74,8 @@ class ProjectStatusTests(unittest.TestCase):
             path, _, fragment = unquote(link).partition("#")
             target = (PROJECT_PATH.parent / path).resolve() if path else PROJECT_PATH
             with self.subTest(link=link):
-                self.assertTrue(target.is_file(), f"Missing local link: {link}")
+                exists = target.is_dir() if path.endswith("/") else target.is_file()
+                self.assertTrue(exists, f"Missing local link: {link}")
                 if fragment:
                     self.assertIn(fragment, anchors(target.read_text(encoding="utf-8")))
 

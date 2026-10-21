@@ -1,6 +1,6 @@
 # Parallel workers
 
-Opt-in mode in which one coordinator session runs several independent TODO tasks at
+Opt-in mode in which one coordinator session runs several independent tasks at
 once, each in a headless host CLI worker in its own Git worktree, then integrates
 the results one at a time. Without `--parallel`, `owner_cycle.py` behaves exactly as
 before. Linux only (worker identity comes from `/proc`).
@@ -25,7 +25,7 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
    100-port range from `AUTOWORK_PORT_BASE`. Results: `DISPATCHED` (started slots,
    each with its worker command and log), `WAITING` (each held-back task with its
    reason), `RETRIED` (a held task's fresh attempt, below), `READOPTED` (below), `IDLE`,
-   `SEQUENTIAL_FALLBACK`, or `BUSY`, `PRIORITY_DRIFT` and `ACTION_REQUIRED` as in
+   `SEQUENTIAL_FALLBACK`, or `BUSY` and `ACTION_REQUIRED` as in
    sequential Autowork. `IDLE` only means no worker started and none is running.
 2. **Wait.** `--wait --timeout S` blocks inside the helper until a worker exits or
    S seconds pass, so the coordinator spends no model turns polling. `CHANGED`
@@ -47,13 +47,13 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
    `Needs TASK-ID to land.` (multiple IDs may be joined with commas or `and`). The
    [report classifier](../../../pi-autowork/engine/parallel_state.py) records `cause: task_wait`, `waits_for`
    and `wait_since` before triage; the runner never triages a slot with `waits_for`.
-   Unknown wording, additional requests, self references and existing ledger dependencies
+   Unknown wording, additional requests, self references and existing `depends_on` entries
    remain ordinary blockers for triage, not automatic owner questions. A task wait reserves
    no files or resources, but still holds its dependents. Once every named task closes
    locally or on the base, it resumes in place on the same attempt; the prompt names the
    prerequisites and pins reachable landed source revisions for scoped reconciliation,
    preserving retained work. An unresolved wait becomes one owner question after 24 hours,
-   never a triage. The engine never edits `Dependencies:` for this wait. `pending_live`
+   never a triage. The engine never edits `depends_on` for this wait. `pending_live`
    lists device, production, hardware or human checks the worker could not run;
    they never hold the task. `unrelated_failures` lists test IDs that passed a single isolated
    rerun or also failed on the baseline; `environment_failures` lists command/summary strings
@@ -69,50 +69,57 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
    or `HELD` with a reason when:
    - the commit does not descend from the slot baseline, differs from the branch
      or the report, or the report lists blockers or a check that did not pass;
+   - it edits a file under `tasks/`: only the coordinator writes the task store, so
+     the commit is held and never merged;
    - it changes a protected file (manifest, lock file, schema, migration or CI file)
      its task did not declare for serial work. Files
-     outside `Touches:` and files another slot changed are not held: the merge into the
+     outside `touches` and files another slot changed are not held: the merge into the
      base, in priority order, settles them (TOOLSET-161-17);
    - the merge conflicts (aborted; the canonical checkout, its uncommitted files and
      the worker branch stay untouched);
-   - validation fails, or the task contract or canonical branch changes meanwhile;
+   - validation fails, or the task contract or canonical branch changes meanwhile. A
+     rank, title, short or note edit is bookkeeping; an acceptance, checks, dependency,
+     touches, authority or section change is a contract change;
    - (not a hold) another live agent session would be affected: the result is `BUSY`
      and the commit stays reported until that session leaves. A session in the main
      checkout counts only when the merge changes a file it holds open for writing or
      has left uncommitted there, wherever the integration runs. A person's session
      never waits a merge by existing, being busy or having another checkout open.
 
-   Coordinator-owned edits are left out before validation, including ledger-only
-   conflicts and edits introduced by the runner or resolver merging into the task
-   branch. Those paths always keep the current integration base's content. The
+   Other coordinator-owned edits (`CHANGELOG.md`, a frozen `TODO.archive.md`) are left
+   out before validation, including conflicts only in those files and edits the runner
+   or resolver introduced by merging into the task branch. Those paths always keep the
+   current integration base's content. The
    [integrator](../../../pi-autowork/engine/parallel_integrate.py) saves the omitted proposal as
    `slot-data/<TASK>/attempt-N/ledger-edit.patch` and records `ledger_edit_dropped`
-   (paths and patch path) on the slot. Ledger-only candidates integrate as empty
-   changes; undeclared protected files still hold. Batch checks and reviews use
-   the same stripped merge tree, not the omitted ledger proposal.
+   (paths and patch path) on the slot. Candidates with only such edits integrate as
+   empty changes; undeclared protected files still hold. Batch checks and reviews use
+   the same stripped merge tree, not the omitted proposal.
 
    Once integrated, the [docs maintainer](../../../pi-autowork/pi_autowork/maintainer.py)
    gets a one-time `ledger edit` trigger with a bounded patch preview. It judges the
-   proposal against current planning, then applies justified changes through the
-   ledger tools or drops it; the patch is never applied automatically. Draining
+   proposal against current planning, then applies justified changes itself (task
+   changes through `autowork tasks`) or drops it; the patch is never applied
+   automatically. Draining
    runs, including `--once`, service all pending proposal batches before exiting.
 
    Validation runs in the engine's own journaled integration worktree. If it leaves
    changes there, the next integration saves them to
    `autowork-execution/integration-residue/*.patch` and resets that worktree only.
 5. **Close.** `--parallel-close TASK` refuses unless the slot is `integrated` with a
-   passing validation receipt and its TODO contract still matches the validated
-   one. It marks the task done, runs the Docs Sync archive (with goals.json this
-   archives every verified completed body, not only TASK) and removes the current
-   attempt's worktree and branch if they are clean (`cleaned`). When the report
-   listed `pending_live`, close also adds `TASK-LIVE` under Needs decision (in
-   goals.json too), depending on TASK and listing those checks, exactly once:
-   offline completion never qualifies live behavior. Result: `CLOSED`, with
-   `live_followup` when one was added and `files`, the exact paths it wrote,
-   for the coordinator's commit.
-6. **Commit coordinator files.** Close edits TODO.md, the archive and goals.json in
-   the canonical checkout without committing. Commit them, plus the CHANGELOG line
-   from the report if it is accurate, as one coordinator metadata commit.
+   passing validation receipt and its task record's contract hash still matches the
+   validated one. It writes `status = "done"` into `tasks/items/TASK.md` and the
+   receipt `tasks/evidence/TASK.toml` (candidate, integration commit, tree, contract
+   hash, checks, result, review; no paths or secrets), and removes the current
+   attempt's worktree and branch if they are clean (`cleaned`). A replay writes
+   nothing twice and returns only what is still uncommitted. When the report listed
+   `pending_live`, close also adds the task `TASK-LIVE` under Needs decision,
+   depending on TASK and listing those checks, exactly once: offline completion
+   never qualifies live behavior. Result: `CLOSED`, with `live_followup` when one was
+   added and `files`, the exact paths it wrote, for the coordinator's commit.
+6. **Commit coordinator files.** Close writes the task files in the canonical
+   checkout without committing. Commit them, plus the CHANGELOG line from the report
+   if it is accurate, as one closure commit.
 7. **Refill.** Call `--apply --parallel [N]` again: freed slots take the next
    eligible tasks, and a task that depended on a closed one becomes eligible.
    Before releasing, integrate or close every `reported` and `integrated` slot,
@@ -123,14 +130,12 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
 `--parallel-status [--json]` is read-only at any point and needs no owner: workers
 active out of the maximum, one row per task (state, slot, elapsed, blocked reason and
 `blocked_by`: the task IDs or outside condition holding it), `roots` (where each waiting
-chain ends: `held`, `claim`, `contract` (a TODO entry the engine will not run, with its
+chain ends: `held`, `claim`, `contract` (a task record the engine will not run, with its
 reason), `outside`, `cycle`, or moving work, with how many tasks it holds),
 completed/failed/integration-queue counts, and journal metrics (wall, worker,
 integration and waiting time, peak workers, conflicts, retries). A `claim` root
-carries `held_by` (the holding note excerpt) or `adoptable_after` (seconds until
-all quiet-time checks pass, 0 when already idle). `adoptable_after: null` means
-live activity, missing evidence or disabled adoption prevents a prediction. An
-idle claim's root says `adopted when a worker slot frees`; a note always wins.
+carries `held_by`, the task's current `Held by:` note; it holds until the note is
+released (`autowork tasks release ID`) or its `until` date passes.
 
 ## Documentation impact evidence
 
@@ -166,8 +171,8 @@ beside normalized slot evidence.
 
 DOCS-MAINTAINER owns the conditional closeout Maintain pass (TOOLSET-266-7a).
 These fields introduce no new trigger, model call, closure gate or second atomic-close
-authority. A worker assertion is not documentation acceptance; archive/index
-rendering alone is not Maintain. Sequential native/portable closeout uses the same
+authority. A worker assertion is not documentation acceptance; task-store
+bookkeeping alone is not Maintain. Sequential native/portable closeout uses the same
 [scoped assessment](../../shared/ENGINEERING-CYCLE.md#one-canonical-backlog-one-executor-one-closure-owner)
 in its authorized session. Required doc failure/interruption preserves code and
 pending evidence without replaying implementation. Stops/pauses/budget limits
@@ -220,16 +225,15 @@ Reviewers find the worker's retained files through this reservation; slots from
 older releases without one still use their attempt-local `tmp` directory. Shared
 SDKs and package caches remain in `AUTOWORK_CACHE`, independently of temp cleanup.
 
-## Admission: Touches and Resources
+## Admission: touches and resources
 
-`Touches:` schedules work, and a shared hot file holds it:
+`touches` schedules work, and a shared hot file holds it:
 
-- `Touches:` is a comma-separated list of repository-relative paths or globs the
+- `touches` is the task record's list of repository-relative paths or globs the
   task is expected to change; `*` also matches across `/`, and a trailing `/` covers a
   directory. A literal file is **hot** when at least three unfinished tasks name it
   explicitly, counting each task once across the whole queue, including tasks not yet
-  runnable. This is the task-count threshold shared with plan lint; lint's separate
-  file-length warning does not make a file serial. A task naming the same hot file as
+  runnable. A long file is not serial for its length alone. A task naming the same hot file as
   running work or a commit awaiting integration waits with
   `waits for <task> (shares hot file <path>)` until that task lands. Newly selected work
   also reserves its hot files, so free slots cannot start two owners at once. A waiting
@@ -237,14 +241,14 @@ SDKs and package caches remain in `AUTOWORK_CACHE`, independently of temp cleanu
   first. Cold-file, directory and glob overlap only ranks work after independent tasks
   (TOOLSET-161-17). A worker may change
   whatever else its task needs; the merge into the base, in priority order, settles the
-  rest, and a real conflict goes to the merge resolver. A missing or invalid `Touches:`
+  rest, and a real conflict goes to the merge resolver. A missing or invalid `touches`
   is no hint (the task ranks after hinted ones).
 - While worker slots idle and tasks wait on a shared hot file, the DOCS-MAINTAINER re-cuts
   those tasks before they run (`overlap` trigger): it may merge one into a task that has
   not started, split off the shared-file part as a dependent follow-up, supersede a
   duplicate or make the order explicit, without touching running tasks.
-- `Resources: live` or `Resources: exclusive` makes a task run alone. Other names
-  (for example `Resources: port-8080, test-db`) keep tasks that share a name from
+- `resources = ["live"]` or `["exclusive"]` makes a task run alone. Other names
+  (for example `resources = ["port-8080", "test-db"]`) keep tasks that share a name from
   running together.
 - A task touching a serial path (dependency manifests and lock files, `migration(s)/`
   and `schema(s)/` directories, CI files such as `.github/workflows/`) never runs beside
@@ -256,10 +260,9 @@ SDKs and package caches remain in `AUTOWORK_CACHE`, independently of temp cleanu
   there. Explicit manifest paths and schema/migration/CI directories remain serial
   even before they exist. A worker introducing a new protected file through an ordinary
   directory scope is held at verification until its task explicitly reserves serial work.
-- Dependencies and TODO.md priority still apply: a task waits for its
-  prerequisites to close. `Dependencies:` counts task-ID-shaped tokens and known task IDs; surrounding
-  prose is ignored, a first clause starting with `none` means none, and a line naming
-  no task at all stays an unresolved outside condition. A lower-priority task starts past a higher-priority one
+- Dependencies and store priority (section, then rank) still apply: a task waits
+  for its `depends_on` tasks to close. A `depends_on` entry naming no task stays an
+  unresolved outside condition. A lower-priority task starts past a higher-priority one
   that cannot start yet only when it shares no resource or dependency with it. A task
   that must run alone (a `live`/`exclusive` resource) and waits on running work stops all lower-priority
   dispatch so the pool drains for it, once it has waited that way for
@@ -268,30 +271,18 @@ SDKs and package caches remain in `AUTOWORK_CACHE`, independently of temp cleanu
 - Slots that are `reported`, `integrating`, `integrated` or `interrupted` retain their
   shared-hot-file and resource reservations until closed, even after their worker ends;
   exhausted held slots block only their dependents. A `held` or `interrupted` slot whose task is now done
-  or superseded (in goals.json, or checked off in TODO.md or its archive) blocks
-  nothing; its worktree and record stay for inspection. An `in_progress` task with no live slot is a claim:
-  it is never dispatched and blocks its dependents and tasks whose `Resources:` overlap
-  it (the coordinator holds the repository lease, so no sequential Autowork run is
-  executing it). With `--adopt-idle-claims SECONDS` a claim idle that
-  long is planned like an open task: no change to its TODO/ledger entry, no commit on
-  a branch named for it, no file change in such a worktree and no live agent there,
-  and no active agent session in the canonical checkout holding open a file inside
-  the task's `Touches:` (a task without `Touches:` waits for every active session
-  there, its files being unknown; idle sessions never count).
-  A claim a note holds is never adopted: its own entry, or any TODO.md line naming
-  it (table rows aside), says to keep it open or in progress, forbids dispatch
-  ("do not dispatch", "no worker dispatched"), puts it on hold, or says it requires
-  or is missing an authority, authorization, approval or owner decision. Stated
-  intent to preserve a hold also counts: "preserve the existing hold",
-  "remains in_progress to", or "keep the hold"/"keeps the hold".
+  or superseded in `tasks/` blocks nothing; its worktree and record stay for
+  inspection. A task with a current `Held by:` note is a claim: it is never
+  dispatched and blocks its dependents and tasks whose `resources` or serial work
+  overlap it, but its files hold nothing. `autowork tasks release ID` lifts it; the
+  engine never adopts a held task.
   The worker's prompt names the earlier branches and worktrees to reuse; they are never
-  modified. The journal records `claim_adopted` with that evidence and the dispatch
-  result lists `adopted`. Only live workers count toward N.
+  modified. Only live workers count toward N.
 
-The root files `TODO.md`, `TODO.archive.md`, `goals.json` and `CHANGELOG.md` are
-coordinator-owned: workers must never edit them. Integration leaves out any such
-edits and hands their patch to the docs maintainer; it grants no worker ledger
-write authority.
+`tasks/`, `TODO.archive.md` and `CHANGELOG.md` are coordinator-owned: workers must
+never edit them. A worker commit that edits `tasks/` is held and never merged;
+integration leaves out the other files' edits and hands their patch to the docs
+maintainer. Nothing grants a worker write authority over task files.
 
 ### Shared admission path and history
 
@@ -359,8 +350,8 @@ nothing parallel was claimed or started.
   was held only for scope
   (`changed files violate Touches`) and the retry made no commit, refill returns
   `READOPTED` and sets the first commit back to `reported`, once: scope can change
-  after a hold, and integration repeats every check, judging scope by the `Touches:`
-  the worker was dispatched with (from its prompt), not by Touches recorded later. A second failure stays held:
+  after a hold, and integration repeats every check, judging scope by the `touches`
+  the worker was dispatched with (from its prompt), not by `touches` recorded later. A second failure stays held:
   send it to Plan For Me to fix or skip. Until then it blocks only its dependents:
   it reruns fresh from the code of that time, never merges as is, so overlapping
   work proceeds. A worker-reported blocker holds the same way at once, except a host/check-only
@@ -404,16 +395,16 @@ nothing parallel was claimed or started.
   may still be retried with a longer limit. See
   [`reverify` and `reverifiable`](../../../pi-autowork/engine/parallel_integrate.py).
 - **Answers re-queue:** each attempt records the contract it was dispatched with
-  (`contract.txt`). When a held task's TODO entry no longer matches it (the owner
-  answered by editing the entry), the next refill retires the slot as a set-aside
+  (`contract.txt`). When a held task's record no longer matches it (the owner
+  answered by editing the record), the next refill retires the slot as a set-aside
   does and returns `REQUEUED`; the task then dispatches fresh. An entry that was
   removed is retired with `requeued: false`. An unchanged entry stays held. A new
   coordinator claims the lease before these checks, so a one-shot run sees them.
 - **Set aside:** `--parallel-set-aside TASK` retires a finished commit waiting to
   merge (also one whose review a restart interrupted, unless that merge already
-  landed), a held slot with no attempt left, or an integrated one whose TODO entry
-  was rewritten after validation (its merge stays in the main branch; the new entry
-  is new work). The runner sets aside a commit at the merge adoption limit itself,
+  landed), a held slot with no attempt left, or an integrated one whose task
+  contract changed after validation (its merge stays in the main branch; the new
+  contract is new work). The runner sets aside a commit at the merge adoption limit itself,
   so its task runs fresh on current main. Every attempt's
   worktree and branch is kept, renamed with `-set-aside-N`, and the slot record and
   data move to `slot-history/TASK/N`; the next refill dispatches the task fresh.
@@ -426,8 +417,8 @@ nothing parallel was claimed or started.
   All refs are reachable from the worker's worktree without fetching. Only when
   the current task asks to keep or continue earlier work may the worker merge or
   cherry-pick from those tips; otherwise it must ignore them. Nothing is applied
-  automatically. Inspect the diff and bring in only paths the current entry's
-  `Touches:` allow, never coordinator-owned or unreserved protected files; a
+  automatically. Inspect the diff and bring in only paths the current record's
+  `touches` allow, never coordinator-owned or unreserved protected files; a
   mixed-scope commit requires selecting allowed paths instead of importing the
   whole commit. Keep one final task commit (`cherry-pick --no-commit` or
   `merge --squash`, for example), and leave earlier branches and worktrees intact.

@@ -110,8 +110,10 @@ class RepositoryStatusTests(unittest.TestCase):
         repo = self.root / 'repo'
         repo.mkdir()
         subprocess.run(['git', 'init', '-q', '-b', 'main', str(repo)], check=True)
-        (repo / 'TODO.md').write_text('# Fixture backlog\n')
-        subprocess.run(['git', '-C', str(repo), 'add', 'TODO.md'], check=True)
+        (repo / 'tasks/goals').mkdir(parents=True)
+        (repo / 'tasks/goals/G.md').write_text('+++\nschema = 1\nid = "G"\ntitle = "Fixture"\npriority = 1\n'
+                                               'source = "docs/plan.md"\nstatus = "unmet"\nfocus = false\n+++\n')
+        subprocess.run(['git', '-C', str(repo), 'add', 'tasks'], check=True)
         subprocess.run(['git', '-C', str(repo), '-c', 'user.name=Fixture',
                         '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture'], check=True)
         calls = self.root / 'pi-calls.jsonl'

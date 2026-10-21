@@ -106,9 +106,10 @@ class HoldCausesTests(unittest.TestCase):
                     details['integration'] = {'commit': state.slots(fx.common)[0]['commit']}
                 if cause == 'task_wait':
                     details['waits_for'] = ['B']
-                    todo = fx.repo / 'TODO.md'
-                    todo.write_text(todo.read_text().replace('- [ ] B', '- [x] B'))
-                    # retired() uses the checkbox, so no new acceptance is manufactured.
+                    entry = fx.entry('B')
+                    fx.set_todo(fx.todo.replace(entry, entry.replace('- [ ] B', '- [x] B')
+                                                .replace('Status: open', 'Status: done'), 1))
+                    # retired() reads B as done in the store, so no new acceptance is manufactured.
                 held = state.transition(fx.repo, fx.owner, 'A', 'held', cause=cause,
                                         reason='opaque display text', **details)
                 before = copy.deepcopy(held)
