@@ -335,9 +335,9 @@ class PlanTests(unittest.TestCase):
                 self.assertEqual([w['id'] for w in result['waiting']], ['B', 'C'] if alone else ['B'])
                 self.assertIn(reason, result['waiting'][0]['reason'])
 
-    def test_a_shared_file_waits_for_its_owner_while_shared_directories_only_rank(self):
-        """Tasks naming the same file collided at merge: each conflict cost a resolver run and a
-        second review. A shared file now waits; a directory or glob still only ranks
+    def test_a_hot_file_waits_for_its_owner_while_shared_directories_only_rank(self):
+        """Three unfinished contracts make shared/x.py hot, including the idle claim.
+        A hot file waits; a directory or glob still only ranks
         (TOOLSET-161-17: wide Touches once held 34 tasks), and an idle claim holds nothing."""
         from parallel_plan import plan
         claim = task('CL', 'shared/x.py', status='in_progress')
@@ -348,21 +348,20 @@ class PlanTests(unittest.TestCase):
         # T6 shares only a directory with T1: it runs, after the independent work.
         self.assertEqual([t['id'] for t in result['dispatch']], ['T1', 'T3', 'T4', 'T6'])
         reasons = {w['id']: w['reason'] for w in result['waiting']}
-        self.assertEqual(reasons['T2'], 'shares shared/x.py with T1; starts after it lands')
+        self.assertEqual(reasons['T2'], 'waits for T1 (shares hot file shared/x.py)')
         self.assertIn('shared resource', reasons['T5'])
-        # Running work (a worker, or a commit not landed yet) holds its files the same way.
-        result = plan([task('B', 'run.py'), task('C', 'c.py')], [task('RUN', 'run.py, lib/')])
-        self.assertEqual([t['id'] for t in result['dispatch']], ['C'])
-        self.assertEqual(result['waiting'][0]['blocked_by'], ['RUN'])
+        # A directory only ranks, even beside running work.
         result = plan([task('D', 'lib/d.py'), task('E', 'lib/*.py')], [task('RUN', 'lib/')], protected_files=[])
         self.assertEqual([t['id'] for t in result['dispatch']], ['D', 'E'])  # a directory only ranks
         # A waiting higher-priority task holds no files: chained waits on one old commit once left
         # every worker idle. The free file goes to the higher task first when both can start.
-        result = plan([task('H', 'run.py, h.py'), task('L', 'h.py')], [task('RUN', 'run.py')])
+        h, l, run = task('H', 'run.py, h.py'), task('L', 'h.py'), task('RUN', 'run.py')
+        context = [h, l, run, task('THIRD', 'run.py, h.py')]
+        result = plan([h, l], [run], all_tasks=context)
         self.assertEqual([t['id'] for t in result['dispatch']], ['L'])
-        result = plan([task('H', 'h.py'), task('L', 'h.py')])
+        result = plan([h, l], all_tasks=context)
         self.assertEqual([t['id'] for t in result['dispatch']], ['H'])
-        self.assertEqual(result['waiting'][0]['reason'], 'shares h.py with H; starts after it lands')
+        self.assertEqual(result['waiting'][0]['reason'], 'waits for H (shares hot file h.py)')
         # A serial S is not exclusive (TOOLSET-160-df): independent T3 runs beside it.
         tasks = [task('T1', 'shared/x.py'), task('S', 'package.json'), task('T3', 'free.py')]
         result = plan(tasks, all_tasks=[claim, *tasks], protected_files=[])  # shared/ holds no manifest

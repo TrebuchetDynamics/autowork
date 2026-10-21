@@ -27,6 +27,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 import goals  # noqa: E402  (inside `goals.py`, sys.modules['goals'] is that running module)
+from hot_file_policy import HOT_TASKS  # noqa: E402
 
 ENGINE_DIR = HERE.parents[1] / 'autowork' / 'scripts'
 
@@ -37,7 +38,7 @@ REQUIRED = ('Scope', 'Acceptance')
 # integration never takes from a worker (parallel_integrate.PLANNING_FILES).
 PLANNING_FILES = ('BLOCKERS.md', 'todo.archive.md')
 FALLBACK_COORDINATOR = ('TODO.md', 'TODO.archive.md', 'goals.json', 'CHANGELOG.md')
-HOT_TASKS, HOT_LINES = 3, 1500
+HOT_LINES = 1500
 MAX_TOUCHES, MAX_ACCEPTANCE, MAX_BODY = 5, 3, 6000
 SHOW_OTHERS = 5
 SKIP_DIRS = {'.git', '.worktrees', 'node_modules', '__pycache__', '.venv', 'venv', '.tox'}
