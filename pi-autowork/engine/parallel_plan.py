@@ -268,28 +268,25 @@ def _dependencies(task, known=()):
     return dependency_ids(task.get('fields', {}).get('Dependencies', 'None.'), known)
 
 
-def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_files=None, drain_after=None,
+def plan(tasks, running=(), *, all_tasks=(), parked=(), protected_files=None, drain_after=None,
          waited=None, finished=()):
     """Plan ordered runnable contracts against running contracts/live slots.
 
     ``running`` contains task contracts held by live slots. Also pass every
     repository contract via ``all_tasks``: this supplies transitive dependency
-    edges and in_progress tasks which are not in the runnable list. No capacity
+    edges and held tasks which are not in the runnable list. No capacity
     limit is applied here; the dispatcher consumes the returned ordered prefix.
 
-    An in_progress task without a live slot is a claim, not running work: the
-    dispatcher only plans while it holds the repository lease, which excludes a
-    live sequential Autowork owner. A claim is never dispatched and still blocks
-    its dependents and tasks whose Resources or serial work overlap it, but its
-    files hold nothing, and missing Touches does not force unrelated tasks to wait (sierra, 2026-10-15:
+    A held task (its record's current `Held by:` note, the field ``Held by`` here) is a
+    person's or session's claim, not running work. It is never dispatched and still blocks
+    its dependents and tasks whose Resources or serial work overlap it, but its files hold
+    nothing, and missing Touches does not force unrelated tasks to wait (sierra, 2026-10-15:
     32 handed-off claims without Touches blocked every task).
     ``parked`` contains contracts of held slots no attempt can finish. Their work
     waits for a person, not for the pool, and only ever reruns fresh from the code
     of that time, so they block their dependents only (2026-10-16: one exhausted
     hold idled every runner for seven hours; then one held task's wide Touches
     still held 34 sierra tasks).
-    ``adopted`` names in_progress claims verified idle (parallel_claims): they are
-    planned like open tasks.
     ``waiting`` contains {id, reason} for each non-dispatched input contract.
     ``drain_after`` (seconds) and ``waited`` ({task: seconds waiting so far}): an exclusive
     task that waits on running work stops lower dispatch only once it has waited that long;
@@ -340,11 +337,8 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
                      for path in files(t))
     hot_files = {path for path, count in counts.items() if count >= HOT_TASKS}
     active = {t['id']: t for t in running}
-    claims = {}
-    for t in known.values():
-        status = re.split(r'[;.\s]', t.get('fields', {}).get('Status', 'open'))[0]
-        if status == 'in_progress' and t['id'] not in active and t['id'] not in adopted:
-            claims[t['id']] = t
+    claims = {t['id']: t for t in known.values()
+              if t.get('fields', {}).get('Held by') and t['id'] not in active}
     held = {t['id'] for t in parked}
     claims.update((t['id'], t) for t in parked)
 
@@ -368,11 +362,11 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
         if depends(a, b) or depends(b, a):
             return 'dependency conflict with ' + b['id']
         # A hot file both name waits for the other to land. Cold files, directories and globs
-        # only rank (TOOLSET-161-17), and an idle claim holds nothing. A waiting task holds no files: it has
+        # only rank (TOOLSET-161-17), and a held task holds none. A waiting task holds no files: it has
         # no code to conflict with, and its own wait on an old commit held every lower task that
         # shared a file with it, until no worker ran. Once a file is free it goes first anyway.
-        if claim or reserved:  # idle claim or waiting task
-            other = ('in_progress ' if claim else '') + b['id']
+        if claim or reserved:  # held or waiting task
+            other = ('held ' if claim else '') + b['id']
             if resources(a) & resources(b):
                 return 'shared resource with ' + other
             if serial(a) and serial(b):
@@ -407,7 +401,7 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
             waiting.append(gate)
             continue
         if tid in active or tid in claims:
-            waiting.append({'id': tid, 'reason': 'already running/live slot or in_progress', 'blocked_by': [tid]})
+            waiting.append({'id': tid, 'reason': 'already running/live slot or held', 'blocked_by': [tid]})
             continue
         if task.get('fields', {}).get('Kind', '').strip().lower() == 'plan':
             waiting.append({'id': tid, 'reason': 'ready for planning', 'blocked_by': []})

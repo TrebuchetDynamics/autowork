@@ -18,13 +18,18 @@ import signal
 import subprocess
 import time
 
-import parallel_claims
 import parallel_plan
+import task_queue
 import parallel_state as state
 import task_execution as execution
 from worktree_paths import worktree_path
 
-COORDINATOR_FILES = ('TODO.md', 'TODO.archive.md', 'goals.json', 'CHANGELOG.md')
+# The coordinator's own files: the task store (a directory) and the shared changelog.
+COORDINATOR_FILES = ('tasks/', 'TODO.archive.md', 'CHANGELOG.md')
+
+
+def coordinator_owned(path):
+    return any(path == name or (name.endswith('/') and path.startswith(name)) for name in COORDINATOR_FILES)
 DEFAULT_WORKERS, WORKER_CAP, HARD_LIMIT = 2, 4, 16
 # Verified against the installed CLIs' --help (2026-10-15). The prompt also
 # arrives on stdin, which Codex reads for `-`.
@@ -220,7 +225,7 @@ def check_failure_resumed(slot):
     return any(s.get('check_failure_resumed') for s in [slot, *slot.get('previous_attempts', [])])
 
 
-def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None, commit_finished=False, answers='',
+def prompt(task, worktree, branch, baseline, report, resume=False, commit_finished=False, answers='',
            retained_commit=None, landed_tasks=(), landed_revisions=(), rework=None):
     touches = task['fields'].get('Touches', '(none declared)')
     earlier = earlier_task_work(worktree, task['id'], branch, baseline)
@@ -333,14 +338,6 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None,
                   'For a mixed-scope tip, reuse only what this task needs instead of the whole commit.',
                   'Keep one final task commit (for example cherry-pick --no-commit or merge --squash).',
                   'Never modify the earlier branches or their worktrees; no work is applied automatically.']
-    if adopted:
-        hours = adopted['idle_seconds'] // 3600
-        lines += ['', f'This task was marked in_progress by another session that has been idle for {hours} h',
-                  '(no task, branch or worktree change and no live agent). Earlier work may exist:']
-        lines += [f'- branch {w["branch"]}' + (f' (worktree {w["worktree"]})' if w['worktree'] else '')
-                  for w in adopted['prior_work']] or ['- none found']
-        lines += ['Inspect it and reuse attributable in-scope work in your own worktree; never modify',
-                  'those branches or worktrees.']
     if retained_commit:
         lines += ['', f'Your commit {retained_commit} is retained on this branch, but this attempt has no matching report.',
                   'Resume this same attempt only to write report.json for the commit already made.',
@@ -371,7 +368,8 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None,
         lines += ['', 'You stopped on a blocker, and the runner answered it. Act on the answer and finish the',
                   'task; do not report the same blocker again. A blocker that remains after this answer must',
                   'name what only a person can provide.', answers.strip()]
-    return '\n'.join(lines + ['', 'Task contract from TODO.md:', '', task['contract'], ''])
+    source = f"tasks/items/{task['id']}.md at {str(task.get('rev') or 'HEAD')[:12]}"
+    return '\n'.join(lines + ['', f'Task contract ({source}):', '', task['contract'], ''])
 
 
 def rework_record(common, task):
@@ -838,104 +836,51 @@ def fallback(repo, args, reason):
             'next': 'Run the ordinary owner_cycle.py --apply for this task in the current session.'}
 
 
-LEDGER_ARCHIVES = ('TODO.md', 'TODO.archive.md', 'todo.archive.md')
-
-
 def retired(repo, base=None):
-    """Task IDs closed since their slot stopped: done or superseded in goals.json, or
-    checked off in TODO.md or its archive, here or on the ``base`` branch. A held or interrupted slot of such a task is
-    history and occupies nothing; Plan For Me's supersession of a held second attempt
-    otherwise left a must-run-alone successor waiting beside it for ever."""
-    ids = set()
-    if (repo / 'goals.json').is_file():
-        ids.update(t['id'] for t in execution.task_ledger(repo).get('tasks', [])
-                   if t.get('status') in ('done', 'superseded'))
-    for name in LEDGER_ARCHIVES:
-        path = repo / name
-        if path.is_file():
-            ids.update(key for key, items in execution.task_bodies(path).items()
-                       if items and items[0][1].lower() == 'x')
-    return ids | (closed_on(repo, base) if base else set())
+    """Task IDs closed since their slot stopped: done or superseded in the store here, or on the
+    ``base`` branch. A held or interrupted slot of such a task is history and occupies nothing;
+    Plan For Me's supersession of a held second attempt otherwise left a must-run-alone
+    successor waiting beside it for ever."""
+    return task_queue.closed(repo) | (closed_on(repo, base) if base else set())
 
 
 def removed(repo):
-    """Task IDs with a slot whose entry is gone from TODO.md, its archive and goals.json: a person
-    deleted the task. Their commits are set aside like closed ones; after the queue was reset,
-    eight finished commits asked to integrate every minute and were refused as 'first: None'.
-    Without a TODO.md nothing reads as removed."""
-    if not (repo / 'TODO.md').is_file():
+    """Task IDs with a slot whose record is gone from the store: a person deleted the task.
+    Their commits are set aside like closed ones; after the queue was reset, eight finished
+    commits asked to integrate every minute and were refused as 'first: None'. An unreadable
+    store reads nothing as removed."""
+    present = task_queue.present(repo)
+    if present is None:
         return set()
-    present = set()
-    for name in LEDGER_ARCHIVES:
-        path = repo / name
-        if path.is_file():
-            present.update(execution.task_bodies(path))
-    if (repo / 'goals.json').is_file():
-        present.update(t['id'] for t in execution.task_ledger(repo).get('tasks', []))
     return {slot['task_id'] for slot in state.slots(state.common_dir(repo))} - present
 
 
 def closed_on(repo, base):
-    """Task IDs closed on the ``base`` branch (TOOLSET-218-d0). A session's ledger takes the
-    base only when the session lands, so a task the owner closed there kept its worker for
-    as long as landing waited; an unreadable base adds nothing."""
-    goals, ids = execution.goals_module(), set()
-
-    def show(name):
-        try:
-            out = subprocess.run(['git', '-C', str(repo), 'show', f'{base}:{name}'],
-                                 capture_output=True, text=True, timeout=30)
-        except subprocess.TimeoutExpired:
-            return None
-        return out.stdout if out.returncode == 0 else None
-
-    ledger = show('goals.json')
-    if ledger:
-        try:
-            ids.update(t['id'] for t in goals.parse_ledger(ledger).get('tasks', [])
-                       if t.get('status') in ('done', 'superseded'))
-        except (ValueError, AttributeError, TypeError, KeyError):
-            pass  # a malformed base ledger is the docs maintainer's; the session's still counts
-    for name in LEDGER_ARCHIVES:
-        text = show(name)
-        if text:
-            ids.update(key for key, items in goals.task_bodies(text.replace('\r\n', '\n')).items()
-                       if items and items[0][1].lower() == 'x')
-    return ids
+    """Task IDs closed on the ``base`` branch (TOOLSET-218-d0), read from the store at that
+    revision: a task closed there is never redispatched from an older session. An
+    unreadable base adds nothing."""
+    return task_queue.closed(repo, base)
 
 
 def authorization_contract(task):
-    """Retain ambiguity the field parser otherwise drops from safety declarations."""
-    labels = execution.contract_labels(task.get('contract', ''))
-    duplicates = [label for label in ('Ownership', 'Resources', 'Live authorization')
-                  if labels.count(label) > 1]
-    return dict(task, authorization_duplicates=duplicates) if duplicates else task
+    """A typed record cannot repeat an authority field; the contract passes as it is."""
+    return task
 
 
 def contracts(repo, requested=None, plan=None):
     try:
         return [authorization_contract(task) for task in execution.select_all(repo, requested, plan)]
     except execution.NoEligibleTask:
-        return []  # Malformed queues still raise and report ACTION_REQUIRED.
+        return []  # Malformed stores still raise and report ACTION_REQUIRED.
 
 
 def task_context(repo):
-    """All unfinished TODO contracts for planning, including nonrunnable tasks.
+    """All open tasks for planning, including nonrunnable ones.
 
     Selection still uses contracts(); a decision or dependency must not hide a
     third declaration of a hot file (or a running slot's declared files).
     """
-    inputs = execution.selection_inputs(repo)
-    result = []
-    for tid, bodies in inputs['bodies'].items():
-        if len(bodies) != 1:
-            continue  # ambiguous declarations cannot supply a reliable hint
-        body, mark, _ = bodies[0]
-        fields = execution.contract_fields(body)
-        status = inputs['indexed'].get(tid, {}).get('status', fields.get('Status', 'open'))
-        if mark.lower() != 'x' and status != 'done':
-            result.append({'id': tid, 'fields': dict(fields, Status=status)})
-    return result
+    return [{'id': task['id'], 'fields': task['fields']} for task in task_queue.unfinished(repo)]
 
 
 def protected_files(repo, revision=None):
@@ -961,7 +906,7 @@ def retry_plan(repo, current, requested=None, plan_path=None):
     # holds reserve only dependencies, just as they do for ordinary dispatch.
     return parallel_plan.plan([t for t in tasks if t['id'] in held],
                               [contract(s) for s in occupying if s not in parked],
-                              all_tasks=context, parked=[contract(s) for s in parked], adopted=held,
+                              all_tasks=context, parked=[contract(s) for s in parked],
                               protected_files=protected_files(repo))
 
 
@@ -1056,7 +1001,7 @@ def merge_backlog(common, current, *, workers, now=None, env=os.environ):
     return result
 
 
-def admit(candidates, running, restartable, occupying, *, everything, parked, adopted, protected,
+def admit(candidates, running, restartable, occupying, *, everything, parked, protected,
           drain_after=None, waited=None, finished=(), merge_backlog=None):
     """Admission in two passes, so it agrees with integration about who owns a file
     (TOOLSET-157-cd). Interrupted candidates go first: their work already exists, and a
@@ -1067,7 +1012,7 @@ def admit(candidates, running, restartable, occupying, *, everything, parked, ad
     slotted = {s['task_id'] for s in occupying}
     resumable = [t for t in candidates if t['id'] in restartable]
     fresh = [t for t in candidates if t['id'] not in slotted and t['id'] not in restartable]
-    options = dict(all_tasks=everything, parked=parked, adopted=adopted, protected_files=protected,
+    options = dict(all_tasks=everything, parked=parked, protected_files=protected,
                    drain_after=drain_after, waited=waited, finished=finished)
     first = parallel_plan.plan(resumable, running, **options) if resumable else {'dispatch': [], 'waiting': []}
     second = parallel_plan.plan(fresh, running + first['dispatch'], **options)
@@ -1121,14 +1066,10 @@ def dispatch_locked(args, repo, common, count, template, host):
     # A restartable slot's own files are not someone else's running work.
     running = [t for t in running if t['id'] not in restartable]
     slotted = {s['task_id'] for s in current}
-    # A restartable slot's task marked in_progress is a claim like any other: left out, it was
-    # neither adopted nor restarted, and one dead worker stalled a runner for five hours.
-    claimed = [t['id'] for t in candidates if (t['id'] not in slotted or t['id'] in restartable)
-               and re.split(r'[;.\s]', t['fields'].get('Status', 'open'))[0] == 'in_progress']
-    idle = parallel_claims.idle_claims(repo, claimed, getattr(args, 'adopt_idle_claims', 0)) if claimed else {}
+    # A task someone holds (`Held by:` in its record) is never selected, so no claim reaches here.
     backlog = merge_backlog(common, occupying, workers=count)
     planned = admit(candidates, running, restartable, occupying, everything=context,
-                    parked=[contract(s) for s in parked], adopted=set(idle), protected=protected_files(repo),
+                    parked=[contract(s) for s in parked], protected=protected_files(repo),
                     drain_after=drain_after(), waited=waiting_streaks(common),
                     finished={s['task_id'] for s in occupying if s['state'] in FINISHED and not state.worker_live(s)},
                     merge_backlog=backlog)
@@ -1163,8 +1104,9 @@ def dispatch_locked(args, repo, common, count, template, host):
             report.unlink(missing_ok=True)  # a resumed attempt reports afresh
         prompt_file = data / 'prompt.md'
         (data / 'contract.txt').write_text(task['contract'].strip() + '\n')  # what an answer is compared with
+        # The pinned contract: a rank or title edit keeps this attempt, a contract change sets it aside.
+        execution.save(data / 'contract.json', {k: task.get(k) for k in ('contract_hash', 'record_revision', 'rev')})
         prompt_file.write_text(prompt(task, worktree, branch, base, report, resume=bool(previous),
-                                      adopted=idle.get(task['id']),
                                       retained_commit=(previous.get('commit') if previous and
                                                        previous.get('report_resume_attempt') == previous['attempt']
                                                        else None),
@@ -1173,9 +1115,6 @@ def dispatch_locked(args, repo, common, count, template, host):
                                       commit_finished=bool(previous and check_failure_resumed(previous)),
                                       answers=answers_text(common, task['id']) if previous and previous.get('answered')
                                       else '', rework=rework_record(common, task['id'])))
-        if task['id'] in idle:
-            with execution.lock(common / 'writer.lock'):
-                state.event(common, 'claim_adopted', task_id=task['id'], evidence=idle[task['id']])
         index = next(i for i in range(1, HARD_LIMIT + 1) if i not in used)
         used.add(index)
         argv = render(template, {'worktree': worktree, 'prompt_file': prompt_file, 'timeout': int(args.worker_timeout),
@@ -1208,11 +1147,9 @@ def dispatch_locked(args, repo, common, count, template, host):
         pending_ids = {v['id'] for v in waiting}
         pending = waiting + [v for v in pending_tasks(repo, {s['task_id'] for s in state.slots(common)} | closed)
                              if v['id'] not in pending_ids]
-        state.event(common, 'dispatch_observed', waiting=pending, max_workers=count, merge_backlog=backlog,
-                    adopt_idle_claims=getattr(args, 'adopt_idle_claims', 0))
+        state.event(common, 'dispatch_observed', waiting=pending, max_workers=count, merge_backlog=backlog)
     return {'outcome': outcome, 'workspace': str(repo), 'host': host, 'max_workers': count,
             'active_workers': active, 'dispatched': started, 'waiting': waiting, 'merge_backlog': backlog,
-            'adopted': [d['task'] for d in started if d['task'] in idle],
             'timed_out': [s['task_id'] for s in timeouts], 'slots': slots,
             'next': {'DISPATCHED': 'Run --wait to block until a worker finishes, then review its report.',
                      'WAITING': 'Run --wait; no other task can start beside the running workers.',

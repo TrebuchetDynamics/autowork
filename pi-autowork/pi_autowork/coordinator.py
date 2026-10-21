@@ -91,7 +91,7 @@ TRIAGE_PROMPT = (
     'else gets an answer the worker can act on. State as fact what the runner guarantees: the worker\'s ports '
     '$AUTOWORK_PORT_BASE to +99 are leased to it alone on this host; its $TMPDIR is private and on disk; its '
     'baseline is the session\'s current HEAD; other tasks\' overlapping work merges at integration, in priority '
-    'order; the runner verifies an idle in_progress claim before adopting it; the runner\'s review runs the full '
+    'order; a task whose record says `Held by:` is never dispatched; the runner\'s review runs the full '
     'check on the merged tree and tells new failures from old and flaky ones. The runner also provides '
     '$AUTOWORK_MAIN_EVIDENCE/<revision>/ for main checks: main_check.json (revision, last green, failures '
     'and commits), main-check.log, main-check.exit, main-check-reruns.log (isolated commands, exit codes '
@@ -197,7 +197,6 @@ class Coordinator:
         self.task_timeout = env.get('PI_AUTOWORK_TASK_TIMEOUT') or '5400'
         self.max_failures = int(env.get('PI_AUTOWORK_MAX_FAILURES', '3'))
         self.failure_pause = int(env.get('PI_AUTOWORK_FAILURE_PAUSE', '3600'))
-        self.claim_idle = cfg['claim_idle']
         self.max_runtime = int(env.get('PI_AUTOWORK_MAX_RUNTIME', '0'))
         self.min_free_mb = env.get('PI_AUTOWORK_MIN_FREE_MB', '3000')
         self.update_interval = int(env.get('PI_AUTOWORK_UPDATE_INTERVAL', '120'))
@@ -2859,7 +2858,7 @@ class Coordinator:
             os.environ['AUTOWORK_RUNNER_FULL_CHECK'] = main_check.full_check(self.integ) if self.integ else ''
             result = self.engine('--apply', '--parallel', str(self.workers), '--max-workers', '16',
                                  '--worker-command', self.worker_command, '--worker-timeout', self.task_timeout,
-                                 '--min-free-mem-mb', self.min_free_mb, '--adopt-idle-claims', str(self.claim_idle),
+                                 '--min-free-mem-mb', self.min_free_mb,
                                  '--base-ref', self.base, *(['--tasks', ','.join(resumes)] if resumes else []))
             outcome = result.get('outcome') or 'ACTION_REQUIRED'
             if outcome != 'BUSY':
@@ -2885,11 +2884,7 @@ class Coordinator:
                 self.started_workers += 1
                 if self.mode == 'once' and not self.once_task:
                     self.once_task, self.draining = task, True  # no second task
-                if task in (result.get('adopted') or []):
-                    self.note_state(task, 'running', f'worker started; adopted an idle claim (no activity for '
-                                                     f'{self.claim_idle // 3600} h or more)')
-                else:
-                    self.note_state(task, 'running', 'worker started')
+                self.note_state(task, 'running', 'worker started')
         elif outcome == 'READOPTED':
             self.seen[result.get('task')] = ''
             LOG.say(f'{result.get("task")}: the retry made no change; re-verifying the first attempt\'s commit')

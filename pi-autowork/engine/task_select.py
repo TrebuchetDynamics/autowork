@@ -8,11 +8,17 @@ are done, its goal is not met and its goal's dependencies are met. Authority
 as it does for the TODO.md queue.
 """
 from dataclasses import dataclass
+import datetime
+import re
 
 SECTION_RANK = {'Now': 0, 'Next': 1}
 # Lower runs first: unverified goals before partial ones, partial before unmet.
 GOAL_STATUS_RANK = {'unverified': 0, 'partial': 1, 'unmet': 2, 'met': 3}
 KEY_RULES = ('FOCUS', 'SECTION', 'RANK', 'GOAL_PRIORITY', 'GOAL_STATUS', 'TASK_ID')
+# `- Held by: <who>; until <YYYY-MM-DD>` in a task's body is its claim: an open task held by
+# someone is not selected. Without a date it holds until the line is removed.
+HELD_BY = re.compile(r'^- Held by: (.*)$', re.M)
+UNTIL = re.compile(r'\buntil (\d{4}-\d{2}-\d{2})\b')
 
 
 @dataclass(frozen=True)
@@ -36,6 +42,8 @@ def blocking(store, task, done=()):
         return Reason('NEEDS_DECISION', task.section or '')
     if task.draft:
         return Reason('DRAFT', ', '.join(task.missing_fields))
+    if (holder := held_by(task)) is not None:
+        return Reason('HELD', holder)
     goal = store.goals.get(task.goal)
     if goal is None:
         return Reason('NO_GOAL', task.goal or '')
@@ -49,6 +57,18 @@ def blocking(store, task, done=()):
         if dep not in finished:
             return Reason('DEPENDENCY_UNFINISHED', dep)
     return None
+
+
+def held_by(task, today=None):
+    """Who holds an open task, from its last `Held by:` note, or None (no note, or past its date)."""
+    lines = HELD_BY.findall(task.body or '')
+    if not lines:
+        return None
+    holder = lines[-1].strip()
+    until = UNTIL.search(holder)
+    if until and datetime.date.fromisoformat(until[1]) < (today or datetime.date.today()):
+        return None
+    return holder
 
 
 def _key(store, task):

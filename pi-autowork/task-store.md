@@ -108,6 +108,14 @@ the rule the TODO.md queue uses. `next(store)` is the first that is not a planni
 (`AFTER_FOCUS`, `AFTER_SECTION`, `AFTER_RANK`, …) that put the task ahead of it there.
 Authority is not a selection rule; admission applies it afterwards.
 
+**Holding a task.** Git status is never a lease, so there is no `in_progress`. A person or
+an interactive session keeps the runner off an open task with
+`autowork tasks hold ID --by WHO [--until YYYY-MM-DD]`, which writes the record's
+`- Held by: WHO; until DATE` note and nothing else (the contract hash is unchanged);
+`autowork tasks release ID` removes it. A held task is never selected (`HELD`), never
+dispatched even when named, and still blocks its dependents and tasks that share its
+resources or serial work; the hold ends when the note is removed or its date passes.
+
 ## Writing and `autowork tasks`
 
 `tomllib` only reads, so `task_store` carries its own writer. `render` writes a new record

@@ -98,6 +98,20 @@ class TaskCommandTests(unittest.TestCase):
         self.assertNotIn(ids[0], changed)
         self.assertEqual(ranks[ids[3]], 5000, 'a neighbour with room is not renumbered')
 
+    def test_hold_keeps_the_runner_off_until_release(self):
+        before = self.show('T-1')
+        self.tasks('hold', 'T-1', '--by', 'an interactive session', '--until', '2999-01-01')
+        held = self.show('T-1')
+        self.assertEqual((held['status'], held['contract_hash']), ('open', before['contract_hash']))
+        self.assertIn('- Held by: an interactive session; until 2999-01-01', held['notes'])
+        why = json.loads(self.tasks('why', 'T-1').stdout)
+        self.assertEqual(why['reasons'], [{'code': 'HELD', 'detail': 'an interactive session; until 2999-01-01'}])
+        self.assertEqual(self.tasks('hold', 'T-1', '--by', 'x', '--until', 'soon', ok=False).returncode, 1)
+        self.tasks('release', 'T-1')
+        self.assertNotIn('Held by', self.show('T-1')['notes'])
+        self.assertTrue(json.loads(self.tasks('why', 'T-1').stdout)['first'])
+        self.assertEqual(self.tasks('release', 'T-1', ok=False).returncode, 1)
+
     def test_supersede_names_its_successor(self):
         successor = self.add('Successor')
         self.tasks('supersede', 'T-1', '--by', successor, '--reason', 'replaced')

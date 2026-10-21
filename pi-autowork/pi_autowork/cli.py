@@ -74,7 +74,6 @@ Environment (optional):
   PI_AUTOWORK_MAX_RETRIES   provider/crash retries per Pi run (default 3)
   PI_AUTOWORK_MAX_FAILURES  consecutive failed tasks before stopping (default 3); a service
                             pauses new tasks for PI_AUTOWORK_FAILURE_PAUSE seconds (3600) instead
-  PI_AUTOWORK_CLAIM_IDLE    adopt another session's in_progress claim after this many seconds
                             with no task, branch or worktree change and no live agent
                             (default 21600; 0 never adopts)
   PI_AUTOWORK_LINK_PATHS    comma-separated gitignored paths (say vendor/sdk) to mirror from the
@@ -181,13 +180,11 @@ def parse(argv):
             print(f'Unknown option: {arg}\n', file=sys.stderr)
             print(USAGE, end='', file=sys.stderr)
             sys.exit(2)
-    claim_idle = os.environ.get('PI_AUTOWORK_CLAIM_IDLE', '21600')
-    for item in (opts['interval'], opts['max_cycles'], opts['workers'], claim_idle):
+    for item in (opts['interval'], opts['max_cycles'], opts['workers']):
         if not re.fullmatch(r'[0-9]+', item):
             print(f'Expected a whole number, got: {item}', file=sys.stderr)
             sys.exit(2)
-    opts.update(interval=int(opts['interval']), max_cycles=int(opts['max_cycles']), workers=int(opts['workers']),
-                claim_idle=int(claim_idle))
+    opts.update(interval=int(opts['interval']), max_cycles=int(opts['max_cycles']), workers=int(opts['workers']))
     if not 1 <= opts['workers'] <= 16:
         die(2, '--workers must be 1 to 16')
     if opts['mode'] == 'once':
@@ -289,7 +286,7 @@ def main(argv):
     git_common = git(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')
     load_repo_settings(repo)
     # Settings read while parsing options, before the repository was known.
-    for key, name in (('workers', 'PI_AUTOWORK_WORKERS'), ('claim_idle', 'PI_AUTOWORK_CLAIM_IDLE')):
+    for key, name in (('workers', 'PI_AUTOWORK_WORKERS'),):
         if key == 'workers' and '--workers' in argv:
             continue
         value = os.environ.get(name)
@@ -421,7 +418,7 @@ def main(argv):
     cfg = dict(repo=repo, base=base, toolset=toolset, toolset_rev=toolset_rev, state=str(state),
                state_root=state_root, git_common=git_common, script=script, argv=argv, pi=pi,
                skill_args=skill_args, mode=opts['mode'], workers=opts['workers'], interval=opts['interval'],
-               max_cycles=opts['max_cycles'], claim_idle=opts['claim_idle'])
+               max_cycles=opts['max_cycles'])
     return Coordinator(cfg).run()
 
 

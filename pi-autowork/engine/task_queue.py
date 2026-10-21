@@ -57,8 +57,10 @@ def fields(record):
     """The labels the admission and planning rules read, from the record's typed values."""
     view = dict(notes(record))
     view.update(Status=record.status or '', Goal=record.goal or '', Short=record.short)
-    for label in ('Ownership', 'Resources', 'Live authorization', 'Kind', 'Touches'):
+    for label in ('Ownership', 'Resources', 'Live authorization', 'Kind', 'Touches', 'Held by'):
         view.pop(label, None)  # only the typed value grants or limits anything
+    if (holder := task_select.held_by(record)) is not None:
+        view['Held by'] = holder  # a current hold only; an expired one is history
     if record.status == 'open' or record.scope:
         view.update(Scope=record.scope, Acceptance='; '.join(record.acceptance),
                     Checks='; '.join(record.checks),
@@ -105,7 +107,7 @@ def reason(snapshot, task_id, plan=None):
                  'DRAFT': 'needs Scope, Acceptance, Checks and Touches (draft: {})',
                  'NO_GOAL': 'no goal {}', 'GOAL_MET': 'goal {} is met',
                  'GOAL_DEPENDENCY_UNMET': 'goal dependency {} is unmet',
-                 'DEPENDENCY_UNFINISHED': 'unresolved dependency {}'}
+                 'DEPENDENCY_UNFINISHED': 'unresolved dependency {}', 'HELD': 'held by {}'}
         return words[blocked.code].format(blocked.detail)
     if plan and plan not in re.findall(r'\]\(([^)]+)\)', notes(record).get('Sources', '')):
         return 'not linked to the named plan'
@@ -117,7 +119,11 @@ def selectable(repo, requested=None, plan=None, *, sequential=False, rev='HEAD')
     snapshot = store(repo, rev)
     wanted = requested.split(',') if requested else None
     ordered = [t.id for t in task_select.order(snapshot)]
-    pool = wanted or ordered
+    # Every other open task in Now/Next is listed with its reason, never silently skipped.
+    others = sorted((t for t in snapshot.tasks.values() if t.status == 'open' and t.id not in ordered
+                     and t.section in task_select.SECTION_RANK),
+                    key=lambda t: (task_select.SECTION_RANK[t.section], t.rank or 0, t.id))
+    pool = wanted or ordered + [t.id for t in others]
     chosen, why = [], []
     for tid in pool:
         if (text := reason(snapshot, tid, plan)) is not None:
@@ -152,3 +158,10 @@ def present(repo, rev='HEAD'):
         return set(store(repo, rev).tasks)
     except StoreError:
         return None
+
+
+def deferred(snapshot):
+    """Owner-answered deferrals: open tasks in Needs decision with a dated `Owner decision:` note.
+    Their dependents wait for them without another question."""
+    return {t.id for t in snapshot.tasks.values() if t.status == 'open' and t.section == 'Needs decision'
+            and re.search(r'\b\d{4}-\d{2}-\d{2}\b', notes(t).get('Owner decision', ''))}

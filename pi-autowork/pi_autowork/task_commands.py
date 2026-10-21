@@ -1,7 +1,7 @@
 """`autowork tasks ...`: read and edit a repository's tasks/ store. Standard library only.
 
 Reads (list, show, why, validate) use a pinned commit, HEAD by default; validate
---worktree checks uncommitted edits. Writes (add, field, place, move, supersede)
+--worktree checks uncommitted edits. Writes (add, field, place, move, hold, release, supersede)
 change task files in the working tree and never commit; each refuses a file that
 changed since it was read, and the whole would-be store is validated before the
 write is kept. A written file grants no authority beyond its typed fields, and a
@@ -275,6 +275,31 @@ def cmd_move(repo, tid, direction):
     return changes
 
 
+def cmd_hold(repo, tid, by, until=None):
+    """Keep the runner off an open task: its record's `Held by:` note, never its status. A
+    held task is never selected or dispatched, and still blocks its dependents and tasks that
+    share its resources or serial work, until the note is removed or its date passes."""
+    t = _task(worktree_store(repo), tid)
+    if t.status != 'open':
+        raise CommandError(f'{tid} is {t.status}; only an open task can be held')
+    if until and not re.fullmatch(r'\d{4}-\d{2}-\d{2}', until):
+        raise CommandError('--until is a date: YYYY-MM-DD')
+    value = ' '.join(by.split()) + (f'; until {until}' if until else '')
+    _set(repo, tid, {}, ('Held by', value))
+
+
+def cmd_release(repo, tid):
+    """Remove the task's `Held by:` note so the runner may select it again."""
+    _task(worktree_store(repo), tid)
+    path = _path(repo, tid)
+    before = path.read_bytes()
+    text = before.decode()
+    after = re.sub(r'(?m)^- Held by: .*\n?', '', text)
+    if after == text:
+        raise CommandError(f'{tid} is not held')
+    _write(repo, path, before, after)
+
+
 def cmd_supersede(repo, tid, by, reason):
     store = worktree_store(repo)
     _task(store, tid)
@@ -321,6 +346,12 @@ def add_parser(sub):
     p = verbs.add_parser('move')
     p.add_argument('task'); p.add_argument('direction', choices=('up', 'down'))
     p.add_argument('repo', nargs='?', default='.')
+    p = verbs.add_parser('hold', help="keep the runner off an open task (its `Held by:` note)")
+    p.add_argument('task'); p.add_argument('repo', nargs='?', default='.')
+    p.add_argument('--by', required=True, help='who holds it, for example "an interactive session"')
+    p.add_argument('--until', help='YYYY-MM-DD; the hold ends after this day')
+    p = verbs.add_parser('release', help='remove the hold so the runner may select the task')
+    p.add_argument('task'); p.add_argument('repo', nargs='?', default='.')
     p = verbs.add_parser('supersede')
     p.add_argument('task'); p.add_argument('repo', nargs='?', default='.')
     p.add_argument('--by', action='append', required=True)
@@ -354,6 +385,12 @@ def run(args, repo):
         elif verb == 'move':
             changes = cmd_move(repo, args.task, args.direction)
             out = 'ok ' + ', '.join(f'{tid} rank {rank}' for tid, rank in changes.items())
+        elif verb == 'hold':
+            cmd_hold(repo, args.task, args.by, args.until)
+            out = f'ok {args.task} held'
+        elif verb == 'release':
+            cmd_release(repo, args.task)
+            out = f'ok {args.task} released'
         elif verb == 'supersede':
             cmd_supersede(repo, args.task, args.by, args.reason)
             out = f'ok {args.task} superseded'

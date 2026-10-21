@@ -666,17 +666,11 @@ def blocker_updates(repo, slot, blockers):
     """
     import parallel_plan
     updates = {'reason': blocker_reason(blockers), 'cause': 'blocker'}
-    inputs = execution.selection_inputs(Path(repo))
-    indexed, bodies = inputs['indexed'], inputs['bodies']
-    known = inputs['known']
+    import task_queue
+    snapshot = task_queue.store(Path(repo))
     own = slot['task_id']
-    fields = execution.goals_module().task_fields(bodies[own][0][0]) if own in bodies else {}
-    declared = parallel_plan.dependency_ids(fields.get('Dependencies', 'None.'), known)
-    declared |= set(indexed.get(own, {}).get('depends_on', []))
-    open_ids = {tid for tid, items in bodies.items() if items[0][1].lower() != 'x'
-                and re.split(r'[;.\s]', execution.goals_module().task_fields(items[0][0]).get(
-                    'Status', indexed.get(tid, {}).get('status', 'open')))[0] in ('open', 'in_progress')
-                and indexed.get(tid, {}).get('status', 'open') in ('open', 'in_progress')}
+    declared = set(snapshot.tasks[own].depends_on) if own in snapshot.tasks else set()
+    open_ids = {tid for tid, t in snapshot.tasks.items() if t.status == 'open'}
     eligible = open_ids - declared - {own}
     # Match exact IDs (including paired backticks), never ID substrings or prose.
     ident = r'(?:`[A-Za-z0-9][A-Za-z0-9._-]*`|[A-Za-z0-9][A-Za-z0-9._-]*)'
