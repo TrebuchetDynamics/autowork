@@ -488,7 +488,9 @@ def status_view(repo, base, toolset, state):
           f"{snapshot.get('failed') or 0} failed, {snapshot.get('integration_queue') or 0} awaiting integration")
     try:
         record = json.loads((state / 'status.json').read_text())
-        line = f"Health:     {record['state']} since {datetime.fromtimestamp(int(record['since'])):%Y-%m-%d %H:%M}"
+        since = (record.get('status_unavailable_since', record['since'])
+                 if record['state'] == 'unavailable' else record['since'])
+        line = f"Health:     {record['state']} since {datetime.fromtimestamp(int(since)):%Y-%m-%d %H:%M}"
         roots = [r for r in record.get('roots') or [] if r.get('kind') in health.NEEDS_PERSON][:3]
         if roots:
             line += '; blocked by ' + '; '.join(
