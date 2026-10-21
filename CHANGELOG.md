@@ -22,6 +22,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- A failed batch sends its suspects to single reviews only when they are at most half of
+  the checked candidates; otherwise it is halved. A CLI test imports nearly everything, so
+  import-based suspects named five of six candidates, each waiting for its own review.
 - The DOCS-MAINTAINER re-cuts tasks waiting on a shared file at most once per
   `PI_AUTOWORK_OVERLAP_EVERY` seconds (1800). Its Pi job holds the runner loop, and
   back-to-back re-cuts of six tasks each stopped reviews, landing and dispatch.
