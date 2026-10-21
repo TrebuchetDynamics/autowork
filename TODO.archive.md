@@ -5683,3 +5683,28 @@ Source section: Next
 - Ownership: Toolset coordinator under separate live authorization.
 - Exclusions: No push, no unrelated job changes and no job resumption while the owner's stop-all instruction remains in force.
 - Next action: None for the owner-selected current-five scope. Preserve the original nine-target contract and partial migration history; no further fleet mutation or job operation follows from this result.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-261-15"></a>
+
+### TOOLSET-261-15 — A worker's long test runs take a host check slot
+
+- [x] TOOLSET-261-15 — A worker's long test runs take a host check slot
+- Short: Long worker tests take a check slot
+- Status: done
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [plan](docs/plans/2026-10-19-more-parallel-workers.md) (decision 1); TOOLSET-228-0c (runner check slots); [worker prompt](skills/autowork/scripts/parallel_dispatch.py) (`prompt`, `full_check_rule`).
+- Evidence: with more workers, CPU load comes from the suites they run, not from the model calls; TOOLSET-228-0c bounds only the runner's own full checks.
+- Touches: skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, skills/autowork/scripts/autowork_run.py, pi-autowork/pi_autowork/coordinator.py, docs/reference.md
+- Scope: (1) Add `autowork-run <command…>` (on the worker's PATH, a small standard-library script): it takes one of `PI_AUTOWORK_WORKER_CHECK_SLOTS` host-wide worker check slots (default: CPU count / 4, at least 2; separate from the runner's own TOOLSET-228-0c slots, same flock mechanism and directory), then starts the command, releases the slot when it ends and returns its exit code; waiting prints one line. The command's time limit (`PI_AUTOWORK_COMMAND_TIMEOUT`, `stop_stuck_commands`) counts from when it starts, after the slot: the waiting wrapper is not a stuck command. (2) The worker prompt says to run any suite or build expected to take more than two minutes through `autowork-run`, and focused tests directly. (3) The worker report notes how long it waited for slots.
+- Acceptance: In fixtures with 1 check slot: two workers' `autowork-run` commands run one after the other; a killed holder frees the slot; the exit code passes through; a wrapper waiting longer than the command limit is not stopped; the prompt contains the rule.
+- Checks: python3 scripts/check.py skills/autowork/scripts/test_parallel_dispatch.py; python3 scripts/check.py
+- Dependencies: TOOLSET-228-0c.
+- Ownership: Toolset coordinator.
+- Exclusions: No enforcement on commands run without the wrapper; no change to focused tests.
+- Planner's call: a voluntary wrapper on PATH needs no sandbox; workers already follow the prompt's TMPDIR and port rules, and the cost of ignoring it is only load, which the 1.5 × CPU safety gate still bounds.

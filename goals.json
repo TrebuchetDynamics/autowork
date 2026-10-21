@@ -1571,16 +1571,6 @@
     },
     {
       "depends_on": [
-        "TOOLSET-228-0c"
-      ],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-261-15",
-      "section": "Next",
-      "status": "open",
-      "title": "A worker's long test runs take a host check slot"
-    },
-    {
-      "depends_on": [
         "TOOLSET-260-ae"
       ],
       "goal": "PI-RUNNER",
@@ -3410,6 +3400,16 @@
       "section": "Done",
       "status": "done",
       "title": "Plans prefer independent tasks; a long dependency chain needs a reason"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-228-0c"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-261-15",
+      "section": "Done",
+      "status": "done",
+      "title": "A worker's long test runs take a host check slot"
     },
     {
       "depends_on": [],
