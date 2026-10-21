@@ -5759,3 +5759,44 @@ Source section: Now
 - Checks: `python3 scripts/check.py tests/test_project_status.py skills/autowork/scripts/test_task_execution.py skills/autowork/scripts/test_parallel_integrate.py`; `python3 scripts/check.py`
 - Dependencies: None.
 - Outcome (2026-10-20, closed by the owner): the red test is fixed on branch claude/engine-move (ea547821, with the engine move); its worker was stopped so the fix is not made twice.
+
+## Withdrawn ledger proposals after the owner queue reset
+
+Reconciled against `033c3c6b1e49aac8eef1b01dab1b19400eb22205`. The owner reset
+`0cc75087b01313863a926616299071a07beac2d1` removed every then-open task and unfinished
+goal, retaining completed bodies here and earlier ledger records in Git history.
+The current index no longer contains PI-RUNNER or DOCS-COMPLETENESS. Do not restore
+those goals or their removed tasks from a worker's older snapshot.
+
+For each row below, the named task's complete archived contract, Sources, applicable
+accepted plan, worker report and saved `ledger-edit.patch` were inspected. Inputs
+remain in place under
+`<git-common-dir>/autowork-execution/slot-data/<task>/attempt-<n>/`; no runtime bundle
+is copied here. Every reported worker commit below is an ancestor of the reconciled
+revision. The disposition applies only to the omitted planning edits, not to the
+worker implementation or its historical checks.
+
+| Archived task | Attempt / reported commit | Proposal and reason to drop it |
+| --- | --- | --- |
+| [TOOLSET-242-d5](#toolset-242-d5) | 2 / `3b423f1129f05031cdb8507cd9307ebcb233f7fa` | Only refreshes generated DOCS-COMPLETENESS coverage from TOOLSET-146-bc to TOOLSET-146-bc-LIVE. The goal and its live successor were subsequently removed by the owner reset; the completed TOOLSET-146-bc body remains archived. No live qualification is inferred. |
+| [TOOLSET-252-4c](#toolset-252-4c) | 2 / `b27358be0dc4e3f4da349e680169219df2fa4dac` | Same generated coverage refresh as TOOLSET-242-d5, with no task-contract delta. Drop the duplicate obsolete refresh, preserving the archived task and its later planner corrections. |
+| [TOOLSET-261-15](#toolset-261-15) | 1 / `acd6176dea593dd8e0185c5a701fd8b4c3c9035e` | Refreshes that coverage and removes TOOLSET-242-d5 / TOOLSET-252-4c from the old priority list. Both bodies are already archived; neither ID is in the current index/order. Do not replay an old priority snapshot. |
+| [TOOLSET-271-d6](#toolset-271-d6) | 1 / `ec98b5e1d620a2a6b15c9d565eb4bf9212b8a762` | Removes TOOLSET-154-d3, TOOLSET-293-25 and TOOLSET-276-3f from old coverage/order. Their completed bodies are already archived, and their unfinished parent goals were removed by the reset. No current ordering repair remains. |
+| [TOOLSET-278-91](#toolset-278-91) | 1 / `dc5a0c5a02fcc8840519c433fdabc6a52afea38a` | Same coverage/order proposal as TOOLSET-261-15. Drop it for the same reason, without reopening the retained-report task or manufacturing a worker report. |
+
+Source corroboration uses the [accepted continuous-runner contract](docs/project.md#continuous-pi-runner-2026-10-15)
+and, for TOOLSET-261-15, [worker check-slot decision 1](docs/plans/2026-10-19-more-parallel-workers.md#decisions-the-planners-calls).
+The archived contracts' historical engine paths moved in the later engine relocation;
+current source retains archive replay in `pi-autowork/pi_autowork/maintainer.py`
+(`archive_closures`, `replay_archive`), ledger diagnostics in
+`pi-autowork/engine/task_execution.py` (`ledger_reason`), task waits and report-only
+recovery in `pi-autowork/engine/parallel_state.py` (`blocker_updates`, `recover_reports`),
+the long-test wrapper rule in `pi-autowork/engine/parallel_dispatch.py`, and planning
+merge handling in `pi-autowork/pi_autowork/coordinator.py` (`merge_prompt`) and
+`pi-autowork/engine/parallel_integrate.py` (merged planning restoration).
+
+These are proposal withdrawals, not new task closures or evidence that either
+removed goal is met. Original archive bodies, acceptance, TODO.md, goals.json,
+priority and evidence remain unchanged. The reports describe focused offline checks;
+this reconciliation does not rerun or promote them to a full-check or live pass
+(TOOLSET-271-d6's serial runner check was reported as timed out).
