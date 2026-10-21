@@ -1682,8 +1682,9 @@ class Coordinator:
             self.note_state(task, 'integrating')
 
     def set_aside_stale(self, rows):
-        """Finished commits older than PI_AUTOWORK_STALE_HOURS (24; 0: never) are set aside and their
-        tasks run fresh on current main, the new worker shown the earlier work. Twenty commits a day
+        """Finished commits older than PI_AUTOWORK_STALE_HOURS (24; 0: never) that no longer merge
+        cleanly with the session are set aside and their tasks run fresh on current main, the new
+        worker shown the earlier work. Twenty commits a day
         old, written against code main had since redesigned, conflicted with each other at every
         landing and held back every task that shared their files. Never beside a review or a batch,
         whose verdicts hold for the trees they were reached on. Its age is this slot's, from its
@@ -1697,6 +1698,16 @@ class Coordinator:
         for row in rows:
             task, age = row.get('task'), now - float(row.get('started_at') or now)
             if row.get('state') not in ('reported', 'integrating') or task in self.resolvers or age < hours * 3600:
+                continue
+            onto = row.get('commit') and (self.integ_branch or self.base)
+            if onto and git_ok(self.repo, 'merge-tree', '--write-tree', onto, row['commit']):
+                # Its age is this runner's own review queue, not drift: a commit that waited a day
+                # behind batches yet still merges cleanly was about to be thrown away (2026-10-20).
+                # Only one proven to merge is kept; a conflict or a failed check sets it aside.
+                if self.seen.get('stale-' + task) != 'merges':
+                    LOG.say(f'{task}: its commit waited {age / 3600:.0f} h but still merges with {onto}; '
+                            'kept for its review')
+                self.seen['stale-' + task] = 'merges'
                 continue
             result = self.engine('--parallel-set-aside', task)
             if result.get('outcome') != 'SET_ASIDE':

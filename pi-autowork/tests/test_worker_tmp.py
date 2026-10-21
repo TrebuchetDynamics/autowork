@@ -988,6 +988,41 @@ class BatchLandingTests(unittest.TestCase):
                                     'and the task runs fresh on current main',
                                     'D: could not set aside its day-old commit: its interrupted integration already landed'])
 
+    def test_a_day_old_commit_that_still_merges_is_kept_for_its_review(self):
+        """A commit that waited a day behind batches, yet merged cleanly, was about to be thrown away:
+        its age was the runner's own queue. Only one that no longer merges is set aside."""
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator = self.runner(folder, {})
+            repo = Path(folder) / 'repo'
+            git = lambda *a: subprocess.run(['git', '-C', str(repo), '-c', 'user.name=T', '-c', 'user.email=t@t', *a],
+                                            check=True, capture_output=True, text=True).stdout.strip()
+            repo.mkdir()
+            git('init', '-q', '-b', 'main')
+            (repo / 'f.txt').write_text('base\n')
+            git('add', '.')
+            git('commit', '-qm', 'base')
+            commits = {}
+            for task, text in (('A', 'its own file\n'), ('B', 'B changed f\n')):
+                git('checkout', '-q', '-b', 'task-' + task, 'main')
+                (repo / (task + '.txt' if task == 'A' else 'f.txt')).write_text(text)
+                git('add', '.')
+                git('commit', '-qm', task)
+                commits[task] = git('rev-parse', 'HEAD')
+            git('checkout', '-q', '-b', 'session', 'main')
+            (repo / 'f.txt').write_text('the session changed f\n')
+            git('commit', '-qam', 'session moved')
+            runner.stop, runner.repo, runner.integ_branch, runner.base = False, str(repo), 'session', 'main'
+            calls, said = [], []
+            runner.engine = lambda *args: calls.append(args) or {'outcome': 'SET_ASIDE', 'renamed': []}
+            day = 25 * 3600
+            rows = [{'task': t, 'state': 'reported', 'started_at': time.time() - day, 'commit': c} for t, c in commits.items()]
+            with patch.object(coordinator.LOG, 'say', side_effect=said.append):
+                self.assertTrue(runner.set_aside_stale(rows))
+                runner.set_aside_stale(rows[:1])  # said once
+            self.assertEqual(calls, [('--parallel-set-aside', 'B')])  # B conflicts with the session
+            self.assertEqual(said[0], 'A: its commit waited 25 h but still merges with session; kept for its review')
+            self.assertEqual(sum('A:' in line for line in said), 1)
+
     def test_a_busy_checkout_ends_the_pass_so_the_batch_lands_in_order(self):
         """A session in the checkout answered BUSY for the first of three batch-passed candidates;
         the second was tried next, off its batch's order, and both were reviewed again."""
