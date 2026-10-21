@@ -858,7 +858,6 @@
       "TOOLSET-265-16",
       "TOOLSET-164-f1",
       "TOOLSET-147-54",
-      "TOOLSET-163-f7",
       "TOOLSET-182-ce",
       "TOOLSET-153-64",
       "TOOLSET-120-fc",
@@ -872,10 +871,10 @@
       "TOOLSET-130-15",
       "TOOLSET-235-0d",
       "TOOLSET-279-eb",
+      "TOOLSET-066",
       "TOOLSET-294-9d",
       "TOOLSET-286-32",
       "TOOLSET-276-2c",
-      "TOOLSET-276-a9",
       "TOOLSET-276-3d",
       "TOOLSET-266-7a",
       "TOOLSET-267-a0",
@@ -909,11 +908,9 @@
       "TOOLSET-144-c0",
       "TOOLSET-184-1d",
       "TOOLSET-019",
-      "TOOLSET-029",
       "TOOLSET-149-df",
       "TOOLSET-150-71",
       "TOOLSET-151-01",
-      "TOOLSET-066",
       "TOOLSET-003",
       "TOOLSET-098-5d",
       "TOOLSET-011",
@@ -1228,6 +1225,18 @@
       "section": "Next",
       "status": "in_progress",
       "title": "Deploy reviewed local fixes to selected eligible profiles"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-065",
+        "TOOLSET-172-92",
+        "TOOLSET-270-a9"
+      ],
+      "goal": "CLAUDE-CODE",
+      "id": "TOOLSET-066",
+      "section": "Next",
+      "status": "open",
+      "title": "Qualify the Claude Code plugin with a live questions-only workflow"
     },
     {
       "depends_on": [
@@ -1646,18 +1655,6 @@
       "section": "Needs decision",
       "status": "open",
       "title": "Qualify the updated reporting workflow on the affected profile"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-065",
-        "TOOLSET-172-92",
-        "TOOLSET-270-a9"
-      ],
-      "goal": "CLAUDE-CODE",
-      "id": "TOOLSET-066",
-      "section": "Needs decision",
-      "status": "open",
-      "title": "Qualify the Claude Code plugin with a live questions-only workflow"
     },
     {
       "depends_on": [

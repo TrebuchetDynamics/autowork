@@ -657,6 +657,27 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Next
 
+### TOOLSET-066 — Qualify the Claude Code plugin with a live questions-only workflow
+
+- [ ] TOOLSET-066 — Qualify the Claude Code plugin with a live questions-only workflow
+- Live authorization: Owner approved one short bounded disposable Claude Code questions-only plugin qualification on 2026-10-20, only after all recorded prerequisites pass; not a blanket model-run or account-maintenance authorization.
+- Owner decision: 2026-10-20: Approve the bounded disposable Claude Code session after prerequisites pass. No real repository, settings or credentials may be changed; do not execute before the dependency gates are satisfied.
+- Readiness: Model-session approval is supplied. Execution still waits for the recorded prerequisites; this is no longer an unanswered approval request.
+- Ownership: Owner for the already-required approved Claude Code account session; coordinator records the qualification evidence.
+- Scheduling: Wait for reported TOOLSET-172-92 and TOOLSET-270-a9 before recording qualification in docs/cross-host.md or README.md; their saved reports include both guides, but neither qualifies this Claude Code workflow. Moving only the guide write would still leave README.md overlap and would not remove the existing owner approval prerequisite for the short model run. Keep the transcript, disposable-repository status and Claude Code version with the original live qualification; no model-run authority or passing evidence is added.
+- Short: Qualify the Claude Code plugin live
+- Status: open
+- Goal: CLAUDE-CODE
+- Sources: [Claude Code decision](docs/project.md#claude-code-package-2026-10-15), [install guide](docs/cross-host.md#claude-code), [2026-10-15 replan](docs/project.md#backlog-replan-2026-10-15).
+- Touches: docs/cross-host.md, README.md
+- Scope: Clone the published repository at `origin/main` into a scratch directory and load it for one session with `claude --plugin-dir <clone>` (no marketplace or settings change), run `/autowork:plan-with-me questions only: ask one question about this project` in a disposable repository, and confirm the model asks one question and edits nothing.
+- Acceptance: The namespaced command loads the adapter, follows the host contract and leaves the repository unchanged; the result is recorded with the Claude Code version.
+- Checks: Session transcript or output plus `git status` of the disposable repository.
+- Dependencies: TOOLSET-065, TOOLSET-172-92, TOOLSET-270-a9.
+- Environment prerequisite: Owner approval for one short model run on their Claude Code account (Claude Code 2.1.300 is installed; the plugin is published).
+- Planner's call (2026-10-15 replan): `--plugin-dir` on a clean clone of the published commit replaces a marketplace install into a disposable configuration, which would need an interactive login; it loads the same files for one session and changes no settings.
+- Exclusions: No real user repositories, settings or credentials changed.
+
 ### TOOLSET-294-9d — Expose every unresolved Needs decision task in blocker counts and intake
 
 - [ ] TOOLSET-294-9d — Expose every unresolved Needs decision task in blocker counts and intake
@@ -1369,25 +1390,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Needs decision
 
-### TOOLSET-066 — Qualify the Claude Code plugin with a live questions-only workflow
-
-- [ ] TOOLSET-066 — Qualify the Claude Code plugin with a live questions-only workflow
-- Readiness: Live qualification not run; the existing environment prerequisite still requires owner approval for one short model run.
-- Ownership: Owner for the already-required approved Claude Code account session; coordinator records the qualification evidence.
-- Scheduling: Wait for reported TOOLSET-172-92 and TOOLSET-270-a9 before recording qualification in docs/cross-host.md or README.md; their saved reports include both guides, but neither qualifies this Claude Code workflow. Moving only the guide write would still leave README.md overlap and would not remove the existing owner approval prerequisite for the short model run. Keep the transcript, disposable-repository status and Claude Code version with the original live qualification; no model-run authority or passing evidence is added.
-- Short: Qualify the Claude Code plugin live
-- Status: open
-- Goal: CLAUDE-CODE
-- Sources: [Claude Code decision](docs/project.md#claude-code-package-2026-10-15), [install guide](docs/cross-host.md#claude-code), [2026-10-15 replan](docs/project.md#backlog-replan-2026-10-15).
-- Touches: docs/cross-host.md, README.md
-- Scope: Clone the published repository at `origin/main` into a scratch directory and load it for one session with `claude --plugin-dir <clone>` (no marketplace or settings change), run `/autowork:plan-with-me questions only: ask one question about this project` in a disposable repository, and confirm the model asks one question and edits nothing.
-- Acceptance: The namespaced command loads the adapter, follows the host contract and leaves the repository unchanged; the result is recorded with the Claude Code version.
-- Checks: Session transcript or output plus `git status` of the disposable repository.
-- Dependencies: TOOLSET-065, TOOLSET-172-92, TOOLSET-270-a9.
-- Environment prerequisite: Owner approval for one short model run on their Claude Code account (Claude Code 2.1.300 is installed; the plugin is published).
-- Planner's call (2026-10-15 replan): `--plugin-dir` on a clean clone of the published commit replaces a marketplace install into a disposable configuration, which would need an interactive login; it loads the same files for one session and changes no settings.
-- Exclusions: No real user repositories, settings or credentials changed.
-
 ### TOOLSET-003 — Qualify automatic planning recovery with a real bounded workflow
 
 - [ ] TOOLSET-003 — Qualify automatic planning recovery with a real bounded workflow
@@ -1448,6 +1450,9 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-123-a0 — Reinstall the live Hermes profiles and host plugins as autowork
 
 - [ ] TOOLSET-123-a0 — Reinstall the live Hermes profiles and host plugins as autowork
+- Current evidence: Read-only inventory on 2026-10-20 found 12 profiles configured for Autowork and 10 also retaining legacy plugin configuration and directories. The older blanket claim that all installed copies only have the old identity is not current. No installation, configuration, job or service was changed.
+- Next action: None until the owner explicitly reopens the separately scoped migration; this settled deferral is not an unanswered maintenance request.
+- Owner decision: 2026-10-20: Keep live profile migration deferred. Preserve all existing installed identities, profile settings, cron definitions, schedules, models, delivery and pause states; no live changes or restarts.
 - Short: Reinstall live profiles as autowork
 - Status: open; live follow-up of TOOLSET-121-3d, which has no compatibility layer. Moved to Needs decision (2026-10-17, planner's call): it changes the owner's installed profiles, plugins and cron jobs live, and its Ownership requires the owner or live authorization, but the runner had queued it to run alone unattended.
 - Goal: PORTABLE — Align portable workflow discovery.
@@ -1477,6 +1482,8 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-101-f6 — Deploy reviewed fleet-audit helpers through the native scanned updater
 
 - [ ] TOOLSET-101-f6 — Deploy reviewed fleet-audit helpers through the native scanned updater
+- Next action: None until explicitly reopened through the supported native installer review. Do not replay unchanged scans, force flags, manual copies or source repins.
+- Owner decision: 2026-10-20: Keep deferred; no scan override or installation. Preserve the native caution and require its supported approval path if the owner later reopens this deployment.
 - Short: Deploy fleet-audit helpers via updater
 - Status: open
 - Goal: RECOVERY
@@ -1496,6 +1503,8 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-145-6d — Qualify Pi API-key and subscription login locally with owner credentials
 
 - [ ] TOOLSET-145-6d — Qualify Pi API-key and subscription login locally with owner credentials
+- Live authorization: Owner approved a separate isolated Pi account qualification context on 2026-10-20 with locally completed credential prompts. Provider/context selection and actual local attendance remain prerequisites; no credentials have been requested or entered.
+- Owner decision: 2026-10-20: Authorize an isolated context; the owner will complete credential prompts locally. No production credential import, secrets in chat/logs, paid validation, service or profile migration is authorized.
 - Short: Qualify Pi API-key and subscription
 - Status: open
 - Goal: PI-RUNNER
@@ -1506,7 +1515,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Checks: Owner-performed native `autowork` TUI flows: select isolated Pi context and disposable repositories; Connect account with an API key, then a Pi-supported subscription login, using distinct providers/contexts when needed to avoid replacing the first account; reopen and inspect sanitized account/model state; exercise pre-commit cancel; verify absence of service/job/model activity. Use the implemented metadata view, not a token-printing auth command. These are pending live observations, not automated passes.
 - Dependencies: TOOLSET-144-c0.
 - Ownership: Toolset coordinator with the owner at the local terminal; preserve review/source binding to the delivered offline candidate.
-- Gate: USER_INPUT — owner authorization for live credential use plus selected provider(s)/Pi context and locally completed account prompts. No credentials have been requested or used by planning.
+- Gate: USER_INPUT — isolated-context authority is supplied; choose provider(s) and the disposable Pi context, then the owner completes supported account prompts locally. Availability and successful login are not inferred.
 - Exclusions: No production credential import, provider purchase, paid model validation, service migration, gateway/profile changes, remote web credential entry or scheduling. Do not mark done from mocks.
 
 ### TOOLSET-215-91 — Bundle skills load read-only from the plugin, so the skill review never edits them
