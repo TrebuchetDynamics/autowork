@@ -109,7 +109,7 @@ _GOAL_REQUIRED = ('id', 'title', 'priority', 'source', 'status', 'focus')
 _CONTRACT_FIELDS = ('scope', 'acceptance', 'checks', 'depends_on', 'touches',
                     'resources', 'kind', 'ownership', 'live', 'exclusions')
 _ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]*\Z')
-_RESOURCE = re.compile(r'[A-Za-z0-9][A-Za-z0-9_./-]*\Z')
+_RESOURCE = re.compile(r'[A-Za-z0-9][A-Za-z0-9_./:-]*\Z')  # port:8080, db:test
 
 
 def _digest(value: bytes) -> str:
@@ -255,6 +255,9 @@ class _Document:
                       live=LiveAuthorization(data.get('live', 'denied')))
         missing = [key for key in _TASK_REQUIRED if key not in data]
         missing.extend(key for key in ('acceptance', 'checks', 'touches') if key in data and not data[key])
+        if data.get('status') in ('done', 'superseded'):
+            # A closed record is history: it never runs, so it needs no section, rank or contract.
+            missing = [key for key in missing if key in ('id', 'title', 'status')]
         return TaskRecord(**common, **fields, contract_hash=_hash(contract),
                           missing_fields=tuple(missing))
 
