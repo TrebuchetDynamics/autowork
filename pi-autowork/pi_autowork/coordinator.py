@@ -2185,6 +2185,10 @@ class Coordinator:
         True when its repair merged, or another ledger-proposal batch still waits."""
         if self.stop or not self.integ or self.maintainer_job:
             return False
+        if overlap and self.reexec_due():
+            # A due reload already holds new reviews and batches and waits for a re-cut beside the
+            # loop: one started then kept integration idle for its whole Pi job. Reload first.
+            return False
         self.ledger_errors = self.validate_ledger() if ledger_errors is None else ledger_errors
         # Like MAIN repair, LEDGER repair may coexist with task workers/reported slots:
         # those slots cannot settle until the ledger is valid. Never move the session
