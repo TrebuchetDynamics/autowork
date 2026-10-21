@@ -26,6 +26,20 @@ task_checks = goals_todo.task_checks
 CHECK_LABELS = goals_todo.CHECK_LABELS
 
 
+def task_field_list(body):
+    """Every `Label: value` of an entry in order, repeated labels included: task_fields() drops a
+    label written twice, which would lose a note on conversion."""
+    prose = goals_todo.task_prose(body)
+    matches = list(re.finditer(r'^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?([A-Za-z][A-Za-z /-]*):(?:\*\*)?[ \t]*', prose, re.M))
+    found = []
+    for i, match in enumerate(matches):
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(prose)
+        value = prose[match.end():end].strip()
+        if value:
+            found.append((match[1], value))
+    return found
+
+
 class Drift(ValueError):
     """TODO.md's order differs from the recorded priority order."""
 

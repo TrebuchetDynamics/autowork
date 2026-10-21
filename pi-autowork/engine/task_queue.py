@@ -167,9 +167,13 @@ def deferred(snapshot):
             and re.search(r'\b\d{4}-\d{2}-\d{2}\b', notes(t).get('Owner decision', ''))}
 
 
+CONTRACT_LINE = re.compile(r"^[ \t]*(?:[-*][ \t]+)?([A-Za-z][A-Za-z '/-]*):[ \t]*(.*)$", re.M)
+
+
 def parse_contract(text):
-    """{label: value} of a contract as contract_text() wrote it (the first line is its title)."""
-    return {label: value.strip() for label, value in NOTE.findall(text or '')}
+    """{label: value} of a contract as contract_text() wrote it (`- Label: value`; the first line
+    is its title), or as an attempt dispatched before the store recorded it (`Label: value`)."""
+    return {label: value.strip() for label, value in CONTRACT_LINE.findall(text or '')}
 
 
 def record(repo, task_id, rev='HEAD'):

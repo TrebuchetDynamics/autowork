@@ -112,7 +112,7 @@ def _owner_only(fields):
     return bool(parallel_plan.authorization_wait(task))
 
 
-def _task_record(tid, title, entry, fields, rank, known):
+def _task_record(tid, title, entry, fields, rank, known, listed=()):
     """(header fields, body) for one open task, or Refused naming what cannot be held."""
     checks = reader.task_checks(fields)
     deps_text = fields.get('Dependencies', 'None.').strip()
@@ -143,7 +143,13 @@ def _task_record(tid, title, entry, fields, rank, known):
         header['checks'] = [checks.strip()]
     if fields.get('Exclusions', '').strip():
         header['exclusions'] = [fields['Exclusions'].strip()]
-    notes = [(label, value) for label, value in fields.items()
+    labels = [label for label, _ in listed]
+    repeated = sorted({label for label in labels if labels.count(label) > 1
+                       and (label in TYPED_LABELS or label in KEPT_AS_NOTES)})
+    if repeated:
+        raise Refused(f'{tid}: {", ".join(repeated)} written more than once; keep one, then convert')
+    # Every note, repeated ones too: the field parser keeps only labels written once.
+    notes = [(label, value) for label, value in (listed or fields.items())
              if label not in TYPED_LABELS or label in KEPT_AS_NOTES]
     if deps and deps_text and deps_text.rstrip('.') != ', '.join(deps):
         notes.append(('Dependencies', deps_text))
@@ -188,7 +194,8 @@ def build(repo):
         body, _mark, _section = bodies[tid][0]
         fields = reader.task_fields(body)
         title = body.splitlines()[0].split('—', 1)[-1].strip(' —:-') or tid
-        header, notes = _task_record(tid, title, tasks[tid], fields, STEP * (index + 1), known)
+        header, notes = _task_record(tid, title, tasks[tid], fields, STEP * (index + 1), known,
+                                     reader.task_field_list(body))
         files[f'tasks/items/{tid}.md'] = _render(tid, header, notes)
     archived = reader.archived_done(repo)
     for tid, entry in tasks.items():

@@ -167,6 +167,23 @@ class MigrateTests(unittest.TestCase):
         self.assertEqual(self.migrate().returncode, 0)
         self.assertEqual(TaskStore.at(self.repo, 'HEAD').tasks['T-004'].live.value, 'authorized')
 
+    def test_a_repeated_note_is_kept_and_a_repeated_typed_field_refused(self):
+        text = (self.repo / 'TODO.md').read_text()
+        alpha = '- Sources: [plan](docs/plan.md)'
+        (self.repo / 'TODO.md').write_text(text.replace(alpha, alpha + '\n- Evidence: first run\n- Evidence: second run'))
+        self.commit()
+        self.assertEqual(self.migrate().returncode, 0)
+        body = TaskStore.at(self.repo, 'HEAD').tasks['T-001'].body
+        self.assertIn('- Evidence: first run\n- Evidence: second run', body)
+
+    def test_a_repeated_typed_field_refuses(self):
+        text = (self.repo / 'TODO.md').read_text()
+        (self.repo / 'TODO.md').write_text(text.replace('- Touches: src/a.py', '- Touches: src/a.py\n- Touches: src/z.py'))
+        self.commit()
+        refused = self.migrate('--dry-run')
+        self.assertEqual(refused.returncode, 1)
+        self.assertIn('T-001: Touches written more than once', refused.stderr)
+
     def test_migration_refuses_unlossless_input(self):
         dry = self.migrate('--dry-run')
         self.assertEqual(dry.returncode, 0, dry.stderr)
