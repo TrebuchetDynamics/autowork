@@ -902,6 +902,7 @@ class TaskRow:
     kind: str           # working, held, waiting, ready: what a TASK_VIEWS filter matches
     why: str = ''       # the hold or wait reason, or the owner's question
     question: bool = False
+    pending: bool = False  # its file has an uncommitted edit: the runner reads it once committed
 
 
 def task_store(repo):
@@ -915,6 +916,16 @@ def task_store(repo):
         return task_queue.store(Path(repo))
     except (task_queue.StoreError, OSError, TypeError, subprocess.SubprocessError):
         return None
+
+
+def pending_edits(repo):
+    """IDs of tasks whose file has an uncommitted edit (staged, unstaged or untracked)."""
+    from task_store import TaskStore, StoreError
+    try:
+        paths = TaskStore.pending(Path(repo))
+    except (StoreError, OSError, subprocess.SubprocessError):
+        return set()
+    return {Path(p).stem for p in paths if p.startswith('tasks/items/') and p.endswith('.md')}
 
 
 def task_rows(runner):
@@ -933,6 +944,7 @@ def task_rows(runner):
     lanes = {lane.task: lane for lane in runner.lanes}
     asked = {q.id: q for q in runner.questions}
     rows = []
+    edited = pending_edits(runner.repo)
     sections = {'Now': 0, 'Next': 1, 'Needs decision': 2}
     records = sorted((t for t in store.tasks.values() if t.status == 'open' and t.section in sections),
                      key=lambda t: (sections[t.section], t.rank or 0, t.id))
@@ -953,9 +965,12 @@ def task_rows(runner):
             words, kind = f'{WAITING} · Needs decision', 'waiting'
         else:
             words, kind = f'{WAITING} · Ready' if state in ('', 'ready') else state, 'ready'
+        if task in edited:
+            words += ' · Edit not committed'
         short = short if len(short) <= 40 else short[:39].rstrip() + '…'
         rows.append(TaskRow(task=task, short=short, section=section, state=words, kind=kind,
-                            why='you: ' + question.needs if question else why, question=bool(question)))
+                            why='you: ' + question.needs if question else why, question=bool(question),
+                            pending=task in edited))
     return rows
 
 

@@ -172,6 +172,12 @@ class FleetViewTests(unittest.TestCase):
         self.assertEqual([r.task for r in rows], ['N-1', 'N-2', 'X-2', 'D-1'])
         self.assertEqual(sorted(g for g, _ in fleet_view.open_goals(fleet_view.Runner(name='counted', repo=str(repo)))),
                          sorted(g.id for g in store.goals.values() if g.status != 'met'))
+        # An uncommitted edit shows as pending; the committed record still decides.
+        with (repo / 'tasks/items/N-2.md').open('a') as record:
+            record.write('- Owner decision: 2026-10-21: later\n')
+        rows = fleet_view.task_rows(fleet_view.Runner(name='counted', repo=str(repo), state_dir=str(self.base / 'none')))
+        self.assertEqual([r.task for r in rows if r.pending], ['N-2'])
+        self.assertIn('Edit not committed', next(r.state for r in rows if r.task == 'N-2'))
 
     def test_tasks_list_every_open_task_in_order_with_what_the_runner_says(self):
         repo = self.base / 'repo'
