@@ -57,7 +57,8 @@ Resource strings are tokens such as `live`, `exclusive` or `test-db`, not prose.
 
 Goal fields are all mandatory: `id`, `title`, `source` are nonempty strings;
 `priority` is an integer; `status` is `"unmet"`, `"partial"`, `"unverified"` or
-`"met"`; `focus` is a boolean. The reader preserves declared goal status; it does
+`"met"`; `focus` is a boolean. Optional `depends_on` lists goal IDs that must be met first
+(an unknown ID is refused). The reader preserves declared goal status; it does
 not infer goal completion or qualify evidence.
 
 ## Authority and runnable boundary

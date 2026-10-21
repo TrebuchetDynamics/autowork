@@ -60,6 +60,7 @@ class GoalRecord(Record):
     source: str
     status: str
     focus: bool
+    depends_on: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -189,7 +190,7 @@ class _Document:
 
     def validate(self, goal=False):
         required = _GOAL_REQUIRED if goal else _TASK_REQUIRED
-        allowed = {'schema', *required} | (set() if goal else {'live'})
+        allowed = {'schema', *required} | ({'depends_on'} if goal else {'live'})
         for key in self.data.keys() - allowed:
             self.fail(f'unknown field {key}', key)
         for key in (_GOAL_REQUIRED if goal else _TASK_STRINGS):
@@ -210,6 +211,9 @@ class _Document:
                     self.fail(f'missing goal field {key}', key)
             if type(self.data['focus']) is not bool:
                 self.fail('focus must be a boolean', 'focus')
+            depends = self.data.get('depends_on', [])
+            if not isinstance(depends, list) or any(not isinstance(v, str) or not _ID.fullmatch(v) for v in depends):
+                self.fail('depends_on must be an array of goal IDs', 'depends_on')
             return
         if 'section' in self.data and self.data['section'] not in ('Now', 'Next', 'Needs decision'):
             self.fail('section must be Now, Next or Needs decision', 'section')
@@ -235,6 +239,7 @@ class _Document:
                       body=self.body, record_revision=_digest(blob))
         if goal:
             fields = {key: data[key] for key in ('priority', 'source', 'status', 'focus')}
+            fields['depends_on'] = tuple(data.get('depends_on', ()))
             return GoalRecord(**common, **fields, contract_hash=_hash(fields))
         contract = {key: data.get(key) for key in _CONTRACT_FIELDS}
         # Writing an authority field's default must not look like a contract change.
@@ -301,6 +306,10 @@ class TaskStore:
         focused = [goal for goal in goals.values() if goal.focus]
         if len(focused) > 1:
             documents[focused[1].path].fail(f'only one goal may have focus (also {focused[0].id})', 'focus')
+        for goal in goals.values():
+            for dep in goal.depends_on:
+                if dep not in goals:
+                    documents[goal.path].fail(f'unknown goal dependency {dep}', 'depends_on')
         for task in tasks.values():
             if task.goal is not None and task.goal not in goals:
                 documents[task.path].fail(f'unknown goal {task.goal}', 'goal')
