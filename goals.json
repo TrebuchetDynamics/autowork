@@ -236,13 +236,137 @@
         "TOOLSET-034"
       ],
       "title": "Report OMH memory left off when another provider holds the slot"
+    },
+    {
+      "depends_on": [],
+      "evidence": [],
+      "id": "TASK-STORE",
+      "priority": 100,
+      "source": "docs/project.md#task-store-v2-2026-10-20",
+      "status": "unmet",
+      "tasks": [
+        "TOOLSET-294-f6",
+        "TOOLSET-295-57",
+        "TOOLSET-296-9f",
+        "TOOLSET-297-41",
+        "TOOLSET-298-c2",
+        "TOOLSET-299-d9",
+        "TOOLSET-300-68",
+        "TOOLSET-301-32",
+        "TOOLSET-302-33"
+      ],
+      "title": "Keep project tasks in a Git-native tasks/ store the engine reads directly"
     }
   ],
   "priority_order": {
     "schema": 1,
-    "tasks": []
+    "tasks": [
+      "TOOLSET-294-f6",
+      "TOOLSET-295-57",
+      "TOOLSET-296-9f",
+      "TOOLSET-297-41",
+      "TOOLSET-298-c2",
+      "TOOLSET-302-33",
+      "TOOLSET-299-d9",
+      "TOOLSET-300-68",
+      "TOOLSET-301-32"
+    ]
   },
   "tasks": [
+    {
+      "depends_on": [],
+      "goal": "TASK-STORE",
+      "id": "TOOLSET-294-f6",
+      "section": "Now",
+      "status": "open",
+      "title": "TaskStore reads tasks/ files into immutable records from a pinned commit"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-294-f6"
+      ],
+      "goal": "TASK-STORE",
+      "id": "TOOLSET-295-57",
+      "section": "Now",
+      "status": "open",
+      "title": "Task selection from the store matches the current selector"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-294-f6",
+        "TOOLSET-295-57"
+      ],
+      "goal": "TASK-STORE",
+      "id": "TOOLSET-296-9f",
+      "section": "Now",
+      "status": "open",
+      "title": "A schema-bound writer and the autowork tasks commands edit the store"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-295-57",
+        "TOOLSET-296-9f"
+      ],
+      "goal": "TASK-STORE",
+      "id": "TOOLSET-297-41",
+      "section": "Now",
+      "status": "open",
+      "title": "autowork migrate converts a repository to tasks/ once"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-297-41"
+      ],
+      "goal": "TASK-STORE",
+      "id": "TOOLSET-298-c2",
+      "section": "Now",
+      "status": "open",
+      "title": "The engine reads only tasks/"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-298-c2",
+        "TOOLSET-302-33"
+      ],
+      "goal": "TASK-STORE",
+      "id": "TOOLSET-299-d9",
+      "section": "Now",
+      "status": "open",
+      "title": "The runner and the fleet view read only tasks/"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-302-33"
+      ],
+      "goal": "TASK-STORE",
+      "id": "TOOLSET-300-68",
+      "section": "Now",
+      "status": "open",
+      "title": "Closing a task publishes one receipt and status commit exactly once"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-297-41",
+        "TOOLSET-299-d9",
+        "TOOLSET-300-68",
+        "TOOLSET-302-33"
+      ],
+      "goal": "TASK-STORE",
+      "id": "TOOLSET-301-32",
+      "section": "Now",
+      "status": "open",
+      "title": "Planning skills use the autowork CLI and this repository converts to tasks/"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-298-c2"
+      ],
+      "goal": "TASK-STORE",
+      "id": "TOOLSET-302-33",
+      "section": "Now",
+      "status": "open",
+      "title": "Integration judges task edits by contract hash, not by path"
+    },
     {
       "depends_on": [],
       "goal": "RELIABILITY-2026-10",
