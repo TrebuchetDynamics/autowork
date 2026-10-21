@@ -113,7 +113,13 @@ isolation; one writer per workspace. Before adopting idle work, inspect actual
 process liveness, workspace changes, source/candidate provenance and check receipts.
 Advisory locks cannot exclude manual writers who ignore them or coordinate different
 hosts; an enabled same-repository cron run may also be writing. Preserve useful
-candidates; do not kill workers or delete worktrees to migrate. A live writer does
+candidates; do not kill workers or delete worktrees to migrate. `in_progress`, an
+open session or a bare PID is not live ownership: verify the executor's identity and
+recent activity, and recover an abandoned claim through the supported adoption flow,
+keeping its work and any explicit pause. Before requeueing, check the executor can
+work where the task's files live. Never end a turn on a bare claim: leave `Status:
+open` with its Next action, a `Held by: <who>; until <date>` line, or the explicit
+pause, so no claim outlives the session that made it. A live writer does
 not freeze priority: apply an owner's reorder to the next selection through Docs
 Sync, without interrupting current work or faking a dependency, and report it only
 after `goals.py next` agrees.

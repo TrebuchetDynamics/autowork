@@ -110,7 +110,9 @@ reservation before asking about receipts or access that stop no local work.
   strip exclusivity in bulk, and never change the contract of a task a live worker
   holds.
 - **Live or uncertain ownership:** leave live work and claims alone. A historical
-  ACTIVE/in_progress label alone proves neither activity nor abandonment. If activity
+  ACTIVE/in_progress label alone proves neither activity nor abandonment, and neither
+  does an open session or a bare PID: check the holder's identity and recent writes.
+  An unrelated open session in the checkout does not own a claim. If activity
   cannot be established, retain the hold, identify the missing evidence, and continue
   with independent entries. Ask only for information unavailable through inspection;
   never offer an uninformed ownership transfer as the recommended answer.

@@ -164,6 +164,42 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No journal rotation or compaction of existing lines in this slice; slot events are untouched.
 - Planner's call: dedupe at the writer, the cheapest change that bounds growth while every reader keeps its meaning; rotation can follow if the heartbeat rate still matters.
 
+### TOOLSET-298-05 — A task claim names its holder, and a claim whose holder is gone is adoptable at once
+
+- [ ] TOOLSET-298-05 — A task claim names its holder, and a claim whose holder is gone is adoptable at once
+- Short: Claims name their holder
+- Status: open
+- Goal: PARALLEL
+- Payoff: Run independent Autowork tasks in parallel workers with one coordinator.
+- Sources: [docs-sync goals.py](skills/docs-sync/scripts/goals.py) (`task REPO ID in_progress` flips the status and records no holder); [claims](skills/autowork/scripts/parallel_claims.py) (`claim_status`: quiet time only, `attributable` treats a claim without Touches as served by any active session in the main checkout); [status](skills/autowork/scripts/parallel_status.py) (claim roots carry `reason`/`adoptable_after`); [fleet view](pi-autowork/pi_autowork/fleet_view.py) (`'claim': 'claimed elsewhere'`); [state](skills/autowork/scripts/parallel_state.py) (PID identity by `/proc` start time and boot ID, already used for worker slots).
+- Evidence: an `in_progress` claim left by an interactive session that ended carries no holder, so the engine can only wait out quiet time (PI_AUTOWORK_CLAIM_IDLE, default 21600 s) and cannot tell an abandoned claim from a live one. A claim with no Touches stays unadoptable while any unrelated agent session is active in the main checkout, which an interactive session usually is. The runner and TUI then show only "claimed elsewhere".
+- Touches: skills/docs-sync/scripts/goals.py, skills/autowork/scripts/parallel_claims.py, skills/autowork/scripts/test_claim_holder.py
+- Scope: (1) Setting a task `in_progress` through `goals.py task` writes a `Claimed by:` line in its entry: host session ID when set (`CLAUDE_CODE_SESSION_ID`, `PI_AUTOWORK_SESSION`), PID with its start time and boot ID, and the time; setting it `open` or `done` removes the line. (2) `claim_status` reads the holder first: a holder process that is gone (PID absent, or start time or boot ID differ) with no write in the claim's worktrees or Touches since the claim makes it adoptable after a short grace (PI_AUTOWORK_CLAIM_GRACE, default 300 s) instead of the quiet time; a live holder keeps it, whatever the Touches. (3) Claims without a `Claimed by:` line keep today's rules unchanged. A `Held by:` note still wins over everything. `claim_status` returns the holder and its last activity for TOOLSET-299-d5 to show.
+- Acceptance: Given a claim whose holder PID has exited and nothing was written since, it is adoptable after the grace, and adoption keeps its branches and worktrees, and a reused PID with a different start time counts as gone (`skills/autowork/scripts/test_claim_holder.py::test_a_gone_holder_frees_the_claim_after_the_grace`); a live holder keeps a claim without Touches while an unrelated session is active (`test_a_live_holder_keeps_its_claim`); a claim without the line behaves as before (`test_a_legacy_claim_keeps_quiet_time`).
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_claim_holder.py; python3 -m unittest discover -s skills/autowork/scripts -p 'test_parallel_*.py'; python3 -m unittest discover -s skills/docs-sync/scripts -p 'test_goals*.py'; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No display change (TOOLSET-299-d5); no change to worker slots, which already check identity; no release of a claim whose holder lives, however quiet; no `Held by:` or pause is overridden.
+- Planner's call: record the holder where the claim is made, so liveness is a fact instead of a quiet-time guess; legacy claims keep the conservative rule.
+
+### TOOLSET-299-d5 — Status and the TUI show what a claim waits for, not just claimed elsewhere
+
+- [ ] TOOLSET-299-d5 — Status and the TUI show what a claim waits for, not just claimed elsewhere
+- Short: Claims show their unblock condition
+- Status: open
+- Goal: PARALLEL
+- Payoff: Run independent Autowork tasks in parallel workers with one coordinator.
+- Sources: [status](skills/autowork/scripts/parallel_status.py) (claim roots carry `reason`/`adoptable_after` from `claim_status`); [fleet view](pi-autowork/pi_autowork/fleet_view.py) (`'claim': 'claimed elsewhere'`); [health](pi-autowork/pi_autowork/health.py) (`claimed elsewhere`).
+- Evidence: the runner log and TUI name every claim root "claimed elsewhere", whatever holds it, so the owner cannot tell a live session from a forgotten claim or from disabled adoption.
+- Touches: skills/autowork/scripts/parallel_status.py, pi-autowork/pi_autowork/fleet_view.py, pi-autowork/pi_autowork/health.py, pi-autowork/tests/test_claim_display.py
+- Scope: Show the condition `claim_status` already knows, one line per claim: `held by <session or pid>, active <age> ago`, `holder gone, adoptable in <s>`, `adoptable in <s>` (quiet time), `held: <note>`, or the existing reason (adoption disabled, an active session may serve it). Unknown stays unknown.
+- Acceptance: Given claims in each of those states, status JSON carries the holder and age and the TUI and health lines print the matching condition (`pi-autowork/tests/test_claim_display.py::test_each_claim_names_its_condition`); a claim with no holder line prints the quiet-time or session reason, never a holder (`test_a_legacy_claim_names_no_holder`).
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_claim_display.py; python3 -m unittest discover -s skills/autowork/scripts -p 'test_parallel_status*.py'; python3 scripts/check.py
+- Dependencies: TOOLSET-298-05, TOOLSET-297-cb.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to what makes a claim adoptable.
+- Planner's call: a display slice after the holder record, so the hot status and TUI files change once, after the journal change in the same reader.
+
 ### TOOLSET-287-44 — A merge conflict the resolver may still adopt is never an owner question
 
 - [ ] TOOLSET-287-44 — A merge conflict the resolver may still adopt is never an owner question
