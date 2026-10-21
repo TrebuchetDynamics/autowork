@@ -626,7 +626,7 @@ class FleetViewTests(unittest.TestCase):
         self.assertEqual(fleet_view.status(L('T', 'waiting to integrate')), ('Waiting', 'Merge turn'))
         runner = fleet_view.Runner(name='a', lanes=[L('A', 'implementing'), L('B', 'implemented'), L('C', 'verifying')],
                                    waiting=2, held=[('D', 'conflict')])
-        self.assertEqual(fleet_view.task_counts(runner), (2, 0, 3, 1, 6))
+        self.assertEqual(fleet_view.task_counts(runner), (2, 0, 3, 1, 0, 6))
 
     def test_total_counts_every_open_task(self):
         """The fleet's Total read 12 for a store of 20 open tasks: three a restart had paused were in
@@ -638,9 +638,25 @@ class FleetViewTests(unittest.TestCase):
             health.update(folder, snapshot, now=1000)
             self.assertEqual(json.loads((Path(folder) / 'status.json').read_text())['waiting'], 2)
         runner = fleet_view.Runner(name='a', waiting=2, decisions=4)
-        self.assertEqual(fleet_view.task_counts(runner), (0, 0, 2, 0, 6))
+        self.assertEqual(fleet_view.task_counts(runner), (0, 0, 2, 0, 4, 6))
         self.assertEqual(fleet_view.needs(fleet_view.Runner(name='a', state='idle', decisions=4)),
                          '4 tasks need your decision')
+
+    def test_waiting_row_adds_up_to_the_waiting_count(self):
+        """TOOLSET-351-54bd774c: the Waiting row read '8: 6 on dependencies · 2 …' beside '15 waiting':
+        it left out commits in flight and overlap holds. Every waiting task is in a labelled part."""
+        L = fleet_view.Lane
+        runner = fleet_view.Runner(name='a', lanes=[L('A', 'implemented'), L('B', 'implemented'),
+                                                    L('C', 'waiting to integrate'), L('D', 'verifying')],
+                                   waiting=5, waiting_groups=[{'count': 3, 'label': 'on dependencies'}],
+                                   held=[('E', 'overlap'), ('F', 'conflict')], decisions=2)
+        active, mergeable, waiting, blocker, decision, total = fleet_view.task_counts(runner)
+        self.assertEqual((active, mergeable, waiting, blocker, decision, total), (1, 0, 9, 1, 2, 13))
+        self.assertEqual(sum(n for n, _ in fleet_view.waiting_parts(runner)), waiting)
+        self.assertEqual(fleet_view.waiting_detail(runner),
+                         "9: 2 implemented, waiting for review · 1 reviewed, waiting for their merge turn · "
+                         "3 on dependencies · 2 waiting for another reason · 1 waiting for another task's files")
+        self.assertEqual(fleet_view.waiting_detail(fleet_view.Runner(name='b')), '')
 
     def test_mergeable_needs_passed_gates(self):
         """Only an integrated commit (checks and review passed, on the session branch) is Mergeable;
@@ -651,7 +667,7 @@ class FleetViewTests(unittest.TestCase):
                               ('starting', 'Starting'), ('running', 'Implementing')):
             self.assertEqual(fleet_view.status(L('T', phase)), ('Active', detail), phase)
         runner = fleet_view.Runner(name='a', lanes=[L('A', 'integrated'), L('B', 'verifying')])
-        self.assertEqual(fleet_view.task_counts(runner), (1, 1, 0, 0, 2))
+        self.assertEqual(fleet_view.task_counts(runner), (1, 1, 0, 0, 0, 2))
 
     def test_blocker_names_its_resolver(self):
         """A hold is the runner's repair unless the owner has an open question for it."""
@@ -661,7 +677,7 @@ class FleetViewTests(unittest.TestCase):
         self.assertEqual(fleet_view.blocker_detail(None), 'Held · Agent repair')
         # An overlap hold is lifted by the engine itself once the files are free: it waits.
         runner = fleet_view.Runner(name='a', held=[('A', 'overlap'), ('B', 'conflict')])
-        self.assertEqual(fleet_view.task_counts(runner), (0, 0, 1, 1, 2))
+        self.assertEqual(fleet_view.task_counts(runner), (0, 0, 1, 1, 0, 2))
 
     @unittest.skipUnless(shutil.which('uv'), 'uv is not installed')
     def test_the_tui_drives_the_same_actions_headless(self):

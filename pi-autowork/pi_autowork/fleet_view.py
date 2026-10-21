@@ -583,14 +583,49 @@ def question_summary(runner):
 
 
 def task_counts(runner):
-    """(active, mergeable, waiting, blocker, total) for a runner."""
+    """(active, mergeable, waiting, blocker, decision, total) for a runner: every open task in exactly
+    one column, so the columns add up to Total. Decision is the Needs-decision tasks, which wait
+    for the owner, not the engine."""
     heads = [status(lane)[0] for lane in runner.lanes]
     active = heads.count(ACTIVE) if runner.lanes else runner.running
     mergeable = heads.count(MERGEABLE)
     blocker = len(blocking(runner.held))
     waiting = heads.count(WAITING) + runner.waiting + len(runner.held) - blocker
-    # Total is every open task: the Needs-decision ones wait for the owner, outside the columns.
-    return active, mergeable, waiting, blocker, active + mergeable + waiting + blocker + runner.decisions
+    return active, mergeable, waiting, blocker, runner.decisions, active + mergeable + waiting + blocker + runner.decisions
+
+
+# Why a task in flight waits, as a label of the Waiting row ("7 implemented, waiting for review").
+WAIT_LABELS = {'Implemented': 'implemented, waiting for review', 'Merge turn': 'reviewed, waiting for their merge turn',
+               'Batch check': 'in a batch check', 'Check slot': 'waiting for a check slot',
+               'Paused': 'paused by a restart', 'Pending': 'pending'}
+
+
+def waiting_parts(runner):
+    """[(count, label)] of every Waiting task, so the parts add up to the Waiting count: commits in
+    flight by phase, then the queue's reasons, then overlap holds. The row showed only the queue's
+    reasons, '8: 6 on dependencies · 2 …' beside '15 waiting'."""
+    phases = {}
+    for lane in runner.lanes:
+        head, detail = status(lane)
+        if head == WAITING:
+            phases[detail] = phases.get(detail, 0) + 1
+    parts = [(n, WAIT_LABELS.get(detail, detail.lower())) for detail, n in phases.items()]
+    parts += [(g['count'], g['label']) for g in runner.waiting_groups]
+    grouped = sum(g['count'] for g in runner.waiting_groups)
+    if runner.waiting > grouped:
+        parts.append((runner.waiting - grouped, 'waiting for another reason'))
+    overlap = len(runner.held) - len(blocking(runner.held))
+    if overlap:
+        parts.append((overlap, "waiting for another task's files"))
+    return parts
+
+
+def waiting_detail(runner):
+    """'15: 7 implemented, waiting for review · 6 on dependencies · 2 wait for …', or ''."""
+    parts = waiting_parts(runner)
+    if not parts:
+        return ''
+    return f"{sum(n for n, _ in parts)}: " + ' · '.join(f'{n} {label}' for n, label in parts)
 
 
 def reviews(state_dir, proc='/proc'):
