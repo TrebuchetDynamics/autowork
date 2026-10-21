@@ -293,7 +293,8 @@ class Coordinator:
         with open(out.name, 'w') as stream, open(self.state / 'engine.err', 'a') as err:
             child = subprocess.Popen(args, stdout=stream, stderr=err, stdin=subprocess.DEVNULL,
                                      env=dict(os.environ, PI_AUTOWORK_VERIFY_TIMEOUT=limit))
-        self.integration = {'task': task, 'proc': child, 'out': out.name, 'started': time.time()}
+        self.integration = {'task': task, 'proc': child, 'out': out.name, 'started': time.time(),
+                            'base': git(self.integ, 'rev-parse', 'HEAD')}
         self.snapshot = None
 
     BATCH = 'batch'
@@ -407,6 +408,10 @@ class Coordinator:
         """While a batch runs its long check, start the next car on its published tip with the
         fresh candidates it does not hold (PI_AUTOWORK_TRAIN=0 turns this off)."""
         job = self.integration
+        if (job and job['task'] != self.BATCH and not self.train and not self.stop and not self.reexec_due()
+                and job.get('base') and worker.setting('PI_AUTOWORK_INDEPENDENT_HALVES', 1) >= 1):
+            self.board_single(rows, job)
+            return
         if (self.train or not job or job['task'] != self.BATCH or self.stop or self.reexec_due()
                 or worker.setting('PI_AUTOWORK_TRAIN', 1) < 1):
             return
@@ -434,6 +439,26 @@ class Coordinator:
         cars = cars[:max(1, int(os.environ.get('PI_AUTOWORK_BATCH') or 6))]
         if cars:
             self.start_batch([t for t, _ in cars], on=tip, revisions=[f'{t}@{c}' for t, c in cars])
+
+    def board_single(self, rows, job):
+        """While a candidate whose batch failed is reviewed alone, check the next such candidate
+        beside it, alone on the same base, as an independent one-candidate car: a failed batch of
+        two or three no longer integrates them strictly one after another (TOOLSET-342-0153a52b)."""
+        failed = self.batch_failed()
+        if not any(r.split('@', 1)[0] == job['task'] for r in failed):
+            return  # an ordinary review: the batches it waits for start once it ends
+        state = {r.get('task'): r.get('state') for r in rows}
+        for task, commit in batchable(rows):
+            if (task != job['task'] and commit and f'{task}@{commit}' in failed and state.get(task) == 'reported'
+                    and not worker.batch_record(self.state, task).exists()):
+                self.start_batch([task], on=job['base'], revisions=[f'{task}@{commit}'], independent=True)
+                return
+
+    def settle_single(self, result):
+        """A review ended beside an independent car: one that passed lands first and moves the
+        car's base, so the car is checked again; one that was held leaves the car's verdict valid."""
+        if self.train and self.train.get('independent') and result.get('outcome') in ('INTEGRATED', 'CLOSED'):
+            self.stop_train('the review beside it passed and lands first, on a newer base')
 
     def settle_train(self, result):
         """The batch ahead ended with ``result``: keep or stop the car beside it. A merge-train car
@@ -1829,6 +1854,7 @@ class Coordinator:
         elif finished:
             handled.add(finished[0])
             self.integrated(*finished, resolve_conflicts=False)
+            self.settle_single(finished[1])
             if finished[1].get('cause') == 'conflict':
                 deferred.append(finished[0])
             if self.stop:

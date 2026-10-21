@@ -593,6 +593,12 @@ class FleetViewTests(unittest.TestCase):
             found = {lane.task: fleet_view.status(lane) for lane in fleet_view.lanes(runner)}
         self.assertEqual(found, {'A': ('Active', 'Verifying'), 'B': ('Waiting', 'Batch check'),
                                  'E': ('Waiting', 'Merge turn')})
+        # A finished commit a running batch is checking reads as in the batch check, not idle.
+        for task in 'FG':
+            (slots / f'{task}.json').write_text(json.dumps({'task_id': task, 'state': 'reported', 'attempt': 1}))
+        with mock.patch.object(fleet_view, 'reviews', return_value=(set(), {'F'})):
+            found = {lane.task: fleet_view.status(lane) for lane in fleet_view.lanes(runner)}
+        self.assertEqual((found['F'], found['G']), (('Waiting', 'Batch check'), ('Waiting', 'Implemented')))
 
     def test_phase_text_is_split_into_a_short_phase_and_its_detail(self):
         self.assertEqual(fleet_view._split_phase('verifying'), ('verifying', ''))
