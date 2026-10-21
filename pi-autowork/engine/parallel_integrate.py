@@ -993,8 +993,9 @@ def task_store_rank(record):
 def close_writes(repo, task, slot, info, checks, record):
     """{path: text} a close writes: the task's done record, its receipt and, when live checks
     remain, their follow-up task. Nothing else; TODO.archive.md is not written."""
-    path = repo / execution.task_path(task)
-    text = task_store.edit(path.read_text(), {'status': 'done'})
+    # From the record as committed: a close records the verified contract, never a local edit.
+    committed = git(repo, 'show', f'HEAD:{execution.task_path(task)}', raw=True).decode()
+    text = task_store.edit(committed, {'status': 'done'})
     writes = {execution.task_path(task): text, receipt_path(task): receipt_text(repo, task, slot, info, checks, record)}
     live = live_items((slot.get('report') or {}).get('pending_live'))
     if live:
@@ -1011,7 +1012,7 @@ def pending_writes(repo, writes):
         at_head = subprocess.run(['git', '-C', str(repo), 'show', f'HEAD:{path}'], capture_output=True, text=True)
         if at_head.returncode != 0 or at_head.stdout != text:
             pending.append(path)
-    return pending
+    return sorted(pending)
 
 
 def close(repo, owner_pid, task):
@@ -1040,14 +1041,20 @@ def close(repo, owner_pid, task):
             writes = close_writes(repo, task, slot, info, checks, record) if record.status != 'done' else {}
             for path, text in writes.items():
                 target = repo / path
-                if not target.exists() or target.read_text() != text:
+                if target.exists() and target.read_text() != text:
                     raise ValueError('a partial closure differs from what this close writes; inspect before retrying')
+            for path, text in writes.items():  # a closure cut short wrote only part of its files
+                if not (repo / path).exists():
+                    (repo / path).parent.mkdir(parents=True, exist_ok=True)
+                    (repo / path).write_text(text)
             if slot['state'] != 'closed':
                 slot = state.change(common, slot, 'closed', {})
             dispatch.cleanup_tmpdir(common, slot)
             return {'outcome': 'CLOSED', 'task': task, 'cleaned': cleanup_worker(repo, common, slot),
                     'files': pending_writes(repo, writes)}
         writes = close_writes(repo, task, slot, info, checks, record)
+        # Again just before the first write: a session can appear while the receipt was checked.
+        require_no_writers(repo, close_files(repo, task))
         before = {path: (repo / path).read_bytes() if (repo / path).exists() else None for path in writes}
         try:
             for path, text in writes.items():
@@ -1056,6 +1063,7 @@ def close(repo, owner_pid, task):
                 temporary = target.with_name(f'.{target.name}.{os.getpid()}.tmp')
                 temporary.write_text(text)
                 os.replace(temporary, target)
+            slot = state.change(common, slot, 'closed', {})
         except BaseException:
             # All or nothing: a half-written close would sit uncommitted in the session.
             for path, data in before.items():
@@ -1064,7 +1072,6 @@ def close(repo, owner_pid, task):
                 else:
                     (repo / path).write_bytes(data)
             raise
-        slot = state.change(common, slot, 'closed', {})
         dispatch.cleanup_tmpdir(common, slot)
         followup = next((path for path in writes if path.endswith('-LIVE.md')), None)
         return {'outcome': 'CLOSED', 'task': task, 'cleaned': cleanup_worker(repo, common, slot),
@@ -1613,7 +1620,7 @@ def retry_held(args):
                             and s.get('cause') not in state.reoffered(s)
                             and (s.get('cause') == 'overlap'
                                  or (s.get('cause') == 'scope' and s.get('outside') and not any(
-                                     plan.protected_path(p) for p in s.get('outside')))
+                                     plan.protected_path(p) or p.startswith('tasks/') for p in s.get('outside')))
                                  or (s.get('cause') == 'scope' and state.legacy_hold(s) == 'scope'
                                      and not s.get('outside')))]
             if touches_held:
