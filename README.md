@@ -9,9 +9,9 @@
 Autowork connects planning, documentation and verified repository work around
 one shared queue: the repository's `tasks/` store. Use it in **Hermes, Claude Code, Codex or Pi**.
 
-[Install](#install) · [First use](#first-use-in-your-project) ·
+[Why Autowork](#why-autowork) · [Install](#install) · [First use](#first-use-in-your-project) ·
 [Pi pipeline](#pi-autowork-pipeline) · [Commands](#what-you-can-do) · [Safety](#read-before-installing) ·
-[Documentation](#documentation)
+[Status](#project-status) · [Documentation](#documentation)
 
 **Hermes CLI**, after installation (illustrative, not a run receipt):
 
@@ -30,6 +30,28 @@ one shared queue: the repository's `tasks/` store. Use it in **Hermes, Claude Co
 **Fleet management and the Hermes scheduler integration are Hermes-only.** Portable
 adapters use their host's scheduling facilities; they install no Hermes scheduler
 and do not guarantee background execution after a session ends.
+
+## Why Autowork
+
+Many tools can start several coding agents. Autowork is a persistent development
+control loop: **you define intent, Autowork coordinates execution, agents implement
+and review, and verified changes reach Git**, followed by the next ready task.
+
+- **Intent lives in your repository.** Goals and tasks are files in `tasks/`,
+  reviewed and versioned like code, not rows in an external service.
+- **One workflow, four hosts.** Hermes, Claude Code, Codex and Pi run the same
+  planning, documentation and execution skills.
+- **Execution discipline.** Only typed fields grant authority; dependency, file-scope
+  and resource gates decide what runs in parallel; a task closes only with checked
+  evidence; a restarted runner adopts its live workers instead of starting duplicates.
+- **Documentation drives the queue.** `/docs_sync` keeps requirements and tasks in
+  step, and prepares the task store itself: it converts an old `TODO.md` queue,
+  starts a new one from accepted plans, and reports what needs repair.
+- **Unattended, and idle for free.** Runners keep working while you do something else;
+  an empty queue waits without a model call.
+
+How it compares with established orchestrators is not yet benchmarked. See
+[project status](#project-status).
 
 ## Read before installing
 
@@ -51,6 +73,9 @@ policy-neutral command bridge.**
   upstream sources. Scans or missing dependencies can leave setup incomplete.
 - There is **no automatic restoration of previous configuration** on uninstall.
   Back up profile configurations first; see [removal and recovery](docs/uninstall.md).
+- With approvals off and unattended runners, **give agents no production
+  credentials** and start with repositories where an automatic local commit and
+  push is acceptable.
 
 The runtime-policy opt-out prevents policy changes **during plugin loading and
 setup**. Full setup still applies OMH memory defaults and external integrations;
@@ -198,7 +223,8 @@ with `--dry-run`;** the shell preview above does not boot Hermes. See
 </p>
 
 1. **Plan and queue.** Planning saves decisions to the docs and tasks to `tasks/`
-   with `autowork tasks`; Docs Sync keeps the documents consistent. Planning alone
+   with `autowork tasks`; Docs Sync keeps the documents consistent and prepares the
+   store (`autowork tasks prepare`) before it reconciles tasks. Planning alone
    never starts implementation or schedules work. `read-only`, `chat-only`,
    `no-write` and `--dry-run` requests write nothing.
 2. **Execute and report.** Autowork prioritizes accepted runnable tasks, implements
@@ -341,8 +367,12 @@ protocols load only when needed; registration is not proof a technique was appli
 `tasks/` holds accepted scope, task priority, checks and progress: one file per task
 (`tasks/items/<ID>.md`) and per goal (`tasks/goals/<ID>.md`). Edit them with
 `autowork tasks` (`list`, `show`, `add`, `field`, `move`, `place`, `done`, ...), which
-validates the whole store and never commits; commit the result like any change. A
-repository that still has `TODO.md` and `goals.json` converts once with `autowork migrate`.
+validates the whole store and never commits; commit the result like any change.
+You never set the store up by hand: `/docs_sync` runs `autowork tasks prepare` first,
+which converts a repository that still has `TODO.md` and `goals.json` (one proven local
+commit; it refuses while work is in flight), finishes an interrupted conversion, and in
+a new repository lists the accepted plan headings that goals may come from. `autowork
+tasks prepare --check` reports the same without writing anything.
 Contributors can use ordinary Git and project tools; see
 [working on a task](docs/contributing.md#work-on-a-repository-task).
 
@@ -440,9 +470,23 @@ repository's workers, holds and waiting reasons. `/autowork plugin status` repor
 registrations and setup gaps; Hermes' `/toolsets` is a different tool-group inventory. No registration or package test proves model
 output quality, Git delivery or live Telegram execution.
 
+## Project status
+
+The design is ambitious and the offline evidence is broad, but **sustained live
+reliability is not yet proven**. An outside assessment (2026-10-21) rated the concept
+and potential value highly and proven reliability at 5/10. Its main warnings are to
+avoid spending more effort improving Autowork than building products with it, and to
+take the permissive defaults seriously. The next step is a 30-day evaluation on
+real repositories with controlled permissions: tasks completed without intervention,
+regressions, owner attention and cost per verified task, time to merge, and crash
+recovery. `autowork scorecard` measures part of this today. See
+[Is Autowork worth it?](docs/evaluation.md) for the assessment, targets and the gaps
+still to instrument.
+
 ## Documentation
 
 - [Product scope and architecture](docs/project.md) · [Work queue](tasks/) · [Changelog](CHANGELOG.md)
+- [Is Autowork worth it? Assessment and 30-day evaluation](docs/evaluation.md)
 - [Installation, profile scope and policy opt-out](docs/installation.md)
 - [Commands, Autoresearch and the engineering workflow](docs/workflows.md)
 - [Command and configuration reference](docs/reference.md) · [Troubleshooting](docs/troubleshooting.md)
