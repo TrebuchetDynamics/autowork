@@ -48,13 +48,28 @@ class TaskCommandTests(unittest.TestCase):
         return out.split()[-1]
 
     def test_add_then_show(self):
+        legacy = self.add('Legacy task', '--id', 'T-010-ab')
+        legacy_path = self.repo / 'tasks/items' / f'{legacy}.md'
+        legacy_bytes = legacy_path.read_bytes()
         tid = self.add('Second task')
         record = self.show(tid)
         self.assertEqual((record['title'], record['section'], record['status'], record['rank']),
-                         ('Second task', 'Now', 'open', 1000))
+                         ('Second task', 'Now', 'open', 2000))
         self.assertFalse(record['draft'])
         self.assertEqual((record['resources'], record['live']), ([], 'denied'))
-        self.assertRegex(tid, r'^T-\d{3}-[0-9a-f]{2}$')
+        self.assertRegex(tid, r'^T-011-[0-9a-f]{8}$')
+        self.assertRegex(self.tasks('new-id').stdout.strip(), r'^T-012-[0-9a-f]{8}$')
+        self.assertEqual(legacy_path.read_bytes(), legacy_bytes)
+        # Equal ranks exercise the ID tie-break with both suffix lengths.
+        self.tasks('field', legacy, 'rank', '2000')
+        self.assertTrue(json.loads(self.tasks('validate', '--worktree').stdout)['ok'])
+        self.commit()
+        self.assertTrue(json.loads(self.tasks('validate').stdout)['ok'])
+        rows = json.loads(self.tasks('list').stdout)
+        self.assertEqual([row['id'] for row in rows], ['T-1', legacy, tid])
+        self.assertEqual([row['position'] for row in rows], [1, 2, 3])
+        (self.repo / 'TODO.archive.md').write_text('- T-020-deadbeef — archived\n')
+        self.assertRegex(self.tasks('new-id').stdout.strip(), r'^T-021-[0-9a-f]{8}$')
         self.assertFalse((self.repo / 'TODO.md').exists())
         self.assertFalse((self.repo / 'goals.json').exists())
 
