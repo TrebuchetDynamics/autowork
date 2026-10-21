@@ -168,7 +168,10 @@ class DirtyLandingTests(LandingFixture):
         self.assertIn('+owner: parked', diff)
         self.assertNotIn('+session:', diff)
 
-    def test_nonplanning_overlap_waits_even_when_the_edits_could_merge(self):
+    def test_a_quiet_nonplanning_overlap_is_landed_around_and_stays_uncommitted(self):
+        """A runner retried a landing every minute for hours because the owner's uncommitted
+        documentation edits touched files it changed. A recent edit still waits; once quiet, the
+        landing goes around it: main moves, the edit stays uncommitted on top, nothing is staged."""
         self.note.write_text(self.original)  # no owner-planning edit in this case
         note = self.repo / 'notes.txt'
         note.write_text(self.original)
@@ -179,11 +182,17 @@ class DirtyLandingTests(LandingFixture):
         self.git(self.integ, 'commit', '-qam', 'session edit')
         note.write_text(self.parked)
         main = self.head('main')
-        with mock.patch.dict(os.environ, {'PI_AUTOWORK_PLANNING_QUIET': '0'}):
-            self.assertFalse(self.runner.merge_main())
+        with mock.patch.dict(os.environ, {'PI_AUTOWORK_PLANNING_QUIET': '600'}):
+            self.assertFalse(self.runner.merge_main())  # just edited: it waits, naming the file
         self.assertIn('notes.txt', self.runner.merge_pending)
+        self.assertIn('lands around them once they are unchanged for 10 min', self.runner.merge_pending)
         self.assertEqual(self.head('main'), main)
         self.assertEqual(note.read_text(), self.parked)
+        with mock.patch.dict(os.environ, {'PI_AUTOWORK_PLANNING_QUIET': '0'}):
+            self.runner.merge_main()  # quiet: landed around
+        self.assertEqual(self.head('main'), self.head('pi-autowork/s'))
+        self.assertEqual(note.read_text(), self.parked.replace('session: old', 'session: new'))  # both edits
+        self.assertIn('+owner: parked', self.git(self.repo, 'diff', '--', 'notes.txt'))  # still uncommitted
         self.assertEqual(self.git(self.repo, 'diff', '--cached', '--name-only'), '')
 
     def test_unsafe_edits_leave_the_ref_index_and_edit_untouched(self):

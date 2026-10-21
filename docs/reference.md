@@ -116,10 +116,14 @@ Source: [`coordinator.py`](../pi-autowork/pi_autowork/coordinator.py)
 
 The runner never stages or commits non-planning changes from the main checkout,
 regardless of their age or quietness. If the session would change a dirty
-non-planning path, landing waits as **Merge pending** and names the paths, even
-when the edits could merge without a conflict. If the paths do not overlap,
-the session merges and pushes normally, leaving the owner's working-tree and
-staged changes uncommitted.
+non-planning path that changed in the last `PI_AUTOWORK_PLANNING_QUIET` seconds
+(default `600`), landing waits as **Merge pending** and names the paths. Once
+they are quiet, it lands around them the way it does around planning edits: the
+owner's edits are merged onto the new main in the working tree and stay
+uncommitted, and nothing is staged. A conflict, a staged, added, deleted, binary
+or mode-changed edit, or a file open for writing still waits. If the paths do not
+overlap, the session merges and pushes normally, leaving the owner's working-tree
+and staged changes uncommitted.
 
 The owner-planning sweep still commits task and goal files under `tasks/` and
 `BLOCKERS.md` once their

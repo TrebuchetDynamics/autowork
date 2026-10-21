@@ -1173,8 +1173,15 @@ class Coordinator:
         if overlap:
             planning = self.owner_planning_paths()
             owned = [p for p in overlap if not planning(p)]
-            if owned:
-                return 'uncommitted changes overlap the landing: ' + ', '.join(owned)
+            # The owner's other edits are never committed, but once they are quiet the landing goes
+            # around them as it does around planning edits: they stay uncommitted on top of the new
+            # main. A conflict, a staged or binary edit, or a file open for writing still waits. A
+            # runner retried every minute for hours on quiet documentation edits.
+            quiet = float(os.environ.get('PI_AUTOWORK_PLANNING_QUIET', '600'))
+            recent = self.recent_owner_paths(owned, quiet) if owned else []
+            if recent:
+                return ('uncommitted changes overlap the landing: ' + ', '.join(owned)
+                        + f'; it lands around them once they are unchanged for {int(quiet // 60)} min')
             reason = self.land_around_edits(old, new)
             if not reason:
                 telemetry.observe(self.repo, self.base)
