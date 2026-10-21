@@ -1,4 +1,4 @@
-"""Explicit, fast-forward-only bundle updates across existing Hermes profiles."""
+"""Explicit bundle updates and verified managed-checkout recovery for Hermes profiles."""
 import argparse
 import contextlib
 import datetime
@@ -65,11 +65,73 @@ def plugin_dir(home):
     return home / 'plugins' / PLUGIN
 
 
+class GitFailure(ValueError):
+    def __init__(self, repo, args, code):
+        self.code = code
+        super().__init__(f'Git {args[0]} failed in {repo}; inspect the checkout and retry (exit {code})')
+
+
 def git(repo, *args):
     result = subprocess.run(['git', '-C', str(repo), *args], capture_output=True, timeout=120)
     if result.returncode:
-        raise ValueError(f'Git {args[0]} failed in {repo}; inspect the checkout and retry (exit {result.returncode})')
+        raise GitFailure(repo, args, result.returncode)
     return result.stdout
+
+
+def is_ancestor(repo, before, after):
+    try:
+        git(repo, 'merge-base', '--is-ancestor', before, after)
+        return True
+    except GitFailure as error:
+        if error.code == 1:
+            return False
+        raise
+
+
+def managed_evidence(repo, profiles, upstream, *, admitted_head=None):
+    """Capture install ownership and trusted HEAD evidence BEFORE fetch changes refs."""
+    owners = [(name, home) for name, home in profiles if plugin_dir(home) == repo
+              and not plugin_dir(home).is_symlink()]
+    if len(owners) != 1:
+        raise ValueError(f'Unrecognized/shared source {repo}; recovery requires a canonical managed plugin checkout')
+    name, home = owners[0]
+    if any(p.is_symlink() or p.stat().st_uid != os.getuid() for p in (repo, repo.parent, home)):
+        raise ValueError(f'Unsafe managed checkout ownership: {repo}')
+    if (not (repo / '.git').is_dir() or (repo / '.git').is_symlink()
+            or (repo / '.git/objects/info/alternates').exists()):
+        raise ValueError(f'Linked/shared Git directory cannot be recovered: {repo}')
+    for folder, directories, files in os.walk(repo):
+        for entry in directories + files:
+            path = Path(folder) / entry
+            if path.lstat().st_uid != os.getuid():
+                raise ValueError(f'Uncertain checkout file ownership in {repo}')
+            if path.is_relative_to(repo / '.git') and path.is_symlink():
+                raise ValueError(f'Shared/symlinked Git storage cannot be recovered: {path}')
+    if len([line for line in git(repo, 'worktree', 'list', '--porcelain').splitlines()
+            if line.startswith(b'worktree ')]) != 1:
+        raise ValueError(f'Extra linked worktrees consume {repo}; reconcile them before recovery')
+    if not re.search(r'^name:\s*[\'\"]?autowork[\'\"]?\s*$', (repo / 'plugin.yaml').read_text(), re.M):
+        raise ValueError(f'Unexpected managed plugin identity: {repo}')
+    metadata = home / 'plugins/.install-metadata.json'
+    safe_path(metadata)
+    if metadata.exists() and metadata.stat().st_uid != os.getuid():
+        raise ValueError(f'Uncertain native install metadata ownership: {metadata}')
+    records = json.loads(metadata.read_text()) if metadata.exists() else {}
+    record = records.get(PLUGIN) if isinstance(records, dict) else None
+    if not isinstance(record, dict) or not _same_remote(str(record.get('source', '')), upstream):
+        raise ValueError(f'Unregistered or untrusted source {repo}; preserve the checkout and use a reviewed native installation')
+    head = git(repo, 'rev-parse', 'HEAD').decode().strip()
+    tips = []
+    for remote in git(repo, 'remote').decode().split():
+        if _same_remote(git(repo, 'remote', 'get-url', remote).decode(), upstream):
+            try:
+                tips.append(git(repo, 'rev-parse', '--verify', f'refs/remotes/{remote}/main').decode().strip())
+            except GitFailure:
+                pass
+    if head != admitted_head and head != record.get('revision') and head not in tips:
+        raise ValueError(f'Ahead/diverged local work or unproven HEAD in {repo}; preserve local commits before updating')
+    return {'owner': name, 'home': str(home), 'metadata': {PLUGIN: record}, 'head': head,
+            'tracking_tips': tips, 'upstream': upstream}
 
 
 def safe_path(path):
@@ -159,19 +221,31 @@ def prepare(source, profiles, *, upstream=UPSTREAM):
             if git(repo, 'status', '--porcelain', '--untracked-files=all').strip():
                 raise ValueError(f'Preserved local changes in {repo}; commit or move reviewed changes before updating')
             before = git(repo, 'rev-parse', 'HEAD').decode().strip()
-            # Explicit trusted URL: never execute a configured remote/helper supplied by a profile.
-            # A shallow plugin clone (a pinned Hermes install) has no history to prove the
-            # fast-forward with, so it gets its full history first.
+            # Preserve pre-fetch provenance even when ancestry later proves negative.
+            try:
+                evidence, refusal = managed_evidence(repo, profiles, upstream), None
+            except (ValueError, OSError) as error:
+                evidence, refusal = None, str(error)
+            # Never execute a configured remote/helper. One bounded trusted history fetch.
             shallow = git(repo, 'rev-parse', '--is-shallow-repository').strip() == b'true'
-            git(repo, 'fetch', '--no-tags', *(['--unshallow'] if shallow else []), upstream, 'refs/heads/main')
+            git(repo, 'fetch', '--no-tags', *(['--deepen=1000'] if shallow else []), upstream, 'refs/heads/main')
             after = git(repo, 'rev-parse', 'FETCH_HEAD').decode().strip()
-            git(repo, 'merge-base', '--is-ancestor', before, after)
-            sources[repo] = {'before': before, 'after': after,
+            recovery = not is_ancestor(repo, before, after)
+            if recovery:
+                if git(repo, 'rev-parse', '--is-shallow-repository').strip() == b'true':
+                    raise ValueError(f'Incomplete/shallow ancestry in {repo} after bounded trusted fetch; review history before retrying')
+                if is_ancestor(repo, after, before):
+                    raise ValueError(f'Locally advanced checkout {repo}; preserve local commits before updating')
+                if evidence is None:
+                    raise ValueError(refusal)
+            sources[repo] = {'before': before, 'after': after, 'recovery': evidence if recovery else None,
                              'old': files_at(repo, before), 'new': files_at(repo, after),
                              'executables': {e.split(b'\t', 1)[1].decode() for e in
                                  git(repo, 'ls-tree', '-rz', after, '--', 'skills').split(b'\0')
                                  if e.startswith(b'100755 ')}}
         state = sources[repo]
+        if state.get('recovery'):
+            continue  # Recovery uses the journaled native transaction and three-way merge below.
         skill_roots = {}
         for relative in sorted(state['old'].keys() | state['new'].keys()):
             path = skill_destination(home, relative, skill_roots)
@@ -231,7 +305,7 @@ def prune_empty_skill_dirs(folder):
         folder = folder.parent
 
 
-def apply(plan, backup):
+def apply(plan, backup, *, _saved=False):
     if plan.get('drift'):
         raise ValueError('Unresolved native skill drift; reconcile the reported files before updating')
     # Recheck every destination before advancing any checkout.
@@ -242,7 +316,7 @@ def apply(plan, backup):
     for repo, state in plan['sources'].items():
         if git(repo, 'rev-parse', 'HEAD').decode().strip() != state['before'] or git(repo, 'status', '--porcelain').strip():
             raise ValueError(f'Checkout changed since preflight: {repo}')
-    if plan['writes']:  # a run with nothing to write leaves no backup behind
+    if plan['writes'] and not _saved:  # a run with nothing to write leaves no backup behind
         backup.mkdir(parents=True, exist_ok=False)
         records = []
         for index, (path, old, new, mode) in enumerate(plan['writes']):
@@ -760,6 +834,19 @@ def native_call(action, home, stage, revision, python):
     source = selected_source()
     if source is None:
         raise ValueError('Cannot resolve source for Hermes selected on PATH; native admission unverified')
+    if python is None:
+        # Full-suite installation may run under system Python rather than Hermes' venv.
+        launcher = Path(shutil.which('hermes')).resolve()
+        import shlex
+        text = launcher.read_text()
+        words = shlex.split(text.split('\n', 1)[1], comments=True) if text.startswith(('#!/bin/sh', '#!/usr/bin/env sh')) else []
+        if (len(words) > 2 and words[0] == 'exec' and '-c' in words
+                and Path(words[1]).is_absolute() and Path(words[1]).is_file()):
+            python = words[1]
+        elif (source / '.venv/bin/python').is_file():
+            python = str(source / '.venv/bin/python')
+        else:
+            python = sys.executable  # Admission still fails closed if dependencies are absent.
     # Managed launchers inject source into sys.path; the interpreter alone does not.
     bootstrap = ('import runpy, sys; sys.path.insert(0, sys.argv.pop(1)); '
                  'sys.argv.pop(0); runpy.run_path(sys.argv[0], run_name="__main__")')
@@ -777,12 +864,12 @@ def native_call(action, home, stage, revision, python):
     return json.loads(result.stdout.splitlines()[-1])
 
 
-def source_tree(source, revision):
+def source_tree(source, revision, *, require_head=True):
     import hashlib
     if not re.fullmatch(r'[0-9a-f]{40}', revision):
         raise ValueError('Reviewed source must be an exact 40-character commit SHA')
     if (Path(git(source, 'rev-parse', '--show-toplevel').decode().strip()).resolve() != source
-            or git(source, 'rev-parse', 'HEAD').decode().strip() != revision
+            or (require_head and git(source, 'rev-parse', 'HEAD').decode().strip() != revision)
             or git(source, 'status', '--porcelain', '--untracked-files=all').strip()):
         raise ValueError('Reviewed source identity/closure changed or source has local changes')
     entries = []
@@ -934,6 +1021,8 @@ def selected_profiles(root, names):
 def _same_remote(url, upstream):
     def norm(value):
         value = value.strip().rstrip('/')
+        if value == 'TrebuchetDynamics/autowork':
+            value = UPSTREAM
         value = value[:-4] if value.endswith('.git') else value
         return value[7:] if value.startswith('file://') else value
     return norm(url) == norm(upstream)
@@ -1089,7 +1178,112 @@ def stage_checkout(source, revision, destination, tree):
     check_tree(destination, tree)
 
 
-def scoped_update(root, source, revision, names, python, *, check=False):
+def merge_profile_bytes(local, base, new):
+    """Evidence-based three-way merge; conflicting edits remain untouched."""
+    if local in (None, base, new):
+        return new
+    if base is None or new is None:
+        raise ValueError('Native skill addition/deletion conflicts with profile customization')
+    with tempfile.TemporaryDirectory(prefix='autowork-skill-merge-') as directory:
+        paths = [Path(directory) / name for name in ('local', 'base', 'new')]
+        for path, content in zip(paths, (local, base, new)):
+            path.write_bytes(content)
+        result = subprocess.run(['git', 'merge-file', '-p', *map(str, paths)],
+                                capture_output=True, timeout=120)
+        if result.returncode:
+            raise ValueError('Native skill merge conflict; preserve customizations and reconcile before retrying')
+        return result.stdout
+
+
+def check_original_managed(home, evidence):
+    if evidence['head'] != evidence['metadata'][PLUGIN].get('revision') and evidence['head'] not in evidence['tracking_tips']:
+        raise ValueError('Original managed HEAD admission evidence is missing')
+    current = managed_evidence(plugin_dir(home), [(evidence['owner'], home)], evidence['upstream'],
+                               admitted_head=evidence['head'])
+    if current['head'] != evidence['head'] or current['metadata'][PLUGIN] != evidence['metadata'][PLUGIN]:
+        raise ValueError('Managed source/provenance changed since preflight; preserve foreign edits and reconcile')
+
+
+def bind_recovered_source(home, evidence, revision, stage):
+    """Keep native publication metadata and additional fields, restoring trusted binding."""
+    path = home / 'plugins/.install-metadata.json'
+    lockpath = path.with_name(path.name + '.lock')
+    safe_path(lockpath)
+    with lockpath.open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        safe_path(path)
+        records = json.loads(path.read_text())
+        current = records.get(PLUGIN)
+        old = evidence['metadata'][PLUGIN]
+        if not isinstance(current, dict):
+            raise ValueError('Native install lost managed source metadata')
+        if current != old and (current.get('revision') != revision
+                or current.get('source') not in (old['source'], stage.as_uri())):
+            raise ValueError('Managed source metadata changed during recovery; preserve it and reconcile')
+        records[PLUGIN] = {**old, **current, 'source': old['source'], 'revision': revision}
+        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write((json.dumps(records, indent=2) + '\n').encode())
+        try:
+            temporary.chmod(stat.S_IMODE(path.stat().st_mode))
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
+        if json.loads(path.read_text()) != records:
+            raise ValueError('Managed source metadata readback failed')
+
+
+def recovery_consumers(root, profiles):
+    selected = {plugin_dir(home) for _, home in profiles}
+    targets = {plugin.resolve() for plugin in selected}
+    for plugin in [root / 'plugins/autowork', *root.glob('profiles/*/plugins/autowork')]:
+        if plugin not in selected and plugin.resolve() in targets:
+            raise ValueError(f'Unselected shared consumer {plugin}; reconcile ownership before recovery')
+    for home in {root, *(home for _, home in profiles)}:
+        pidfile = home / 'gateway.pid'
+        safe_path(pidfile)
+        if pidfile.exists():
+            try:
+                pid = json.loads(pidfile.read_text())['pid']
+                if type(pid) is not int or pid <= 0:
+                    raise ValueError('invalid PID')
+            except (ValueError, KeyError, TypeError) as error:
+                raise ValueError(f'Unknown gateway consumer at {home}; reconcile its PID receipt') from error
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                pass
+            except OSError as error:
+                raise ValueError(f'Unknown/live gateway consumer at {home}; process ownership is not established') from error
+            else:
+                raise ValueError('Live gateway consumes managed plugins; quiesce it before recovery (no restart requested)')
+        elif gateway_state(home) in (*SERVING_STATES, 'starting', 'draining'):
+            raise ValueError(f'Unknown gateway consumer at {home}; active state has no process receipt')
+    for name, home in profiles:
+        reason = active_consumers(home, name)
+        if reason:
+            raise ValueError(reason)
+
+
+def recovery_freshness(root, profiles, run):
+    recovery_consumers(root, profiles)
+    for name, home in profiles:
+        row = run['profiles'][name]
+        plugin = plugin_dir(home)
+        if name in run['managed']['shared']:
+            if not plugin.is_symlink() or os.readlink(plugin) != row.get('original_link'):
+                raise ValueError('Shared consumer link changed since preflight')
+        for item in row.get('files', []):
+            allowed = (item['new'],) if row.get('phase') == 'ready' else (
+                (item['old'], item['new']) if row.get('phase') else (item['old'],))
+            path = Path(item['path'])
+            if file_state(path) not in allowed:
+                raise ValueError(f'Destination changed since preflight: {path}')
+            if path.exists() and stat.S_IMODE(path.stat().st_mode) not in (item['old_mode'], item['mode']):
+                raise ValueError(f'Destination permissions changed since preflight: {path}')
+
+
+def scoped_update(root, source, revision, names, python, *, check=False, _recovery=None, _locked=False):
     """Deploy one reviewed local commit; never advance shared sources or frozen helpers."""
     source = Path(source).expanduser().resolve(strict=True)
     root = root_home(root)
@@ -1101,13 +1295,16 @@ def scoped_update(root, source, revision, names, python, *, check=False):
     state.mkdir(parents=True, exist_ok=True)
     safe_path(state / 'lock')
     with (state / 'lock').open('a') as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise ValueError('Another updater is running')
-        receipt = state / 'scoped.json'
+        if not _locked:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise ValueError('Another updater is running')
+        receipt = state / ('recovery.json' if _recovery is not None else 'scoped.json')
         safe_path(receipt)
         identity = {'source': str(source), 'revision': revision, 'selected': list(names)}
+        if _recovery is not None:
+            identity['managed'] = _recovery
         prior = json.loads(receipt.read_text()) if receipt.exists() else None
         same = prior and all(prior.get(k) == v for k, v in identity.items())
         if prior and prior['status'] == 'incomplete' and not same:
@@ -1120,20 +1317,14 @@ def scoped_update(root, source, revision, names, python, *, check=False):
         if backup.parent != state or backup.is_symlink():
             raise ValueError('Unsafe original backup record')
         def save():
-            safe_path(receipt)
-            safe_path(state / 'scoped.tmp')
-            (state / 'scoped.tmp').write_text(json.dumps(run, indent=2) + '\n')
-            (state / 'scoped.tmp').replace(receipt)
-            if backup.exists():
-                safe_path(backup / 'manifest.json')
-                safe_path(backup / 'manifest.tmp')
-                (backup / 'manifest.tmp').write_text(json.dumps(run, indent=2) + '\n')
-                (backup / 'manifest.tmp').replace(backup / 'manifest.json')
+            save_transaction(receipt, run)
         plans = {}
         # Preflight every selection before staging, native scan or target writes.
         for name, home in profiles:
             row = run['profiles'].setdefault(name, {'status': 'pending'})
             try:
+                if _recovery is not None and row.get('phase') != 'ready':
+                    recovery_consumers(root, profiles)
                 reason = active_consumers(home, name) if row.get('phase') != 'ready' else None
                 if reason:
                     raise ValueError(reason)
@@ -1141,7 +1332,33 @@ def scoped_update(root, source, revision, names, python, *, check=False):
                 if any(p.is_symlink() for p in plugin.parents):
                     raise ValueError('Symlinked plugin parent')
                 original = backup / name / 'plugin'
-                if row.get('phase') in ('backed_up', 'slot_saved', 'installed', 'ready'):
+                shared = _recovery.get('shared', {}).get(name) if _recovery is not None else None
+                if _recovery is not None and 'files' in row:
+                    files = row['files']
+                    if row.get('phase') and not shared:
+                        if original.exists():
+                            source_tree(original, row['original_revision'])
+                            check_tree(original, row['original_tree'])
+                        elif row['phase'] in ('installed', 'ready'):
+                            raise ValueError('Original managed checkout backup is missing')
+                    if row.get('phase'):
+                        for index, item in enumerate(files):
+                            if item['old'] is not None:
+                                saved = backup / name / f'file-{index}'
+                                safe_path(saved)
+                                if (hashlib.sha256(saved.read_bytes()).hexdigest() != item['old']['sha256']
+                                        or stat.S_IMODE(saved.stat().st_mode) != item['old_mode']):
+                                    raise ValueError('Original profile backup bytes/permissions changed')
+                    for item in files:
+                        allowed = (item['old'], item['new']) if row.get('phase') else (item['old'],)
+                        if file_state(Path(item['path'])) not in allowed:
+                            raise ValueError(f"Destination changed since preflight: {item['path']}")
+                    if shared and (not plugin.is_symlink() or os.readlink(plugin) != row['original_link']):
+                        raise ValueError('Shared plugin link changed since preflight')
+                    if row.get('phase') in ('installed', 'ready'):
+                        source_tree(plugin.resolve(), revision)
+                        check_tree(plugin.resolve(), tree)
+                elif row.get('phase') in ('backed_up', 'slot_saved', 'installed', 'ready'):
                     files = row['files']
                     for item in files:
                         actual = file_state(Path(item['path']))
@@ -1161,25 +1378,58 @@ def scoped_update(root, source, revision, names, python, *, check=False):
                         old_source = plugin.resolve()
                         old_revision = git(old_source, 'rev-parse', 'HEAD').decode().strip()
                         old_tree = source_tree(old_source, old_revision)
+                        if _recovery is not None:
+                            owner = shared or name
+                            if old_revision != _recovery['sources'][owner]['head']:
+                                raise ValueError('Managed source HEAD changed since preflight')
+                            if not shared:
+                                check_original_managed(home, _recovery['sources'][name])
                     files = []
                     roots = {}
                     for relative in sorted({p for p in tree.keys() | old_tree.keys() if p.startswith('skills/')}):
                         path = skill_destination(home, relative, roots)
                         old = file_state(path)
                         new = tree.get(relative)
-                        if old and old != new and old != old_tree.get(relative):
+                        merged = None
+                        if _recovery is not None:
+                            local = path.read_bytes() if old else None
+                            base = git(plugin.resolve(), 'show', f'{old_revision}:{relative}') if relative in old_tree else None
+                            incoming = (source / relative).read_bytes() if new else None
+                            merged = merge_profile_bytes(local, base, incoming)
+                            if merged is not None:
+                                new = {'sha256': hashlib.sha256(merged).hexdigest(),
+                                       'mode': (old['mode'] if old else new['mode']) | (new['mode'] if new else 0)}
+                        elif old and old != new and old != old_tree.get(relative):
                             history = {'after': revision}
                             if not historical_copy(source, history, relative, path.read_bytes()):
                                 raise ValueError(f'Native skill drift: {path}')
-                        files.append({'path': str(path), 'relative': relative, 'old': old, 'new': new})
-                    row.update(files=files, original_link=os.readlink(plugin) if plugin.is_symlink() else None,
+                        item = {'path': str(path), 'relative': relative, 'old': old, 'new': new}
+                        if _recovery is not None:
+                            item['merged'] = merged.hex() if merged is not None else None
+                            item['old_mode'] = stat.S_IMODE(path.stat().st_mode) if old else None
+                            item['mode'] = (item['old_mode'] if old else 0o644) | (
+                                0o111 if relative in tree and tree[relative]['mode'] & 0o111 else 0)
+                        files.append(item)
+                    row.update(home=str(home), files=files, original_link=os.readlink(plugin) if plugin.is_symlink() else None,
                                original_tree=old_tree, original_revision=old_revision,
                                original_source=str(plugin.resolve()) if plugin.exists() else None)
                 if row.get('phase') == 'ready':
-                    source_tree(plugin, revision)
-                    check_tree(plugin, tree)
+                    source_tree(plugin.resolve(), revision)
+                    check_tree(plugin.resolve(), tree)
                     if any(file_state(Path(i['path'])) != i['new'] for i in files):
                         raise ValueError('Completed deployment has installed skill drift')
+                    if _recovery is not None:
+                        for item in files:
+                            path = Path(item['path'])
+                            if path.exists() and stat.S_IMODE(path.stat().st_mode) != item['mode']:
+                                raise ValueError(f'Completed recovery has installed permission drift: {path}')
+                        if not shared:
+                            metadata = home / 'plugins/.install-metadata.json'
+                            safe_path(metadata)
+                            record = json.loads(metadata.read_text()).get(PLUGIN, {})
+                            if (record.get('revision') != revision or record.get('source') !=
+                                    _recovery['sources'][name]['metadata'][PLUGIN]['source']):
+                                raise ValueError('Completed recovery source binding changed')
                     row['status'] = 'ready'
                     continue
                 row['status'] = 'pending'
@@ -1187,15 +1437,32 @@ def scoped_update(root, source, revision, names, python, *, check=False):
                 plans[name] = (home, plugin, original, files)
             except (ValueError, OSError, subprocess.SubprocessError) as error:
                 row.update(status='deferred', error=str(error))
+        if _recovery is not None and any(r['status'] == 'deferred' for r in run['profiles'].values()):
+            # Shared consumers are one source transaction: none can publish on a failed preflight.
+            plans = {}
         if check:
             return {**run, 'status': 'incomplete' if any(r['status'] == 'deferred' for r in run['profiles'].values())
                     else ('update_available' if plans else 'up_to_date')}
         if not plans and all(r['status'] == 'ready' for r in run['profiles'].values()):
-            run['status'] = 'up_to_date'
+            run['status'] = 'incomplete' if run.get('ordinary_pending') else 'up_to_date'
             save()
-            return run
+            return {**run, 'status': 'up_to_date'}
         backup.mkdir(parents=True, exist_ok=True)
         save()
+        if _recovery is not None and plans:
+            # Admission is preflighted for ALL consumers before the shared source moves.
+            try:
+                for name, (home, plugin, original, files) in plans.items():
+                    stage = backup / name / 'stage'
+                    stage_checkout(source, revision, stage, tree)
+                    native_call('scan', home, stage, revision, python)
+                    source_tree(stage, revision)
+                recovery_freshness(root, profiles, run)
+            except (ValueError, OSError, subprocess.SubprocessError) as error:
+                run['profiles'][name].update(status='incomplete', error=str(error))
+                run['status'] = 'incomplete'
+                save()
+                return run
         for name, (home, plugin, original, files) in plans.items():
             row = run['profiles'][name]
             stage = backup / name / 'stage'
@@ -1207,13 +1474,16 @@ def scoped_update(root, source, revision, names, python, *, check=False):
                 journal.mkdir(exist_ok=True)
                 safe_path(journal / 'goal-handoff.lock')
                 with (journal / 'goal-handoff.lock').open('a') as worker_lock:
-                    try:
-                        fcntl.flock(worker_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    except BlockingIOError:
-                        raise ValueError('Worker handoff is active')
+                    if _recovery is None:  # Managed recovery holds every consumer's handoff lock.
+                        try:
+                            fcntl.flock(worker_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        except BlockingIOError:
+                            raise ValueError('Worker handoff is active')
                     stage_checkout(source, revision, stage, tree)
                     # Scan is per profile and repeated on every incomplete retry. No approval cache.
                     native_call('scan', home, stage, revision, python)
+                    if _recovery is not None:
+                        recovery_freshness(root, profiles, run)
                     source_tree(source, revision)
                     source_tree(stage, revision)
                     check_tree(stage, tree)
@@ -1224,8 +1494,14 @@ def scoped_update(root, source, revision, names, python, *, check=False):
                         allowed = (item['old'], item['new']) if row.get('phase') else (item['old'],)
                         if file_state(Path(item['path'])) not in allowed:
                             raise ValueError(f"Destination changed since preflight: {item['path']}")
+                    shared = _recovery.get('shared', {}).get(name) if _recovery is not None else None
                     if not row.get('phase'):
-                        if plugin.exists():
+                        if shared:
+                            owner = run['profiles'][shared]
+                            if owner.get('phase') != 'ready' or not plugin.is_symlink() or os.readlink(plugin) != row['original_link']:
+                                raise ValueError('Shared source owner is not verified ready')
+                            source_tree(plugin.resolve(), revision)
+                        elif plugin.exists():
                             if row['original_link'] is not None:
                                 if not plugin.is_symlink() or os.readlink(plugin) != row['original_link']:
                                     raise ValueError('Plugin link changed since preflight')
@@ -1233,7 +1509,7 @@ def scoped_update(root, source, revision, names, python, *, check=False):
                             check_tree(plugin.resolve(), row['original_tree'])
                         elif row['original_tree']:
                             raise ValueError('Plugin changed since preflight')
-                        if row['original_link'] is not None:
+                        if row['original_link'] is not None and not shared:
                             snapshot = stage.parent / 'original-source'
                             stage_checkout(Path(row['original_source']), row['original_revision'],
                                            snapshot, row['original_tree'])
@@ -1241,21 +1517,41 @@ def scoped_update(root, source, revision, names, python, *, check=False):
                             if item['old'] is not None:
                                 dest = stage.parent / f'file-{index}'
                                 dest.write_bytes(Path(item['path']).read_bytes())
+                                if _recovery is not None:
+                                    dest.chmod(item['old_mode'])
                         row['phase'] = 'backed_up'
                         save()
                     if row['phase'] == 'backed_up':
+                        # A resumed backup is not permission to move a newer writer's slot.
+                        if not shared and row['original_tree']:
+                            if _recovery is not None:
+                                check_original_managed(home, _recovery['sources'][name])
+                            if plugin.is_symlink() != (row['original_link'] is not None):
+                                raise ValueError('Plugin slot changed since preflight')
+                            if plugin.is_symlink() and os.readlink(plugin) != row['original_link']:
+                                raise ValueError('Plugin link changed since preflight')
+                            source_tree(plugin.resolve(), row['original_revision'])
+                            check_tree(plugin.resolve(), row['original_tree'])
                         # Journal intent before rename, so a killed process can recover the slot.
                         row['phase'] = 'slot_saved'
                         save()
-                        if plugin.exists() or plugin.is_symlink():
+                        if not shared and (plugin.exists() or plugin.is_symlink()):
                             plugin.rename(original)
                     if row['phase'] == 'slot_saved':
-                        if row['original_tree'] and (plugin.exists() or plugin.is_symlink()) and not (original.exists() or original.is_symlink()):
+                        if shared:
+                            source_tree(plugin.resolve(), revision)
+                            check_tree(plugin.resolve(), tree)
+                        elif row['original_tree'] and (plugin.exists() or plugin.is_symlink()) and not (original.exists() or original.is_symlink()):
                             # Intent was journaled but the slot rename was interrupted.
+                            if _recovery is not None:
+                                check_original_managed(home, _recovery['sources'][name])
                             source_tree(plugin.resolve(), row['original_revision'])
                             check_tree(plugin.resolve(), row['original_tree'])
                             plugin.rename(original)
-                        if plugin.exists() and not plugin.is_symlink():
+                        if shared:
+                            pass  # One canonical source publication; retain selected consumers' links.
+                        elif plugin.exists() and not plugin.is_symlink():
+                            source_tree(plugin, revision)
                             check_tree(plugin, tree)  # native install committed before interruption
                         else:
                             if plugin.is_symlink():
@@ -1281,19 +1577,25 @@ def scoped_update(root, source, revision, names, python, *, check=False):
                             path.parent.mkdir(parents=True, exist_ok=True)
                             with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
                                 temp = Path(stream.name)
-                                stream.write((stage / item['relative']).read_bytes())
+                                stream.write(bytes.fromhex(item['merged']) if _recovery is not None
+                                             else (stage / item['relative']).read_bytes())
                             try:
-                                temp.chmod(item['new']['mode'])
+                                temp.chmod(item.get('mode', item['new']['mode']))
                                 temp.replace(path)
                             finally:
                                 temp.unlink(missing_ok=True)
                     verified = native_call('verify', home, plugin, revision, python)
                     if not verified.get('commands'):
                         raise ValueError('Native registration probe returned no commands')
-                    source_tree(plugin, revision)
-                    check_tree(plugin, tree)
+                    source_tree(plugin.resolve(), revision)
+                    check_tree(plugin.resolve(), tree)
+                    if _recovery is not None and not shared:
+                        bind_recovered_source(home, _recovery['sources'][name], revision, stage)
                     if any(file_state(Path(i['path'])) != i['new'] for i in files):
                         raise ValueError('Installed skill hash readback failed')
+                    if _recovery is not None and any(Path(i['path']).exists() and
+                            stat.S_IMODE(Path(i['path']).stat().st_mode) != i['mode'] for i in files):
+                        raise ValueError('Installed skill permission readback failed')
                     row.update(status='ready', phase='ready', commands=verified['commands'],
                                installed_hashes={p: v['sha256'] for p, v in tree.items()})
                     row.pop('error', None)
@@ -1305,9 +1607,221 @@ def scoped_update(root, source, revision, names, python, *, check=False):
                         original.rename(plugin)
                     row['phase'] = 'backed_up'
             save()
-        run['status'] = 'updated' if all(r['status'] == 'ready' for r in run['profiles'].values()) else 'incomplete'
+        status = 'updated' if all(r['status'] == 'ready' for r in run['profiles'].values()) else 'incomplete'
+        run['status'] = 'incomplete' if run.get('ordinary_pending') else status
         save()
-        return run
+        return {**run, 'status': status}
+
+
+def save_transaction(receipt, run):
+    temporary = receipt.with_suffix('.tmp')
+    safe_path(receipt)
+    safe_path(temporary)
+    temporary.write_text(json.dumps(run, indent=2) + '\n')
+    temporary.replace(receipt)
+    backup = Path(run['backup'])
+    if backup.exists():
+        manifest, temporary = backup / 'manifest.json', backup / 'manifest.tmp'
+        safe_path(manifest)
+        safe_path(temporary)
+        temporary.write_text(json.dumps(run, indent=2) + '\n')
+        temporary.replace(manifest)
+
+
+def ordinary_snapshot(plan, profiles, selected, revision):
+    homes = [home for name, home in profiles if name in selected]
+    sources = {str(repo): {key: row[key] for key in ('before', 'after')}
+               for repo, row in plan['sources'].items() if not row.get('recovery')
+               and not any(repo == plugin_dir(home).resolve() for home in homes)}
+    if any(row['after'] != revision for row in sources.values()):
+        raise ValueError('Trusted main changed between source fetches; retry before publication')
+    return {'sources': sources, 'writes': [
+        {'path': str(path), 'old': old.hex() if old is not None else None,
+         'new': new.hex() if new is not None else None, 'mode': mode,
+         'old_mode': stat.S_IMODE(path.stat().st_mode) if old is not None else None}
+        for path, old, new, mode in plan['writes']
+        if not any(path.is_relative_to(home / 'skills') for home in homes)]}
+
+
+def finish_ordinary_recovery(root, recovery):
+    """Acknowledge the whole transaction only after frozen ordinary writes read back."""
+    receipt = root / 'maintenance/toolset-update/recovery.json'
+    safe_path(receipt)
+    run = json.loads(receipt.read_text())
+    if not run.get('ordinary_pending'):
+        return recovery
+    snapshot = run['ordinary_plan']
+    backup = Path(run['ordinary_backup'])
+    if backup.parent != Path(run['backup']) or not backup.name.startswith('ordinary-'):
+        raise ValueError('Unsafe journaled ordinary-profile backup')
+    if any(path.is_symlink() for path in (backup, *backup.parents)):
+        raise ValueError('Unsafe ordinary-profile backup')
+    plan = {'sources': {}, 'writes': []}
+    for repo, row in snapshot['sources'].items():
+        head = git(repo, 'rev-parse', 'HEAD').decode().strip()
+        if head not in (row['before'], row['after']):
+            raise ValueError(f'Ordinary source changed since preflight: {repo}')
+        plan['sources'][Path(repo)] = {**row, 'before': head}
+    records = []
+    for index, item in enumerate(snapshot['writes']):
+        path = Path(item['path'])
+        safe_path(path)
+        old, new = (bytes.fromhex(item[key]) if item[key] is not None else None for key in ('old', 'new'))
+        actual = path.read_bytes() if path.exists() else None
+        mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
+        if actual not in (old, new) or mode not in (None, item['old_mode'], item['mode']):
+            raise ValueError(f'Ordinary destination changed since preflight: {path}')
+        if old is not None:
+            backup.mkdir(parents=True, exist_ok=True)
+            saved = backup / str(index)
+            safe_path(saved)
+            if saved.exists() and (saved.read_bytes() != old or stat.S_IMODE(saved.stat().st_mode) != item['old_mode']):
+                raise ValueError('Original ordinary-profile backup changed')
+            if not saved.exists():
+                saved.write_bytes(old)
+                saved.chmod(item['old_mode'])
+        records.append({'path': str(path), 'backup': str(index) if old is not None else None,
+                        'mode': item['old_mode']})
+        if actual != new or (new is not None and mode != item['mode']):
+            plan['writes'].append((path, actual, new, item['mode']))
+    if records:
+        backup.mkdir(parents=True, exist_ok=True)
+        manifest = backup / 'manifest.json'
+        safe_path(manifest)
+        if manifest.exists() and json.loads(manifest.read_text()) != records:
+            raise ValueError('Ordinary backup manifest changed')
+        if not manifest.exists():
+            temporary = backup / 'manifest.tmp'
+            safe_path(temporary)
+            temporary.write_text(json.dumps(records, indent=2) + '\n')
+            temporary.replace(manifest)
+    apply(plan, backup, _saved=True)
+    for repo, row in snapshot['sources'].items():
+        if git(repo, 'rev-parse', 'HEAD').decode().strip() != row['after'] or git(repo, 'status', '--porcelain').strip():
+            raise ValueError(f'Ordinary source publication readback failed: {repo}')
+    for item in snapshot['writes']:
+        path = Path(item['path'])
+        safe_path(path)
+        actual = path.read_bytes() if path.exists() else None
+        if (actual != (bytes.fromhex(item['new']) if item['new'] is not None else None)
+                or (actual is not None and stat.S_IMODE(path.stat().st_mode) != item['mode'])):
+            raise ValueError(f'Ordinary profile publication readback failed: {path}')
+    # Ordinary publication must not turn intervening changes to an already-ready
+    # native profile into a false aggregate success.
+    for name, row in run['profiles'].items():
+        home = Path(row['home'])
+        source_tree(plugin_dir(home).resolve(), run['revision'])
+        check_tree(plugin_dir(home).resolve(), run['tree'])
+        for item in row['files']:
+            path = Path(item['path'])
+            if file_state(path) != item['new'] or (path.exists() and stat.S_IMODE(path.stat().st_mode) != item['mode']):
+                raise ValueError(f'Final recovery profile bytes/permissions changed: {path}')
+        if name not in run['managed']['shared']:
+            metadata = home / 'plugins/.install-metadata.json'
+            safe_path(metadata)
+            record = json.loads(metadata.read_text()).get(PLUGIN, {})
+            if record.get('revision') != run['revision'] or record.get('source') != run['managed']['sources'][name]['metadata'][PLUGIN]['source']:
+                raise ValueError('Final recovery source binding changed')
+    status = 'updated' if plan['writes'] or any(row['before'] != row['after']
+                for row in plan['sources'].values()) else recovery['status']
+    run.update(ordinary_pending=False, status=status)
+    save_transaction(receipt, run)
+    return run
+
+
+def automatic_recovery(root, profiles, *, plan=None, prior=None, check=False):
+    """Enter the existing native journal transaction with immutable trusted-source evidence."""
+    state = root / 'maintenance/toolset-update'
+    if prior is not None:
+        managed = prior['managed']
+        names, revision = prior['selected'], prior['revision']
+        source = Path(prior['source'])
+        if source.parent != state or source.name != 'recovery-source-' + revision:
+            raise ValueError('Unsafe recovery source record')
+        if set(names) - {name for name, _ in profiles}:
+            raise ValueError('Original recovery consumers are no longer selected; reconcile before retrying')
+        if not source.exists():
+            if any(row.get('phase') for row in prior['profiles'].values()):
+                raise ValueError('Original recovery stage is missing after publication began')
+            evidence = next(iter(managed['sources'].values()))
+            home = Path(evidence['home'])
+            check_original_managed(home, evidence)
+            repo = plugin_dir(home)
+            if source_tree(repo, revision, require_head=False) != prior['tree']:
+                raise ValueError('Trusted recovery target tree changed')
+            recovery_consumers(root, [(name, dict(profiles)[name]) for name in names])
+            if not check:
+                stage_checkout(repo, revision, source, prior['tree'])
+            else:
+                return {**prior, 'status': 'update_available'}
+    else:
+        recovering = {repo: row for repo, row in plan['sources'].items() if row.get('recovery')}
+        revisions = {row['after'] for row in recovering.values()}
+        if len(revisions) != 1:
+            raise ValueError('Trusted main changed between source fetches; retry before recovering any checkout')
+        revision = revisions.pop()
+        managed = {'sources': {row['recovery']['owner']: row['recovery'] for row in recovering.values()},
+                   'shared': {}, 'ordinary': []}
+        owners = list(managed['sources'])
+        names = owners[:]
+        for name, home in profiles:
+            target = plugin_dir(home).resolve()
+            if target in recovering and name not in owners:
+                names.append(name)
+                managed['shared'][name] = recovering[target]['recovery']['owner']
+        managed['ordinary'] = [name for name, _ in profiles if name not in names]
+        # Existing but non-live/unselected profiles may also consume the canonical slot.
+        selected = {plugin_dir(home) for name, home in profiles if name in names}
+        for plugin in [root / 'plugins/autowork', *root.glob('profiles/*/plugins/autowork')]:
+            if plugin not in selected and plugin.resolve() in recovering:
+                raise ValueError(f'Unselected shared consumer {plugin}; reconcile its ownership before recovery')
+        recovery_consumers(root, [(name, home) for name, home in profiles if name in names])
+        if check:
+            return {'status': 'update_available', 'selected': names, 'revision': revision,
+                    'action': 'Verified managed checkout recovery required; rerun without --check when consumers are idle'}
+        source = state / ('recovery-source-' + revision)
+        repo = next(iter(recovering))
+        tree = source_tree(repo, revision, require_head=False)
+        # Journal the trusted target and pre-fetch evidence BEFORE staging can fail.
+        intent = {'source': str(source), 'revision': revision, 'selected': names, 'managed': managed,
+                  'tree': tree, 'profiles': {}, 'status': 'incomplete',
+                  'backup': str(state / ('scoped-' + str(time.time_ns())))}
+        receipt, temporary = state / 'recovery.json', state / 'recovery.tmp'
+        safe_path(receipt)
+        safe_path(temporary)
+        completed = json.loads(receipt.read_text()) if receipt.exists() else None
+        if completed and completed['status'] != 'incomplete' and completed['revision'] == revision:
+            # A newly admitted source at this same release must not discard the earlier
+            # consumers' preservation bases, backups or already-verified merged output.
+            if (completed['tree'] != tree or completed['source'] != str(source)
+                    or set(completed['selected']) - {name for name, _ in profiles}):
+                raise ValueError('Completed recovery consumers/source changed; reconcile before extending it')
+            names = completed['selected'] + [name for name in names if name not in completed['selected']]
+            ordinary_names = [name for name in dict.fromkeys(completed['managed']['ordinary'] + managed['ordinary'])
+                              if name not in names]
+            managed = {key: {**completed['managed'][key], **managed[key]} for key in ('sources', 'shared')}
+            managed['ordinary'] = ordinary_names
+            intent = {**completed, 'selected': names, 'managed': managed, 'status': 'incomplete'}
+        intent.update(ordinary_plan=ordinary_snapshot(plan, profiles, names, revision), ordinary_pending=True,
+                      ordinary_backup=str(Path(intent['backup']) / ('ordinary-' + str(time.time_ns()))))
+        save_transaction(receipt, intent)
+        stage_checkout(repo, revision, source, tree)
+    selected = [(name, dict(profiles)[name]) for name in names]
+    with contextlib.ExitStack() as locks:
+        for name, home in selected:
+            journal = home / 'autowork'
+            if journal.is_symlink():
+                raise ValueError('Symlinked worker journal')
+            journal.mkdir(exist_ok=True)
+            path = journal / 'goal-handoff.lock'
+            safe_path(path)
+            lock = locks.enter_context(path.open('a'))
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise ValueError(f'Worker handoff is active for {name}')
+        return scoped_update(root, source, revision, names, None, check=check,
+                             _recovery=managed, _locked=True)
 
 
 def main(argv=None):
@@ -1320,7 +1834,7 @@ def main(argv=None):
     parser.add_argument('--native-python', help='Python from the selected Hermes installation')
     parser.add_argument('--pin-profile', metavar='NAME', help='Replace this profile\'s plugin link with a clone of the same revision')
     parser.add_argument('--unpin-profile', metavar='NAME', help='Restore the plugin link saved by the last pin')
-    parser.add_argument('--dry-run', action='store_true', help='With --pin-profile/--unpin-profile: report only')
+    parser.add_argument('--dry-run', action='store_true', help='Preview only; no network or recovery writes')
     parser.add_argument('--restart-when-quiet', type=int, metavar='UPDATE_ID', help=argparse.SUPPRESS)
     parser.add_argument('--gateway-pid', type=int, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
@@ -1343,11 +1857,15 @@ def main(argv=None):
         if not all((args.profile, args.source, args.revision, args.native_python)):
             parser.error('local deployment requires --profile, --source, --revision and --native-python')
         result = scoped_update(args.hermes_home, args.source, args.revision, args.profile,
-                               args.native_python, check=args.check)
+                               args.native_python, check=args.check or args.dry_run)
         print(json.dumps(result, indent=2))
         return int(result['status'] == 'incomplete')
     from setup_bundle import live_profiles
     root = root_home(args.hermes_home)
+    if args.dry_run:
+        print(json.dumps({'status': 'preview', 'profiles': [name for name, _ in live_profiles(root)],
+                          'action': 'No network, staging or profile writes; rerun without --dry-run to update'}, indent=2))
+        return 0
     state_dir = root / 'maintenance/toolset-update'
     if not root.is_dir() or any(p.is_symlink() for p in (state_dir, state_dir.parent)):
         raise ValueError('Missing home or symlinked update state directory')
@@ -1388,7 +1906,46 @@ def main(argv=None):
         try:
             source = Path(__file__).resolve().parent
             profiles = live_profiles(root)
+            recovery_receipt = state_dir / 'recovery.json'
+            safe_path(recovery_receipt)
+            prior = json.loads(recovery_receipt.read_text()) if recovery_receipt.exists() else None
+            if prior and prior['status'] == 'incomplete':
+                recovery = automatic_recovery(root, profiles, prior=prior, check=args.check)
+                if recovery['status'] != 'incomplete' and not args.check:
+                    if set(recovery['managed']['ordinary']) - {name for name, _ in profiles}:
+                        raise ValueError('Original ordinary-profile selection changed; reconcile before retrying')
+                    recovery = finish_ordinary_recovery(root, recovery)
+                result.update(status=recovery['status'], recovery=recovery, gateway_restart='not_requested',
+                              action='Preserve the recovery backup; resolve per-profile errors and rerun ./install.sh --only hermes')
+                save()
+                print(json.dumps(result, indent=2))
+                return int(result['status'] == 'incomplete')
             plan = prepare(source, profiles)
+            recover = any(row.get('recovery') for row in plan['sources'].values())
+            recovered_homes = [home for name, home in profiles if prior and name in prior['selected']]
+            recovered_sources = {plugin_dir(home).resolve() for home in recovered_homes}
+            unchanged_recovery = (not recover and prior and len(recovered_homes) == len(prior['selected']) and all(
+                repo in plan['sources'] and plan['sources'][repo]['before'] == plan['sources'][repo]['after'] == prior['revision']
+                for repo in recovered_sources))
+            if unchanged_recovery and not args.check:
+                snapshot = ordinary_snapshot(plan, profiles, prior['selected'], prior['revision'])
+                if snapshot['writes'] or any(row['before'] != row['after'] for row in snapshot['sources'].values()):
+                    prior = {**prior, 'status': 'incomplete', 'ordinary_pending': True, 'ordinary_plan': snapshot,
+                             'ordinary_backup': str(Path(prior['backup']) / ('ordinary-' + str(time.time_ns()))),
+                             'managed': {**prior['managed'], 'ordinary': [name for name, _ in profiles
+                                                                        if name not in prior['selected']]}}
+                    save_transaction(recovery_receipt, prior)
+            if recover or unchanged_recovery:
+                recovery = automatic_recovery(root, profiles, plan=plan,
+                    prior=prior if unchanged_recovery else None, check=args.check)
+                if recovery['status'] != 'incomplete' and not args.check:
+                    recovery = finish_ordinary_recovery(root, recovery)
+                result.update(status=recovery['status'], recovery=recovery, gateway_restart='not_requested',
+                              action='Preserve the recovery backup; resolve per-profile errors and rerun ./install.sh --only hermes'
+                                     if recovery['status'] == 'incomplete' else 'Recovery verified offline; no runtime activation or restart requested')
+                save()
+                print(json.dumps(result, indent=2))
+                return int(result['status'] == 'incomplete')
             result['profiles'] = plan['profiles']
             result['sources'] = {str(p): {k: s[k] for k in ('before', 'after')} for p, s in plan['sources'].items()}
             result['skill_files'] = len(plan['writes'])

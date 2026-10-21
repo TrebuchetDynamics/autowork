@@ -13,6 +13,29 @@ Supporting protocols are bundled and loaded only when needed. Hermes profile
 creation, Telegram routing,
 Kanban workers, fleet setup, memory and speech integrations remain Hermes-only.
 
+## Full-suite partial failures
+
+From a checkout, `./install.sh` reports each component independently. A failed
+Hermes update does not undo successful Pi, command/TUI, tx, Claude Code or Codex
+installation; the aggregate exit remains nonzero. Its summary extracts the updater's
+structured cause and next action, including per-profile recovery errors. Truncated
+or non-JSON output gets a bounded text fallback.
+
+Fix the reported cause, then retry only that component:
+
+```sh
+./install.sh --only hermes --dry-run
+./install.sh --only hermes
+```
+
+Keep the original `--hermes-home` when using an alternate root. Verified clean
+managed Hermes checkouts can recover from rewritten upstream history through the
+[backed-up native transaction](installation.md#managed-checkout-recovery); unknown,
+dirty, locally advanced or active/shared-unsafe sources defer. Recovery preserves
+compatible native skill edits and requests no runtime restart. `--skip hermes`
+leaves Hermes out; preview runs no updater or recovery network operation. This
+Hermes-specific path does not replace portable hosts' own update commands below.
+
 ## Claude Code
 
 Requires Claude Code with plugin marketplaces. From this checkout:

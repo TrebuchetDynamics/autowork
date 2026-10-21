@@ -37,11 +37,16 @@ automatic on terminals (`NO_COLOR=1` or `TERM=dumb` disables them); use
 reports installed, planned, skipped and failed components with total elapsed
 time. A failed command stops that component, continues independent components,
 and causes a nonzero exit. Even an error mentioning “already” remains a failure.
+For a structured updater receipt, the summary includes its status, cause (including
+per-profile recovery errors) and supported next action, rather than its closing
+JSON brace. Non-JSON or truncated output gets a bounded diagnostic fallback.
+Successful components remain installed; retry just Hermes with
+`./install.sh --only hermes` (and the same `--hermes-home` if supplied).
 
 `--dry-run` prints selected commands without installing. `--hermes-home`,
 `--bundle-only`, `--no-reload` and `--yes-deps` apply only to Hermes. When a
 profile already has its own plugin clone, Hermes is updated with `update_bundle.py`,
-which supports none of those three and restarts gateways, so passing one fails the
+which supports none of those three and can restart gateways on ordinary updates, so passing one fails the
 Hermes item instead of being ignored. Host security and dependency prompts still
 apply; full mode does not supply consent flags.
 
@@ -357,8 +362,10 @@ and starts nothing.
 
 A named-profile invocation still targets every existing live profile under the
 same Hermes root. The updater fetches the official Autowork `main` branch,
-checks each distinct installed Git checkout, and accepts only clean fast-forward
-updates. Dirty checkouts, local commits absent upstream, unsafe paths and skill
+checks each distinct installed Git checkout, and normally accepts clean equal or
+fast-forward revisions. A verified managed checkout with rewritten upstream history
+can instead use [managed checkout recovery](#managed-checkout-recovery).
+Dirty checkouts, unproven local commits, unsafe paths and skill
 merge conflicts stop preflight before checkout/profile writes. Review and commit
 or move local changes yourself; the updater never stashes, resets or force-pulls.
 Non-Git plugin distributions need a supported Git installation before this update.
@@ -404,6 +411,62 @@ that compatibility. Existing conversations may
 retain already-loaded instructions; open a new conversation to load updated skills.
 The new `/autowork update` handler itself first needs the normal plugin reload if
 upgrading from a version that does not register it.
+
+### Managed checkout recovery
+
+A negative `merge-base --is-ancestor` result is not a Git failure. The updater
+classifies it separately from actual Git/network failures and locally advanced
+checkouts. A shallow checkout gets one trusted fetch with at most 1,000 additional
+history levels; if negative ancestry remains shallow, recovery defers rather than
+assuming a rewrite. Equal/fast-forward updates retain their normal path.
+
+Automatic recovery requires a same-user standalone `plugins/autowork` checkout,
+the expected plugin identity, a native `plugins/.install-metadata.json` record
+bound to the trusted upstream, and HEAD matching its saved installed revision or
+a trusted tracking tip captured **before fetch**. A clean tree or matching URL
+alone is insufficient. Dirty/untracked files, extra Git worktrees, shared object
+stores, unknown provenance, an unselected profile link, a live gateway or a live/
+unknown helper consumer prevent replacement. Quiesce consumers yourself and
+reconcile the reported evidence; recovery never kills or restarts them.
+
+The updater stages the exact trusted fetched main commit and reuses the scoped
+native transaction below: all selected consumers are preflighted and scanned,
+worker-handoff locks are held, the complete original checkout (including `.git`)
+is moved into an owned backup, and native installation publishes the staged local
+URI without force or enablement. Selected links to that canonical checkout remain
+links; their source is recovered once. Additional native metadata fields and other
+plugins' records are retained, and the Autowork record keeps its trusted source
+binding. New unselected consumers or foreign source/profile edits on retry defer
+instead of becoming a new baseline.
+
+Unlike ordinary release synchronization, **recovery three-way merges native skill
+customizations against the original checkout**. Compatible edits and executable/
+file permissions survive; conflicting edits or edited deletions defer without
+resetting them. Original skill bytes and modes, source/base revisions and exact
+merged output are retained in the transaction backup/manifest. Configuration,
+runtime-policy opt-outs, credentials, jobs and paused schedules are not rewritten.
+Recovery performs no profile finalization, gateway activation or host refresh.
+
+`maintenance/toolset-update/recovery.json` journals per-profile phases and errors;
+`latest.json` includes that recovery result. Native readiness alone does not complete
+the run: originally selected independent fast-forward/profile writes also retain
+frozen targets, original bytes/modes and resumable backups until their publication
+reads back. A retry does not enlist new profiles or overwrite newer foreign edits.
+Keep the referenced backup and staged source.
+Rerun the same all-profile update, or `./install.sh --only hermes`, to resume
+that original target and backup, even after upstream moves. An empty failed slot
+can be restored from its original checkout; partial native output and newer foreign
+edits are never deleted or overwritten to roll back. Read-back checks the exact
+published HEAD, tracked bytes, profile output, permissions and source binding before
+success. An unchanged retry validates the completed recovery without reinstalling,
+rescanning, resetting preserved customizations or creating a new backup.
+
+`python3 update_bundle.py --hermes-home /path/to/home --dry-run` only previews;
+it performs no fetch, staging or state/profile writes. `--check` retains its
+fetch/check semantics, but performs no recovery publication. Installer `--dry-run`
+and `--skip hermes` never execute recovery. Offline real-Git fixtures cover recovery,
+shared consumers, preservation, refusals and interrupted retry; they do not qualify
+native scanner acceptance, a live profile reinstall or Telegram delivery.
 
 ### Linked profiles and pinned clones
 
