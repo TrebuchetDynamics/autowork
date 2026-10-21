@@ -8,6 +8,9 @@ import sys
 import tempfile
 import time
 import unittest
+
+import store_fixture
+from pi_autowork import task_migrate
 from unittest.mock import patch
 
 SCRIPT=Path(__file__).with_name('owner_cycle.py')
@@ -19,8 +22,7 @@ class ExecutionFixtureMixin:
         self.repo=Path(self.tmp.name)/'repo';self.repo.mkdir()
         subprocess.run(['git','init','-q',str(self.repo)],check=True)
         self.state=Path(self.tmp.name)/'state';self.state.mkdir()
-        self.todo=self.repo/'TODO.md'
-        self.todo.write_text('''# Work
+        self.todo_text = '''# Work
 ## Now
 - [ ] T1 — repair fixture
   Status: open
@@ -36,10 +38,15 @@ class ExecutionFixtureMixin:
   Acceptance: successor works
   Checks: run fixture
   Dependencies: T1.
-''')
+'''
+        store_fixture.write_todo(self.repo, self.todo_text)
+        self.todo = self.repo / 'tasks/items/T1.md'  # the first task's record
         self.fixture=self.repo/'fixture.py'
         self.fixture.write_text("from pathlib import Path\nPath('worked').write_text('yes')\n")
         self.env=dict(os.environ,HERMES_KANBAN_TASK='old-card',HERMES_KANBAN_DB='/missing/board')
+    def set_todo(self, text):
+        self.todo_text = text
+        store_fixture.write_todo(self.repo, text)
     def call(self,*args):
         p=subprocess.run([sys.executable,str(SCRIPT),str(self.repo),'--state-dir',str(self.state),*args],
                          env=self.env,capture_output=True,text=True,timeout=15)
@@ -73,7 +80,7 @@ class DirectExecutionTests(ExecutionFixtureMixin, unittest.TestCase):
         p,r=self.call('--tasks','T2')
         self.assertEqual(p.returncode,1)
         self.assertIn('dependency',str(r).lower())
-        self.todo.write_text(self.todo.read_text().replace('## Now','## Needs decision'))
+        self.set_todo(self.todo_text.replace('## Now','## Needs decision'))
         p,r=self.call('--tasks','T1')
         self.assertEqual(p.returncode,1)
     def test_claiming_a_task_removes_finished_worktrees_and_keeps_unfinished_ones(self):
@@ -133,38 +140,16 @@ class DirectExecutionTests(ExecutionFixtureMixin, unittest.TestCase):
         self.assertFalse((self.repo/'worked').exists())
 
 class RecoveryTests(ExecutionFixtureMixin, unittest.TestCase):
-    def ledger(self):
-        data = {'version': 1, 'goals': [{'id': 'G', 'title': 'fixture', 'source': 'TODO.md',
-            'status': 'partial', 'tasks': ['T1', 'T2'], 'priority': 1, 'depends_on': []}],
-            'tasks': [{'id': 'T1', 'title': 'repair fixture', 'goal': 'G', 'status': 'open',
-                       'section': 'Now', 'depends_on': []},
-                      {'id': 'T2', 'title': 'successor', 'goal': 'G', 'status': 'open',
-                       'section': 'Next', 'depends_on': ['T1']}]}
-        (self.repo / 'goals.json').write_text(json.dumps(data))
-        return data
-
-    def test_existing_index_and_explanatory_status_stay_unchanged(self):
-        self.ledger()
-        self.todo.write_text(self.todo.read_text().replace('Status: open', 'Status: open; implementation pending.'))
-        before = (self.repo / 'goals.json').read_bytes()
+    def test_selection_writes_no_task_record_and_keeps_dependencies(self):
+        self.set_todo(self.todo_text.replace('Status: open', 'Status: open; implementation pending.'))
+        before = {p: p.read_bytes() for p in (self.repo / 'tasks').rglob('*.md')}
         p, result = self.call('--tasks', 'T1')
         self.assertEqual(p.returncode, 0, result)
-        self.assertEqual((self.repo / 'goals.json').read_bytes(), before)
+        self.assertEqual({p: p.read_bytes() for p in (self.repo / 'tasks').rglob('*.md')}, before)
         self.assertEqual(self.call('--tasks', 'T2')[0].returncode, 1)
 
-    def test_index_mismatch_and_duplicate_todo_do_not_dispatch(self):
-        data = self.ledger()
-        data['tasks'][0]['status'] = 'in_progress'
-        (self.repo / 'goals.json').write_text(json.dumps(data))
-        self.assertIn('disagree', str(self.call()[1]))
-        self.todo.write_text(self.todo.read_text() + '\n- [ ] T1 duplicate\n')
-        self.assertIn('duplicate', str(self.call()[1]))
-
-    def test_archive_satisfies_todo_only_dependency(self):
-        original = self.todo.read_text()
-        self.todo.write_text('# Work\n## Now\n' + original.split('## Next\n')[1])
-        (self.repo / 'TODO.archive.md').write_text(original.split('## Next')[0].replace(
-            '[ ] T1', '[x] T1').replace('Status: open', 'Status: done'))
+    def test_a_closed_dependency_satisfies_its_successor(self):
+        self.set_todo(self.todo_text.replace('[ ] T1', '[x] T1').replace('Status: open', 'Status: done', 1))
         self.assertEqual(self.call('--tasks', 'T2')[1]['outcome'], 'READY')
 
     def test_actual_git_worktrees_share_writer_lease(self):
@@ -309,8 +294,11 @@ class RecoveryTests(ExecutionFixtureMixin, unittest.TestCase):
                 with patch.object(Path, 'read_text', own_unit):
                     result = integrate.integrate(self.repo, owner, task, ['true'], 10)
                     self.assertEqual(result['outcome'], 'INTEGRATED', result)
-                    self.assertEqual(integrate.close(self.repo, owner, task)['outcome'], 'CLOSED')
+                    closed = integrate.close(self.repo, owner, task)
+                    self.assertEqual(closed['outcome'], 'CLOSED')
                     self.assertFalse(root.exists())
+                git(self.repo, 'add', *closed['files'])  # the runner commits a close's files
+                git(self.repo, 'commit', '-qm', 'close ' + task)
                 job.kill(); job.wait()
 
     def test_idle_terminal_session_does_not_block(self):
@@ -380,13 +368,14 @@ class RecoveryTests(ExecutionFixtureMixin, unittest.TestCase):
         self.assertEqual(result['outcome'], 'EXECUTE', result)
 
     def test_verification_is_an_accepted_spelling_of_checks(self):
-        self.todo.write_text(self.todo.read_text().replace('  Checks: run fixture\n', '  Verification: run fixture\n', 1))
+        self.set_todo(self.todo_text.replace('  Checks: run fixture\n', '  Verification: run fixture\n', 1))
         _, result = self.call()
         self.assertEqual((result['outcome'], result['task']['id']), ('READY', 'T1'), result)
-        self.todo.write_text(self.todo.read_text().replace('  Verification: run fixture\n',
-                                                           '  Verification: run fixture\n  Checks: run fixture\n', 1))
+        self.set_todo(self.todo_text.replace('  Verification: run fixture\n',
+                                             '  Verification: run fixture\n  Checks: run fixture\n', 1))
         _, result = self.call('--tasks', 'T1')
-        self.assertIn('T1: duplicate task contract fields', result['reason'])
+        # Both spellings at once leave no check the converter can trust: a draft, never runnable.
+        self.assertIn('T1: needs Scope, Acceptance, Checks and Touches (draft: checks)', result['reason'])
 
     def test_failed_command_is_not_task_completion(self):
         before = self.todo.read_bytes()
@@ -423,29 +412,26 @@ class RecoveryTests(ExecutionFixtureMixin, unittest.TestCase):
         self.assertEqual(target.read_text(), 'original')
 
     def test_duplicate_dependency_fields_are_not_treated_as_none(self):
-        self.todo.write_text(self.todo.read_text().replace('Dependencies: None.', 'Dependencies: MISSING\n  Dependencies: T2.'))
-        self.assertEqual(self.call('--tasks', 'T1')[0].returncode, 1)
+        with self.assertRaisesRegex(task_migrate.Refused, 'Dependencies written more than once'):
+            self.set_todo(self.todo_text.replace('Dependencies: None.', 'Dependencies: MISSING\n  Dependencies: T2.'))
 
     def test_loose_checklist_lines_without_task_ids_do_not_refuse_selection(self):
         backlog = '## Backlog\n- [ ] Add dark mode\n- [ ] Add export\n'
-        self.todo.write_text(self.todo.read_text() + backlog)
+        self.set_todo(self.todo_text + backlog)
         _, result = self.call()
         self.assertEqual((result['outcome'], result.get('task', {}).get('id')), ('READY', 'T1'), result)
-        self.ledger()
-        _, result = self.call()
-        self.assertEqual((result['outcome'], result.get('task', {}).get('id')), ('READY', 'T1'), result)
-        # Genuine duplicate executable IDs are still refused.
-        self.todo.write_text(self.todo.read_text() + '- [ ] T2 — duplicate\n')
-        self.assertIn('duplicate TODO task IDs', self.call()[1]['reason'])
+        # Genuine duplicate executable IDs are still refused, at conversion.
+        with self.assertRaisesRegex(task_migrate.Refused, 'T2'):
+            self.set_todo(self.todo_text + '- [ ] T2 — duplicate\n')
 
     def test_none_dependency_followed_by_prose_is_no_dependency(self):
-        self.todo.write_text(self.todo.read_text().replace('Dependencies: None.', 'Dependencies: None. Keep existing cards.'))
+        self.set_todo(self.todo_text.replace('Dependencies: None.', 'Dependencies: None. Keep existing cards.'))
         _, result = self.call()
         self.assertEqual((result['outcome'], result.get('task', {}).get('id')), ('READY', 'T1'), result)
-        self.todo.write_text(self.todo.read_text().replace('Dependencies: None. Keep existing cards.', 'Dependencies: None; keep cards.'))
+        self.set_todo(self.todo_text.replace('Dependencies: None. Keep existing cards.', 'Dependencies: None; keep cards.'))
         self.assertEqual(self.call()[1]['task']['id'], 'T1')
         # Real unresolved dependencies are still refused.
-        self.todo.write_text(self.todo.read_text().replace('Dependencies: None; keep cards.', 'Dependencies: T2. Keep existing cards.'))
+        self.set_todo(self.todo_text.replace('Dependencies: None; keep cards.', 'Dependencies: T2. Keep existing cards.'))
         p, result = self.call('--tasks', 'T1')
         self.assertEqual(p.returncode, 1, result)
         self.assertIn('unresolved dependency', result['reason'])
@@ -480,7 +466,7 @@ class RecoveryTests(ExecutionFixtureMixin, unittest.TestCase):
 
     def test_named_plan_selects_only_tasks_linked_to_it(self):
         (self.repo / 'SPEC.md').write_text('# Slice\nOnly T2 is in this plan.\n')
-        self.todo.write_text(self.todo.read_text().replace('Dependencies: T1.', 'Dependencies: None.\n  Sources: [slice](SPEC.md#slice)'))
+        self.set_todo(self.todo_text.replace('Dependencies: T1.', 'Dependencies: None.\n  Sources: [slice](SPEC.md#slice)'))
         self.assertEqual(self.call('--plan', 'SPEC.md#slice')[1]['task']['id'], 'T2')
         self.assertEqual(self.call('--tasks', 'T1', '--plan', 'SPEC.md#slice')[0].returncode, 1)
 
@@ -526,69 +512,25 @@ class RecoveryTests(ExecutionFixtureMixin, unittest.TestCase):
         self.assertEqual(result['outcome'], 'CHILDREN_TERMINATED')
 
 class SelectionCacheTests(unittest.TestCase):
-    def test_one_selection_parses_todo_once(self):
+    def test_one_commit_is_read_once_and_a_new_commit_is_seen(self):
         import task_execution as execution
+        import task_queue
+        import task_store
         with tempfile.TemporaryDirectory() as folder:
             repo = Path(folder)
-            (repo / 'TODO.md').write_text('## Now\n- [ ] A — parse once\n  Scope: a\n'
-                                        '  Acceptance: works\n  Checks: test a\n  Dependencies: None.\n')
-            (repo / 'goals.json').write_text(json.dumps({
-                'version': 1, 'priority_order': {'schema': 1, 'tasks': ['A']},
-                'goals': [{'id': 'G', 'title': 'fixture', 'source': 'TODO.md',
-                           'status': 'partial', 'tasks': ['A'], 'priority': 1}],
-                'tasks': [{'id': 'A', 'title': 'parse once', 'goal': 'G',
-                           'status': 'open', 'section': 'Now'}]}))
-            parses = []
-            scripts = SCRIPT.parents[2] / 'skills/docs-sync/scripts'
-            def observe(frame, event, arg):
-                if (event == 'call' and frame.f_code.co_name == 'task_bodies'
-                        and Path(frame.f_code.co_filename).parent == scripts):
-                    parses.append(frame.f_locals['text'])
-            previous = sys.getprofile()
-            sys.setprofile(observe)
-            try:
-                self.assertEqual(execution.select(repo, None, None)['id'], 'A')
-            finally:
-                sys.setprofile(previous)
-            self.assertEqual(parses, [(repo / 'TODO.md').read_text()])
-
-    def test_selection_reuses_parsing_without_hiding_content_changes_or_caller_mutation(self):
-        import task_execution as execution
-        import parallel_status
-        with tempfile.TemporaryDirectory() as folder:
-            repo = Path(folder)
-            todo, archive = repo / 'TODO.md', repo / 'TODO.archive.md'
-            todo.write_text('## Now\n- [ ] A — cached\n  Scope: a\n  Acceptance: works\n'
-                            '  Checks: test a\n  Dependencies: OLD\n')
-            archive.write_text('## Done\n- [x] OLD — prerequisite\n')
-            goals = execution.goals_module()
-            with patch.object(execution, 'goals_module', return_value=goals), \
-                    patch.object(goals, 'task_bodies', wraps=goals.task_bodies) as bodies:
-                first = execution.select(repo, 'A', None)
+            store_fixture.write_todo(repo, '## Now\n- [ ] A — parse once\n  Scope: a\n'
+                                           '  Acceptance: works\n  Checks: test a\n  Dependencies: None.\n')
+            task_queue._store.cache_clear()
+            with patch.object(task_store.TaskStore, 'at', wraps=task_store.TaskStore.at) as reads:
+                first = execution.select(repo, None, None)
                 first['fields']['Checks'] = 'caller mutation'
-                first['priority']['state'] = 'caller mutation'
                 self.assertEqual(execution.select(repo, 'A', None)['fields']['Checks'], 'test a')
-                self.assertEqual(parallel_status.pending_tasks(repo),
-                                 [dict(id='A', reason='awaiting dispatch', blocked_by=[])])
-                self.assertEqual(bodies.call_count, 2)  # TODO and archive, once each
-            stamp = archive.stat()
-            archive.write_text(archive.read_text().replace('[x]', '[ ]'))
-            os.utime(archive, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
-            with self.assertRaisesRegex(execution.NoEligibleTask, 'unresolved dependency'):
-                execution.select(repo, 'A', None)
-            todo.write_text(todo.read_text().replace('Dependencies: OLD', 'Dependencies: None.'))
-            self.assertEqual(execution.select(repo, None, None)['priority']['state'], 'todo_only')
-            ledger = {'version': 1, 'goals': [{'id': 'G', 'title': 'fixture', 'source': 'TODO.md',
-                       'status': 'partial', 'tasks': ['A'], 'priority': 1, 'depends_on': []}],
-                      'tasks': [{'id': 'A', 'title': 'cached', 'goal': 'G', 'status': 'open',
-                                 'section': 'Now', 'depends_on': []}]}
-            (repo / 'goals.json').write_text(json.dumps(ledger))
-            self.assertEqual(execution.select(repo, None, None)['id'], 'A')
-            ledger['tasks'][0]['status'] = 'in_progress'
-            (repo / 'goals.json').write_text(json.dumps(ledger))
-            self.assertEqual(execution.select_all(repo)[0]['fields']['Status'], 'in_progress')
-            (repo / 'goals.json').unlink()
-            self.assertNotIn('Status', execution.select_all(repo)[0]['fields'])
+                self.assertEqual(reads.call_count, 1)  # one snapshot per commit, not per selection
+            record = repo / 'tasks/items/A.md'
+            record.write_text(record.read_text().replace('checks = ["test a"]', 'checks = ["test b"]'))
+            subprocess.run(['git', '-C', str(repo), '-c', 'user.name=F', '-c', 'user.email=f@example.invalid',
+                            'commit', '-qam', 'new check'], check=True)
+            self.assertEqual(execution.select(repo, None, None)['fields']['Checks'], 'test b')
 
 
 if __name__ == '__main__':

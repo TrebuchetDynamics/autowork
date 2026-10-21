@@ -24,6 +24,8 @@ def _ledger_for(todo):
     tasks = []
     for tid, items in bodies.items():
         body, mark, section = items[0]
+        if section not in ('Now', 'Next', 'Needs decision', None, ''):
+            continue  # a loose checklist line (a Backlog idea) was never an indexed task
         fields = reader.task_fields(body)
         status = 'done' if mark.lower() == 'x' else (fields.get('Status', 'open').split()[0].strip('.;') or 'open')
         status = status if status in ('open', 'done', 'superseded') else 'open'
