@@ -1001,14 +1001,19 @@ def verify_batch(state, session, script, tasks):
                 json.dumps({'tip': steps[-1][1], 'tasks': result['tasks']}) + '\n')
         os.environ['TMPDIR'] = str(root)
         lease = review_port_lease()  # held until this process exits
-        ok, reason = full_suite_gate(state, 'batch', str(chain), base)
-        if not ok:
-            # The candidates the failing tests point at, when they all do; else the batch is halved.
-            print(json.dumps(dict(result, outcome='BATCH_GATE_FAILED', reason=reason,
-                                  suspects=batch_suspects(state, str(chain), base, steps))))
-            return 0
-        # The same note a single review gets, with any failures the gate excused.
-        gate = json.dumps({'note': gate_note(state, 'batch', str(chain))})
+        if optimistic.enabled():
+            # Optimistic landing (TOOLSET-334-f9): no full suite before landing, so a batch is just
+            # its candidates' reviews side by side; main's full check runs after they land.
+            gate = json.dumps({'note': OPTIMISTIC_NOTE})
+        else:
+            ok, reason = full_suite_gate(state, 'batch', str(chain), base)
+            if not ok:
+                # The candidates the failing tests point at, when they all do; else the batch is halved.
+                print(json.dumps(dict(result, outcome='BATCH_GATE_FAILED', reason=reason,
+                                      suspects=batch_suspects(state, str(chain), base, steps))))
+                return 0
+            # The same note a single review gets, with any failures the gate excused.
+            gate = json.dumps({'note': gate_note(state, 'batch', str(chain))})
         limit = max(1, setting('PI_AUTOWORK_REVIEWS', 3))
         pending = list(steps)
         # A stop reaches only the reviews already running: start no more, and let those record theirs.

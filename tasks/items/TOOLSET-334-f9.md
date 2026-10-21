@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-334-f9"
 title = "Reviews and full checks of different candidates run in parallel; only the landing is serial"
 short = "Parallel reviews, serial landing"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 27000
@@ -16,6 +16,11 @@ scope = "integrate() (pi-autowork/engine/parallel_integrate.py:750-924) holds in
 acceptance = ["Two candidates with disjoint touches are reviewed and checked at the same time (offline test with fake reviewer and check recording overlapping start and end times), and both land", "A candidate whose verified tree is no longer what would land (the session moved and the merge result differs) is re-verified or re-queued, never landed unverified", "integration.lock is held only for the landing step: a set-aside or clear-held issued during a running review completes without waiting for the review", "Receipts still name the verified tree and contract hash; the existing integrate, batch and merge-train acceptance tests pass unchanged in assertion"]
 checks = ["python3 scripts/check.py pi-autowork/engine/test_parallel_integrate.py tests/test_pi_autowork.py pi-autowork/tests/test_landing.py"]
 exclusions = []
+closure = "manual"
+closure_actor = "owner's interactive session (supervisor)"
+closure_timestamp = "2026-10-21T20:55:38.551080+00:00"
+closure_reason = "implemented and landed outside the runner by the owner's session; done as reviews side by side under optimistic landing rather than the gated redesign"
+closure_evidence = "Landed in be7f56d7: under optimistic landing batches start again and verify_batch skips its full-suite step, so a batch is its candidates' reviews side by side (PI_AUTOWORK_REVIEWS, default 3), each landing on its own per-tree verdict. Checks: tests/test_pi_autowork.py -k optimistic (new end-to-end: two candidates reviewed together, no full-suite run, all land) and -k batch pass; pi-autowork/tests/test_optimistic.py and test_worker_tmp.py pass. Not done: the gated flow (optimistic off) still holds integration.lock through each review."
 +++
 - Coordination: TOOLSET-342-0153a52b covers one case of this: a failed batch of two or three checked side by side. Whichever lands second replaces the other's mechanism with its own, so failed-batch candidates are checked concurrently one way, not two.
 - Dependencies: TOOLSET-333-34, TOOLSET-335-89, TOOLSET-337-e0
