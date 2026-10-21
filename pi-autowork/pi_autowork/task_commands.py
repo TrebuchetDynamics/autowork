@@ -743,7 +743,8 @@ def run(args, repo):
             from pi_autowork import task_prepare
             out = task_prepare.prepare(repo, 'check' if args.check else 'stage' if args.no_commit else 'commit')
             print(json.dumps(out, indent=2))
-            return 0 if out['ok'] else 1
+            # 3: deferred (the runner converts after its drain), not prepared and not an error.
+            return 0 if out['ok'] else 3 if out.get('outcome') == 'MIGRATION_DEFERRED' else 1
         if args.verb in WRITES:
             with locked(repo):
                 if getattr(args, 'expect', None):

@@ -2139,6 +2139,39 @@ class EngineTests(Fixture):
         runner.send_signal(signal.SIGINT)
         runner.communicate(timeout=120)
 
+    def test_a_deferred_conversion_drains_and_converts_without_the_owner(self):
+        """Docs Sync's prepare found a dead runner's attempt in flight and recorded the request;
+        this runner sets that attempt aside (work kept), converts, and plans from tasks/."""
+        self.git(self.repo, 'rm', '-r', '-q', 'tasks')
+        fixtures = ROOT / 'tests/fixtures/task_migrate'
+        for name in ('TODO.md', 'TODO.archive.md', 'goals.json'):
+            (self.repo / name).write_bytes((fixtures / name).read_bytes())
+        self.git(self.repo, 'add', '-A')
+        self.git(self.repo, 'commit', '-qm', 'a repository a legacy runner left mid-attempt')
+        slots = Path(self.git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')) \
+            / 'autowork-execution/slots'
+        slots.mkdir(parents=True, exist_ok=True)
+        (slots / 'T-001.json').write_text(json.dumps({'task_id': 'T-001', 'state': 'running', 'attempt': 1}))
+        prepare = subprocess.run([sys.executable, str(ROOT / 'pi-autowork/pi_autowork/command.py'), 'tasks',
+                                  'prepare', str(self.repo)], capture_output=True, text=True, timeout=120)
+        self.assertEqual(json.loads(prepare.stdout)['outcome'], 'MIGRATION_DEFERRED', prepare.stdout)
+        runner = self.start_runner('--interval', '1')
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 90
+        while 'Converted this repository to tasks/ after its drain' not in log():
+            self.assertLess(time.monotonic(), deadline, log())
+            self.assertIsNone(runner.poll(), log())
+            time.sleep(0.2)
+        self.assertIn('Conversion: set aside T-001', log())
+        self.assertNotIn('Runner blocked: no tasks/ store', log())
+        self.assertEqual(self.git(self.repo, 'ls-tree', '--name-only', 'HEAD', 'TODO.md'), '')
+        self.assertTrue(self.git(self.repo, 'ls-tree', '--name-only', 'HEAD', 'tasks'))
+        self.assertFalse((slots / 'T-001.json').exists())
+        self.assertFalse((slots.parent / 'convert-intent.json').exists())
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=120)
+
     def test_an_idle_runner_starts_new_work_as_soon_as_todo_changes(self):
         """The owner plans; the runner reacts to the plan, not to its polling interval."""
         self.write_todo(todo([]))

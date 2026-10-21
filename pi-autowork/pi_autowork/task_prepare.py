@@ -13,11 +13,23 @@ the store by hand. It detects the repository's state and does only what needs no
 - invalid: refuses with the store's path:line errors.
 
 It never decides intent: goals, tasks and contract repairs come from accepted documents
-through the existing `autowork tasks` writers. It refuses, changing nothing, while a worker
-or lease is in flight for a conversion, and names in-flight tasks whose contracts must not
-change. `--check` is read-only: no file, ref, index, lock or object is written. On an
-unchanged repository a second run reports the same result and changes nothing.
+through the existing `autowork tasks` writers. A conversion that work in flight refuses
+writes nothing to the repository: it records the request (task_migrate's convert intent)
+and the repository's runner drains to it and converts, so nobody converts by hand. It names
+in-flight tasks whose contracts must not change. `--check` is read-only: no file, ref,
+index, lock or object is written. On an unchanged repository a second run reports the same
+result and changes nothing.
+
+Every report carries one `outcome` an agent acts on: READY (a valid store; work its
+diagnostics), MIGRATED (converted now), NO_STORE (bootstrap from accepted headings),
+MIGRATION_DEFERRED (work in flight; the runner converts after its drain),
+MIGRATION_BLOCKED (a refusal only a person resolves), INVALID_STORE, or
+ACTIVATION_PENDING (the store is ready but the running runner's release cannot read it).
+`runner` says whether this repository's runner runs and can execute tasks/.
 """
+import hashlib
+import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -27,6 +39,11 @@ from pi_autowork.task_commands import worktree_store
 import task_select  # noqa: E402  (task_commands put the engine on the path)
 from task_store import StoreError, TaskStore  # noqa: E402
 
+# The prepare contract a skill checks (`autowork capabilities`) before it relies on it; raise
+# API when a skill would need a new prepare behaviour to act correctly.
+API = 2
+OUTCOMES = ('READY', 'MIGRATED', 'NO_STORE', 'MIGRATION_DEFERRED', 'MIGRATION_BLOCKED', 'INVALID_STORE',
+            'ACTIVATION_PENDING')
 HEADING = re.compile(r'^(#{1,6})\s+(.*?)\s*#*\s*$')
 ACCEPTED = re.compile(r'^\s*(?:\*\*)?Status:?(?:\*\*)?:?\s*Accepted\b', re.I)
 LINK = re.compile(r'\]\(([^)\s]+)\)')
@@ -179,16 +196,66 @@ def detect(repo):
     return 'none'
 
 
+def runner(repo):
+    """This repository's runner: dict(running, release, reads_tasks). reads_tasks is False
+    when the release it runs predates the task store, None when unknown."""
+    root = os.environ.get('PI_AUTOWORK_STATE_DIR') or str(Path(
+        os.environ.get('XDG_STATE_HOME') or Path.home() / '.local' / 'state') / 'pi-autowork')
+    common = _git(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+    if not common:
+        return dict(running=False, release=None, reads_tasks=None)
+    state = Path(root) / hashlib.sha256(common.encode()).hexdigest()[:16]
+    try:
+        import fcntl
+        with open(state / 'lock', 'a') as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(handle, fcntl.LOCK_UN)
+        return dict(running=False, release=None, reads_tasks=None)
+    except BlockingIOError:
+        pass
+    except OSError:
+        return dict(running=False, release=None, reads_tasks=None)
+    try:
+        release = json.loads((state / 'runner.json').read_text()).get('toolset_rev')
+    except (OSError, ValueError, AttributeError):
+        release = None
+    toolset = Path(__file__).resolve().parents[2]
+    reads = None
+    if release and _git(toolset, 'rev-parse', '--verify', '-q', f'{release}^{{commit}}'):
+        reads = _git(toolset, 'rev-parse', '--verify', '-q', f'{release}:pi-autowork/engine/task_store.py') is not None
+    return dict(running=True, release=release, reads_tasks=reads)
+
+
+def outcome(report):
+    """The one code an agent acts on (see the module docstring)."""
+    if report['state'] == 'invalid':
+        return 'INVALID_STORE'
+    if report['state'] in ('legacy', 'conversion_pending'):
+        if report.get('deferred') or (report['mode'] == 'check' and task_migrate.deferrable(report['refusals'])):
+            return 'MIGRATION_DEFERRED'
+        return 'MIGRATION_BLOCKED' if report['refusals'] else 'READY'  # --check: it would convert
+    if report['state'] == 'none':
+        return 'NO_STORE'
+    if report.get('runner', {}).get('reads_tasks') is False:
+        return 'ACTIVATION_PENDING'
+    return 'MIGRATED' if any(a.get('action') == 'convert' for a in report['actions']) else 'READY'
+
+
 def prepare(repo, mode='commit'):
     """One report dict; ``mode`` is check (read-only), stage (no commit) or commit."""
     top = _git(repo, 'rev-parse', '--show-toplevel')
     if not top:
-        return dict(ok=False, state='no_repository', refusals=[f'{repo} is not a Git working tree'])
+        return dict(ok=False, state='no_repository', outcome='INVALID_STORE',
+                    refusals=[f'{repo} is not a Git working tree'])
     repo = Path(top).resolve()
     if mode == 'check':
-        return _prepare(repo, mode)
-    with task_commands.locked(repo):
-        return _prepare(repo, mode)
+        report = _prepare(repo, mode)
+    else:
+        with task_commands.locked(repo):
+            report = _prepare(repo, mode)
+    report['runner'] = runner(repo)
+    report['outcome'] = outcome(report)
+    return report
 
 
 def _prepare(repo, mode):
@@ -202,9 +269,19 @@ def _prepare(repo, mode):
         try:
             result = task_migrate.convert(repo, commit=mode == 'commit')
         except task_migrate.Refused as exc:
-            report.update(ok=False, refusals=[str(exc)],
-                          next='nothing was written; resolve the refusal, then run prepare again')
+            found = task_migrate.refusals(repo) if state == 'legacy' else task_migrate.busy(repo)
+            if mode == 'commit' and task_migrate.deferrable(found):
+                # Work in flight: record the owner's request; the runner drains and converts.
+                report.update(ok=False, deferred=task_migrate.record_intent(repo, 'autowork tasks prepare', found),
+                              refusals=found,
+                              next='conversion deferred: the runner starts nothing new, lets live workers '
+                                   'finish, sets the rest aside with their work kept, then converts; continue '
+                                   'document work and run prepare again later')
+            else:
+                report.update(ok=False, refusals=[str(exc)],
+                              next='nothing was written; resolve the refusal, then run prepare again')
             return report
+        task_migrate.clear_intent(repo)
         report['actions'].append(dict(action='convert', **result))
         state = report['state'] = 'converted' if result['outcome'] in ('CONVERTED', 'ALREADY_CONVERTED') \
             else 'uncommitted'
@@ -253,6 +330,8 @@ def _check_conversion(repo, report):
         report['refusals'] = task_migrate.busy(repo)
         return report
     report['refusals'] = task_migrate.refusals(repo)
+    if recorded := task_migrate.intent(repo):
+        report['deferred'] = recorded
     if not report['refusals']:
         try:
             files, order, _ids = task_migrate.build(repo)

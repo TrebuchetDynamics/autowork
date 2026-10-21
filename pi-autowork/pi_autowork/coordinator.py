@@ -2785,11 +2785,44 @@ class Coordinator:
         self.health_update()
         self.pause(self.interval)
 
+    conversion_blocker = None
+
+    def convert_deferred(self):
+        """A legacy repository whose owner asked for its conversion (Docs Sync's prepare found
+        work in flight and recorded the intent): drain it, then convert under this runner's
+        lease. Starts nothing (an unconverted repository selects nothing), stops nothing live
+        and keeps every set-aside attempt's work. True once converted."""
+        from pi_autowork import task_migrate
+        self.conversion_blocker = None
+        if not task_migrate.intent(self.repo):
+            return False
+        # A helper, as every engine step: a coordinator lease names an ancestor of its writer.
+        command = Path(self.toolset) / 'pi-autowork' / 'pi_autowork' / 'command.py'
+        result = subprocess.run([sys.executable, str(command), 'migrate', str(self.repo), '--after-drain',
+                                 '--owner-pid', str(os.getpid())], capture_output=True, text=True, timeout=900)
+        try:
+            step = json.loads(result.stdout)
+        except ValueError:
+            step = dict(outcome='BLOCKED', set_aside=[],
+                        detail=' '.join((result.stderr or 'no answer').split())[-300:])
+        if step['set_aside']:
+            LOG.say('Conversion: set aside ' + ', '.join(sorted(step['set_aside']))
+                    + ' (worktrees and branches kept as -set-aside-N; they dispatch fresh after conversion)')
+        if step['outcome'] == 'CONVERTED':
+            LOG.say(f"Converted this repository to tasks/ after its drain ({step['detail']}; "
+                    f"commit {step.get('commit')})")
+            return True
+        self.conversion_blocker = f"deferred conversion: {step['detail']}"
+        return False
+
     def planning_ready(self):
         """A session sees the committed base, not the owner's untracked planning files."""
+        if not (Path(self.repo) / 'tasks').is_dir() and self.convert_deferred():
+            pass  # converted now: plan from the new store below
         if not (Path(self.repo) / 'tasks').is_dir():
             # Unconverted: nothing is selected and no model runs until the owner migrates it.
-            blocker = f'no tasks/ store: run `autowork migrate {self.repo}` to convert this repository once'
+            blocker = self.conversion_blocker or \
+                f'no tasks/ store: run `autowork migrate {self.repo}` to convert this repository once'
             if self.mode != 'continuous':
                 raise Finish(4, blocker)
             if self.last_waiting != 'planning:' + blocker:
