@@ -1648,14 +1648,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-276-3f",
-      "section": "Next",
-      "status": "open",
-      "title": "Tasks that share a hot file never run at the same time"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-276-a9",
       "section": "Next",
       "status": "open",
@@ -3412,6 +3404,14 @@
       "section": "Done",
       "status": "done",
       "title": "Select and copy terminal TUI text by mouse dragging"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-276-3f",
+      "section": "Done",
+      "status": "done",
+      "title": "Tasks that share a hot file never run at the same time"
     },
     {
       "depends_on": [],

@@ -5485,3 +5485,29 @@ Source section: Next
 - Ownership: Toolset coordinator.
 - Exclusions: No CLI or file-format change.
 - Planner's call: write the two acceptance tests against today's goals.py first, so step (1) is proven behaviour-neutral before anything moves; task_execution.py has open tasks, so the shared-file rule holds this until they land.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-276-3f"></a>
+
+### TOOLSET-276-3f — Tasks that share a hot file never run at the same time
+
+- [x] TOOLSET-276-3f — Tasks that share a hot file never run at the same time
+- Short: Hot-file tasks never run at once
+- Status: done
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [reliability research](docs/research/orchestrator-reliability.md) (root cause 6); [planner](skills/autowork/scripts/parallel_plan.py) (`hint`, `_shared`, the "likely-independent work first" ranking); [plan lint](skills/docs-sync/scripts/plan_lint.py) (`hot-file` rule); NP-Bench ([arXiv 2610.07261](https://arxiv.org/abs/2610.07261)).
+- Evidence (2026-10-19): nine of this repository's tasks held at once for merge conflicts; `coordinator.py` and `tests/test_pi_autowork.py` are each in about 38 open tasks' `Touches:`. Ranking an overlapping task later does not stop it starting when slots are free.
+- Touches: skills/autowork/scripts/parallel_plan.py, skills/autowork/scripts/test_parallel_plan_hot.py, skills/autowork/references/parallel-workers.md
+- Consumes: the plan lint's hot-file threshold (a file named by three or more open tasks); reuse one constant, do not copy it.
+- Scope: (1) A file is hot when three or more open tasks name it in `Touches:`. (2) A task is not dispatched while a running or integrating task names the same hot file; it waits with reason `waits for <task> (shares hot file <path>)`. (3) Overlap on files that are not hot keeps today's ranking.
+- Acceptance: Given three open tasks naming `a.py` and one of them running, when the planner picks work for free slots, then the other two wait with that reason and a task on `b.py` dispatches (`skills/autowork/scripts/test_parallel_plan_hot.py::test_hot_file_serializes`). Given two tasks sharing a file only they name, both dispatch, the second ranked later (`test_cold_overlap_keeps_ranking`).
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_plan_hot.py; python3 scripts/check.py skills/autowork/scripts/test_parallel_plan.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No return to holding tasks for edits outside `Touches:` (TOOLSET-161-17 stays).
+- Planner's call: a conflict costs a resolver run and often an owner question; one more wait on a shared hot file costs less.
