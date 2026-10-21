@@ -13,6 +13,7 @@ admission or live qualification.
 ### TOOLSET-294-f6 — TaskStore reads tasks/ files into immutable records from a pinned commit
 
 - [ ] TOOLSET-294-f6 — TaskStore reads tasks/ files into immutable records from a pinned commit
+- Held by: an interactive session implementing TASK-STORE on the owner's instruction (relayed 2026-10-20); do not dispatch or adopt; until 2026-10-27
 - Short: Read-only TaskStore over tasks/
 - Status: open
 - Goal: TASK-STORE
@@ -31,6 +32,7 @@ admission or live qualification.
 ### TOOLSET-295-57 — Task selection from the store matches the current selector
 
 - [ ] TOOLSET-295-57 — Task selection from the store matches the current selector
+- Held by: an interactive session implementing TASK-STORE on the owner's instruction (relayed 2026-10-20); do not dispatch or adopt; until 2026-10-27
 - Short: Store selection parity
 - Status: open
 - Goal: TASK-STORE
@@ -48,6 +50,7 @@ admission or live qualification.
 ### TOOLSET-296-9f — A schema-bound writer and the autowork tasks commands edit the store
 
 - [ ] TOOLSET-296-9f — A schema-bound writer and the autowork tasks commands edit the store
+- Held by: an interactive session implementing TASK-STORE on the owner's instruction (relayed 2026-10-20); do not dispatch or adopt; until 2026-10-27
 - Short: Store writer and tasks CLI
 - Status: open
 - Goal: TASK-STORE
@@ -65,6 +68,7 @@ admission or live qualification.
 ### TOOLSET-297-41 — autowork migrate converts a repository to tasks/ once
 
 - [ ] TOOLSET-297-41 — autowork migrate converts a repository to tasks/ once
+- Held by: an interactive session implementing TASK-STORE on the owner's instruction (relayed 2026-10-20); do not dispatch or adopt; until 2026-10-27
 - Short: autowork migrate
 - Status: open
 - Goal: TASK-STORE

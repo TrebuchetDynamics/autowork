@@ -280,7 +280,7 @@
       "goal": "TASK-STORE",
       "id": "TOOLSET-294-f6",
       "section": "Now",
-      "status": "open",
+      "status": "in_progress",
       "title": "TaskStore reads tasks/ files into immutable records from a pinned commit"
     },
     {
@@ -290,7 +290,7 @@
       "goal": "TASK-STORE",
       "id": "TOOLSET-295-57",
       "section": "Now",
-      "status": "open",
+      "status": "in_progress",
       "title": "Task selection from the store matches the current selector"
     },
     {
@@ -301,7 +301,7 @@
       "goal": "TASK-STORE",
       "id": "TOOLSET-296-9f",
       "section": "Now",
-      "status": "open",
+      "status": "in_progress",
       "title": "A schema-bound writer and the autowork tasks commands edit the store"
     },
     {
@@ -312,7 +312,7 @@
       "goal": "TASK-STORE",
       "id": "TOOLSET-297-41",
       "section": "Now",
-      "status": "open",
+      "status": "in_progress",
       "title": "autowork migrate converts a repository to tasks/ once"
     },
     {
