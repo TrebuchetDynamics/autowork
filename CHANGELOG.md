@@ -476,6 +476,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- The Hermes step of `autowork update` no longer hangs for two minutes on a prompt. Its plugin
+  fetch never prompts (`GIT_TERMINAL_PROMPT=0`, no terminal input) and runs SSH in batch mode
+  with a 15 s connect timeout, so a `url.insteadOf` rewrite to SSH that needs a passphrase or a
+  host-key answer fails at once with an error, where it sat at the hidden prompt until
+  "timed out after 120 seconds".
 - A merged task whose closing commit was refused (its record still reads open) waits with
   "merged; its record is not closed yet" instead of stopping every task in the repository.
   Each dispatch pass selected it again and failed with "slot already exists; transition it
