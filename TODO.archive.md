@@ -5732,3 +5732,30 @@ Source section: Next
 - Ownership: Toolset; reconcile TOOLSET-125-e6, TOOLSET-126-6b and TOOLSET-127-b1 (test thinning), which should not spend effort on tests this deletes.
 - Exclusions: No change to live behavior, no deletion of a module a live entry point still reaches, no edits to historical evidence beyond broken links.
 - Planner's call: delete instead of disabling behind a flag (no compatibility shims), and decide by reachability rather than by this list, since references drift.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="main-001-38"></a>
+
+### MAIN-001-38 — Restore the offline gate after the queue reset and integration diagnostic change
+
+- [x] MAIN-001-38 — Restore the offline gate after the queue reset and integration diagnostic change
+- Planning: Keep one main-repair task as requested. Hot-file scope is limited to the status assertions/docs and the integration regression with its owning implementation/tests; there is no other open task to order behind. No unrelated updater, fleet/TUI or dispatch change is prescribed by these failures.
+- Next action: Run the focused Checks; reconcile reset-ledger assumptions and the integration fixture with current accepted behavior, investigate cleanup behind the cgroup follow-on error, and fix any demonstrated local defect without undoing the queue reset or writer protections.
+- Failing tests: `test_project_status.ProjectStatusTests.test_live_qualification_stays_open_and_separate`; `test_project_status.ProjectStatusTests.test_reviewed_delivery_is_current_not_pending`; `test_task_execution.RecoveryTests.test_runner_jobs_do_not_block_integration_but_outside_scratch_sessions_do`.
+- Evidence: `<git-common-dir>/autowork-execution/main-evidence/868ae56442381e511bb83532883b2c9be466f9f5/` (`main_check.json`, `main-check.log`, `main-check.exit`, `main-check-reruns.log`, `flaky_history.json`), checked `868ae56442381e511bb83532883b2c9be466f9f5`, last green `616cb7f335056db1a7a31e281d22c80d3e418d62`. Full check exit 1; all three isolated reruns exit 1; no current flaky classification. Since-green commits: `868ae564`, `0cc75087`, `5729fd49`, `09d65eaa`, `6ab2c115`, `892d4311`, `e92b490f`; messages and source changes are recorded in the accepted repair.
+- Ownership: Autowork worker; independent review and serialized integration by the coordinator.
+- Touches: tests/test_project_status.py, docs/project.md, skills/autowork/scripts/test_task_execution.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py
+- Payoff: Restore the safe offline gate while preserving the owner queue reset, historical delivery evidence and outside-writer protection.
+- Sources: [Accepted repair](docs/tasks/main-868ae564-offline-repair.md#accepted-repair); owner queue-reset commit `0cc75087`; integration-diagnostic commit `5729fd49`.
+- Short: Restore the red main offline gate
+- Status: done
+- Goal: RELIABILITY-2026-10
+- Scope: Repair the three reproducible offline failures at 868ae564 without undoing the owner queue reset or the file-specific writer diagnostic; preserve live qualification boundaries.
+- Acceptance: `test_project_status.ProjectStatusTests.test_live_qualification_stays_open_and_separate`, `test_project_status.ProjectStatusTests.test_reviewed_delivery_is_current_not_pending`, `test_task_execution.RecoveryTests.test_runner_jobs_do_not_block_integration_but_outside_scratch_sessions_do` and the full offline check pass with regressions covering an intentionally reset ledger and file-specific integration holds; no deleted task is restored or live acceptance fabricated.
+- Checks: `python3 scripts/check.py tests/test_project_status.py skills/autowork/scripts/test_task_execution.py skills/autowork/scripts/test_parallel_integrate.py`; `python3 scripts/check.py`
+- Dependencies: None.
+- Outcome (2026-10-20, closed by the owner): the red test is fixed on branch claude/engine-move (ea547821, with the engine move); its worker was stopped so the fix is not made twice.
