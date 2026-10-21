@@ -1030,6 +1030,321 @@ class ScopedUpdateTests(unittest.TestCase):
         for names in ((), ('missing',), ('../escape',)):
             with self.subTest(names=names), self.assertRaises(ValueError): self.deploy(names)
 
+class ManagedRecoveryTests(unittest.TestCase):
+    """Automatic recovery at the all-profile CLI seam; only native admission is faked."""
+    git = UpdateTests.git
+
+    def fake_native(self, action, home, stage, revision, python):
+        result = ScopedUpdateTests.fake_native(self, action, home, stage, revision, python)
+        if action == 'install':
+            path = home / 'plugins/.install-metadata.json'
+            records = json.loads(path.read_text())
+            records['autowork'] = {'source': stage.as_uri(), 'revision': revision, 'pinned': True}
+            path.write_text(json.dumps(records))
+        return result
+
+    def setUp(self):
+        UpdateTests.setUp(self)
+        (self.remote / 'skills/demo/SKILL.md').write_text('old\none\ntwo\nthree\n')
+        self.git(self.remote, 'commit', '-am', 'multiline base')
+        self.git(self.repo, 'pull', '--ff-only')
+        for _, home in self.profiles:
+            (home / 'skills/demo/SKILL.md').write_text('old\none\ntwo\nthree\n')
+        self.enterContext(patch.object(sys, 'path', [str(ROOT), *sys.path]))
+        slot = self.home / 'plugins/autowork'
+        slot.unlink()
+        self.repo.rename(slot)
+        self.repo = slot
+        self.profiles[1][1].joinpath('plugins/autowork').unlink()
+        self.profiles[1][1].joinpath('plugins/autowork').symlink_to(slot)
+        self.before = self.git(slot, 'rev-parse', 'HEAD')
+        self.metadata = self.home / 'plugins/.install-metadata.json'
+        self.metadata.write_text(json.dumps({'autowork': {
+            'source': str(self.remote), 'revision': self.before, 'custom': 'keep'},
+            'other': {'custom': 'also keep'}}))
+        (self.home / 'config.yaml').write_text('plugins:\n  enabled: [autowork]\n')
+        self.calls = []
+        self.enterContext(patch.object(self.mod, 'native_call', self.fake_native))
+        prepare = self.mod.prepare
+        self.enterContext(patch.object(self.mod, 'prepare',
+            side_effect=lambda *args, **kwargs: prepare(*args, upstream=str(self.remote), **kwargs)))
+        self.enterContext(patch.dict('sys.modules', {'setup_bundle': self.setup_stub}))
+        self.enterContext(patch.object(self.mod, 'finalize_profiles',
+                                      side_effect=AssertionError('recovery must not activate profiles')))
+        self.git(self.remote, 'checkout', '--orphan', 'rewritten')
+        (self.remote / 'skills/demo/SKILL.md').write_text('new\none\ntwo\nthree\n')
+        self.git(self.remote, 'add', '.')
+        self.git(self.remote, 'commit', '-m', 'rewritten history')
+        self.git(self.remote, 'branch', '-M', 'main')
+        self.after = self.git(self.remote, 'rev-parse', 'HEAD')
+
+    def run_update(self, *extra):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            code = self.mod.main(['--hermes-home', str(self.home), *extra])
+        return code, json.loads(output.getvalue())
+
+    def test_verified_rewrite_preserves_checkout_customizations_and_shared_links(self):
+        metadata = json.loads(self.metadata.read_text())
+        metadata['autowork'].pop('revision')  # older native records use the pre-fetch trusted tip
+        self.metadata.write_text(json.dumps(metadata))
+        path = self.home / 'skills/demo/SKILL.md'
+        path.write_text('old\none\ntwo\nthree\nlocal lesson\n')
+        path.chmod(0o600)
+        independent = self.home / 'profiles/independent'
+        (independent / 'plugins').mkdir(parents=True)
+        self.git(independent, 'clone', str(self.remote), str(independent / 'plugins/autowork'))
+        (independent / 'skills/demo').mkdir(parents=True)
+        (independent / 'skills/demo/SKILL.md').write_text('new\none\ntwo\nthree\n')
+        self.profiles.append(('independent', independent))
+        jobs = self.home / 'cron/jobs.json'
+        jobs.parent.mkdir()
+        jobs.write_text('{"jobs":[{"enabled":false}]}\n')
+        config = (self.home / 'config.yaml').read_bytes()
+        def tracking_refresh(action, *args):
+            result = self.fake_native(action, *args)
+            if action == 'scan' and self.git(self.repo, 'rev-parse', 'HEAD') == self.before:
+                self.git(self.repo, 'update-ref', 'refs/remotes/origin/main', self.after)
+            return result
+        with patch.object(self.mod, 'native_call', tracking_refresh):
+            code, result = self.run_update()
+        self.assertEqual(code, 0, result)
+        self.assertEqual(self.git(self.repo, 'rev-parse', 'HEAD'), self.after)
+        self.assertEqual(path.read_text(), 'new\none\ntwo\nthree\nlocal lesson\n')
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(jobs.read_text(), '{"jobs":[{"enabled":false}]}\n')
+        self.assertEqual((self.home / 'config.yaml').read_bytes(), config)
+        self.assertEqual((self.profiles[1][1] / 'skills/demo/SKILL.md').read_text(), 'new\none\ntwo\nthree\n')
+        self.assertTrue((self.profiles[1][1] / 'plugins/autowork').is_symlink())
+        backup = Path(result['recovery']['backup'])
+        self.assertEqual(self.git(backup / 'default/plugin', 'rev-parse', 'HEAD'), self.before)
+        self.assertEqual((backup / 'default/file-0').read_text(), 'old\none\ntwo\nthree\nlocal lesson\n')
+        metadata = json.loads(self.metadata.read_text())
+        self.assertEqual(metadata['autowork']['custom'], 'keep')
+        self.assertEqual(metadata['other'], {'custom': 'also keep'})
+        self.assertEqual(metadata['autowork']['source'], str(self.remote))
+        self.assertEqual(self.calls.count(('install', str(self.home))), 1)
+        calls = list(self.calls)
+        code, again = self.run_update()
+        self.assertEqual((code, again['status']), (0, 'up_to_date'))
+        self.assertEqual(again['recovery']['backup'], str(backup))
+        self.assertEqual(self.calls, calls)
+        self.assertEqual(path.read_text(), 'new\none\ntwo\nthree\nlocal lesson\n')
+        # A later managed source still on the old release must not be masked by
+        # the completed consumers' no-op, or replace their preservation bases.
+        late = self.home / 'profiles/late'
+        (late / 'plugins').mkdir(parents=True)
+        self.git(late, 'clone', str(backup / 'default/plugin'), str(late / 'plugins/autowork'))
+        (late / 'plugins/.install-metadata.json').write_text(json.dumps({'autowork': {
+            'source': str(self.remote), 'revision': self.before}}))
+        (late / 'skills/demo').mkdir(parents=True)
+        (late / 'skills/demo/SKILL.md').write_text('old\none\ntwo\nthree\n')
+        self.profiles.append(('late', late))
+        code, extended = self.run_update()
+        self.assertEqual(code, 0, extended)
+        self.assertEqual(self.git(late / 'plugins/autowork', 'rev-parse', 'HEAD'), self.after)
+        self.assertEqual(extended['recovery']['backup'], str(backup))
+        self.assertEqual(self.run_update()[1]['status'], 'up_to_date')
+        self.assertEqual(path.read_text(), 'new\none\ntwo\nthree\nlocal lesson\n')
+
+    def test_unproven_or_unsafe_sources_defer_without_publication(self):
+        for case in ('ahead', 'diverged', 'unregistered', 'untrusted', 'untracked', 'dirty',
+                     'worktree', 'shared-objects', 'active', 'unselected', 'shallow', 'gateway-unknown'):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
+                # Each fixture has its own old provenance; never reset or clean a checkout.
+                fixture = ManagedRecoveryTests()
+                fixture.setUp()
+                try:
+                    if case in ('ahead', 'diverged'):
+                        fixture.git(fixture.repo, 'config', 'user.email', 'fixture@example.invalid')
+                        fixture.git(fixture.repo, 'config', 'user.name', 'Fixture')
+                        (fixture.repo / 'local').write_text('local commit\n')
+                        fixture.git(fixture.repo, 'add', '.')
+                        fixture.git(fixture.repo, 'commit', '-m', 'local work')
+                        if case == 'ahead':
+                            fixture.git(fixture.remote, 'update-ref', 'refs/heads/main', fixture.before)
+                    elif case == 'unregistered': fixture.metadata.unlink()
+                    elif case == 'untrusted': fixture.metadata.write_text('{"autowork":{"source":"unknown"}}')
+                    elif case == 'untracked': (fixture.repo / 'local').write_text('untracked\n')
+                    elif case == 'dirty': (fixture.repo / 'plugin.yaml').write_text('name: changed\n')
+                    elif case == 'worktree':
+                        fixture.git(fixture.repo, 'worktree', 'add', '--detach', directory, fixture.before)
+                    elif case == 'shared-objects':
+                        objects = fixture.root / 'shared-objects'
+                        (fixture.repo / '.git/objects').rename(objects)
+                        (fixture.repo / '.git/objects').symlink_to(objects)
+                    elif case == 'active':
+                        fixture.enterContext(patch.object(fixture.mod, 'active_consumers', return_value='Active shared consumer'))
+                    elif case == 'unselected':
+                        alias = fixture.home / 'profiles/not-live/plugins/autowork'
+                        alias.parent.mkdir(parents=True)
+                        alias.symlink_to(fixture.repo)
+                    elif case == 'gateway-unknown':
+                        (fixture.home / 'gateway.pid').write_text('{"pid":12345}')
+                        fixture.enterContext(patch.object(fixture.mod.os, 'kill', side_effect=PermissionError('inaccessible process')))
+                    elif case == 'shallow':
+                        old = fixture.root / 'old-source'
+                        fixture.repo.rename(old)
+                        fixture.git(fixture.home, 'clone', '--depth=1', old.as_uri(), str(fixture.repo))
+                        fixture.git(fixture.repo, 'remote', 'set-url', 'origin', str(fixture.remote))
+                    code, result = fixture.run_update()
+                    self.assertEqual(code, 1, result)
+                    self.assertTrue(result.get('error') or result.get('recovery'), result)
+                    self.assertEqual((fixture.repo / 'skills/demo/SKILL.md').read_text(), 'old\none\ntwo\nthree\n')
+                    self.assertEqual(fixture.calls, [])
+                finally: fixture.doCleanups()
+
+    def test_scan_refusal_and_foreign_edits_cannot_publish_or_become_a_new_baseline(self):
+        path = self.home / 'skills/demo/SKILL.md'
+        def refuse(action, *args):
+            if action == 'scan': raise ValueError('native scanner denied staged source')
+            return self.fake_native(action, *args)
+        with patch.object(self.mod, 'native_call', refuse):
+            code, first = self.run_update()
+        self.assertEqual(code, 1)
+        self.assertEqual(self.git(self.repo, 'rev-parse', 'HEAD'), self.before)
+        newcomer = self.home / 'profiles/paused/plugins/autowork'
+        newcomer.parent.mkdir(parents=True)
+        newcomer.symlink_to(self.repo)
+        code, held = self.run_update()
+        self.assertEqual(code, 1, held)
+        self.assertIn('Unselected shared consumer', str(held))
+        self.assertEqual(self.git(self.repo, 'rev-parse', 'HEAD'), self.before)
+        newcomer.unlink()
+        path.write_text('foreign edit\n')
+        code, second = self.run_update()
+        self.assertEqual(code, 1, second)
+        self.assertEqual(path.read_text(), 'foreign edit\n')
+        self.assertEqual(first['recovery']['backup'], second['recovery']['backup'])
+
+    def test_interrupted_publication_resumes_original_backup(self):
+        class Killed(BaseException): pass
+        for point in ('source-stage', 'stage', 'backup', 'rename', 'install', 'skill', 'verify',
+                      'ordinary', 'ordinary-skill', 'ordinary-source'):
+            with self.subTest(point=point):
+                fixture = ManagedRecoveryTests()
+                fixture.setUp()
+                independent = fixture.home / 'profiles/independent'
+                (independent / 'plugins').mkdir(parents=True)
+                fixture.git(independent, 'clone', str(fixture.remote), str(independent / 'plugins/autowork'))
+                (independent / 'skills/demo').mkdir(parents=True)
+                (independent / 'skills/demo/SKILL.md').write_text('new\none\ntwo\nthree\n')
+                fixture.profiles.append(('independent', independent))
+                (fixture.remote / 'skills/demo/SKILL.md').write_text('new\none\nTWO\nthree\n')
+                fixture.git(fixture.remote, 'commit', '-am', 'next release')
+                target = fixture.git(fixture.remote, 'rev-parse', 'HEAD')
+                original_git, write, rename, replace = fixture.mod.git, Path.write_bytes, Path.rename, Path.replace
+                original_apply = fixture.mod.apply
+                def apply(plan, backup, **kwargs):
+                    if point == 'ordinary': raise Killed()
+                    return original_apply(plan, backup, **kwargs)
+                def native(action, *args):
+                    result = fixture.fake_native(action, *args)
+                    if action == point: raise Killed()
+                    return result
+                def git(repo, *args):
+                    if args[0] == 'clone' and ((point == 'stage' and '.stage.preparing-' in str(args[-1]))
+                            or (point == 'source-stage' and '.recovery-source-' in str(args[-1]))):
+                        raise Killed()
+                    result = original_git(repo, *args)
+                    if point == 'ordinary-source' and args[0] == 'merge' and repo == independent / 'plugins/autowork':
+                        raise Killed()
+                    return result
+                def write_backup(path, content):
+                    result = write(path, content)
+                    if point == 'backup' and path.name == 'file-0': raise Killed()
+                    return result
+                def rename_slot(path, target):
+                    if point == 'rename' and path == fixture.repo: raise Killed()
+                    return rename(path, target)
+                def replace_skill(path, target):
+                    if point == 'skill' and target == fixture.home / 'skills/demo/SKILL.md': raise Killed()
+                    result = replace(path, target)
+                    if point == 'ordinary-skill' and target == independent / 'skills/demo/SKILL.md': raise Killed()
+                    return result
+                try:
+                    with patch.object(fixture.mod, 'native_call', native), patch.object(fixture.mod, 'git', git), \
+                         patch.object(fixture.mod, 'apply', apply), \
+                         patch.object(Path, 'write_bytes', write_backup), patch.object(Path, 'rename', rename_slot), \
+                         patch.object(Path, 'replace', replace_skill), self.assertRaises(Killed):
+                        fixture.run_update()
+                    saved = json.loads((fixture.home / 'maintenance/toolset-update/recovery.json').read_text())
+                    (fixture.remote / 'skills/demo/SKILL.md').write_text('later upstream release\n')
+                    fixture.git(fixture.remote, 'commit', '-am', 'upstream moved during interruption')
+                    if point == 'ordinary':
+                        foreign = independent / 'skills/demo/SKILL.md'
+                        foreign.write_text('foreign ordinary edit\n')
+                        code, held = fixture.run_update()
+                        self.assertEqual(code, 1, held)
+                        self.assertEqual(foreign.read_text(), 'foreign ordinary edit\n')
+                        foreign.write_text('new\none\ntwo\nthree\n')  # operator reconciles the disposable fixture
+                    code, result = fixture.run_update()
+                    self.assertEqual(code, 0, result)
+                    self.assertEqual(saved['backup'], result['recovery']['backup'])
+                    self.assertEqual(fixture.git(Path(saved['backup']) / 'default/plugin', 'rev-parse', 'HEAD'), fixture.before)
+                    self.assertEqual(fixture.git(fixture.repo, 'rev-parse', 'HEAD'), target)
+                    self.assertEqual((Path(saved['backup']) / 'default/file-0').read_text(), 'old\none\ntwo\nthree\n')
+                    self.assertEqual(fixture.git(independent / 'plugins/autowork', 'rev-parse', 'HEAD'), target)
+                    self.assertEqual((independent / 'skills/demo/SKILL.md').read_text(), 'new\none\nTWO\nthree\n')
+                finally: fixture.doCleanups()
+
+    def test_interrupted_slot_intent_does_not_move_new_source_edits(self):
+        class Killed(BaseException): pass
+        rename = Path.rename
+        def interrupt(path, target):
+            if path == self.repo: raise Killed()
+            return rename(path, target)
+        with patch.object(Path, 'rename', interrupt), self.assertRaises(Killed):
+            self.run_update()
+        saved = json.loads((self.home / 'maintenance/toolset-update/recovery.json').read_text())
+        (self.repo / 'plugin.yaml').write_text('name: autowork\n# foreign edit\n')
+        code, result = self.run_update()
+        self.assertEqual(code, 1, result)
+        self.assertEqual(saved['backup'], result['recovery']['backup'])
+        self.assertEqual((self.repo / 'plugin.yaml').read_text(), 'name: autowork\n# foreign edit\n')
+        self.assertEqual(self.git(self.repo, 'rev-parse', 'HEAD'), self.before)
+        self.assertFalse((Path(saved['backup']) / 'default/plugin').exists())
+
+    def test_native_readback_cannot_claim_changed_permissions(self):
+        _, unused = self.profiles.pop()  # isolate final read-back, without a later shared-consumer check
+        (unused / 'plugins/autowork').unlink()
+        path = self.home / 'skills/demo/SKILL.md'
+        path.chmod(0o600)
+        def foreign(action, *args):
+            result = self.fake_native(action, *args)
+            if action == 'verify': path.chmod(0o644)
+            return result
+        with patch.object(self.mod, 'native_call', foreign):
+            code, result = self.run_update()
+        self.assertEqual(code, 1, result)
+        self.assertIn('permission', str(result).lower())
+        self.assertEqual(path.stat().st_mode & 0o777, 0o644)  # never roll back a foreign writer
+
+    def test_git_failures_are_not_misclassified_as_negative_ancestry(self):
+        original = self.mod.git
+        for verb in ('fetch', 'merge-base'):
+            def fail(repo, *args):
+                if args[0] == verb:
+                    raise self.mod.GitFailure(repo, args, 128)
+                return original(repo, *args)
+            with self.subTest(verb=verb), patch.object(self.mod, 'git', fail):
+                code, result = self.run_update()
+            self.assertEqual(code, 1, result)
+            self.assertIn(f'Git {verb} failed', result['error'])
+            self.assertIn('exit 128', result['error'])
+            self.assertNotIn('recovery', result)
+            self.assertEqual(self.calls, [])
+
+    def test_dry_run_has_no_fetch_or_recovery_state(self):
+        before = self.git(self.repo, 'rev-parse', 'refs/remotes/origin/main')
+        fetched = (self.repo / '.git/FETCH_HEAD').read_bytes()
+        code, result = self.run_update('--dry-run')
+        self.assertEqual((code, result['status']), (0, 'preview'))
+        self.assertEqual((self.repo / '.git/FETCH_HEAD').read_bytes(), fetched)
+        self.assertFalse((self.home / 'maintenance').exists())
+        self.assertEqual(self.git(self.repo, 'rev-parse', 'refs/remotes/origin/main'), before)
+
+
 class NativeAdmissionTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
@@ -1082,7 +1397,7 @@ def cmd_install(source, *, force, ref, enable):
         updater = importlib.util.module_from_spec(spec); spec.loader.exec_module(updater)
         with patch.dict(os.environ, PATH=str(self.root), PYTHONPATH=''), \
              patch.object(sys, 'path', [str(ROOT), *sys.path]):
-            admission = updater.native_call('scan', self.home, self.stage, 'a'*40, sys.executable)
+            admission = updater.native_call('scan', self.home, self.stage, 'a'*40, None)
         self.assertEqual(admission, {'admitted': True})
         self.assertEqual(list(self.home.iterdir()), [])
 

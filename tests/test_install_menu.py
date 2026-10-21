@@ -127,6 +127,44 @@ class InstallMenuTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(len(seen), 1)
 
+    def test_partial_suite_reports_structured_hermes_cause_with_bounded_fallback(self):
+        import contextlib
+        import io
+        import json
+        import sys
+        from unittest.mock import patch
+        sys.path.insert(0, str(ROOT / 'scripts'))
+        self.addCleanup(sys.path.remove, str(ROOT / 'scripts'))
+        import install_menu
+        failures = (
+            ('native log\n' + json.dumps({'status': 'incomplete', 'error': 'Unproven checkout',
+                'action': 'Preserve local commits; retry ./install.sh --only hermes'}, indent=2),
+             'Unproven checkout'),
+            (json.dumps({'status': 'incomplete', 'recovery': {'profiles': {
+                'default': {'error': 'Native scanner denied staged source'}}},
+                'action': 'Preserve backup; retry ./install.sh --only hermes'}, indent=2),
+             'Native scanner denied staged source'),
+            ('network unavailable\n{\n  "status": "incomplete",\n}', 'network unavailable'),
+            ('x' * 4000 + '\nGit fetch failed\n}', 'Git fetch failed'),
+        )
+        for text, cause in failures:
+            with self.subTest(cause=cause):
+                items = [install_menu.Item(key, key, steps=[install_menu.Step('install', [key])])
+                         for key in ('pi', 'autowork', 'tx', 'hermes', 'claude', 'codex')]
+                output = io.StringIO()
+                with patch.object(install_menu, 'run_command',
+                        side_effect=lambda argv, _: (1, text) if argv == ['hermes'] else (0, 'ok')), \
+                     contextlib.redirect_stdout(output):
+                    code = install_menu.install(items, {item.key for item in items},
+                                                output=install_menu.Output('never', 0))
+                self.assertEqual(code, 1)
+                summary = output.getvalue().split('Summary:')[1]
+                self.assertIn('5 installed', summary)
+                self.assertIn(cause, summary)
+                self.assertNotIn('failed    }', summary)
+                self.assertLess(len(summary), 2000)
+                if cause == 'Unproven checkout': self.assertIn('--only hermes', summary)
+
     def test_no_arguments_installs_full_suite_with_verbose_output(self):
         result = self.install()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
