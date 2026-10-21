@@ -11,6 +11,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import task_execution as execution
 import parallel_state as state
+import store_fixture
 import parallel_status as status
 
 
@@ -24,16 +25,17 @@ class StateTests(unittest.TestCase):
         self.git('config', 'user.email', 'fixture@example.invalid')
         self.git('config', 'user.name', 'Fixture')
         (self.repo / 'file').write_text('base')
-        (self.repo / 'TODO.md').write_text('''# Work queue
+        self.todo = '''# Work queue
 ## Next
 - [ ] A — Fixture
 - Scope: Change file.
 - Acceptance: File changed.
 - Checks: Check file.
 - Dependencies: None.
-''')
+'''
         self.git('add', '.')
         self.git('commit', '-qm', 'base')
+        store_fixture.write_todo(self.repo, self.todo)
         self.base = self.git('rev-parse', 'HEAD')
         self.owner = os.getppid()
         self.common = state.common_dir(self.repo)
@@ -297,8 +299,8 @@ class StateTests(unittest.TestCase):
 
     def test_held_retry_cannot_overlap_live_worker(self):
         # A missing Touches no longer makes a task run alone (TOOLSET-161-17); an exclusive one still does.
-        todo = self.repo / 'TODO.md'
-        todo.write_text(todo.read_text() + '- Touches: file\n- Resources: exclusive\n')
+        store_fixture.write_todo(self.repo, self.todo + '- Touches: file\n- Resources: exclusive\n')
+        self.base = self.git('rev-parse', 'HEAD')
         self.claim()
         self.slot()
         state.transition(self.repo, self.owner, 'A', 'held')

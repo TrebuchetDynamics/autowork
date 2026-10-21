@@ -1,6 +1,6 @@
 ---
 name: docs-sync
-description: "Create or maintain source-backed project documentation and the central TODO.md work queue."
+description: "Create or maintain source-backed project documentation and the tasks/ work queue."
 disable-model-invocation: true
 ---
 
@@ -15,27 +15,30 @@ Reuse paths and combine roles for small repos; never generate empty documentatio
 Inspect source/tests for current behavior and accepted requirements for intent.
 Separate current architecture from planned changes. Maintain README, requirements,
 architecture/spec, test plan, runbook and changelog as applicable; add conditional
-roles only when useful. Fix supported doc issues now. Turn remaining accepted gaps
-into bounded TODO.md tasks with ID, outcome, sources, scope/exclusions, acceptance,
-dependencies, ownership and `Touches:` (the paths each may change; widen when unsure,
-or `Resources: exclusive` with a reason) so parallel Autowork can run them together. Keep Now/Next/Needs decision distinct. Preserve existing
-IDs, completed work, active writers and priorities; never manufacture work.
+roles only when useful. Fix supported doc issues now.
 
-Automatically move verified completed bodies out of TODO.md into `TODO.archive.md`
-during writing passes, preserving an existing archive owner. Use the bundled goals
-helper's `archive <repo>` command; `render` also archives closed ledger-done tasks.
-Reconcile checkbox/Status and ledger completion first. Without goals.json, verify
-completion checks and call `archive <repo> --verified-tasks ID1,ID2` with the closed
-IDs. Preserve whole entries and ledger evidence; report retained conflicts. Apply
-the [archive contract](../../../skills/docs-sync/references/todo-archive.md).
+Turn remaining accepted gaps into goals and tasks in `tasks/`, the repository's only
+task store, through `autowork tasks`: `goal ID --title --source path#anchor
+--priority N` for goals, `add --goal G --title T --short S` with `--scope`,
+`--acceptance`, `--checks`, `--touches` and `--depends-on` for tasks, `field ID
+LABEL VALUE` for other typed fields or notes (such as `Sources`), `place` and `move`
+for section and rank, `supersede --by OTHER --reason` to retire a task and `done
+--evidence` to close one without the engine. Give each executable task its
+`touches` (widen when unsure, or set `resources` to `exclusive` with a
+reason) so parallel Autowork can run tasks together. Keep Now/Next/Needs decision
+distinct; priority is section, then rank. Only typed fields (`ownership`,
+`resources`, `live`) grant authority; live authorization is the owner's to grant.
+Preserve existing IDs, completed work, holds and priorities; never manufacture work.
 
-If goals.json exists, synchronize it using the bundled
-[goals helper](../../../skills/docs-sync/scripts/goals.py): inspect `--help`, then
-fmt/validate/render with the absolute repository path. Its rendering does not create
-full task bodies. Do not create a second tracker when the repository already has an
-authoritative equivalent. Use source inspection for routine edits; graph tools only
-when available and useful or explicitly required. Check links, commands and statuses.
-With a [role manifest](../../../skills/docs-sync/references/document-scaffold.md#optional-role-manifest),
+Each `autowork tasks` write changes only the working tree, never commits, refuses a
+file changed since it was read and validates the whole store. Finish with
+`autowork tasks validate --worktree .`; `list`, `show` and `why` read the committed
+store. Never write TODO.md or goals.json; a repository that still has them waits for
+the owner's `autowork migrate`. An existing `TODO.archive.md` is frozen, read-only
+history ([frozen archive](../../../skills/docs-sync/references/todo-archive.md)).
+Do not create a second tracker. Use source inspection for routine edits; graph tools
+only when available and useful or explicitly required. Check links, commands and
+statuses. With a [role manifest](../../../skills/docs-sync/references/document-scaffold.md#optional-role-manifest),
 also run the bundled `docs.py stale <repo>` and `docs.py check <repo>` and keep it synchronized.
 Its optional repository-type `profile` sets which roles are baseline.
 

@@ -10,6 +10,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 COMMAND = ROOT / 'pi-autowork/pi_autowork/command.py'
 FIXTURE = ROOT / 'pi-autowork/engine/fixtures/task_store'
+sys.path.insert(0, str(ROOT / 'pi-autowork/engine'))
+from task_store import TaskStore  # noqa: E402
 
 
 class TaskCommandTests(unittest.TestCase):
@@ -98,6 +100,20 @@ class TaskCommandTests(unittest.TestCase):
         self.assertNotIn(ids[0], changed)
         self.assertEqual(ranks[ids[3]], 5000, 'a neighbour with room is not renumbered')
 
+    def test_hold_keeps_the_runner_off_until_release(self):
+        before = self.show('T-1')
+        self.tasks('hold', 'T-1', '--by', 'an interactive session', '--until', '2999-01-01')
+        held = self.show('T-1')
+        self.assertEqual((held['status'], held['contract_hash']), ('open', before['contract_hash']))
+        self.assertIn('- Held by: an interactive session; until 2999-01-01', held['notes'])
+        why = json.loads(self.tasks('why', 'T-1').stdout)
+        self.assertEqual(why['reasons'], [{'code': 'HELD', 'detail': 'an interactive session; until 2999-01-01'}])
+        self.assertEqual(self.tasks('hold', 'T-1', '--by', 'x', '--until', 'soon', ok=False).returncode, 1)
+        self.tasks('release', 'T-1')
+        self.assertNotIn('Held by', self.show('T-1')['notes'])
+        self.assertTrue(json.loads(self.tasks('why', 'T-1').stdout)['first'])
+        self.assertEqual(self.tasks('release', 'T-1', ok=False).returncode, 1)
+
     def test_supersede_names_its_successor(self):
         successor = self.add('Successor')
         self.tasks('supersede', 'T-1', '--by', successor, '--reason', 'replaced')
@@ -131,6 +147,32 @@ class TaskCommandTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn('unknown goal', result.stderr)
         self.assertEqual(path.read_bytes(), before)
+
+    def test_goal_adds_and_changes_a_goal_and_moves_focus(self):
+        self.assertIn('needs --source, --priority', self.tasks('goal', 'G-2', '--title', 'Two', ok=False).stderr)
+        self.assertEqual(self.tasks('goal', 'G-2', '--title', 'Two', '--source', 'docs/plan.md#two',
+                                    '--priority', '2', '--depends-on', 'G-1').stdout.strip(), 'added goal G-2')
+        refused = self.tasks('goal', 'G-2', '--status', 'met', ok=False)
+        self.assertIn('needs --evidence', refused.stderr)
+        self.tasks('goal', 'G-2', '--status', 'met', '--evidence', 'python3 -m unittest passed (offline)')
+        self.tasks('goal', 'G-2', '--focus')
+        self.commit()
+        store = TaskStore.at(self.repo, 'HEAD')
+        two = store.goals['G-2']
+        self.assertEqual((two.title, two.priority, two.status, two.focus, two.depends_on),
+                         ('Two', 2, 'met', True, ('G-1',)))
+        self.assertIn('- Evidence: python3 -m unittest passed (offline)', two.body)
+        self.assertEqual([g.id for g in store.goals.values() if g.focus], ['G-2'])  # at most one
+        self.assertIn('is a task', self.tasks('goal', 'T-1', '--title', 'x', ok=False).stderr)
+
+    def test_the_first_goal_starts_a_new_store(self):
+        shutil.rmtree(self.repo / 'tasks')
+        self.commit()
+        self.assertEqual(self.tasks('goal', 'G-1', '--title', 'One', '--source', 'docs/plan.md#one',
+                                    '--priority', '1').stdout.strip(), 'added goal G-1')
+        first = self.add('First task')
+        self.assertEqual(json.loads(self.tasks('validate', '--worktree').stdout)['tasks'], 1)
+        self.assertEqual(self.show(first)['goal'], 'G-1')
 
     def test_an_unconverted_repository_is_refused(self):
         shutil.rmtree(self.repo / 'tasks')

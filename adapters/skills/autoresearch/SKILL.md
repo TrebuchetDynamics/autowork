@@ -1,6 +1,6 @@
 ---
 name: autoresearch
-description: "Run bounded repository research, planning or measurable experiments and save findings to TODO.md."
+description: "Run bounded repository research, planning or measurable experiments and save findings as tasks."
 disable-model-invocation: true
 ---
 
@@ -22,8 +22,8 @@ as descriptions to adapt, not commands to execute blindly. Preserve user data an
 repository rules; do not install another agent runtime.
 
 Record findings, evidence, rejected approaches and remaining uncertainty in existing
-docs. Reconcile accepted actionable work into TODO.md through
-[Docs Sync](../docs-sync/SKILL.md). Explicit read-only/no-write/dry-run writes nothing
+docs. Save accepted actionable work as task records in `tasks/` with `autowork tasks`
+([work center](../../../skills/shared/TODO-WORKCENTER.md)). Explicit read-only/no-write/dry-run writes nothing
 and runs no mutating experiment. Planning does not implement. A `ship` selector alone
 does not grant deployment or remote publication authority. Report measured results
 honestly; research output is not completed product work.

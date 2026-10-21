@@ -11,7 +11,7 @@ Without an explicit subcommand, use the upstream router to select a protocol
 from the user's goal. Explicit Autoresearch subcommands select their own protocol.
 
 Run the pinned Udit Goenka autoresearch protocols with Hermes tools and the existing
-docs-sync → TODO.md/goals.json → autowork cycle. Read this adapter first, then the
+docs-sync → `tasks/` → autowork cycle. Read this adapter first, then the
 selected upstream protocol. For `plan`, also apply the
 [planning adaptations](../shared/RESEARCH-PLAN.md) before following upstream phases.
 These integration rules govern host/tool substitutions,
@@ -25,13 +25,13 @@ research protocol.
 
 ## Default output: update the work queue
 
-Apply [TODO work center](../shared/TODO-WORKCENTER.md) before planning and closeout.
-Every command saves in-scope actionable findings to TODO.md by default and keeps
-its goals.json execution index synchronized. No extra “save” instruction is needed.
+Apply the [work center](../shared/TODO-WORKCENTER.md) before planning and closeout.
+Every command saves in-scope actionable findings as task records in `tasks/` by
+default, through `autowork tasks`. No extra “save” instruction is needed.
 Planning-only permits documentation/backlog writes, not product implementation;
 explicit read-only, chat-only, no-write and --dry-run requests write nothing.
 Report saved paths, task IDs and the next executable action. Reuse existing plans
-and tasks; preserve user orders before rendering and never claim planning as delivery.
+and tasks; preserve user orders and never claim planning as delivery.
 
 ## Planning and protocol selection
 
@@ -80,9 +80,9 @@ agents actually ran. Record unavailable tools/checks honestly.
 ## First: bind research to the repository
 
 Inspect project rules,
-accepted intent, current docs, canonical goals/TODO, active task ownership, dirty
-changes and existing research receipts. Resolve canonical authority with docs-sync;
-an experiment worktree's copied backlog is not canonical. Reuse the current task
+accepted intent, current docs, the `tasks/` store, active task ownership, dirty
+changes and existing research receipts. The main checkout's `tasks/` is canonical;
+an experiment worktree's copied store is not. Reuse the current task
 and requirement IDs. Research logs, TSV and upstream `handoff.json` remain evidence,
 not a second backlog or proof of completion. Use a unique per-run output directory
 under the existing research owner (avoid minute-timestamp collisions).
@@ -135,9 +135,9 @@ A new investigation result does not automatically require a docs edit: if the
 existing task and docs already preserve its material reasoning/evidence and scope,
 acceptance, sources and dependencies remain correct, return the decision/evidence to the same Autowork
 coordinator without invoking Docs Sync. Keep any needed execution receipt in the
-existing task journal. When documentation or backlog actually needs a change, load
+existing task record. When documentation actually needs a change, load
 `autowork:docs-sync` (or the verified sibling SKILL.md) in **narrow Maintain**
-for affected owners; do not start a whole-repository bootstrap implicitly.
+for affected owners; save task changes with `autowork tasks`; do not start a whole-repository bootstrap implicitly.
 
 1. Supply a compact finding receipt: command/run path, accepted requirement/source,
    task ID if any, exact observed evidence, scope, baseline/target/units, Verify and
@@ -151,20 +151,21 @@ for affected owners; do not start a whole-repository bootstrap implicitly.
    keep receipts as history. Preserve active leases,
    ownership, focus, completed history and unrelated edits. An in-progress cache
    benchmark remains that same task, not a second “research cache” task.
-3. For accepted unmet work, have docs-sync reconcile canonical `goals.json` and
-   full **TODO.md** bodies: Goal/payoff, Sources (research receipt plus graph/source
-   evidence), bounded Scope/exclusions, measurable Acceptance/checks,
-   `Dependencies:`, `Ownership:` and `Touches:` (plus `Resources:` where needed). Order **Now/Next** with actual ledger priority
+3. For accepted unmet work, save complete task records with `autowork tasks add`
+   (and the goal with `autowork tasks goal`): goal, a `Sources:` note (research
+   receipt plus graph/source evidence), bounded `scope`/`exclusions`, measurable
+   `acceptance`/`checks`, `depends_on`, `ownership` and `touches` (plus `resources`
+   where needed). Place them in **Now/Next** by actual priority (section, then rank)
    and dependencies. Use one discriminating investigation only for a blocking
    unknown; produce implementation plus verification slices for known gaps.
-   Keep speculative product ideas Proposed/Needs decision unless the user's
+   Keep speculative product ideas in Needs decision unless the user's
    request already supplies acceptance. No invented approval or priority changes.
-4. After the final changed batch, run docs-sync `goals.py fmt`, `validate`, `render` and consumer `backlog-check`
-   against the actual canonical repository and accepted source heading. Repair
-   supported missing metadata; never fabricate `Status: Accepted`. Report the
-   exact state/exit, touched task IDs and eligible next slice. Repeat reconciliation
+4. After the final changed batch, run `autowork tasks validate --worktree .` in the
+   canonical repository and commit the batch once; then `autowork tasks why ID` shows
+   whether each task can run. Repair supported missing fields; never fabricate
+   `Status: Accepted`. Report drafts, touched task IDs and the eligible next slice. Repeat reconciliation
    of unchanged evidence must preserve IDs and bytes, not duplicate tasks.
-5. This is **backlog scheduling**: documenting and ordering tasks in TODO.md.
+5. This is **backlog scheduling**: documenting and ordering task records in `tasks/`.
    It does not mean installing a cron job or claiming an autowork task. If the user
    also authorized implementation, pass the current ready receipt to `autowork`;
    reuse an existing worker instead of spawning a competing worker for its task.
@@ -175,7 +176,7 @@ for affected owners; do not start a whole-repository bootstrap implicitly.
 `security` do not silently turn recommendations into product-code changes. Use the
 selected protocol's analysis scope and persist accepted follow-ups through the
 handoff. Explicit audit/read-only requests write nothing, even research logs or
-TODO; return proposed updates inline. `--dry-run` performs no mutations or dispatch
+task records; return proposed updates inline. `--dry-run` performs no mutations or dispatch
 and must not run a mutating Verify command. “Do not implement” remains binding
 despite `--chain fix`, upstream “execute immediately”, or an accepted backlog.
 
@@ -218,12 +219,12 @@ replace the accepted-task commit, review or canonical completion evidence.
 deploy, publication and external messages need the actual user-authorized scope;
 research success or command chaining alone provides none. Carry prior authorization
 without reasking. Do not close canonical tasks just because an upstream handoff
-says COMPLETE: use docs-sync evidence and autowork's normal closure gates.
+says COMPLETE: use autowork's normal closure gates and receipts.
 
 Finish with the user outcome first (what is fixed, what is only planned, the exact
 next implementation action), then: result/stop reason; metric/check evidence; changed
-document owners; TODO/goals task IDs and Now/Next; consumer readiness or blocker for
-the exact scheduled IDs; committed SHA when applicable; and whether execution/timed
+document owners; task IDs and Now/Next; readiness (`autowork tasks why`) or blocker
+for the exact scheduled IDs; committed SHA when applicable; and whether execution/timed
 scheduling actually occurred. Attribute other workers' code and checks to them; a
 saved plan or zero pending decisions is not product completion. When challenged on
 stalled progress, give the verified worker/candidate state and concrete blocker.

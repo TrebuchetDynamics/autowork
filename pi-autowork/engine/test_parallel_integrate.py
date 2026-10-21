@@ -17,6 +17,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from offline_fixtures import fixture_runtime_root
 import parallel_dispatch as dispatch
 import parallel_state as state
+import store_fixture
+import task_queue
 import task_execution as execution
 
 
@@ -43,17 +45,48 @@ class IntegrationTests(unittest.TestCase):
         self.git('init', '-q', '-b', 'main')
         self.git('config', 'user.email', 'fixture@example.invalid')
         self.git('config', 'user.name', 'Offline fixture')
-        self.repo.joinpath('TODO.md').write_text('# TODO\n\n## Next\n\n' + '\n'.join(
+        self.todo = '# TODO\n\n## Next\n\n' + '\n'.join(
             f'- [ ] {t} — Task {t}\n  Scope: {t}.txt\n  Touches: {t}.txt\n  Acceptance: offline fixture\n  Checks: true\n  Dependencies: None.\n  Status: open\n'
-            for t in ('A', 'B')))
+            for t in ('A', 'B'))
         for t in ('A', 'B'):
             self.repo.joinpath(t + '.txt').write_text('base\n')
         self.git('add', '.')
-        self.git('commit', '-qm', 'baseline')
+        store_fixture.write_todo(self.repo, self.todo)
         self.baseline = self.git('rev-parse', 'HEAD')
         self.owner = os.getppid()
         state.claim(self.repo, self.owner)
         self.common = state.common_dir(self.repo)
+
+    def set_todo(self, text):
+        """Rewrite the fixture's tasks from TODO-form text and commit them (tasks/ is the store)."""
+        self.todo = text
+        store_fixture.write_todo(self.repo, text)
+
+    def pin_contract(self, task, slot=None):
+        """What dispatch records for an attempt: the task's contract text and hash at HEAD."""
+        slot = slot or next(s for s in state.slots(self.common) if s['task_id'] == task)
+        data = dispatch.data_dir(self.common, slot)
+        data.mkdir(parents=True, exist_ok=True)
+        record = self.record(task)
+        if record is None:
+            return None
+        text = task_queue.contract_text(record)
+        (data / 'contract.txt').write_text(text + '\n')
+        execution.save(data / 'contract.json', {'contract_hash': record.contract_hash,
+                                                'record_revision': record.record_revision, 'rev': None})
+        return text
+
+    def entry(self, task):
+        """The task's entry in the fixture's TODO-form text."""
+        from pi_autowork.legacy import reader
+        return reader.task_bodies(self.todo)[task][0][0].strip()
+
+    def record(self, task, rev='HEAD'):
+        return task_queue.record(self.repo, task, rev)
+
+    def task_text(self, task):
+        """The task's record as the working tree has it (a close writes it uncommitted)."""
+        return (self.repo / 'tasks/items' / f'{task}.md').read_text()
 
     def git(self, *args, cwd=None):
         p = subprocess.run(['git', '-C', str(cwd or self.repo), *args], capture_output=True, text=True)
@@ -69,6 +102,7 @@ class IntegrationTests(unittest.TestCase):
         self.git('commit', '-qm', 'worker ' + task, cwd=root)
         commit = self.git('rev-parse', 'HEAD', cwd=root)
         slot = state.transition(self.repo, self.owner, task, 'reported', commit=commit)
+        self.pin_contract(task, slot)
         data = dispatch.data_dir(self.common, slot)
         execution.save(data / 'report.json', {'task': task, 'commit': commit,
                        'changed_files': list(files or {task + '.txt': ''}), 'checks': [], 'blockers': [], 'changelog': 'fixture'})
@@ -405,9 +439,7 @@ class IntegrationTests(unittest.TestCase):
     def test_a_commit_held_for_overlap_owns_nothing_and_is_offered_again_once_free(self):
         """TOOLSET-157-cd: two commits on the same file must not hold each other forever."""
         module = self.module()
-        todo = self.repo / 'TODO.md'
-        todo.write_text(todo.read_text().replace('  Touches: B.txt\n', '  Touches: B.txt, A.txt\n'))
-        self.git('commit', '-qam', 'B declares A.txt too')
+        self.set_todo(self.todo.replace('  Touches: B.txt\n', '  Touches: B.txt, A.txt\n'))
         self.baseline = self.git('rev-parse', 'HEAD')
         self.worker('A')
         self.worker('B', {'A.txt': 'b\n'})
@@ -432,15 +464,11 @@ class IntegrationTests(unittest.TestCase):
                                      ('C', 'scope', ['TODO.md', 'TODO.archive.md', 'goals.json', 'CHANGELOG.md'])]:
             with self.subTest(task=task, cause=cause):
                 if task == 'C':  # a legacy hold blamed coordinator paths identical to the base
-                    todo = self.repo / 'TODO.md'
-                    todo.write_text(todo.read_text() + '\n- [ ] C — Task C\n  Scope: C.txt\n'
-                                    '  Touches: C.txt\n  Acceptance: fixture\n  Checks: true\n'
-                                    '  Dependencies: None.\n  Status: open\n')
-                    self.git('commit', '-qam', 'add C')
+                    self.set_todo(self.todo + '\n- [ ] C — Task C\n  Scope: C.txt\n'
+                                  '  Touches: C.txt\n  Acceptance: fixture\n  Checks: true\n'
+                                  '  Dependencies: None.\n  Status: open\n')
                     self.baseline = self.git('rev-parse', 'HEAD')
                 files = {task + '.txt': 'worker\n'}
-                if task == 'A':
-                    files['TODO.md'] = (self.repo / 'TODO.md').read_text() + '\nold ledger proposal\n'
                 _, commit = self.worker(task, files)
                 slot = next(s for s in state.slots(self.common) if s['task_id'] == task)
                 state.write_slot(self.common, dict(slot, state='held', cause=cause, outside=outside,
@@ -496,14 +524,14 @@ class IntegrationTests(unittest.TestCase):
     def test_a_main_checkout_session_blocks_a_close_only_through_the_files_it_writes(self):
         """TOOLSET-223-8e: an uncommitted planning edit is reconciled by the landing step, so it
         no longer blocks a close; a session holding a close file open still does."""
-        self.ledger()  # with goals.json, as every real repository: the indexed close path too
         session = self.session_checkout()
         self.worker()
         module = self.module()
         self.assertEqual(module.integrate(session, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
         self.agent_process()
-        (self.repo / 'TODO.md').write_text((self.repo / 'TODO.md').read_text() + '\n')  # owner planning edit
-        held = self.holder(self.repo / 'TODO.md')  # held open for writing: still a block
+        other = self.repo / 'tasks/items/B.md'
+        other.write_text(other.read_text() + '- Note: an owner edit\n')  # another task's record: no block
+        held = self.holder(self.repo / 'tasks/items/A.md')  # the closed task's record held open: a block
         with self.assertRaisesRegex(ValueError, 'writer|session'):
             module.close(session, self.owner, 'A')
         held.kill()
@@ -517,24 +545,19 @@ class IntegrationTests(unittest.TestCase):
         module.integrate(self.repo, self.owner, 'A', ['true'], 10)
         self.agent_process()
         self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
-        self.assertTrue((self.repo / 'TODO.archive.md').exists())
+        self.assertTrue((self.repo / 'tasks/evidence/A.toml').exists())
+        self.assertIn('status = "done"', self.task_text('A'))
 
     def test_a_close_that_fails_after_writing_leaves_no_writes(self):
-        """bravo TASK-010: a close failed after archiving and its writes stayed in the
-        session uncommitted, where every later merge refused them."""
+        """bravo TASK-010: a close failed after writing and its writes stayed in the session
+        uncommitted, where every later merge refused them."""
         self.worker()
         module = self.module()
         module.integrate(self.repo, self.owner, 'A', ['true'], 10)
-        files = [self.repo / name for name in ('TODO.md', 'goals.json', 'TODO.archive.md')]
+        files = [self.repo / name for name in ('tasks/items/A.md', 'tasks/evidence/A.toml')]
         before = [f.read_bytes() if f.exists() else None for f in files]
-        original = module.goals_command
-        def archive_then_fail(repo, *argv):
-            out = original(repo, *argv)
-            if argv[0] == 'archive':
-                raise ValueError('fixture failure after the archive')
-            return out
         from unittest.mock import patch
-        with patch.object(module, 'goals_command', side_effect=archive_then_fail):
+        with patch.object(module.state, 'change', side_effect=ValueError('fixture failure after the writes')):
             with self.assertRaisesRegex(ValueError, 'fixture failure'):
                 module.close(self.repo, self.owner, 'A')
         self.assertEqual([f.read_bytes() if f.exists() else None for f in files], before)
@@ -545,18 +568,18 @@ class IntegrationTests(unittest.TestCase):
         self.worker()
         module = self.module()
         module.integrate(self.repo, self.owner, 'A', ['true'], 10)
-        before = (self.repo / 'TODO.md').read_bytes()
+        before = (self.repo / 'tasks/items/A.md').read_bytes()
         original = module.validated_receipt
         from unittest.mock import patch
         def checked(*args):
             result = original(*args)
-            self.holder(self.repo / 'TODO.md')
+            self.holder(self.repo / 'tasks/items/A.md')
             return result
         with patch.object(module, 'validated_receipt', side_effect=checked):
             with self.assertRaisesRegex(ValueError, 'writer|session'):
                 module.close(self.repo, self.owner, 'A')
-        self.assertEqual((self.repo / 'TODO.md').read_bytes(), before)
-        self.assertFalse((self.repo / 'TODO.archive.md').exists())
+        self.assertEqual((self.repo / 'tasks/items/A.md').read_bytes(), before)
+        self.assertFalse((self.repo / 'tasks/evidence/A.toml').exists())
 
     def test_a_writer_that_exits_during_the_check_does_not_block(self):
         """A worker's short tool run seen by the scan and gone by the check blocked a close."""
@@ -572,7 +595,7 @@ class IntegrationTests(unittest.TestCase):
             module.require_no_writers(self.repo)
 
     def test_uncommitted_planning_files_do_not_block_a_merge(self):
-        """TOOLSET-223-8e: the owner's uncommitted TODO.md made every candidate's session a
+        """TOOLSET-223-8e: the owner's uncommitted task edits made every candidate's session a
         blocker; landing already reconciles planning edits, so only real files count."""
         module = self.module()
         main = module.main_checkout(self.repo)
@@ -580,12 +603,12 @@ class IntegrationTests(unittest.TestCase):
         worker = {'pid': proc.pid, 'kind': 'session', 'active': True, 'written': [],
                   'workspaces': [main], 'evidence': 'running commands',
                   **{k: v for k, v in execution.identity(proc.pid).items() if k != 'pid'}}
-        (self.repo / 'TODO.md').write_text('# TODO\n\n## Next\n\nan owner edit\n')
-        self.assertTrue(module.touches_none_of(worker, ['TODO.md'], main))
+        (self.repo / 'tasks/items/B.md').write_text('an owner edit\n')
+        self.assertTrue(module.touches_none_of(worker, ['tasks/items/B.md'], main))
         (self.repo / 'A.txt').write_text('an owner edit\n')
         self.assertFalse(module.touches_none_of(worker, ['A.txt'], main))
-        worker['written'] = [main + '/TODO.md']  # held open for writing still blocks
-        self.assertFalse(module.touches_none_of(worker, ['TODO.md'], main))
+        worker['written'] = [main + '/tasks/items/B.md']  # held open for writing still blocks
+        self.assertFalse(module.touches_none_of(worker, ['tasks/items/B.md'], main))
         # Other checkouts the same session also has open do not widen the comparison.
         worker['written'] = []
         worker['workspaces'] = [main, str(self.repo / '.worktrees/elsewhere')]
@@ -792,20 +815,22 @@ finally:
         self.assertTrue(root.exists())
 
 
-    def test_close_requires_validation_and_archives_only_integrated_task(self):
+    def test_close_requires_validation_and_closes_only_integrated_task(self):
         root, commit = self.worker()
         module = self.module()
-        before = (self.repo / 'TODO.md').read_bytes()
+        before = self.task_text('A')
         with self.assertRaises(ValueError):
             module.close(self.repo, self.owner, 'A')
-        self.assertEqual((self.repo / 'TODO.md').read_bytes(), before)
+        self.assertEqual(self.task_text('A'), before)
         module.integrate(self.repo, self.owner, 'A', ['true'], 10)
         result = module.close(self.repo, self.owner, 'A')
         self.assertEqual(result['outcome'], 'CLOSED', result)
+        self.assertEqual(result['files'], ['tasks/evidence/A.toml', 'tasks/items/A.md'])
         self.assertFalse(root.exists())
         self.assertFalse(self.git('branch', '--list', 'autowork/A'))
-        self.assertIn('A — Task A', (self.repo / 'TODO.archive.md').read_text())
-        self.assertIn('B — Task B', (self.repo / 'TODO.md').read_text())
+        self.assertIn('status = "done"', self.task_text('A'))
+        self.assertIn('status = "open"', self.task_text('B'))
+        self.assertFalse((self.repo / 'TODO.archive.md').exists(), 'closure writes no archive')
         self.assertEqual(state.slots(self.common)[0]['state'], 'closed')
 
     def test_a_missing_report_says_so_and_object_live_checks_keep_their_text(self):
@@ -972,9 +997,7 @@ finally:
         prompt = self.common / 'slot-data' / 'A' / 'attempt-1' / 'prompt.md'
         prompt.parent.mkdir(parents=True, exist_ok=True)
         prompt.write_text('- Work only inside x; change only paths within Touches: (none declared)\n')
-        todo = self.repo / 'TODO.md'  # Touches recorded after the hold no longer cover A.txt
-        todo.write_text(todo.read_text().replace('Touches: A.txt', 'Touches: other.txt'))
-        self.git('commit', '-qam', 'later Touches')
+        self.set_todo(self.todo.replace('Touches: A.txt', 'Touches: other.txt'))
         module = self.module()
         self.assertEqual(module.retry_held(args)['outcome'], 'READOPTED')
         self.assertEqual(state.slots(self.common)[0]['touches'], '')
@@ -1125,15 +1148,12 @@ finally:
         """Adding `Short:` to every task set each held task's finished work aside as rewritten."""
         self.worker()
         module = self.module()
-        todo = self.repo / 'TODO.md'
         slot = state.slots(self.common)[0]
-        contract = execution.goals_module().task_bodies(todo.read_text())['A'][0][0].strip()
-        (dispatch.data_dir(self.common, slot) / 'contract.txt').write_text(contract + '\n')
         module.hold(self.common, slot, 'failure', cause='validation')
-        todo.write_text(todo.read_text().replace('Acceptance: offline fixture', 'Acceptance: offline fixture\n'
-                                                 '  Short: A short title\n  Priority reason: first', 1))
+        self.set_todo(self.todo.replace('Acceptance: offline fixture', 'Acceptance: offline fixture\n'
+                                        '  Short: A short title\n  Priority reason: first', 1))
         self.assertFalse(module.entry_changed(self.repo, self.common, state.slots(self.common)[0]))
-        todo.write_text(todo.read_text().replace('Acceptance: offline fixture', 'Acceptance: a rewritten scope', 1))
+        self.set_todo(self.todo.replace('Acceptance: offline fixture', 'Acceptance: a rewritten scope', 1))
         self.assertEqual(module.entry_changes(self.repo, self.common, state.slots(self.common)[0]), ['Acceptance'])
 
     def test_a_display_only_line_added_after_integration_still_closes(self):
@@ -1141,19 +1161,15 @@ finally:
         self.worker()
         module = self.module()
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
-        todo = self.repo / 'TODO.md'
-        todo.write_text(todo.read_text().replace('Acceptance: offline fixture', 'Acceptance: offline fixture\n'
-                                                 '  Short: A short title', 1))
-        self.git('commit', '-qam', 'short titles')
+        self.set_todo(self.todo.replace('Acceptance: offline fixture', 'Acceptance: offline fixture\n'
+                                        '  Short: A short title', 1))
         self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
 
     def test_an_integrated_task_whose_entry_changed_is_set_aside_and_queued_again(self):
         self.worker()
         module = self.module()
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
-        todo = self.repo / 'TODO.md'
-        todo.write_text(todo.read_text().replace('Acceptance: offline fixture', 'Acceptance: a rewritten scope', 1))
-        self.git('commit', '-qam', 'rewrite A')
+        self.set_todo(self.todo.replace('Acceptance: offline fixture', 'Acceptance: a rewritten scope', 1))
         with self.assertRaisesRegex(ValueError, module.CONTRACT_CHANGED):
             module.close(self.repo, self.owner, 'A')
         merged = self.git('rev-parse', 'HEAD')
@@ -1161,19 +1177,15 @@ finally:
         self.assertEqual(self.git('rev-parse', 'HEAD'), merged)
         self.assertIn('A', [t['id'] for t in execution.select_all(self.repo, None, None)])
 
-    def test_an_integrated_task_archived_by_someone_else_is_set_aside_not_requeued(self):
-        """bravo TASK-001: another writer archived the entry, edited, after the merge."""
+    def test_an_integrated_task_closed_by_someone_else_is_set_aside_not_requeued(self):
+        """bravo TASK-001: another writer closed the task, edited, after the merge."""
         self.worker()
         module = self.module()
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
-        todo = self.repo / 'TODO.md'
-        text = todo.read_text()
-        start, end = text.index('- [ ] A'), text.index('- [ ] B')
-        (self.repo / 'TODO.archive.md').write_text('# Completed\n\n' + text[start:end].replace('- [ ] A', '- [x] A')
-                                                   .replace('offline fixture', 'edited while archiving'))
-        todo.write_text(text[:start] + text[end:])
-        self.git('add', '-A')
-        self.git('commit', '-qm', 'someone archives A')
+        entry = self.entry('A')
+        self.set_todo(self.todo.replace(entry, entry.replace('- [ ] A', '- [x] A').replace('Status: open', 'Status: done')
+                                        .replace('offline fixture', 'edited while closing'), 1))
+        self.assertEqual(self.record('A').status, 'done')
         with self.assertRaisesRegex(ValueError, module.CONTRACT_CHANGED):
             module.close(self.repo, self.owner, 'A')
         result = module.set_aside(self.repo, self.owner, 'A')
@@ -1182,9 +1194,7 @@ finally:
 
     def test_an_exhausted_hold_does_not_hold_other_work_at_integration(self):
         self.exhaust('A')
-        todo = self.repo / 'TODO.md'
-        todo.write_text(todo.read_text().replace('Touches: B.txt', 'Touches: A.txt, B.txt'))
-        self.git('commit', '-qam', 'B also owns A.txt')
+        self.set_todo(self.todo.replace('Touches: B.txt', 'Touches: A.txt, B.txt'))
         self.baseline = self.git('rev-parse', 'HEAD')
         self.worker('B', {'A.txt': 'overlap\n', 'B.txt': 'worker\n'})
         result = self.module().integrate(self.repo, self.owner, 'B', ['true'], 10)
@@ -1217,10 +1227,8 @@ finally:
                 slot = state.slots(self.common)[0]
                 self.assertEqual(slot.get('waits_for', []), waits)
                 self.assertEqual(slot['cause'], 'task_wait' if waits else 'blocker')
-        # A dependency added to the ledger while a worker runs is not a new inferred edge.
-        ledger = execution.read(self.repo / 'goals.json')
-        ledger['tasks'][0]['depends_on'] = ['B']
-        execution.save(self.repo / 'goals.json', ledger)
+        # A dependency added to the task while a worker runs is not a new inferred edge.
+        self.set_todo(self.todo.replace('Dependencies: None.', 'Dependencies: B.', 1))
         running = {k: v for k, v in original.items() if k != 'commit'}
         execution.save(state.slot_path(self.common, 'A'), dict(running, state='dispatched',
                                                                baseline=original['commit']))
@@ -1251,13 +1259,14 @@ finally:
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
         result = module.close(self.repo, self.owner, 'A')
         self.assertEqual((result['outcome'], result['live_followup']), ('CLOSED', 'A-LIVE'))
-        todo = (self.repo / 'TODO.md').read_text()
-        self.assertIn('## Needs decision\n\n- [ ] A-LIVE — Live checks for A\n', todo)
-        self.assertIn('  - TalkBack scrolling on a physical phone\n', todo)
-        self.assertIn('  Dependencies: A.\n', todo)
-        self.assertNotIn('- [ ] A — Task A', todo)
-        tasks = execution.goals_module().task_bodies(todo)
-        self.assertEqual(list(tasks).count('A-LIVE'), 1)
+        self.assertIn('tasks/items/A-LIVE.md', result['files'])
+        self.git('add', *result['files'])
+        self.git('commit', '-qm', 'close A')
+        live = self.record('A-LIVE')
+        self.assertEqual((live.section, live.status, live.depends_on, live.ownership.value),
+                         ('Needs decision', 'open', ('A',), 'owner'))
+        self.assertIn('TalkBack scrolling on a physical phone', live.acceptance)
+        self.assertEqual(self.record('A').status, 'done')
         # A live check is never dispatched to an offline worker.
         self.assertNotIn('A-LIVE', [t['id'] for t in dispatch.contracts(self.repo)])
 
@@ -1267,15 +1276,15 @@ finally:
         module = self.module()
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
         from unittest.mock import patch
-        real = module.goals_command
-        def archive_fails(repo, *argv):
-            if argv[0] == 'archive':
-                raise ValueError('injected archive failure')
-            return real(repo, *argv)
-        with patch.object(module, 'goals_command', archive_fails), self.assertRaises(ValueError):
+        with patch.object(module.state, 'change', side_effect=ValueError('injected failure')), \
+                self.assertRaises(ValueError):
             module.close(self.repo, self.owner, 'A')
-        self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
-        self.assertEqual((self.repo / 'TODO.md').read_text().count('- [ ] A-LIVE'), 1)
+        self.assertFalse((self.repo / 'tasks/items/A-LIVE.md').exists())
+        first = module.close(self.repo, self.owner, 'A')
+        self.assertEqual(first['outcome'], 'CLOSED')
+        again = module.close(self.repo, self.owner, 'A')  # a replay before the commit
+        self.assertEqual(again['files'], first['files'])
+        self.assertEqual(len(list((self.repo / 'tasks/items').glob('A-LIVE*'))), 1)
 
     def test_retry_refill_enforces_running_retry_timeout(self):
         import time
@@ -1311,47 +1320,45 @@ finally:
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
         self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
         self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')  # a retried close too
-        self.assertIn('An older A', (self.repo / 'TODO.archive.md').read_text())  # history kept
+        self.assertIn('An older A', (self.repo / 'TODO.archive.md').read_text())  # history kept, unread
 
-    def test_archived_task_cannot_close_changed_acceptance(self):
+    def test_a_task_closed_elsewhere_with_changed_acceptance_cannot_close(self):
         root, _ = self.worker()
         module = self.module()
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
-        todo = self.repo / 'TODO.md'
-        todo.write_text(todo.read_text().replace('- [ ] A', '- [x] A').replace(
-            'Acceptance: offline fixture', 'Acceptance: changed unvalidated requirement', 1).replace(
-            'Status: open', 'Status: done', 1))
-        module.goals_command(self.repo, 'archive', '--verified-tasks', 'A')
-        before = (self.repo / 'TODO.archive.md').read_bytes()
-        with self.assertRaisesRegex(ValueError, 'contract|provenance'):
+        entry = self.entry('A')
+        self.set_todo(self.todo.replace(entry, entry.replace('- [ ] A', '- [x] A').replace(
+            'Acceptance: offline fixture', 'Acceptance: changed unvalidated requirement').replace(
+            'Status: open', 'Status: done'), 1))
+        before = self.task_text('A')
+        with self.assertRaisesRegex(ValueError, 'contract changed'):
             module.close(self.repo, self.owner, 'A')
-        self.assertEqual((self.repo / 'TODO.archive.md').read_bytes(), before)
+        self.assertEqual(self.task_text('A'), before)
+        self.assertFalse((self.repo / 'tasks/evidence/A.toml').exists())
         self.assertTrue(root.exists())
         self.assertEqual(state.slots(self.common)[0]['state'], 'integrated')
 
-    def test_checked_task_cannot_archive_changed_acceptance(self):
+    def test_an_open_task_with_changed_acceptance_cannot_close(self):
         root, _ = self.worker()
         module = self.module()
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
-        todo = self.repo / 'TODO.md'
-        todo.write_text(todo.read_text().replace('- [ ] A', '- [x] A').replace(
-            'Acceptance: offline fixture', 'Acceptance: changed unvalidated requirement', 1))
-        before = todo.read_bytes()
+        self.set_todo(self.todo.replace('Acceptance: offline fixture', 'Acceptance: changed unvalidated requirement', 1))
+        before = self.task_text('A')
         with self.assertRaisesRegex(ValueError, 'contract changed'):
             module.close(self.repo, self.owner, 'A')
-        self.assertEqual(todo.read_bytes(), before)
-        self.assertFalse((self.repo / 'TODO.archive.md').exists())
+        self.assertEqual(self.task_text('A'), before)
+        self.assertFalse((self.repo / 'tasks/evidence/A.toml').exists())
         self.assertTrue(root.exists())
 
-    def test_failed_validation_refuses_close_without_ledger_writes(self):
+    def test_failed_validation_refuses_close_without_task_writes(self):
         root, commit = self.worker()
-        before = (self.repo / 'TODO.md').read_bytes()
+        before = self.task_text('A')
         result = self.module().integrate(self.repo, self.owner, 'A', ['false'], 10)
         self.assertEqual(result['outcome'], 'HELD')
         self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
         with self.assertRaises(ValueError):
             self.module().close(self.repo, self.owner, 'A')
-        self.assertEqual((self.repo / 'TODO.md').read_bytes(), before)
+        self.assertEqual(self.task_text('A'), before)
         self.assertTrue(root.exists())
         self.assertEqual(self.git('rev-parse', 'autowork/A'), commit)
 
@@ -1460,39 +1467,40 @@ finally:
 
         (self.repo / 'src').mkdir()
         (self.repo / 'src/x.py').write_text('base = True\n')
-        (self.repo / '.gitattributes').write_text('TODO.md diff=ledger\n')
+        original = '# Changelog\n\n- an entry\n'
+        (self.repo / 'CHANGELOG.md').write_text(original)
+        (self.repo / '.gitattributes').write_text('CHANGELOG.md diff=ledger\n')
         converter = Path(self.temp.name) / 'textconv.py'
         converter.write_text('import pathlib, sys\nprint(pathlib.Path(sys.argv[1]).read_text()'
                              '.replace("Worker", "TRANSFORMED"), end="")\n')
         self.git('config', 'diff.ledger.textconv', f'{sys.executable} {converter}')
-        self.git('add', 'src/x.py', '.gitattributes')
+        self.git('add', 'src/x.py', '.gitattributes', 'CHANGELOG.md')
         self.git('commit', '-qm', 'source fixture')
         self.baseline = self.git('rev-parse', 'HEAD')
-        original = (self.repo / 'TODO.md').read_text()
-        self.worker('A', {'src/x.py': 'worker = True\n', 'TODO.md': original.replace('# TODO', '# Worker note')})
-        self.worker('B', {'TODO.md': original.replace('# TODO', '# Worker-only note')})
+        self.worker('A', {'src/x.py': 'worker = True\n', 'CHANGELOG.md': original.replace('# Changelog', '# Worker note')})
+        self.worker('B', {'CHANGELOG.md': original.replace('# Changelog', '# Worker-only note')})
         runner = Coordinator.__new__(Coordinator)
         runner.seen, runner.note_state, runner.close_task = {}, lambda *a: None, lambda *a: None
         for task, line, files in [('A', '+# Worker note', ['src/x.py']), ('B', '+# Worker-only note', [])]:
             with self.subTest(task=task):
-                current = original if task == 'A' else original.replace('# TODO', '# Current ledger')
+                current = original if task == 'A' else original.replace('# Changelog', '# Current changelog')
                 if task == 'B':
-                    (self.repo / 'TODO.md').write_text(current)
-                    self.git('commit', '-qam', 'coordinator updated the same ledger line')
+                    (self.repo / 'CHANGELOG.md').write_text(current)
+                    self.git('commit', '-qam', 'coordinator updated the same changelog line')
                 result = self.module().integrate(self.repo, self.owner, task,
-                    [sys.executable, '-c', f'from pathlib import Path; assert Path("TODO.md").read_text() == {current!r}'], 10)
+                    [sys.executable, '-c', f'from pathlib import Path; assert Path("CHANGELOG.md").read_text() == {current!r}'], 10)
                 self.assertEqual(result['outcome'], 'INTEGRATED', result)
                 slot = next(s for s in state.slots(self.common) if s['task_id'] == task)
                 dropped = slot['ledger_edit_dropped']
-                self.assertEqual(dropped['paths'], ['TODO.md'])
+                self.assertEqual(dropped['paths'], ['CHANGELOG.md'])
                 self.assertTrue(Path(dropped['patch']).is_relative_to(dispatch.data_dir(self.common, slot)))
                 self.assertIn(line, Path(dropped['patch']).read_text())
-                self.assertIn('TODO.md', self.git('apply', '--stat', dropped['patch']))
+                self.assertIn('CHANGELOG.md', self.git('apply', '--stat', dropped['patch']))
                 self.assertEqual(result['integration']['changed_files'], files)
-                self.assertEqual((self.repo / 'TODO.md').read_text(), current)
+                self.assertEqual((self.repo / 'CHANGELOG.md').read_text(), current)
                 with patch('pi_autowork.coordinator.LOG.say') as say:
                     runner.integrated(task, result)
-                self.assertIn(f'{task}: its edit to TODO.md was left out; the docs maintainer will review it',
+                self.assertIn(f'{task}: its edit to CHANGELOG.md was left out; the docs maintainer will review it',
                               [call.args[0] for call in say.call_args_list])
                 found = maintainer.triggers(parallel_status.snapshot(self.repo)['tasks'])
                 self.assertTrue(any(t == task and kind == 'ledger edit' and line in why for t, kind, why in found))
@@ -1518,54 +1526,35 @@ finally:
                 self.assertIn('+worker ledger', Path(result['ledger_edit_dropped']['patch']).read_text())
         self.assertEqual((self.repo / 'B.txt').read_text(), 'worker\n')
 
-    def test_an_adopted_resolver_merge_always_uses_the_current_integration_ledger(self):
-        self.ledger()
+    def test_an_adopted_resolver_merge_always_uses_the_current_task_store(self):
         module = self.module()
-        for task, authored in [('A', False), ('B', True)]:
-            with self.subTest(authored_planning=authored):
-                self.baseline = self.git('rev-parse', 'HEAD')
-                original = (self.repo / 'TODO.md').read_text()
-                title = original.splitlines()[0]
-                files = {task + '.txt': 'worker\n'}
-                if authored:
-                    files['TODO.md'] = original.replace(title, '# Worker ledger proposal', 1)
-                root, _ = self.worker(task, files)
-                for resolution in (1, 2):
-                    (self.repo / (task + '.txt')).write_text(f'canonical conflict {resolution}\n')
-                    self.git('commit', '-qam', 'canonical advanced')
-                    base = self.git('rev-parse', 'HEAD')
-                    self.assertEqual(module.integrate(self.repo, self.owner, task, ['true'], 10)['cause'], 'conflict')
-                    merged = subprocess.run(['git', '-C', str(root), 'merge', '--no-edit', 'main'], capture_output=True)
-                    self.assertEqual(merged.returncode, 1)
-                    self.git('checkout', '--ours', '--', task + '.txt', cwd=root)
-                    # Matching the base once must not erase original task authorship.
-                    resolved = original if authored and resolution == 1 else original.replace(title, '# Resolver ledger note', 1)
-                    (root / 'TODO.md').write_text(resolved)
-                    (root / 'goals.json').write_text(json.dumps(json.loads((root / 'goals.json').read_text()), indent=4))
-                    (root / 'TODO.archive.md').write_text('# Incidental resolver archive\n')
-                    self.git('add', task + '.txt', 'TODO.md', 'goals.json', 'TODO.archive.md', cwd=root)
-                    self.git('commit', '-qm', 'resolver merged the session and edited its ledger', cwd=root)
-                    adopted = module.merged(self.repo, self.owner, task)
-                    self.assertEqual(adopted['outcome'], 'MERGED')
-                    # Planning must be clean before the adopted commit is checked, except
-                    # for task-authored paths. A resolver-created archive is removed.
-                    self.assertEqual(self.git('diff', '--name-only', base, adopted['commit'], '--',
-                                              'TODO.md', 'TODO.archive.md', 'goals.json'),
-                                     'TODO.md' if authored and resolution == 2 else '')
-                    self.assertEqual(self.git('rev-parse', 'HEAD', cwd=root), adopted['commit'])
-                    report = execution.read(dispatch.data_dir(self.common, module.slot_for(self.common, task)) / 'report.json')
-                    self.assertEqual(report['commit'], adopted['commit'])
-                current = original.replace(title, '# Newer coordinator ledger ' + task, 1)
-                (self.repo / 'TODO.md').write_text(current)
-                self.git('commit', '-qam', 'ledger changed after adoption')
-                result = module.integrate(self.repo, self.owner, task, ['true'], 10)
-                self.assertEqual(result['outcome'], 'INTEGRATED', result)
-                self.assertEqual((self.repo / 'TODO.md').read_text(), current)
-                self.assertEqual((self.repo / (task + '.txt')).read_text(), 'worker\n')
-                if authored:
-                    self.assertIn('+# Resolver ledger note', Path(result['ledger_edit_dropped']['patch']).read_text())
-                else:
-                    self.assertIsNone(result['ledger_edit_dropped'])
+        task = 'A'
+        root, _ = self.worker(task)
+        for resolution in (1, 2):
+            (self.repo / (task + '.txt')).write_text(f'canonical conflict {resolution}\n')
+            self.git('commit', '-qam', 'canonical advanced')
+            base = self.git('rev-parse', 'HEAD')
+            self.assertEqual(module.integrate(self.repo, self.owner, task, ['true'], 10)['cause'], 'conflict')
+            merged = subprocess.run(['git', '-C', str(root), 'merge', '--no-edit', 'main'], capture_output=True)
+            self.assertEqual(merged.returncode, 1)
+            self.git('checkout', '--ours', '--', task + '.txt', cwd=root)
+            # The resolver also touched the store and the archive: restored to the merged base.
+            (root / 'tasks/items/B.md').write_text((root / 'tasks/items/B.md').read_text() + '- Note: resolver edit\n')
+            (root / 'TODO.archive.md').write_text('# Incidental resolver archive\n')
+            self.git('add', task + '.txt', 'tasks/items/B.md', 'TODO.archive.md', cwd=root)
+            self.git('commit', '-qm', 'resolver merged the session and edited planning', cwd=root)
+            adopted = module.merged(self.repo, self.owner, task)
+            self.assertEqual(adopted['outcome'], 'MERGED')
+            self.assertEqual(self.git('diff', '--name-only', base, adopted['commit'], '--', 'tasks', 'TODO.archive.md'), '')
+            self.assertEqual(self.git('rev-parse', 'HEAD', cwd=root), adopted['commit'])
+            report = execution.read(dispatch.data_dir(self.common, module.slot_for(self.common, task)) / 'report.json')
+            self.assertEqual(report['commit'], adopted['commit'])
+        self.set_todo(self.todo.replace('Scope: B.txt', 'Scope: B.txt, revised after adoption'))
+        result = module.integrate(self.repo, self.owner, task, ['true'], 10)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertIn('revised after adoption', self.task_text('B'))
+        self.assertEqual((self.repo / (task + '.txt')).read_text(), 'worker\n')
+        self.assertIsNone(result['ledger_edit_dropped'])
 
     def test_a_change_outside_touches_integrates_when_it_merges_and_passes(self):
         """TOOLSET-161-17: Touches schedule work and never hold it."""
@@ -1601,7 +1590,6 @@ finally:
     def test_three_quick_identical_input_holds_require_a_named_resolution(self):
         import parallel_status
         module = self.module()
-        todo = self.repo / 'TODO.md'
         for task, third_reason, seconds, cause, resumed, stopped in (
                 ('A', 'missing receipt', 60, 'blocker', False, True),
                 ('B', 'missing credentials', 60, 'blocker', False, False),
@@ -1611,14 +1599,13 @@ finally:
                 ('F', 'missing receipt', 30, 'blocker', True, True)):
             with self.subTest(task=task):
                 if task not in 'AB':
-                    todo.write_text(todo.read_text() + f'\n- [ ] {task} — Task {task}\n  Scope: fixture\n'
-                                    f'  Touches: {task}.txt\n  Acceptance: fixture\n  Checks: true\n'
-                                    '  Dependencies: None.\n  Status: open\n')
+                    self.set_todo(self.todo + f'\n- [ ] {task} — Task {task}\n  Scope: fixture\n'
+                                  f'  Touches: {task}.txt\n  Acceptance: fixture\n  Checks: true\n'
+                                  '  Dependencies: None.\n  Status: open\n')
                 for attempt in range(1, 4):
                     self.worker(task)
                     slot = next(s for s in state.slots(self.common) if s['task_id'] == task)
-                    contract = execution.goals_module().task_bodies(todo.read_text())[task][0][0].strip()
-                    (dispatch.data_dir(self.common, slot) / 'contract.txt').write_text(contract + '\n')
+                    contract = self.entry(task)
                     slot = state.write_slot(self.common, dict(slot, state='running' if resumed else 'reported',
                                                              started_at=time.time() - seconds), slot)
                     if resumed:
@@ -1630,7 +1617,7 @@ finally:
                     reason = (third_reason if attempt == 3 else 'missing receipt')
                     reason += f' /var/tmp/run-{attempt}/receipt.json for TASK-{attempt}'
                     state.transition(self.repo, self.owner, task, 'held', reason=reason, cause=cause)
-                    todo.write_text(todo.read_text().replace(contract, contract + f'\n  Evidence: edit {attempt}', 1))
+                    self.set_todo(self.todo.replace(contract, contract + f'\n  Evidence: edit {attempt}', 1))
                     result = module.retry_held(self.retry_args())
                     if attempt < 3 or not stopped:
                         self.assertEqual(result['outcome'], 'REQUEUED', result)
@@ -1646,23 +1633,44 @@ finally:
                         module.set_aside(self.repo, self.owner, task)
                     with self.assertRaisesRegex(ValueError, 'answer is only'):
                         module.answer(self.repo, self.owner, task, 'try again')
-                    current = execution.goals_module().task_bodies(todo.read_text())[task][0][0].strip()
+                    current = self.entry(task)
                     resolved = current.replace('Dependencies: None.', 'Dependencies: INPUT-1')
                     resolved += f'\n  Blocker resolution: {hold["fingerprint"]}; INPUT-1 produces the receipt'
-                    todo.write_text(todo.read_text().replace(current, resolved, 1))
+                    self.set_todo(self.todo.replace(current, resolved, 1))
                     self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'REQUEUED')
                     # If that answer failed, formatting it differently is not a new answer.
                     self.worker(task)
                     slot = state.slots(self.common)[0]
-                    (dispatch.data_dir(self.common, slot) / 'contract.txt').write_text(resolved + '\n')
+                    self.pin_contract(task, slot)
                     state.transition(self.repo, self.owner, task, 'held', reason=reason, cause=cause)
-                    todo.write_text(todo.read_text().replace('  Blocker resolution:', '   Blocker resolution:'))
+                    self.set_todo(self.todo.replace('  Blocker resolution:', '   Blocker resolution:'))
                     self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'IDLE')
                     state.slot_path(self.common, task).unlink()  # next fixture case starts without a live slot
 
+    def test_a_worker_edit_to_the_task_store_is_held_never_merged_or_offered_again(self):
+        """Supervisor review: a worker may not grant itself or another task authority."""
+        module = self.module()
+        record = self.task_text('B').replace('resources = []', 'resources = ["live"]').replace(
+            'kind = "implementation"', 'kind = "implementation"\nlive = "authorized"')
+        self.worker('A', {'A.txt': 'worker\n', 'tasks/items/B.md': record})
+        result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual((result['outcome'], result['cause'], result['outside']),
+                         ('HELD', 'scope', ['tasks/items/B.md']), result)
+        self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
+        self.assertEqual(self.record('B').live.value, 'denied')
+        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'IDLE')
+        # Taking the base's task edits in by merging is not authoring them.
+        self.set_todo(self.todo.replace('Touches: B.txt', 'Touches: B.txt, extra.txt'))
+        moved = self.git('rev-parse', 'HEAD')
+        root, _ = self.worker('B')
+        self.git('merge', '-q', '--no-edit', 'main', cwd=root)
+        merged = self.git('rev-parse', 'HEAD', cwd=root)
+        slot = next(s for s in state.slots(self.common) if s['task_id'] == 'B')
+        state.write_slot(self.common, dict(slot, commit=merged), slot)
+        self.assertEqual(module.worker_task_edits(self.repo, dict(slot, commit=merged), moved), [])
+
     def test_a_scope_hold_records_its_cause_and_outside_files(self):
-        self.worker(files={'TODO.md': (self.repo / 'TODO.md').read_text() + '\nworker note\n',
-                           'package-lock.json': '{}\n'})
+        self.worker(files={'package-lock.json': '{}\n'})
         result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
         self.assertEqual((result['cause'], result['outside']), ('scope', ['package-lock.json']))
         slot = state.slots(self.common)[0]
@@ -1673,12 +1681,9 @@ finally:
         self.worker(files={'package.json': '{}\n'})
         self.worker('B')
         slot = state.slots(self.common)[0]
-        todo = self.repo / 'TODO.md'
-        contract = execution.goals_module().task_bodies(todo.read_text())['A'][0][0].strip()
-        (dispatch.data_dir(self.common, slot) / 'contract.txt').write_text(contract + '\n')
+        contract = self.pin_contract('A', slot)
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['cause'], 'scope')
-        todo.write_text(todo.read_text().replace('Touches: A.txt', 'Touches: A.txt, package.json'))
-        self.git('commit', '-qam', 'Touches-only answer')
+        self.set_todo(self.todo.replace('Touches: A.txt', 'Touches: A.txt, package.json'))
         self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'RESCOPED')
         # Validation must hold the integration mutex, with the sibling still reported.
         check = (f'import fcntl, json; from pathlib import Path; p=Path({str(self.common)!r}); '
@@ -1698,11 +1703,9 @@ finally:
         module = self.module()
         self.worker(files={'package.json': '{}\n'})
         slot = state.slots(self.common)[0]
-        todo = self.repo / 'TODO.md'
-        contract = execution.goals_module().task_bodies(todo.read_text())['A'][0][0].strip()
-        (dispatch.data_dir(self.common, slot) / 'contract.txt').write_text(contract + '\n')
+        contract = self.pin_contract('A', slot)
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['cause'], 'scope')
-        todo.write_text(todo.read_text().replace('Touches: A.txt', 'Touches: A.txt, package.json'))
+        self.set_todo(self.todo.replace('Touches: A.txt', 'Touches: A.txt, package.json'))
         self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'RESCOPED')
         # An older runner checked contract.txt again, leaving this already-answered hold.
         state.transition(self.repo, self.owner, 'A', 'held', cause='scope', outside=['package.json'],
@@ -1719,9 +1722,8 @@ finally:
         module = self.module()
         self.worker(files={'package.json': '{}\n', 'package-lock.json': '{}\n'})
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['cause'], 'scope')
-        todo = self.repo / 'TODO.md'
-        todo.write_text(todo.read_text().replace('Touches: A.txt', 'Touches: A.txt, package.json'))
-        contract = execution.goals_module().task_bodies(todo.read_text())['A'][0][0].strip()
+        self.set_todo(self.todo.replace('Touches: A.txt', 'Touches: A.txt, package.json'))
+        contract = task_queue.contract_text(self.record('A'))
         # A legacy/manual rescope did not name every protected path in the candidate.
         slot = state.slots(self.common)[0]
         state.rescope(self.common, slot, 'A.txt, package.json', contract=contract)
@@ -1730,7 +1732,7 @@ finally:
                          ('HELD', 'scope', ['package-lock.json']), result)
         for _ in range(2):
             self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'IDLE')
-            found = questions.build(parallel_status.snapshot(self.repo), todo.read_text(), execution.goals_module())
+            found = questions.build(parallel_status.snapshot(self.repo), self.repo)
             self.assertEqual([q['id'] for q in found], ['A'])
             self.assertIn('package-lock.json', found[0]['needs'])
             self.assertIn('rerun or a contract change', found[0]['needs'])
@@ -1740,22 +1742,19 @@ finally:
         for index, field in enumerate(('Scope', 'Acceptance', 'Checks', 'Dependencies')):
             with self.subTest(field=field):
                 task = 'ABCD'[index]
-                todo = self.repo / 'TODO.md'
                 if task in 'CD':
-                    todo.write_text(todo.read_text() + f'\n- [ ] {task} — Task {task}\n  Scope: fixture\n'
-                                    f'  Touches: {task}.txt\n  Acceptance: fixture\n  Checks: true\n'
-                                    '  Dependencies: None.\n  Status: open\n')
+                    self.set_todo(self.todo + f'\n- [ ] {task} — Task {task}\n  Scope: fixture\n'
+                                  f'  Touches: {task}.txt\n  Acceptance: fixture\n  Checks: true\n'
+                                  '  Dependencies: None.\n  Status: open\n')
                 self.worker(task, files={'go.mod': 'x\n'})  # an undeclared protected file (TOOLSET-161-17)
                 slot = next(s for s in state.slots(self.common) if s['task_id'] == task)
-                contract = execution.goals_module().task_bodies(todo.read_text())[task][0][0].strip()
-                (dispatch.data_dir(self.common, slot) / 'contract.txt').write_text(contract + '\n')
+                contract = self.entry(task)
                 self.assertEqual(module.integrate(self.repo, self.owner, task, ['true'], 10)['cause'], 'scope')
                 slot = next(s for s in state.slots(self.common) if s['task_id'] == task)
                 state.write_slot(self.common, dict(slot, rescoped=index % 2 == 1), slot)
                 revised = contract.replace(f'Touches: {task}.txt', f'Touches: {task}.txt, go.mod')
                 revised = revised.replace(field + ': ', field + ': revised ', 1)
-                todo.write_text(todo.read_text().replace(contract, revised, 1))
-                self.git('commit', '-qam', 'answer ' + task)
+                self.set_todo(self.todo.replace(contract, revised, 1))
                 result = module.retry_held(self.retry_args())
                 try:
                     self.assertEqual((result['outcome'], result.get('task')), ('REQUEUED', task))
@@ -1820,50 +1819,35 @@ finally:
         self.assertTrue(module.reverifiable(legacy, 'r1'))  # holds from before causes existed
 
     def test_new_coordinator_file_is_left_out_even_if_declared(self):
-        todo = self.repo / 'TODO.md'
-        todo.write_text(todo.read_text().replace('Touches: A.txt', 'Touches: A.txt, CHANGELOG.md'))
+        self.set_todo(self.todo.replace('Touches: A.txt', 'Touches: A.txt, CHANGELOG.md'))
         self.worker(files={'CHANGELOG.md': 'not worker owned'})
         result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
         self.assertEqual(result['outcome'], 'INTEGRATED', result)
         self.assertFalse((self.repo / 'CHANGELOG.md').exists())
         self.assertIn('+not worker owned', Path(result['ledger_edit_dropped']['patch']).read_text())
 
-    def test_a_task_source_link_labelled_history_does_not_select_the_archive(self):
-        """sierra: bold task IDs stayed unchecked on close, and the archive fallback then
-        took '[Patrol history/events surface](patrol.go)' for the archive."""
-        todo = self.repo / 'TODO.md'
-        todo.write_text(todo.read_text().replace('- [ ] A — Task A', '- [ ] **A — Task A**').replace(
-            '  Scope: B.txt\n', '  Scope: B.txt\n  Sources: [Patrol history/events surface](src/patrol.go)\n'))
-        self.git('commit', '-qam', 'source link')
-        self.baseline = self.git('rev-parse', 'HEAD')
-        self.worker()
-        module = self.module()
-        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
-        result = module.close(self.repo, self.owner, 'A')
-        self.assertEqual(result['outcome'], 'CLOSED', result)
-        self.assertIn('- [x] **A — Task A**', (self.repo / 'TODO.archive.md').read_text())
-        self.assertEqual(module.archive_path(self.repo), self.repo / 'TODO.archive.md')
-
     def test_a_half_closed_task_still_closes(self):
-        """sierra: an earlier close wrote Status: done but left the box unchecked."""
+        """sierra: an earlier close wrote the task's status but stopped before its receipt."""
         self.worker()
         module = self.module()
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
-        todo = self.repo / 'TODO.md'
-        text = todo.read_text()
-        a = text.index('- [ ] A')
-        todo.write_text(text[:a] + text[a:].replace('Status: open', 'Status: done', 1))
+        path = self.repo / 'tasks/items/A.md'
+        path.write_text(path.read_text().replace('status = "open"', 'status = "done"'))
         result = module.close(self.repo, self.owner, 'A')
         self.assertEqual(result['outcome'], 'CLOSED', result)
-        self.assertIn('- [x] A — Task A', (self.repo / 'TODO.archive.md').read_text())
+        self.assertEqual(result['files'], ['tasks/evidence/A.toml', 'tasks/items/A.md'])
+        self.assertTrue((self.repo / 'tasks/evidence/A.toml').exists())
+        path.write_text(path.read_text().replace('scope = "A.txt"', 'scope = "something else"'))
+        state.write_slot(self.common, dict(state.slots(self.common)[0], state='integrated'), state.slots(self.common)[0])
+        with self.assertRaisesRegex(ValueError, 'partial closure differs'):
+            module.close(self.repo, self.owner, 'A')
 
     def test_closed_slot_releases_ownership_for_followup_task(self):
         self.worker()
         module = self.module()
         module.integrate(self.repo, self.owner, 'A', ['true'], 10)
         module.close(self.repo, self.owner, 'A')
-        todo = self.repo / 'TODO.md'
-        todo.write_text(todo.read_text().replace('Touches: B.txt', 'Touches: A.txt'))
+        self.set_todo(self.todo.replace('Touches: B.txt', 'Touches: A.txt'))
         self.baseline = self.git('rev-parse', 'HEAD')
         self.worker('B', {'A.txt': 'followup\n'})
         result = module.integrate(self.repo, self.owner, 'B', ['true'], 10)
@@ -1898,11 +1882,9 @@ finally:
         """TOOLSET-261-15 ranked 36th waited a day behind higher-ranked commits while tasks ranked
         6th to 35th depended on it. Z, ranked first, waits for B: B integrates before A."""
         module = self.module()
-        todo = self.repo / 'TODO.md'
         z = ('- [ ] Z — Task Z\n  Scope: Z.txt\n  Touches: Z.txt\n  Acceptance: fixture\n  Checks: true\n'
              '  Dependencies: B.\n  Status: open\n\n')
-        todo.write_text(todo.read_text().replace('- [ ] A ', z + '- [ ] A ', 1))
-        self.git('commit', '-qam', 'Z waits for B')
+        self.set_todo(self.todo.replace('- [ ] A ', z + '- [ ] A ', 1))
         self.baseline = self.git('rev-parse', 'HEAD')
         self.assertEqual(module.inherited_ranks(self.repo), {'Z': 0, 'A': 1, 'B': 0})
         for task in ('A', 'B'):
@@ -1913,11 +1895,9 @@ finally:
 
     def test_reverified_candidates_follow_fresh_candidates_then_keep_task_priority(self):
         module = self.module()
-        todo = self.repo / 'TODO.md'
-        todo.write_text(todo.read_text() + ''.join(
+        self.set_todo(self.todo + ''.join(
             f'\n- [ ] {t} — Task {t}\n  Scope: {t}.txt\n  Touches: {t}.txt\n'
             '  Acceptance: fixture\n  Checks: true\n  Dependencies: None.\n  Status: open\n' for t in ('C', 'D')))
-        self.git('commit', '-qam', 'add C and D')
         self.baseline = self.git('rev-parse', 'HEAD')
         for task in ('A', 'B'):
             self.worker(task)
@@ -2267,7 +2247,7 @@ finally:
         # against whatever happens to be the checkout's current HEAD).
         import shutil
         resolved = shutil.which('true')
-        inputs = {'TODO.md': execution.digest(self.repo / 'TODO.md')}
+        inputs = {'tasks/items/A.md': execution.digest(self.repo / 'tasks/items/A.md')}
         expected = {'outcome': 'EXECUTED', 'command_receipt': {
             'task_id': 'A', 'workspace': str(self.repo), 'exit_code': 0,
             'argv': ['true'], 'reusable_acceptance': False, 'terminated_descendants': [],
@@ -2280,82 +2260,30 @@ finally:
 
 
     def ledger(self):
-        data = {'version': 1, 'goals': [{'id': 'G', 'title': 'offline fixture', 'source': 'TODO.md',
-            'status': 'partial', 'tasks': ['A', 'B'], 'priority': 1, 'depends_on': []}],
-            'tasks': [{'id': t, 'title': 'Task ' + t, 'goal': 'G', 'status': 'open',
-                       'section': 'Next', 'depends_on': []} for t in ('A', 'B')]}
-        (self.repo / 'goals.json').write_text(json.dumps(data))
-        self.git('add', 'goals.json')
-        self.git('commit', '-qm', 'ledger fixture')
+        """Every repository has its goals in the store now; nothing to add."""
         self.baseline = self.git('rev-parse', 'HEAD')
 
-    def test_failed_validation_keeps_existing_ledger_byte_identical(self):
-        self.ledger()
-        root, commit = self.worker()
-        before = {name: (self.repo / name).read_bytes() for name in ('TODO.md', 'goals.json')}
-        self.assertEqual(self.module().integrate(self.repo, self.owner, 'A', ['false'], 10)['outcome'], 'HELD')
+    def test_a_close_commit_marks_only_its_task_done(self):
+        self.worker()
+        module = self.module()
         with self.assertRaises(ValueError):
-            self.module().close(self.repo, self.owner, 'A')
-        self.assertEqual({name: (self.repo / name).read_bytes() for name in before}, before)
-        self.assertTrue(root.exists())
-        self.assertEqual(self.git('rev-parse', 'autowork/A'), commit)
-
-    def test_existing_ledger_closes_with_real_goals_commands(self):
-        self.ledger()
-        self.worker()
-        before = (self.repo / 'goals.json').read_bytes()
-        with self.assertRaises(ValueError):
-            self.module().close(self.repo, self.owner, 'A')
-        self.assertEqual((self.repo / 'goals.json').read_bytes(), before)
-        result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
-        self.assertEqual(result['outcome'], 'INTEGRATED', result)
-        self.assertEqual(self.module().close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
-        data = json.loads((self.repo / 'goals.json').read_text())
-        self.assertEqual({t['id']: t['status'] for t in data['tasks']}, {'A': 'done', 'B': 'open'})
-
-    def record_order(self):
-        module = self.module()
-        dry = json.loads(module.goals_command(self.repo, 'bootstrap-order', '--dry-run'))
-        module.goals_command(self.repo, 'bootstrap-order', '--expected-revision', dry['revision'])
-        self.git('commit', '-qam', 'record order')
-
-    def test_a_live_followup_in_a_ledger_repository_keeps_priority_in_sync(self):
-        """flutter: closing TASK-013 added TASK-008 unrecorded; drift then stopped all dispatch."""
-        self.ledger()
-        module = self.module()
-        self.record_order()  # a recorded human order, as in fleet repositories
-        self.baseline = self.git('rev-parse', 'HEAD')
-        self.worker()
-        self.report(pending_live=['Device check'])
+            module.close(self.repo, self.owner, 'A')
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
-        self.assertEqual(module.close(self.repo, self.owner, 'A')['live_followup'], 'A-LIVE')
-        goals = execution.goals_module()
-        status = goals.priority_status(goals.normalize(goals.load(self.repo)), (self.repo / 'TODO.md').read_text())
-        self.assertEqual(status['state'], 'synced', status)
-        self.assertEqual([t['id'] for t in dispatch.contracts(self.repo)], ['B'])  # no PRIORITY_DRIFT
-
-    def test_a_close_never_records_someone_elses_reordering(self):
-        self.ledger()
-        module = self.module()
-        self.record_order()
-        self.baseline = self.git('rev-parse', 'HEAD')
-        self.worker()
-        self.report(pending_live=['Device check'])
-        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
-        todo = self.repo / 'TODO.md'  # a person adds C before B without recording the order
-        todo.write_text(todo.read_text().replace('- [ ] B', '- [ ] C — Task C\n  Scope: C\n  Acceptance: c\n'
-                                                 '  Checks: true\n  Dependencies: None.\n  Status: open\n- [ ] B'))
-        module.goals_command(self.repo, 'add-task', 'C', '--goal', 'G', '--title', 'Task C')
-        self.git('commit', '-qam', 'human adds C')
-        module.close(self.repo, self.owner, 'A')
-        goals = execution.goals_module()
-        status = goals.priority_status(goals.normalize(goals.load(self.repo)), todo.read_text())
-        self.assertEqual(status['state'], 'drift')  # left for the documented reorder, not blessed here
+        result = module.close(self.repo, self.owner, 'A')
+        self.git('add', *result['files'])
+        self.git('commit', '-qm', 'close A')
+        self.assertEqual((self.record('A').status, self.record('B').status), ('done', 'open'))
+        receipt = (self.repo / 'tasks/evidence/A.toml').read_text()
+        self.assertIn(f'candidate = "{state.slots(self.common)[0]["commit"]}"', receipt)
+        self.assertIn(f'contract_hash = "{self.record("A").contract_hash}"', receipt)
+        self.assertNotIn(str(self.repo), receipt)
+        again = module.close(self.repo, self.owner, 'A')
+        self.assertEqual((again['outcome'], again['files']), ('CLOSED', []))  # replayed after its commit: nothing
 
     def test_tampered_receipt_refuses_close_without_writes(self):
         self.worker()
         self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
-        before = (self.repo / 'TODO.md').read_bytes()
+        before = self.task_text('A')
         slot = state.slots(self.common)[0]
         path = Path(slot['integration']['check_receipt'])
         receipt = execution.read(path)
@@ -2363,42 +2291,31 @@ finally:
         execution.save(path, receipt)
         with self.assertRaises(ValueError):
             self.module().close(self.repo, self.owner, 'A')
-        self.assertEqual((self.repo / 'TODO.md').read_bytes(), before)
+        self.assertEqual(self.task_text('A'), before)
         self.assertEqual(state.slots(self.common)[0]['state'], 'integrated')
 
-    def cleanup_failure_retry(self, failure, archive_name='TODO.archive.md'):
-        archive = self.repo / archive_name
-        if archive_name != 'TODO.archive.md':
-            archive.parent.mkdir(parents=True, exist_ok=True)
-            archive.write_text('# Completed tasks\n')
-            if archive_name not in ('todo.archive.md', 'docs/TODO-archive.md'):
-                todo = self.repo / 'TODO.md'
-                todo.write_text('[Completed tasks](' + archive_name + ')\n\n' + todo.read_text())
-                self.git('add', 'TODO.md')
-                self.git('commit', '-qm', 'linked archive owner')
-                self.baseline = self.git('rev-parse', 'HEAD')
+    def cleanup_failure_retry(self, failure):
         root, commit = self.worker()
         module = self.module()
         module.integrate(self.repo, self.owner, 'A', ['true'], 10)
         original = module.git
         from unittest.mock import patch
-        def fail(repo, *argv):
+        def fail(repo, *argv, **options):
             if argv[:2] == failure:
                 raise ValueError('injected cleanup failure')
-            return original(repo, *argv)
+            return original(repo, *argv, **options)
         with patch.object(module, 'git', side_effect=fail):
             with self.assertRaisesRegex(ValueError, 'injected cleanup'):
                 module.close(self.repo, self.owner, 'A')
         self.assertEqual(state.slots(self.common)[0]['state'], 'closed')
-        archived = archive.read_bytes()
-        with patch.object(module, 'goals_command', side_effect=AssertionError('must not archive twice')):
-            result = module.close(self.repo, self.owner, 'A')
-            again = module.close(self.repo, self.owner, 'A')
+        written = {p: (self.repo / p).read_bytes() for p in ('tasks/items/A.md', 'tasks/evidence/A.toml')}
+        result = module.close(self.repo, self.owner, 'A')
+        again = module.close(self.repo, self.owner, 'A')
         self.assertTrue(result['cleaned'], result)
         self.assertTrue(again['cleaned'], again)
         self.assertFalse(root.exists())
         self.assertFalse(self.git('branch', '--list', 'autowork/A'))
-        self.assertEqual(archive.read_bytes(), archived)
+        self.assertEqual({p: (self.repo / p).read_bytes() for p in written}, written)  # nothing written twice
         events = [json.loads(line) for line in (self.common / 'journal.jsonl').read_text().splitlines()]
         self.assertEqual(sum(e['event'] == 'slot_changed' and e.get('state') == 'closed' for e in events), 1)
 
@@ -2407,15 +2324,6 @@ finally:
 
     def test_branch_cleanup_failure_is_retryable_after_worktree_removal(self):
         self.cleanup_failure_retry(('branch', '-d'))
-
-    def test_legacy_archive_cleanup_retry(self):
-        self.cleanup_failure_retry(('worktree', 'remove'), 'todo.archive.md')
-
-    def test_nested_legacy_archive_cleanup_retry(self):
-        self.cleanup_failure_retry(('branch', '-d'), 'docs/TODO-archive.md')
-
-    def test_linked_archive_cleanup_retry(self):
-        self.cleanup_failure_retry(('worktree', 'remove'), 'history/completed.md')
 
     def test_closed_cleanup_retry_preserves_changed_worker_branch(self):
         root, _ = self.worker()
@@ -2459,8 +2367,7 @@ finally:
 
     def test_newline_and_bracket_filenames_use_literal_overlap(self):
         name = 'odd[\nname.txt'
-        todo = self.repo / 'TODO.md'
-        todo.write_text(todo.read_text().replace('Touches: A.txt', 'Touches: odd*'))
+        self.set_todo(self.todo.replace('Touches: A.txt', 'Touches: odd*'))
         self.worker(files={name: 'literal filename'})
         result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
         self.assertEqual(result['outcome'], 'INTEGRATED', result)
@@ -2513,11 +2420,8 @@ finally:
         self.assertTrue(root.exists())
 
     def test_directory_retry_runs_beside_independent_worker(self):
-        todo = self.repo / 'TODO.md'
-        todo.write_text(todo.read_text().replace('Touches: A.txt', 'Touches: component-a/')
+        self.set_todo(self.todo.replace('Touches: A.txt', 'Touches: component-a/')
                         .replace('Touches: B.txt', 'Touches: component-b/'))
-        self.git('add', 'TODO.md')
-        self.git('commit', '-qm', 'directory scopes')
         self.baseline = self.git('rev-parse', 'HEAD')
         self.test_bounded_retry_runs_beside_independent_worker()
 
@@ -2538,13 +2442,10 @@ finally:
         self.assertEqual(second['active_workers'], 2)
 
     def test_two_retries_and_fresh_tasks_fill_eight_worker_slots(self):
-        todo = self.repo / 'TODO.md'
-        with todo.open('a') as out:
-            for task in 'CDEFGHI':
-                out.write(f'\n- [ ] {task} — Task {task}\n  Scope: {task}.txt\n'
-                          f'  Touches: {task}.txt\n  Acceptance: offline fixture\n'
-                          '  Checks: true\n  Dependencies: None.\n  Status: open\n')
-        self.git('commit', '-qam', 'nine independent tasks')
+        self.set_todo(self.todo + ''.join(
+            f'\n- [ ] {task} — Task {task}\n  Scope: {task}.txt\n'
+            f'  Touches: {task}.txt\n  Acceptance: offline fixture\n'
+            '  Checks: true\n  Dependencies: None.\n  Status: open\n' for task in 'CDEFGHI'))
         self.baseline = self.git('rev-parse', 'HEAD')
         for task in 'AB':
             self.worker(task)
@@ -2589,12 +2490,9 @@ finally:
         self.assertLess(time.monotonic(), deadline)
 
     def claimed_retry_fixture(self, exhausted, requested=None):
-        todo = self.repo / 'TODO.md'
-        todo.write_text(todo.read_text().replace('Touches: B.txt', 'Touches: A.txt')
-                        .replace('Status: open', 'Status: in_progress') +
-                        '\n- [ ] C — Independent\n  Scope: C.txt\n  Touches: C.txt\n'
-                        '  Acceptance: fixture\n  Checks: true\n  Dependencies: None.\n  Status: open\n')
-        self.git('commit', '-qam', 'overlapping claimed holds and independent work')
+        self.set_todo(self.todo.replace('Touches: B.txt', 'Touches: A.txt') +
+                      '\n- [ ] C — Independent\n  Scope: C.txt\n  Touches: C.txt\n'
+                      '  Acceptance: fixture\n  Checks: true\n  Dependencies: None.\n  Status: open\n')
         self.baseline = self.git('rev-parse', 'HEAD')
         self.start_sleeping_slot('C')
         for task in 'AB':
@@ -2621,8 +2519,7 @@ finally:
         self.claimed_retry_fixture(exhausted=True)
 
     def retry_blocked_fixture(self, constraint, outcome='IDLE'):
-        todo = self.repo / 'TODO.md'
-        content = todo.read_text()
+        content = self.todo
         if constraint == 'overlap':
             content = content.replace('Touches: A.txt', 'Touches: B.txt')
         elif constraint == 'exclusive':
@@ -2634,8 +2531,7 @@ finally:
             z = ('- [ ] Z — Task Z\n  Scope: Z.txt\n  Touches: Z.txt\n  Resources: exclusive\n'
                  '  Acceptance: offline fixture\n  Checks: true\n  Dependencies: None.\n  Status: open\n')
             content = content.replace('- [ ] A ', z + '\n- [ ] A ', 1) if constraint == 'draining' else content + '\n' + z
-        todo.write_text(content)
-        self.git('commit', '--allow-empty', '-qam', 'scope fixture')
+        self.set_todo(content)
         self.baseline = self.git('rev-parse', 'HEAD')
         self.start_sleeping_slot('B')
         if constraint.startswith('draining'):  # after B's own dispatch observation, which resets the clock
@@ -2752,6 +2648,164 @@ sys.exit(1)
         self.assertTrue(finished)
         self.assertEqual(missed, [late.pid])
         late.returncode = -9  # reaped by the cleanup, not by Popen
+
+    # --- Task Store v2 acceptance (TOOLSET-298-c2, TOOLSET-302-33, TOOLSET-300-68) -------------
+
+    def edit_record(self, task, changes, message):
+        """An owner's edit to a task record, committed on the canonical branch."""
+        import task_store
+        path = self.repo / 'tasks/items' / f'{task}.md'
+        path.write_text(task_store.edit(path.read_text(), changes))
+        self.git('commit', '-qam', message)
+
+    def edit_during_validation(self, task, key, value):
+        """A validation command that commits one edit to ``task``'s record once while it runs, as
+        the runner does when it takes main beside a review, counting its runs."""
+        runs = Path(self.temp.name) / 'runs'
+        path = self.repo / 'tasks/items' / f'{task}.md'
+        script = (f'echo run >> {runs}; if [ ! -e {runs}.moved ]; then touch {runs}.moved; '
+                  f'sed -i "s/^{key} = .*/{key} = {value}/" {path}; '
+                  f'git -C {self.repo} -c user.email=o@example.invalid -c user.name=Owner commit -qam "owner {key}"; fi')
+        return ['bash', '-c', script], runs
+
+    def test_rank_edit_keeps_admitted_work(self):
+        self.worker()  # dispatched against A's contract, and reported
+        self.edit_record('A', {'rank': 99999, 'title': 'Task A, renamed'}, 'the owner re-sorts A')
+        result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual(self.module().close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
+
+    def test_contract_edit_invalidates_admitted_work(self):
+        self.worker()
+        self.edit_record('A', {'acceptance': ['a requirement no one verified']}, 'the owner changes A')
+        result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual((result['outcome'], result.get('cause')), ('HELD', 'contract_changed'), result)
+        self.assertEqual((self.repo / 'A.txt').read_text(), 'base\n')  # the attempt's commit did not land
+        self.assertNotEqual(self.record('A').status, 'done')
+        retry = self.module().retry_held(self.retry_args())  # set aside; it runs fresh against the new contract
+        self.assertEqual((retry.get('outcome'), retry['renamed'][0]['branch_now']), ('REQUEUED', 'autowork/A-set-aside-1'))
+        self.assertEqual(state.slots(self.common), [])
+
+    def test_a_superseded_or_closed_admitted_task_is_set_aside(self):
+        """Status is outside the contract hash, so a close is checked as its own transition."""
+        for status in ('superseded', 'done'):
+            with self.subTest(status=status):
+                self.worker()
+                pinned = self.record('A').contract_hash
+                self.edit_record('A', {'status': status}, f'the owner marks A {status}')
+                self.assertEqual(self.record('A').contract_hash, pinned)  # the hash alone would keep it
+                result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
+                self.assertIn('set aside', result['reason'], result)
+                self.assertEqual((self.repo / 'A.txt').read_text(), 'base\n')
+                self.assertEqual(state.slots(self.common), [])
+                self.edit_record('A', {'status': 'open'}, 'A reopens for the next case')
+
+    def test_rank_edit_on_base_keeps_the_remerge_shortcut(self):
+        self.worker()
+        argv, runs = self.edit_during_validation('A', 'rank', '77777')
+        result = self.module().integrate(self.repo, self.owner, 'A', argv, 30)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual(runs.read_text().count('run'), 1)  # a rank is bookkeeping: validated once
+        self.assertEqual(self.record('A').rank, 77777)
+
+    def test_acceptance_edit_on_base_requires_revalidation(self):
+        self.worker()
+        argv, runs = self.edit_during_validation('A', 'acceptance', "['changed while it was checked']")
+        result = self.module().integrate(self.repo, self.owner, 'A', argv, 30)
+        self.assertNotEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual((result.get("cause"), self.record("A").status), ("contract_changed", "open"), (result, runs.read_text()))
+        self.assertEqual((self.repo / 'A.txt').read_text(), 'base\n')
+
+    def test_worker_cannot_grant_authority_via_task_edit(self):
+        """A worker branch that adds a task with live authorization, or grants another task
+        resources, checks or live authorization, is held, never merged as bookkeeping."""
+        for t in 'CD':
+            self.repo.joinpath(t + '.txt').write_text('base\n')
+        self.git('add', '.')
+        self.set_todo(self.todo + ''.join(
+            f'\n- [ ] {t} — Task {t}\n  Scope: {t}.txt\n  Touches: {t}.txt\n  Acceptance: offline fixture\n'
+            f'  Checks: true\n  Dependencies: None.\n  Status: open\n' for t in 'CD'))
+        self.baseline = self.git('rev-parse', 'HEAD')
+        grants = {
+            'A': ('tasks/items/NEW.md', self.task_text('B').replace('id = "B"', 'id = "NEW"').replace(
+                'resources = []', 'resources = ["live"]').replace('kind = "implementation"',
+                                                                 'kind = "implementation"\nlive = "authorized"')),
+            'C': ('tasks/items/B.md', self.task_text('B').replace('resources = []', 'resources = ["port:80"]')),
+            'D': ('tasks/items/B.md', self.task_text('B').replace('checks = ["true"]', 'checks = ["true", "deploy"]')),
+        }
+        for worker, (path, text) in grants.items():
+            with self.subTest(grant=path, worker=worker):
+                self.worker(worker, {f'{worker}.txt': 'worker\n', path: text})
+                result = self.module().integrate(self.repo, self.owner, worker, ['true'], 10)
+                self.assertEqual((result['outcome'], result['cause'], result['outside']), ('HELD', 'scope', [path]), result)
+                self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
+                self.assertIsNone(self.record('NEW'))
+                self.assertEqual((self.record('B').resources, self.record('B').checks), ((), ('true',)))
+        self.assertEqual(self.module().retry_held(self.retry_args())['outcome'], 'IDLE')  # never offered again
+
+    def close_committed(self, task='A'):
+        result = self.module().close(self.repo, self.owner, task)
+        if result['files']:
+            self.git('add', '--', *result['files'])
+            self.git('commit', '-qm', f'docs(tasks): close {task}')
+        return result
+
+    def test_closure_is_one_commit(self):
+        self.worker()
+        self.assertEqual(self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        before = self.git('rev-parse', 'HEAD')
+        result = self.close_committed()
+        self.assertEqual(result['files'], ['tasks/evidence/A.toml', 'tasks/items/A.md'])
+        self.assertEqual(self.git('rev-list', '--count', f'{before}..HEAD'), '1')
+        self.assertEqual(self.git('show', '--format=', '--name-only', 'HEAD').split(),
+                         ['tasks/evidence/A.toml', 'tasks/items/A.md'])  # only that task's file and receipt
+        self.assertEqual(self.record('A').status, 'done')
+        receipt = (self.repo / 'tasks/evidence/A.toml').read_text()
+        slot = state.slots(self.common)[0] if state.slots(self.common) else None
+        self.assertIn(f'contract_hash = "{self.record("A").contract_hash}"', receipt)
+        self.assertIn('candidate = "', receipt)
+        self.assertIn('tree = "', receipt)
+        self.assertTrue(slot is None or slot['state'] == 'closed')
+
+    def test_replayed_closure_is_a_noop(self):
+        self.worker()
+        self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.close_committed()
+        head = self.git('rev-parse', 'HEAD')
+        again = self.close_committed()
+        self.assertEqual((again['outcome'], again['files']), ('CLOSED', []))
+        self.assertEqual(self.git('rev-parse', 'HEAD'), head)
+        self.assertEqual(self.git('status', '--porcelain'), '')
+
+    def test_crash_mid_closure_resumes_once(self):
+        """A crash after the status write and before the receipt: the next close finishes it, and
+        the closure is still one commit."""
+        self.worker()
+        self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
+        before = self.git('rev-parse', 'HEAD')
+        path = self.repo / 'tasks/items/A.md'
+        path.write_text(path.read_text().replace('status = "open"', 'status = "done"'))  # the crash point
+        result = self.close_committed()
+        self.assertEqual(result['outcome'], 'CLOSED', result)
+        self.assertEqual(self.git('rev-list', '--count', f'{before}..HEAD'), '1')
+        self.assertTrue((self.repo / 'tasks/evidence/A.toml').is_file())
+        self.assertEqual(self.close_committed()['files'], [])
+        self.assertEqual(self.git('rev-list', '--count', f'{before}..HEAD'), '1')
+
+    def test_receipt_has_no_private_paths(self):
+        self.worker()
+        secret = 'sk-fixture-secret-9f3a'
+        command = ['bash', '-c', f'test -d {self.repo} && test -n "{secret}"']
+        with patch.dict(os.environ, FIXTURE_API_TOKEN=secret):
+            self.assertEqual(self.module().integrate(self.repo, self.owner, 'A', command, 10)['outcome'], 'INTEGRATED')
+            self.close_committed()
+        receipt = (self.repo / 'tasks/evidence/A.toml').read_text()
+        for private in (str(self.repo), self.temp.name, str(Path.home()), secret):
+            self.assertNotIn(private, receipt)
+        self.assertIn('[REDACTED]', receipt)
+        self.assertIn('<path>', receipt)
+        for key in ('time', 'log', 'transcript'):
+            self.assertNotIn(f'\n{key} =', '\n' + receipt)
 
 
 class ExpectedBranchTests(unittest.TestCase):

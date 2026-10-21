@@ -94,11 +94,13 @@ Do not execute upstream host integration commands or install hooks from examples
 
 ## Adapt artifacts and authority
 
-Apply [TODO work center](../shared/TODO-WORKCENTER.md). TODO.md is the human work
-queue and goals.json is its synchronized execution index. Map upstream
-`tasks/todo.md` and `tasks/plan.md` onto existing canonical tasks and linked plans;
+Apply the [work center](../shared/TODO-WORKCENTER.md). The repository's `tasks/`
+store is the one work queue, edited through `autowork tasks`. Map upstream
+`tasks/todo.md` and `tasks/plan.md` onto existing task records in `tasks/items/` and
+linked plans;
 never create a competing backlog or duplicate task IDs. Reuse accepted specs,
-quality requirements and decisions. Docs Sync reconciles documentation and tasks;
+quality requirements and decisions. Docs Sync reconciles documentation; planning
+saves tasks;
 Autoresearch performs bounded research/planning; Autowork remains the executor.
 
 Carry existing user authorization through phases. Routine engineering choices and
@@ -113,7 +115,7 @@ Keep repository-specific tests, active-writer protection and genuine review gate
 ## Record application, not just selection
 
 For a technique that materially changes a decision or artifact, record in the
-existing TODO task, supporting receipt or worker handoff:
+existing task record (as a note), supporting receipt or worker handoff:
 
 `Skill application: <trigger>; <protocol path>@<pinned revision>; <decision or changed artifact>; <executed check/result or NOT_CHECKED>.`
 

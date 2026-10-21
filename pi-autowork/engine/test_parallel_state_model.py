@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import task_execution as execution
 import parallel_dispatch as dispatch
 import parallel_state as state
+import store_fixture
 
 TASKS = ('A', 'B', 'C')
 STATES = tuple(state.TRANSITIONS)
@@ -85,9 +86,7 @@ class Repo:
         self.git('add', '.')
         self.git('commit', '-qm', 'root')
         self.root_commit = self.git('rev-parse', 'HEAD')
-        (self.repo / 'TODO.md').write_text(TODO)
-        self.git('add', '.')
-        self.git('commit', '-qm', 'base')
+        store_fixture.write_todo(self.repo, TODO)
         self.base = self.git('rev-parse', 'HEAD')
         self.sibling = self.git('commit-tree', self.base + '^{tree}', '-p', self.root_commit, '-m', 'sibling')
         self.owner = os.getppid()

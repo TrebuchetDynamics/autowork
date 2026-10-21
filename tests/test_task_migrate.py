@@ -8,9 +8,9 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 COMMAND = ROOT / 'pi-autowork/pi_autowork/command.py'
-GOALS = ROOT / 'skills/docs-sync/scripts/goals.py'
 sys.path.insert(0, str(ROOT / 'pi-autowork/engine'))
-import task_execution  # noqa: E402
+sys.path.insert(0, str(ROOT / 'pi-autowork'))
+from pi_autowork.legacy import reader  # noqa: E402
 from task_store import TaskStore  # noqa: E402
 
 EVIDENCE = [{'kind': 'executed', 'ref': 'fixture check', 'result': 'pass'}]
@@ -24,34 +24,9 @@ def entry(tid, title, goal, done=False, **fields):
     return '\n'.join(lines) + '\n\n'
 
 
-TODO = ('# Work queue\n\n## Now\n\n'
-        + entry('T-001', 'Alpha', 'G1', Touches='src/a.py', Resources='port:8080 — the dev server',
-                Dependencies='None.', Sources='[plan](docs/plan.md)')
-        + entry('T-002', 'Beta', 'G2', Touches='src/b.py', Dependencies='T-001')
-        + entry('T-003', 'Gamma', 'G1', Dependencies='None.', Kind='plan')
-        + '## Next\n\n'
-        + entry('T-004', 'Delta', 'G2', Touches='src/d.py', Ownership='Owner only',
-                Live_authorization='granted 2026-10-20 for the staging deploy', Dependencies='None.')
-        + entry('T-005', 'Epsilon', 'G1', Touches='src/e.py', Dependencies='T-006 (archived)')
-        + '## Needs decision\n\n'
-        + entry('T-007', 'Eta', 'G1', Touches='src/h.py', Dependencies='None.', Owner_decision='2026-10-20: later')
-        + entry('T-006', 'Zeta', 'G3', done=True, Touches='src/z.py', Dependencies='None.'))
-
-
-def ledger():
-    task = lambda tid, goal, section, status='open', deps=(): dict(
-        id=tid, title=tid, goal=goal, section=section, status=status, depends_on=list(deps))
-    return {'version': 1, 'primary_milestone': 'G2',
-            'goals': [dict(id='G1', title='One', source='TODO.md', status='unmet', priority=2, depends_on=[],
-                           tasks=['T-001', 'T-003', 'T-005', 'T-007']),
-                      dict(id='G2', title='Two', source='TODO.md', status='partial', priority=1, depends_on=[],
-                           tasks=['T-002', 'T-004']),
-                      dict(id='G3', title='Three', source='TODO.md', status='met', priority=3, depends_on=[],
-                           tasks=['T-006'], evidence=EVIDENCE)],
-            'tasks': [task('T-001', 'G1', 'Now'), task('T-002', 'G2', 'Now', deps=['T-001']),
-                      task('T-003', 'G1', 'Now'), task('T-004', 'G2', 'Next'),
-                      task('T-005', 'G1', 'Next', deps=['T-006']), task('T-007', 'G1', 'Needs decision'),
-                      task('T-006', 'G3', 'Done', 'done')]}
+# A queue as the last Docs Sync left it: T-006 archived, its priority order recorded. Frozen
+# as files, since goals.py, which wrote them, is gone.
+FIXTURE = ROOT / 'tests/fixtures/task_migrate'
 
 
 class MigrateTests(unittest.TestCase):
@@ -61,17 +36,8 @@ class MigrateTests(unittest.TestCase):
         self.repo = Path(self.tmp.name) / 'repo'
         self.repo.mkdir()
         self.git('init', '-q')
-        (self.repo / 'TODO.md').write_text(TODO)
-        (self.repo / 'goals.json').write_text(json.dumps(ledger(), indent=2))
-        archived = subprocess.run([sys.executable, str(GOALS), 'archive', str(self.repo)],
-                                  capture_output=True, text=True)
-        self.assertEqual(archived.returncode, 0, archived.stderr)
-        self.assertIn('T-006', archived.stdout)
-        order = subprocess.run([sys.executable, str(GOALS), 'bootstrap-order', str(self.repo), '--dry-run'],
-                               capture_output=True, text=True)
-        revision = json.loads(order.stdout)['revision']
-        subprocess.run([sys.executable, str(GOALS), 'bootstrap-order', str(self.repo), '--expected-revision',
-                        revision], check=True, capture_output=True)
+        for name in ('TODO.md', 'TODO.archive.md', 'goals.json'):
+            (self.repo / name).write_bytes((FIXTURE / name).read_bytes())
         self.commit()
 
     def git(self, *args):
@@ -87,7 +53,7 @@ class MigrateTests(unittest.TestCase):
                               capture_output=True, text=True, timeout=120)
 
     def test_migration_keeps_order_and_fields(self):
-        legacy = [c['id'] for c in task_execution.select_all(self.repo)]
+        legacy = reader.order(self.repo)
         recorded = json.loads((self.repo / 'goals.json').read_text())['priority_order']['tasks']
         # Focus G2 first (T-004, though in Next; T-002 waits for T-001), then Now, then Next.
         self.assertEqual(legacy, ['T-004', 'T-001', 'T-003', 'T-005'])
@@ -121,7 +87,8 @@ class MigrateTests(unittest.TestCase):
     def test_migration_refuses_unsafe_states(self):
         common = self.repo / '.git/autowork-execution'
         cases = {
-            'uncommitted planning files': lambda: (self.repo / 'TODO.md').write_text(TODO + '\n'),
+            'uncommitted planning files': lambda: (self.repo / 'TODO.md').write_text(
+                (FIXTURE / 'TODO.md').read_text() + '\n'),
             'worker slots in flight': lambda: self.slot('running'),
             'unfinished integration/closure': lambda: self.slot('integrating'),
             'claimed tasks': lambda: self.claim(),
@@ -165,6 +132,31 @@ class MigrateTests(unittest.TestCase):
         self.commit()
         self.assertEqual(self.migrate().returncode, 0)
         self.assertEqual(TaskStore.at(self.repo, 'HEAD').tasks['T-004'].live.value, 'authorized')
+
+    def test_a_repeated_note_is_kept_and_a_repeated_typed_field_refused(self):
+        text = (self.repo / 'TODO.md').read_text()
+        alpha = '- Sources: [plan](docs/plan.md)'
+        (self.repo / 'TODO.md').write_text(text.replace(alpha, alpha + '\n- Evidence: first run\n- Evidence: second run'))
+        self.commit()
+        self.assertEqual(self.migrate().returncode, 0)
+        body = TaskStore.at(self.repo, 'HEAD').tasks['T-001'].body
+        self.assertIn('- Evidence: first run\n- Evidence: second run', body)
+
+    def test_two_entries_for_one_task_refuse(self):
+        text = (self.repo / 'TODO.md').read_text()
+        (self.repo / 'TODO.md').write_text(text.replace('## Next', entry('T-001', 'Alpha again', 'G1') + '## Next'))
+        self.commit()
+        refused = self.migrate('--dry-run')
+        self.assertEqual(refused.returncode, 1)
+        self.assertIn('T-001', refused.stderr)
+
+    def test_a_repeated_typed_field_refuses(self):
+        text = (self.repo / 'TODO.md').read_text()
+        (self.repo / 'TODO.md').write_text(text.replace('- Touches: src/a.py', '- Touches: src/a.py\n- Touches: src/z.py'))
+        self.commit()
+        refused = self.migrate('--dry-run')
+        self.assertEqual(refused.returncode, 1)
+        self.assertIn('T-001: Touches written more than once', refused.stderr)
 
     def test_migration_refuses_unlossless_input(self):
         dry = self.migrate('--dry-run')

@@ -345,7 +345,8 @@ class WorkerTmpTests(unittest.TestCase):
                                          '-c', 'user.name=T', *a], check=True, capture_output=True,
                                         text=True).stdout.strip()
         (self.repo / 'source.py').write_text('base\n')
-        (self.repo / 'TODO.md').write_text('base plan\n')
+        (self.repo / 'tasks/items').mkdir(parents=True)
+        (self.repo / 'tasks/items/T.md').write_text('base plan\n')
         (self.repo / 'BLOCKERS.md').write_text('base questions\n')
         git('add', '-A')
         git('commit', '-qm', 'base')
@@ -353,8 +354,8 @@ class WorkerTmpTests(unittest.TestCase):
         state, runs = self.repo / '.git' / 'state', self.repo / '.git' / 'runs'
         command = f'echo ran >> {runs}'
         worker.base_result(state, self.repo, command, base_rev, 10)
-        for path, expected_runs in (('BLOCKERS.md', 1), ('TODO.md', 1), ('TODO.archive.md', 1),
-                                    ('todo.archive.md', 1), ('goals.json', 1), ('docs/nested/plan.md', 1),
+        for path, expected_runs in (('BLOCKERS.md', 1), ('tasks/items/T.md', 1), ('TODO.archive.md', 1),
+                                    ('todo.archive.md', 1), ('tasks/goals/G.md', 1), ('docs/nested/plan.md', 1),
                                     ('source.py', 2)):
             with self.subTest(path=path):
                 target = self.repo / path
@@ -469,14 +470,14 @@ class WorkerTmpTests(unittest.TestCase):
         write(merged_tree)
         self.assertEqual(worker.batched_verdict(state, 'T-1', str(self.repo)), (True, ''))
         self.assertIsNone(worker.batched_verdict(state, 'T-1', str(self.repo)))  # used once
-        (self.repo / 'TODO.md').write_text('planning\n')  # the session took a planning commit since
-        git('add', 'TODO.md')
+        (self.repo / 'BLOCKERS.md').write_text('planning\n')  # the session took a planning commit since
+        git('add', 'BLOCKERS.md')
         git('commit', '-qm', 'questions')
         write(merged_tree)
         self.assertEqual(worker.batched_verdict(state, 'T-1', str(self.repo)), None)  # HEAD is not the merge any more
         git('reset', '-q', '--hard', 'HEAD~1')
-        (self.repo / 'TODO.md').write_text('planning\n')
-        git('add', 'TODO.md')
+        (self.repo / 'BLOCKERS.md').write_text('planning\n')
+        git('add', 'BLOCKERS.md')
         git('commit', '-q', '--amend', '--no-edit')  # same merge, plus a planning file
         write(merged_tree)
         self.assertEqual(worker.batched_verdict(state, 'T-1', str(self.repo)), (True, ''))
@@ -906,7 +907,7 @@ class BatchLandingTests(unittest.TestCase):
                 self.assertFalse(runner.merge_main())
             self.assertEqual(said, ['Merge pending: B land first, on the trees their batch passed'])  # said once
             runner.commit_session_leftovers, runner.ahead = (lambda: None), (lambda: 0)
-            with patch.object(coordinator, 'git', return_value='TODO.md\ndocs/plan.md\n'):
+            with patch.object(coordinator, 'git', return_value='tasks/items/T.md\ndocs/plan.md\n'):
                 self.assertTrue(runner.merge_main())  # planning and docs leave the verdicts valid
 
     def test_a_commit_at_the_merge_limit_runs_fresh_instead_of_asking_the_owner(self):

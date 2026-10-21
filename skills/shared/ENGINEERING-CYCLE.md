@@ -17,9 +17,9 @@ exhaustion requires explicit additional allocation, never a new occurrence or se
 Design approval alone does not authorize execution. Preserve no-commit, no-push,
 no-deploy and other user boundaries throughout; skill defaults cannot expand them.
 
-Apply [TODO work center](TODO-WORKCENTER.md): TODO.md holds user-facing plans and
-orders; reconcile it with goals.json before selection or rendering. Autoresearch
-persists findings there by default. Autowork invokes bounded planning when useful
+Apply the [work center](TODO-WORKCENTER.md): `tasks/` holds the repository's tasks,
+goals and their order; reconcile user instructions into it before selection.
+Autoresearch persists findings there by default. Autowork invokes bounded planning when useful
 work has unresolved research or decomposition questions, then retries execution.
 An empty queue alone calls for bounded inspection, not mandatory Autoresearch.
 
@@ -50,7 +50,7 @@ the same task or add a second review/planning loop merely because a skill exists
 Explicit user-required methods and actual acceptance/review gates still apply.
 A helper called by Autowork returns findings, changed paths, checks and task IDs to
 that coordinator; it never starts another picker, backlog or scheduler. Reuse the
-same TODO entry and receipt. Record a skill's application only when it materially
+same task record and receipt. Record a skill's application only when it materially
 changes a decision or artifact; never manufacture receipts for unused skills.
 
 ## Test budget
@@ -81,7 +81,7 @@ for its matrix, evidence, retained-risk mapping and review rules.
   budget per change/PR, environment/baseline and the review rule for unique-risk
   exceptions. Unknown costs/history stay unknown. Budget exceptions never waive
   safety, security, authorization, data-loss or required qualification obligations.
-- Run focused tests and the task's `Checks:` while working, not a full suite after
+- Run focused tests and the task's `checks` while working, not a full suite after
   each edit. Run the required normal gate once for final acceptance under the
   repository's execution contract; if the coordinator owns that gate, retain its
   pending result rather than claim it passed. Optional impact selection needs sound
@@ -103,8 +103,8 @@ Use [autoresearch](../autoresearch/SKILL.md) for bounded measured experiments,
 diagnosis, adversarial analysis and research-driven planning. Its original command
 protocols are vendored with a pinned revision. `plan`/`learn`/`improve` and all
 research checkpoints route findings through docs-sync narrow Maintain: update
-existing document owners, deduplicate accepted tasks, schedule Now/Next in TODO.md
-and canonical goals.json, and run the consumer handoff gate. TSV/handoff files are
+existing document owners, deduplicate accepted tasks, place them in Now/Next with
+`autowork tasks`, and run `autowork tasks validate --worktree .`. TSV/handoff files are
 evidence, never a competing task queue. Autowork retains task ownership, execution,
 review and commit gates. Planning does not dispatch workers or create timers;
 already-authorized implementation can continue from a verified eligible handoff.
@@ -148,7 +148,7 @@ SKILL.md paths. The engineering adapter's pinned Addy snapshot is the default;
 select one technique with `scripts/route.py --protocol NAME` when a method is needed.
 Phase bundles are optional; load selected support only. This works without
 external imports and avoids ambiguous bare names. Preserve recorded vendored
-adaptations and apply the adapter's TODO, authorization and host-tool translations.
+adaptations and apply the adapter's task-store, authorization and host-tool translations.
 
 An explicit user request to use a separate installed Addy version wins: verify its
 source/revision through the profile catalog and `skills/.hub/lock.json`, disclose
@@ -160,7 +160,7 @@ namespace or assume another profile's home. Existing imports are left intact.
 | Missing owner intent that evidence cannot resolve | `interview-me` | Ask only the material owner question; routine engineering decisions use the autonomy rule above. |
 | Missing specification | `spec-driven-development` | Reuse the accepted spec/PRD; do not restart accepted design. |
 | Changed behavior or architectural decision | `documentation-and-adrs` | Amend affected docs/ADR with observed facts; docs-sync owns backlog reconciliation. |
-| Accepted work needs bounded tasks | `planning-and-task-breakdown` | Add dependencies, scope and checks to canonical `goals.json` and root `TODO.md`. |
+| Accepted work needs bounded tasks | `planning-and-task-breakdown` | Add dependencies, scope and checks to the task records in `tasks/` with `autowork tasks`. |
 | A consequential planning assumption needs scrutiny | `doubt-driven-development` | Test the artifact/contract; record corrections and unresolved risks. |
 | Implement an eligible slice | `incremental-implementation` | Keep one observable result, owned files and task ID. |
 | Changed logic or a bug | `test-driven-development` | Minimum sufficient red/green protection at the right seams within the [test budget](#test-budget). |
@@ -191,12 +191,12 @@ that could conceivably be relevant. Missing optional guidance is not a gate;
 missing required acceptance or execution capability must still be reported.
 
 Load only relevant skills, not this whole table. Adapt upstream examples such as
-`tasks/todo.md`, new spec files and automatic commits to existing owners and
-permissions; never create a competing backlog or duplicate accepted tasks.
+`tasks/todo.md`, new spec files and automatic commits to existing owners (task
+records in `tasks/items/`) and permissions; never create a competing backlog or duplicate accepted tasks.
 
 For docs-sync, apply these skills through
 [decisive planning](../docs-sync/references/decisive-planning.md): evidence-backed
-Now/Next ordering, bounded bodies and repaired consumer contracts are the outputs.
+Now/Next ordering, bounded records and repaired task contracts are the outputs.
 Record selected skill → changed owner/decision/check; a list of loaded skills does
 not establish application. A usable accepted backlog does not need repeated planning.
 
@@ -225,12 +225,12 @@ coverage. Mark unavailable required checks NOT_CHECKED, never pretend they passe
 
 ## One canonical backlog, one executor, one closure owner
 
-1. Docs Sync reconciles accepted requirements into existing goal/task IDs and full
-   TODO bodies. Use [plan handoff](PLAN-HANDOFF.md) and its consumer backlog-check;
-   drafts, missing acceptance and unresolved dependencies do not become ready work.
+1. Planning reconciles accepted requirements into existing goal/task IDs and
+   complete task records. Use [plan handoff](PLAN-HANDOFF.md) and `autowork tasks
+   validate`; drafts, missing acceptance and unresolved dependencies do not become ready work.
    A usable backlog skips another bootstrap or broad audit.
 2. For explicitly authorized whole-spec execution, restrict selection to accepted
-   IDs and dependency-ready tasks. Read TODO and any existing goals index, inspect
+   IDs and dependency-ready tasks. Read `autowork tasks list` and the records, inspect
    actual process/workspace ownership and source freshness, then execute in the
    current session using Autowork's direct contract. No native card admission,
    board lookup or mandatory worker is required. Optional delegation uses the
@@ -256,8 +256,7 @@ coverage. Mark unavailable required checks NOT_CHECKED, never pretend they passe
    [parallel report contract](../autowork/references/parallel-workers.md#documentation-impact-evidence).
    In sequential native/portable execution, resolve bundled Docs Sync in the actual
    host and run scoped Maintain only for a concrete delta, before final closure.
-   No full bootstrap or global manifest is required; archive rendering alone is not
-   Maintain. Do not change unrelated policy or Acceptance. Read back affected docs
+   No full bootstrap or global manifest is required. Do not change unrelated policy or Acceptance. Read back affected docs
    and run their checks. Preserve foreign dirty docs and reconcile moved source,
    rather than overwrite or repin old evidence. Required doc failure/interruption
    retains implementation and pending resume evidence, not a false documentation
@@ -266,26 +265,16 @@ coverage. Mark unavailable required checks NOT_CHECKED, never pretend they passe
    The Pi runtime's closeout Maintain pass belongs to DOCS-MAINTAINER (TOOLSET-266-7a),
    not a second close authority inside its atomic transaction. Report evidence alone
    neither launches that pass nor proves documentation acceptance.
-   After the required gates, when goals.json exists, the owner uses the bundled `goals.py task <repo> <TASK> done`
-   and `goals.py evidence <repo> <GOAL> --kind executed --ref "<actual command>"
-   --result pass|fail` for actual check receipts. The helper requires all goal tasks
-   done and an executed pass to promote an unmet goal; it does not independently
-   verify review, source freshness or truth of caller-supplied evidence.
-   Reconcile task bodies, then run `goals.py validate <repo>` and
-   `goals.py render <repo>`; use canonical authority
-   and revision guards and preserve concurrent edits. Rendering updates goal
-   coverage and automatically archives explicitly closed, ledger-done task bodies
-   under the [archive contract](../docs-sync/references/todo-archive.md). It does
-   not reconcile task-body status or implementation docs. Read back and review
-   TODO.md and the actual selected archive, including a custom history path.
-   Verify complete open bodies remain live, complete closed bodies and prior history
-   survive in the archive, local links resolve, and an unchanged second render leaves
-   both files byte-identical. Include attributable TODO/archive changes in the handoff
-   and any authorized commit together. These checks do not prove model adherence or
-   live task completion.
-   With TODO-only tasks, reconcile their verified acceptance and evidence directly;
-   no index or extra public task registry is required.
-6. Re-read the eligible TODO/index queue and actual ownership after reconciliation. Under an active Autowork
+   After the required gates, the engine's verified close writes `status = "done"`
+   and the receipt in `tasks/evidence/<ID>.toml` in one commit; replaying it is a
+   no-op. Closing without the engine uses `autowork tasks done ID --evidence TEXT`.
+   A goal becomes met with `autowork tasks goal ID --status met --evidence TEXT`
+   naming an executed, passing check; never because its queue is empty. Neither
+   independently verifies review, source freshness or the truth of supplied
+   evidence. Run `autowork tasks validate --worktree .`, read back the changed
+   records and include them in the handoff and any authorized commit together.
+   These checks do not prove model adherence or live task completion.
+6. Re-read the eligible queue (`autowork tasks list`) and actual ownership after reconciliation. Under an active Autowork
    invocation/job, finish authorized closeout. Select another batch only when caller
    scope permits it and saved stop/batch limits and remaining allocation allow it.
    Default interactive, planning-only and explicit one-task requests report the next

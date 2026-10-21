@@ -13,9 +13,7 @@ from pathlib import Path
 import re
 import signal
 import sqlite3
-from contextlib import closing, redirect_stdout
-from io import StringIO
-from types import SimpleNamespace
+from contextlib import closing
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -24,7 +22,9 @@ from uuid import uuid4
 import yaml
 from candidate_identity import git_environment
 from cron_output import response_body
-from retry_selection import goals
+import task_queue
+import task_select
+from task_store import StoreError
 
 
 def dirty_count(status):
@@ -39,59 +39,41 @@ def dirty_count(status):
     return count
 
 
-def backlog_readiness(root, gaps):
+def git_identity(root):
+    """Whether ``root`` is inside a Git work tree, asked of that path alone."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
     try:
-        identity = goals.git_identity(root)
+        result = subprocess.run(['git', '-C', str(root), 'rev-parse', '--is-inside-work-tree'],
+                                capture_output=True, text=True, timeout=10, env=env)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0 and result.stdout.strip() == 'true'
+
+
+def backlog_readiness(root, gaps):
+    """Which tasks the consumer's store would select now, read at its HEAD without locks."""
+    try:
+        identity = git_identity(root)
         canonical = {'state': 'observed', 'repo': safe(root)} if identity else {
             'state': 'unknown', 'gate': 'non-Git workspace'}
-        ledger_path = root / 'goals.json'
-        if not ledger_path.exists() and not ledger_path.is_symlink():
-            # The direct selector reads TODO contracts without creating locks/state.
-            from task_execution import select
-            goals.checked_bytes(root / 'TODO.md')
-            task = select(root, None, None)
-            return {'state': 'consumer_ready', 'source': 'TODO.md',
-                    'primary_milestone': None, 'eligible_task_ids': [safe(task['id'])],
-                    'tasks': [{'task_id': safe(task['id']), 'state': 'ready_for_autowork',
-                               'reasons': [], 'plan': None}],
-                    'canonical_readiness': canonical, 'live_ownership': 'unknown',
-                    'boundary': 'local task contract only; ownership, candidate and execution not verified'}
-        data = read_json(ledger_path, gaps)
-        if data is None:
-            return {'state': 'invalid'}
-        problems = goals.errors(data)
-        if problems:
-            gaps.append('backlog validation failed')
-            return {'state': 'invalid', 'errors': [safe(p) for p in problems]}
-        picks, priority = goals.queue(goals.normalize(data), goals.todo_text(root), allow_drift=True)
-        tasks = []
-        todo = goals.checked_bytes(root / 'TODO.md')
-        bodies = goals.task_bodies(todo.decode('utf-8')) if todo else {}
-        if len(picks) > 12: gaps.append('backlog consumer checks: eligible tasks beyond 12 omitted')
-        for task, goal in picks[:12]:
-            entries = bodies.get(task['id'], [])
-            fields = goals.task_fields(entries[0][0]) if len(entries) == 1 else {}
-            refs = re.findall(r'\[[^\]]*\]\(([^\s)]+)\)', fields.get('Sources', ''))
-            plan = None
-            for ref in refs:
-                reasons = []
-                section = goals.local_reference(root, ref, {}, reasons)
-                if '#' in ref and not reasons and re.search(r'^\s*(?:\*\*)?Status:(?:\*\*)?\s*Accepted\s*$', section, re.M | re.I):
-                    plan = ref; break
-            # Use the consumer's pure check directly; its CLI coordination creates a lock.
-            output = StringIO()
-            with redirect_stdout(output):
-                goals.backlog_check(SimpleNamespace(repo=root, plan=plan or goal['source'], tasks=task['id'], receipt=None))
-            checked = json.loads(output.getvalue())
-            tasks.append({'task_id': safe(task['id']), 'state': checked['state'],
-                          'reasons': [safe(reason) for reason in checked['reasons']],
-                          'plan': safe(plan) if plan else None})
-        return {'state': 'consumer_ready' if tasks and canonical['state'] == 'observed' and
-                any(t['state'] == 'ready_for_autowork' for t in tasks) else
-                'ledger_eligible_only' if picks else 'no_ledger_eligible_task',
-                'primary_milestone': data.get('primary_milestone'),
-                'priority_state': priority['state'],
-                'eligible_task_ids': [safe(t['id']) for t, _ in picks], 'tasks': tasks,
+        try:
+            snapshot = task_queue.store(root)
+        except task_queue.Unconverted:
+            return {'state': 'unconverted', 'action': 'run `autowork migrate` on this repository once',
+                    'canonical_readiness': canonical, 'live_ownership': 'unknown'}
+        except StoreError as exc:
+            gaps.append('task store validation failed')
+            return {'state': 'invalid', 'errors': [safe(str(exc))]}
+        picks = task_select.order(snapshot)
+        if len(picks) > 12:
+            gaps.append('backlog consumer checks: eligible tasks beyond 12 omitted')
+        tasks = [{'task_id': safe(t.id), 'state': 'ready_for_autowork', 'reasons': [], 'plan': None}
+                 for t in picks[:12]]
+        focus = next((g.id for g in snapshot.goals.values() if g.focus), None)
+        return {'state': 'consumer_ready' if tasks and canonical['state'] == 'observed' else
+                'ledger_eligible_only' if tasks else 'no_ledger_eligible_task',
+                'primary_milestone': focus, 'priority_state': 'store',
+                'eligible_task_ids': [safe(t.id) for t in picks], 'tasks': tasks,
                 'canonical_readiness': canonical, 'live_ownership': 'unknown',
                 'boundary': 'local consumer qualification only; ownership, admission, candidate and dispatch not verified'}
     except SystemExit as error:
@@ -314,14 +296,12 @@ def repository(home, launch, gaps):
         status = git(root, 'status', '--porcelain=v1', '-z')
         diff = git(root, 'diff', '--no-ext-diff', '--no-textconv', 'HEAD', '--')
         worktrees = git(root, 'worktree', 'list', '--porcelain').decode(errors='replace')
-        backlog = {}
-        for name in ('goals.json', 'TODO.md'):
-            p = root / name
-            if p.is_file() and p.stat().st_size <= 2 * 1024 * 1024:
-                backlog[name] = digest(p.read_bytes())
-            else:
-                backlog[name] = None
-                gaps.append(name + ': absent or beyond limit')
+        # The task store's tree at HEAD fingerprints the backlog; uncommitted task edits are pending.
+        tree = subprocess.run(['git', '-C', str(root), 'rev-parse', '--verify', '-q', 'HEAD:tasks'],
+                              capture_output=True, text=True, timeout=10, env=git_environment())
+        backlog = {'tasks': tree.stdout.strip() or None}
+        if backlog['tasks'] is None:
+            gaps.append('tasks/: absent at HEAD (unconverted or empty repository)')
         # shortcut: untracked bodies are not inspected; an unchanged dirty count is not progress proof.
         if b'?? ' in status: gaps.append('untracked content not inspected')
         return {'state': 'observed', 'root': safe(root),
@@ -391,9 +371,6 @@ def inspect_profile(name, home, launch):
         for field in ('held_task_ids', 'repairs', 'blocker', 'resolved_requests'):
             if isinstance(cycle_raw.get(field), list):
                 owner_cycle[field] = [safe(v) for v in cycle_raw[field] if isinstance(v, str)][:100]
-        queue = cycle_raw.get('ready_queue')
-        owner_cycle['ready_queue'] = [project(t, ('id', 'title', 'goal'))
-                                    for t in (queue if isinstance(queue, list) else []) if isinstance(t, dict)][:3]
         owner_cycle.update(project(cycle_raw, ('queue_shortfall', 'routing_gap')))
         owner_cycle['boundary'] = 'Reported owner-cycle evidence; not fresh worker, remote or product acceptance verification'
     elif cycle_raw is not None:

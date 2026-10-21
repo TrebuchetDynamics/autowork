@@ -8,9 +8,16 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'engine'))
 from pi_autowork import maintainer  # noqa: E402
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'skills/docs-sync/scripts'))
-import goals  # noqa: E402
+import parallel_plan  # noqa: E402
+import store_fixture  # noqa: E402
+import task_queue  # noqa: E402
+import task_store  # noqa: E402
+
+
+def entries(repo):
+    return maintainer.entries(task_queue.store(Path(repo)), task_queue)
 
 
 class MaintainerTests(unittest.TestCase):
@@ -23,7 +30,7 @@ class MaintainerTests(unittest.TestCase):
                 {'task': 'D', 'state': 'waiting', 'reason': 'all 8 worker slots busy'}]
         found = maintainer.overlaps(rows)
         self.assertEqual([(t, k) for t, k, _ in found], [('B', 'overlap'), ('C', 'overlap')])
-        text = maintainer.prompt(found, '/repo', 'goals.py')
+        text = maintainer.prompt(found, '/repo', 'autowork tasks')
         for phrase in ('merge it into the other task', 'split the shared-file part', 'never widen product scope',
                        'Never edit the entry of a task that is running'):
             self.assertIn(phrase, text)
@@ -60,11 +67,11 @@ class MaintainerTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as state:
             root = Path(state)
-            (root / 'TODO.md').write_text('# TODO\n')  # source task already archived
+            store_fixture.write_todo(root, '- [ ] B — Other\n  Scope: x\n')  # A is already closed and gone
             evidence = root / 'ledger-edit.patch'
-            evidence.write_text('--- a/TODO.md\n+++ b/TODO.md\n-old link\n+fixed link\n' + 'x' * 1000)
+            evidence.write_text('--- a/tasks/items/B.md\n+++ b/tasks/items/B.md\n-old link\n+fixed link\n' + 'x' * 1000)
             row = dict(task='A', state='reported', reason='',
-                       ledger_edit_dropped=dict(paths=['TODO.md'], patch=str(evidence)))
+                       ledger_edit_dropped=dict(paths=['tasks/items/B.md'], patch=str(evidence)))
             self.assertEqual(maintainer.triggers([row]), [])
             row['state'] = 'integrated'
             found = maintainer.triggers([row])
@@ -74,7 +81,7 @@ class MaintainerTests(unittest.TestCase):
             row['state'] = 'closed'
             runner = Coordinator.__new__(Coordinator)
             runner.state, runner.repo, runner.integ, runner.stop = root, state, state, False
-            runner.toolset, runner.goals, runner.verify_timeout = Path(__file__).resolve().parents[2], 'goals.py', 1
+            runner.toolset, runner.tasks_cli, runner.verify_timeout = Path(__file__).resolve().parents[2], 'autowork tasks', 1
             runner.in_flight = runner.session_busy = lambda: False
             rows = [row] + [dict(row, task=f'Z{i:02}') for i in range(maintainer.LIMIT)]
             runner.tasks = lambda: rows
@@ -97,10 +104,10 @@ class MaintainerTests(unittest.TestCase):
                     with self.assertRaises(Finish) as done:
                         runner.cycle()
                     self.assertEqual(done.exception.code, 0)
-                    (root / 'TODO.md').write_text('# TODO\n\nUnrelated planning edit\n')
+                    (root / 'BLOCKERS.md').write_text('# Blockers\n\nUnrelated planning edit\n')
             self.assertEqual(len(prompts), 2)
             self.assertTrue(all('+fixed link' in message for message in prompts))
-            self.assertEqual((root / 'TODO.md').read_text(), '# TODO\n\nUnrelated planning edit\n')
+            self.assertEqual((root / 'BLOCKERS.md').read_text(), '# Blockers\n\nUnrelated planning edit\n')
 
     def test_repeated_quick_hold_is_repaired_once_even_after_cosmetic_entry_edits(self):
         row = dict(task='A', state='held', cause='blocker', reason='missing receipt',
@@ -147,7 +154,7 @@ class MaintainerTests(unittest.TestCase):
                 fresh = maintainer.triggers([], main, reported_flakes=reported)
                 self.assertEqual(maintainer.item_key(fresh[0]), identity)
                 self.assertEqual(maintainer.pending(state, fresh), fresh)
-                message = maintainer.prompt(fresh, '/repo', 'goals.py')
+                message = maintainer.prompt(fresh, '/repo', 'autowork tasks')
                 self.assertIn(main['evidence'], message)
                 self.assertIn('update its Evidence', message)
                 self.assertIn('never add a second task', message)
@@ -168,13 +175,13 @@ class MaintainerTests(unittest.TestCase):
                          ('config', 'user.email', 'test@example.invalid')]:
                 self.assertTrue(git_ok(repo, *args))
             (repo / '.gitignore').write_text('/.worktrees/\n')
-            entry = repo / 'TODO.md'
-            entry.write_text('- [ ] FIX — Repair main\n  Evidence: original\n')
             self.assertTrue(git_ok(repo, 'add', '.'))
             self.assertTrue(git_ok(repo, 'commit', '-qm', 'base'))
+            store_fixture.write_todo(repo, '- [ ] FIX — Repair main\n  Evidence: original\n')
+            entry = repo / 'tasks/items/FIX.md'
             runner = Coordinator.__new__(Coordinator)
             runner.state, runner.repo, runner.integ, runner.stop = state, repo, repo, False
-            runner.toolset, runner.goals, runner.verify_timeout = Path(__file__).resolve().parents[2], 'goals.py', 1
+            runner.toolset, runner.tasks_cli, runner.verify_timeout = Path(__file__).resolve().parents[2], 'autowork tasks', 1
             runner.in_flight = runner.session_busy = lambda: False
             prompts = []
             def check():
@@ -185,9 +192,9 @@ class MaintainerTests(unittest.TestCase):
                                               evidence=str(repo / '.git/autowork-execution/main-evidence' / rev)))
             def model(role, task, scratch, message, *args):
                 prompts.append(message)
-                path = Path(scratch) / 'TODO.md'
-                path.write_text('- [ ] FIX — Repair main\n  Evidence: ' + main_check.read(state)['evidence']
-                                + f'\n  Maintenance batch: {len(prompts)}\n')
+                path = Path(scratch) / 'tasks/items/FIX.md'
+                text = task_store.set_note(path.read_text(), 'Evidence', main_check.read(state)['evidence'])
+                path.write_text(task_store.set_note(text, 'Maintenance batch', str(len(prompts))))
                 self.assertTrue(git_ok(scratch, 'commit', '-qam', 'refresh existing repair evidence'))
                 return True, ''
             runner.pi_job = model
@@ -206,7 +213,7 @@ class MaintainerTests(unittest.TestCase):
                 check()
                 self.assertFalse(runner.maintain(main_only=True))
             self.assertEqual(len(prompts), 6)
-            self.assertEqual(entry.read_text().count('- [ ] FIX'), 1)
+            self.assertEqual(list(task_queue.store(repo).tasks), ['FIX'])
 
     def test_a_run_refused_because_the_session_moved_is_tried_again_once(self):
         with tempfile.TemporaryDirectory() as state:
@@ -226,7 +233,7 @@ class MaintainerTests(unittest.TestCase):
         errors = ['B: unverified goal has no open task', 'A: missing evidence']
         found = maintainer.triggers([{'task': 'T', 'state': 'waiting', 'reason': 'not runnable: Checks'}],
                                     ledger_errors=errors + errors[:1])
-        self.assertEqual(found, [('LEDGER', 'invalid goals.json',
+        self.assertEqual(found, [('LEDGER', 'invalid task store',
                                  'A: missing evidence\nB: unverified goal has no open task')])
         key = maintainer.key(found)
         self.assertEqual(key, maintainer.key(maintainer.triggers([], ledger_errors=list(reversed(errors)))))
@@ -242,15 +249,15 @@ class MaintainerTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as state:
             todo = ''.join(f'- [ ] {task} — Proof\n  Scope: device proof\n' for task in 'ABCD')
-            (Path(state) / 'TODO.md').write_text(todo)
-            entries = maintainer.entries(todo, goals)
+            store_fixture.write_todo(state, todo)
+            found_entries = entries(state)
             rows = [dict(task=task, state='waiting', reason='not runnable: missing Checks') for task in 'ABCD']
             abc = maintainer.triggers(rows[:3])
-            maintainer.remember(state, trigger_key=maintainer.key(abc), found=abc, outcome='merged', entries=entries)
+            maintainer.remember(state, trigger_key=maintainer.key(abc), found=abc, outcome='merged', entries=found_entries)
             runner = Coordinator.__new__(Coordinator)
             runner.state, runner.repo, runner.integ, runner.stop = Path(state), state, state, False
             runner.toolset = Path(__file__).resolve().parents[2]
-            runner.goals, runner.verify_timeout = 'goals.py', 1
+            runner.tasks_cli, runner.verify_timeout = 'autowork tasks', 1
             runner.in_flight = runner.session_busy = lambda: False
             runner.scratch_checkout, runner.drop_scratch = lambda _: state, lambda _: None
             prompts = []
@@ -266,7 +273,7 @@ class MaintainerTests(unittest.TestCase):
             self.assertIn('- D (not runnable): not runnable: missing Checks', prompts[0])
             for task in 'ABC':
                 self.assertNotIn(f'- {task} (', prompts[0])
-            self.assertEqual(maintainer.pending(state, maintainer.triggers(rows), entries=entries), [])
+            self.assertEqual(maintainer.pending(state, maintainer.triggers(rows), entries=found_entries), [])
 
     def test_unchanged_repair_is_suppressed_until_an_owner_edit_or_a_new_reason(self):
         from pi_autowork.coordinator import Coordinator
@@ -280,12 +287,11 @@ class MaintainerTests(unittest.TestCase):
             for args in [('init', '-q'), ('config', 'user.name', 'Test'), ('config', 'user.email', 'test@example.invalid')]:
                 self.assertTrue(git_ok(repo, *args))
             (repo / '.gitignore').write_text('/.worktrees/\n')
-            path = repo / 'TODO.md'
-            path.write_text('- [ ] A — Device proof\n  Dependencies: B-12\n  Checks: manual\n'
-                            '- [ ] alpha — Alpha\n- [ ] beta — Beta\n'
-                            '- [ ] 1alpha — Numeric alpha\n- [ ] 2beta — Numeric beta\n')
             git_ok(repo, 'add', '.')
-            self.assertTrue(git_ok(repo, 'commit', '-qm', 'plan'))
+            self.assertTrue(git_ok(repo, 'commit', '-qm', 'base'))
+            store_fixture.write_todo(repo, '- [ ] A — Device proof\n  Dependencies: B-12\n  Checks: manual\n'
+                                     '- [ ] alpha — Alpha\n- [ ] beta — Beta\n'
+                                     '- [ ] 1alpha — Numeric alpha\n- [ ] 2beta — Numeric beta\n')
             evidence = worker.findings_path(state, 'A')
             evidence.parent.mkdir(parents=True)
             evidence.write_text(json.dumps({'verdict': 'PI_AUTOWORK_VERIFY: fail — proof missing'}))
@@ -293,14 +299,14 @@ class MaintainerTests(unittest.TestCase):
                        reason='not runnable: waiting for B-12; 2 dependents')
             runner = Coordinator.__new__(Coordinator)
             runner.state, runner.repo, runner.integ, runner.stop = state, repo, repo, False
-            runner.toolset, runner.goals, runner.verify_timeout = Path(__file__).resolve().parents[2], 'goals.py', 1
+            runner.toolset, runner.tasks_cli, runner.verify_timeout = Path(__file__).resolve().parents[2], 'autowork tasks', 1
             runner.in_flight = runner.session_busy = lambda: False
             runner.tasks = lambda snapshot=None: [row]
             prompts = []
             def model(role, task, scratch, message, *args):
                 prompts.append(message)
-                entry = Path(scratch) / 'TODO.md'
-                entry.write_text(entry.read_text().replace('Dependencies: B-12', 'Dependencies: None.'))
+                entry = Path(scratch) / 'tasks/items/A.md'
+                entry.write_text(task_store.edit(entry.read_text(), {'depends_on': []}))
                 self.assertTrue(git_ok(scratch, 'commit', '-qam', 'repair Dependencies'))
                 return True, ''
             runner.pi_job = model
@@ -310,8 +316,8 @@ class MaintainerTests(unittest.TestCase):
             for dependency in ('C-93', 'A1', 'B2', '1alpha', '2beta', 'alpha', 'beta'):
                 row['reason'] = f'not runnable: waiting for {dependency}; 6 dependents'
                 self.assertFalse(runner.maintain())
-            path.write_text(path.read_text().replace('- [ ] beta — Beta\n', ''))
-            self.assertTrue(git_ok(repo, 'commit', '-qam', 'archive an unrelated task'))
+            self.assertTrue(git_ok(repo, 'rm', '-q', 'tasks/items/beta.md'))
+            self.assertTrue(git_ok(repo, 'commit', '-qm', 'remove an unrelated task'))
             self.assertFalse(runner.maintain())  # removing a referenced ID cannot erase the receipt
             self.assertEqual(len(prompts), 1)
             snapshot = dict(outcome='PARALLEL_STATUS', tasks=[row], roots=[dict(id='A', kind='held', blocks=1)])
@@ -323,10 +329,9 @@ class MaintainerTests(unittest.TestCase):
             runner.update_questions(snapshot)
             self.assertEqual((repo / 'BLOCKERS.md').read_text(), first)
             found = maintainer.triggers([row], findings={'A': worker.review_findings(state, 'A')})
-            after = maintainer.entries(path.read_text(), goals)
-            for entry, reason in ((after, 'not runnable: missing live authorization'),
-                                  (maintainer.entries(path.read_text().replace('Checks: manual', 'Checks: attach device'), goals),
-                                   row['reason'])):
+            after = entries(repo)
+            edited = dict(after, A=dict(after['A'], digest='an owner edit'))  # a new record revision
+            for entry, reason in ((after, 'not runnable: missing live authorization'), (edited, row['reason'])):
                 reasons = {'A': reason}
                 self.assertEqual(maintainer.pending(state, found, entries=entry, reasons=reasons), found)
                 self.assertEqual(maintainer.stalled(state, found, entries=entry, reasons=reasons), [])
@@ -355,8 +360,6 @@ class MaintainerTests(unittest.TestCase):
             self.assertEqual(maintainer.pending(state, found), [('Q', 'plan', 'ready for planning')])
 
     def test_planning_landing_refuses_malformed_chains_and_stops_for_a_met_goal(self):
-        from pi_autowork.touches_inference import modules
-        _, dispatch = modules(Path(__file__).resolve().parents[2])
         def entry(kind='', round_='', goal='G', section='Next', mark=' '):
             return dict(fields={'Kind': kind, 'Plan round': round_, 'Goal': goal,
                                 'Section': section, 'Checkbox': mark, 'Status': 'done' if mark == 'x' else 'open'})
@@ -387,23 +390,24 @@ class MaintainerTests(unittest.TestCase):
                     new['B']['fields']['Goal'] = 'OTHER'
                 if case == 'missing_question':
                     new.pop('NEXT')
-                ledger = dict(goals=[dict(id='G', status='met', evidence=[dict(kind='executed', result='pass')])], tasks=[])
-                (repo / 'goals.json').write_text(json.dumps(ledger if case == 'met' else {'goals': []}))
-                error = maintainer.plan_error([('P', 'plan', '')], old, new, repo,
-                                              dispatch.parallel_plan.dependency_ids)
+                error = maintainer.plan_error([('P', 'plan', '')], old, new, repo, parallel_plan.dependency_ids,
+                                              {'G': 'met'} if case == 'met' else {'G': 'unmet'})
                 if case == 'met':
                     self.assertIsNone(error)
                 else:
                     self.assertTrue(error, case)
 
     def test_prompt_prefers_independent_parts_when_unblocking_a_chain(self):
-        message = maintainer.prompt([('A', 'not runnable', 'not runnable: dependency chain')], '/repo', 'goals.py')
+        message = maintainer.prompt([('A', 'not runnable', 'not runnable: dependency chain')], '/repo', 'autowork tasks')
         self.assertIn('re-sort to unblock a dependency chain, preferring to split off independent parts '
                       'with disjoint Touches', message)
 
     def test_only_planning_files_may_change(self):
-        self.assertTrue(maintainer.planning_only(['TODO.md', 'goals.json', 'docs/tasks/A.md']))
-        self.assertFalse(maintainer.planning_only(['TODO.md', 'src/app.py']))
+        self.assertTrue(maintainer.planning_only(['tasks/items/A.md', 'tasks/goals/G.md', 'docs/tasks/A.md',
+                                                  'BLOCKERS.md']))
+        self.assertFalse(maintainer.planning_only(['tasks/items/A.md', 'src/app.py']))
+        self.assertFalse(maintainer.planning_only(['tasks/evidence/A.toml']))  # only a verified close writes receipts
+        self.assertFalse(maintainer.planning_only(['TODO.md']))
         self.assertFalse(maintainer.planning_only([]))
 
     def test_the_last_run_is_recorded_for_status(self):
@@ -414,7 +418,7 @@ class MaintainerTests(unittest.TestCase):
             self.assertEqual({k: record[k] for k in ('role', 'key', 'at', 'outcome', 'triggers', 'changed', 'tries')},
                              {'role': 'DOCS-MAINTAINER', 'key': 'k1', 'at': 100, 'outcome': 'merged',
                               'triggers': ['A'], 'changed': ['A'], 'tries': 1})
-            self.assertIn('- A (held: scope): x', maintainer.prompt(found, '/repo', 'goals.py'))
+            self.assertIn('- A (held: scope): x', maintainer.prompt(found, '/repo', 'autowork tasks'))
 
 
 if __name__ == '__main__':

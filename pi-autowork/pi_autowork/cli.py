@@ -29,7 +29,7 @@ Runs Autowork through Pi until stopped: the toolset's Parallel
 Autowork engine runs up to N tasks at once (default 8), each Pi worker in its own Git
 worktree, and integrates verified results one at a time. Targets the Git repository
 of the current directory (or of this script, when it was copied into a repository),
-which must have its main branch checked out and a TODO.md.
+which must have its main branch checked out and a tasks/ store.
 
 Each session builds on an integration branch (pi-autowork/<session>) in its own
 worktree; after each closed task, and when the queue drains or the runner stops, the
@@ -49,7 +49,7 @@ Options:
   --repo PATH          Use the repository at PATH
   --workers N          Tasks run at once, 1-16 (default 8; PI_AUTOWORK_WORKERS); the engine's
                        memory and load gate starts fewer when the machine is busy
-  --interval SECONDS   Longest idle wait (default 60); a change to TODO.md, goals.json,
+  --interval SECONDS   Longest idle wait (default 60); a change under tasks/, to
                        BLOCKERS.md or the main branch ends it within seconds
   --max-cycles N       Start at most N Pi workers, then finish
   --no-fallback        Never switch to the fallback model
@@ -62,7 +62,6 @@ Environment (optional):
   PI_AUTOWORK_PRIMARY       provider/model (default openai-codex/gpt-6.1-sol)
   PI_AUTOWORK_FALLBACK      provider/model (default openrouter/deepseek/deepseek-v4.1-flash)
   PI_AUTOWORK_WORKERS       default for --workers (default 8)
-  PI_AUTOWORK_INFER_TOUCHES 0 to stop proposing Touches: for tasks that lack them
   PI_AUTOWORK_UPDATE_INTERVAL seconds between idle `pi update` checks of the toolset package;
                             new toolset code restarts the runner (default 120; 0 off)
   PI_AUTOWORK_UPDATE_WAIT   seconds a new release waits for no runner to have work in
@@ -74,15 +73,14 @@ Environment (optional):
   PI_AUTOWORK_MAX_RETRIES   provider/crash retries per Pi run (default 3)
   PI_AUTOWORK_MAX_FAILURES  consecutive failed tasks before stopping (default 3); a service
                             pauses new tasks for PI_AUTOWORK_FAILURE_PAUSE seconds (3600) instead
-  PI_AUTOWORK_CLAIM_IDLE    adopt another session's in_progress claim after this many seconds
                             with no task, branch or worktree change and no live agent
                             (default 21600; 0 never adopts)
   PI_AUTOWORK_LINK_PATHS    comma-separated gitignored paths (say vendor/sdk) to mirror from the
                             main checkout into each task and review worktree with hard links;
                             only paths Git ignores there; cooperative, not write-protected.
                             Lockfile dependencies (node_modules, .venv) link without it
-  PI_AUTOWORK_PLANNING_QUIET seconds uncommitted planning (TODO.md, goals.json, BLOCKERS.md,
-                            the archive) must rest before the runner commits it so its merge
+  PI_AUTOWORK_PLANNING_QUIET seconds uncommitted planning (task files under tasks/,
+                            BLOCKERS.md) must rest before the runner commits it so its merge
                             can land; any other uncommitted file keeps the merge pending (600)
   PI_AUTOWORK_PLAN_SETTLE   seconds a plan change must be quiet before an idle runner reads it
                             (default 3)
@@ -109,7 +107,7 @@ COMPONENT = Path(__file__).resolve().parents[1]
 
 def is_toolset(path):
     return (Path(path) / 'pi-autowork/engine/owner_cycle.py').is_file() and \
-        (Path(path) / 'skills/docs-sync/scripts/goals.py').is_file()
+        (Path(path) / 'pi-autowork/engine/task_store.py').is_file()
 
 
 PI_SOURCE = 'git:github.com/TrebuchetDynamics/autowork'
@@ -181,13 +179,11 @@ def parse(argv):
             print(f'Unknown option: {arg}\n', file=sys.stderr)
             print(USAGE, end='', file=sys.stderr)
             sys.exit(2)
-    claim_idle = os.environ.get('PI_AUTOWORK_CLAIM_IDLE', '21600')
-    for item in (opts['interval'], opts['max_cycles'], opts['workers'], claim_idle):
+    for item in (opts['interval'], opts['max_cycles'], opts['workers']):
         if not re.fullmatch(r'[0-9]+', item):
             print(f'Expected a whole number, got: {item}', file=sys.stderr)
             sys.exit(2)
-    opts.update(interval=int(opts['interval']), max_cycles=int(opts['max_cycles']), workers=int(opts['workers']),
-                claim_idle=int(claim_idle))
+    opts.update(interval=int(opts['interval']), max_cycles=int(opts['max_cycles']), workers=int(opts['workers']))
     if not 1 <= opts['workers'] <= 16:
         die(2, '--workers must be 1 to 16')
     if opts['mode'] == 'once':
@@ -277,8 +273,10 @@ def main(argv):
     repo = git(start, 'rev-parse', '--show-toplevel')
     if not repo:
         die(2, f'Not inside a Git repository: {start}')
-    if not (Path(repo) / 'TODO.md').is_file():
-        die(2, f'No TODO.md at {repo}. Create the backlog first, for example with /docs_sync in Pi.')
+    if not (Path(repo) / 'tasks').is_dir() and opts['mode'] != 'continuous':
+        # A continuous runner (the service) waits for the conversion instead, at zero tokens.
+        die(2, f'No tasks/ store at {repo}. Run `autowork migrate {repo}` once to convert TODO.md and '
+               'goals.json, or plan the work first, for example with /plan-with-me.')
     base = git(repo, 'symbolic-ref', '--short', '-q', 'HEAD')
     if not base:
         die(2, f'{repo} has a detached HEAD; check out its main branch first.')
@@ -289,7 +287,7 @@ def main(argv):
     git_common = git(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')
     load_repo_settings(repo)
     # Settings read while parsing options, before the repository was known.
-    for key, name in (('workers', 'PI_AUTOWORK_WORKERS'), ('claim_idle', 'PI_AUTOWORK_CLAIM_IDLE')):
+    for key, name in (('workers', 'PI_AUTOWORK_WORKERS'),):
         if key == 'workers' and '--workers' in argv:
             continue
         value = os.environ.get(name)
@@ -421,7 +419,7 @@ def main(argv):
     cfg = dict(repo=repo, base=base, toolset=toolset, toolset_rev=toolset_rev, state=str(state),
                state_root=state_root, git_common=git_common, script=script, argv=argv, pi=pi,
                skill_args=skill_args, mode=opts['mode'], workers=opts['workers'], interval=opts['interval'],
-               max_cycles=opts['max_cycles'], claim_idle=opts['claim_idle'])
+               max_cycles=opts['max_cycles'])
     return Coordinator(cfg).run()
 
 

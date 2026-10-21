@@ -5,7 +5,7 @@ runner itself stays standard-library only. It reads runner state (status.json, e
 slots, systemd, logs, Pi transcripts) every few seconds and calls no model. Every
 action runs an `autowork` command (or the runner script); there is no second way to
 change a runner. `d` browses directories and starts a service for a repository that
-has TODO.md and goals.json on its main branch.
+has its tasks/ store committed on its main branch.
 
     python3 tui.py --command PATH --script PATH [--view-only]
 """
@@ -298,7 +298,7 @@ class WorkerScreen(Screen):
 
 
 class TasksScreen(Screen):
-    """One runner's open tasks in priority (TODO.md) order: filter them, re-sort them, clear or
+    """One runner's open tasks in priority (section, then rank) order: filter them, re-sort them, clear or
     set aside a hold, answer the owner's questions. Refreshed like the main screen."""
     VIEW_NAMES = {'all': 'All', 'working': 'Active', 'held': 'Blocker', 'waiting': 'Waiting', 'questions': 'Questions'}
     BINDINGS = [Binding('escape,q', 'app.pop_screen', 'Back', show=False),
@@ -402,7 +402,7 @@ class TasksScreen(Screen):
         def add(task):
             if not task:
                 return
-            argv = [self.app.command, 'add-task', '--title', task['title'], '--short', task['short'],
+            argv = [self.app.command, 'tasks', 'add', '--title', task['title'], '--short', task['short'],
                     '--goal', task['goal'], '--section', task['section']]
             for key in ('scope', 'acceptance'):
                 if task[key]:
@@ -430,7 +430,7 @@ class TasksScreen(Screen):
         if key == 's':
             runner = self.runner()
             self.app.push_screen(PickSection(row.task), lambda section: section and self.app.execute(
-                fleet_view.Action('s', f'Section {row.task}', [self.app.command, 'place', row.task, section, runner.name])))
+                fleet_view.Action('s', f'Section {row.task}', [self.app.command, 'tasks', 'place', row.task, section, runner.name])))
             return
         if action.confirm:
             self.app.push_screen(Confirm(action.confirm), lambda yes: yes and self.app.execute(action))
@@ -439,7 +439,7 @@ class TasksScreen(Screen):
 
 
 class TaskScreen(Screen):
-    """One task: its question and the runner's suggested answer, its whole TODO.md entry and
+    """One task: its question and the runner's suggested answer, its whole task record and
     its worker's last actions. Answer it here; refreshed like the main screen."""
     BINDINGS = [Binding('escape,q', 'app.pop_screen', 'Back', show=False),
                 Binding('s', 'section', 'Section', show=False),
@@ -486,7 +486,7 @@ class TaskScreen(Screen):
             text.append(f'  {row.short}\n')
             text.append(f'{row.section} · {row.state}\n', style='dim')
         else:
-            text.append('  (closed, or not in TODO.md now)\n', style='dim')
+            text.append('  (closed, or not in tasks/ now)\n', style='dim')
         if question:
             text.append(f'\nQuestion for you ({question.effort}, unblocks {question.unblocks})\n', style='bold yellow')
             text.append(question.needs + '\n', style='yellow')
@@ -497,7 +497,7 @@ class TaskScreen(Screen):
             text.append(row.why + '\n')
         entry = fleet_view.task_entry(runner, self.task_id) if runner else ''
         if entry:
-            text.append('\nTODO.md entry\n', style='bold')
+            text.append('\nTask record\n', style='bold')
             text.append(entry + '\n')
         actions = fleet_view.recent_actions(runner, self.task_id) if runner else []
         if actions:
@@ -534,11 +534,11 @@ class TaskScreen(Screen):
             return
         self.app.push_screen(PickSection(self.task_id), lambda section: section and self.app.execute(
             fleet_view.Action('s', f'Section {self.task_id}',
-                              [self.app.command, 'place', self.task_id, section, runner.name])))
+                              [self.app.command, 'tasks', 'place', self.task_id, section, runner.name])))
 
 
 class RepoTree(DirectoryTree):
-    """Directories only; a repository is marked ready (TODO.md and goals.json) or not."""
+    """Directories only; a repository is marked ready (a committed tasks/ store) or not."""
 
     def filter_paths(self, paths):
         return [p for p in paths if p.is_dir() and not p.name.startswith('.')]
@@ -572,7 +572,7 @@ class BrowseScreen(Screen):
         yield Header()
         with Horizontal():
             yield RepoTree(self.root, id='tree')
-            yield Static('Move to a repository; ready ones have TODO.md and goals.json.', id='info')
+            yield Static('Move to a repository; ready ones have a committed tasks/ store.', id='info')
         yield Footer()
 
     def on_mount(self):
@@ -598,7 +598,7 @@ class BrowseScreen(Screen):
 
     def action_start(self):
         if self.chosen is None or not self.chosen.ready:
-            self.notify('Choose a ready repository (TODO.md and goals.json on its main branch).', severity='warning')
+            self.notify('Choose a ready repository (tasks/ committed on its main branch).', severity='warning')
             return
         self.start(self.chosen)
 

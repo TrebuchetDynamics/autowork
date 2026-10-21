@@ -15,8 +15,6 @@ import sys
 TEST_DIRS = ('tests', 'pi-autowork/engine', 'skills/docs-sync/scripts',
              'skills/git-commit-push/scripts', 'pi-autowork/tests')
 EXCLUSIONS = {
-    'skills/docs-sync/scripts/test_goal_gap_regression.py':
-        ('model', 'runs Hermes chat and writes profile receipts at import'),
     'tests/integration_plugin.py':
         ('integration', 'requires the optional Hermes loader environment'),
     'tests/integration_autoresearch.py':

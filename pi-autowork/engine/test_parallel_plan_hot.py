@@ -5,6 +5,8 @@ import sys
 import tempfile
 import unittest
 
+import store_fixture
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from parallel_plan import plan
 
@@ -28,8 +30,8 @@ class HotFileTests(unittest.TestCase):
                 self.assertEqual(result['waiting'], [
                     {'id': tid, 'reason': 'waits for A (shares hot file a.py)', 'blocked_by': ['A']}
                     for tid in ('B', 'C')])
-        # A noncandidate still contributes to heat; an idle claim does not own files.
-        c['fields']['Status'] = 'in_progress'
+        # A noncandidate still contributes to heat; a held task does not own files.
+        c['fields']['Held by'] = 'an interactive session'
         result = plan([b, free], [a], all_tasks=[a, b, c, free])
         self.assertEqual([t['id'] for t in result['dispatch']], ['FREE'])
         self.assertEqual(result['waiting'][0]['blocked_by'], ['A'])
@@ -40,7 +42,7 @@ class HotFileTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             repo = Path(folder)
             subprocess.run(['git', 'init', '-q', str(repo)], check=True)
-            repo.joinpath('TODO.md').write_text('''## Now
+            store_fixture.write_todo(repo, '''## Now
 - [ ] A — running
   Scope: a.py
   Touches: a.py

@@ -44,9 +44,10 @@ def no_subreaper():
 
 class AdversarialWorkerTests(unittest.TestCase):
     # The dispatch harness: real Git, a real CLI pass and the deterministic fake worker.
-    stop_workers, git, write_todo, set_spec, run_cli, apply, wait, events, wait_until_idle = (
-        getattr(base.DispatchTests, name) for name in ('stop_workers', 'git', 'write_todo', 'set_spec',
-                                                       'run_cli', 'apply', 'wait', 'events', 'wait_until_idle'))
+    stop_workers, git, write_todo, commit_if_changed, set_spec, run_cli, apply, wait, events, wait_until_idle = (
+        getattr(base.DispatchTests, name) for name in ('stop_workers', 'git', 'write_todo', 'commit_if_changed',
+                                                       'set_spec', 'run_cli', 'apply', 'wait', 'events',
+                                                       'wait_until_idle'))
 
     def setUp(self):
         no_subreaper()
@@ -54,9 +55,7 @@ class AdversarialWorkerTests(unittest.TestCase):
         base.DispatchTests.setUp(self)
 
     def commit_todo(self, *bodies):
-        self.write_todo(*bodies)
-        self.git('add', 'TODO.md')
-        self.git('commit', '-qm', 'queue')
+        self.write_todo(*bodies)  # converts and commits
 
     def starts(self, tid=None):
         return [e for e in self.events() if e['event'] == 'start' and tid in (None, e['task'])]

@@ -894,30 +894,44 @@ TASK_VIEWS = ('all', 'working', 'held', 'waiting', 'questions')
 
 @dataclass
 class TaskRow:
-    """One open task of a runner's TODO.md, in its priority order."""
+    """One open task of a runner's task store, in its priority order."""
     task: str
-    short: str          # `Short:` (at most 40 characters), else the title cut to 40
+    short: str          # its `short` (at most 40 characters), cut to 40
     section: str        # Now, Next or Needs decision
     state: str          # in plain words: implementing, implemented, held, waiting, ready, ...
     kind: str           # working, held, waiting, ready: what a TASK_VIEWS filter matches
     why: str = ''       # the hold or wait reason, or the owner's question
     question: bool = False
+    pending: bool = False  # its file has an uncommitted edit: the runner reads it once committed
 
 
-def goals_module():
-    """docs-sync's goals.py from this toolset: TODO.md is parsed the way the runner parses it."""
-    scripts = str(Path(__file__).resolve().parents[2] / 'skills' / 'docs-sync' / 'scripts')
-    if scripts not in sys.path:
-        sys.path.insert(0, scripts)
-    import goals
-    return goals
+def task_store(repo):
+    """The task store at ``repo``'s HEAD, or None: what the runner reads (uncommitted owner
+    edits reach it once the runner commits them)."""
+    engine = str(Path(__file__).resolve().parents[1] / 'engine')
+    if engine not in sys.path:
+        sys.path.insert(0, engine)
+    import task_queue
+    try:
+        return task_queue.store(Path(repo))
+    except (task_queue.StoreError, OSError, TypeError, subprocess.SubprocessError):
+        return None
+
+
+def pending_edits(repo):
+    """IDs of tasks whose file has an uncommitted edit (staged, unstaged or untracked)."""
+    from task_store import TaskStore, StoreError
+    try:
+        paths = TaskStore.pending(Path(repo))
+    except (StoreError, OSError, subprocess.SubprocessError):
+        return set()
+    return {Path(p).stem for p in paths if p.startswith('tasks/items/') and p.endswith('.md')}
 
 
 def task_rows(runner):
-    """Every open task in ``runner``'s TODO.md, in its order, with what the runner says about it."""
-    try:
-        text = Path(runner.repo, 'TODO.md').read_text()
-    except (OSError, TypeError, ValueError):
+    """Every open task in ``runner``'s task store, in its order, with what the runner says about it."""
+    store = task_store(runner.repo) if runner.repo else None
+    if store is None:
         return []
     try:
         states = json.loads(Path(runner.state_dir, 'status.json').read_text()).get('tasks') or []
@@ -929,14 +943,14 @@ def task_rows(runner):
         engine.update((t, (t, 'held', cause or '', '')) for t, cause in runner.held)
     lanes = {lane.task: lane for lane in runner.lanes}
     asked = {q.id: q for q in runner.questions}
-    goals = goals_module()
     rows = []
-    for task, entries in goals.task_bodies(text).items():
-        block, mark, section = entries[0]
-        if mark != ' ' or section not in ('Now', 'Next', 'Needs decision'):
-            continue
-        title = ' '.join(block.split('\n', 1)[0].strip().lstrip('—–-:').split())
-        short = ' '.join((goals.task_fields(block).get('Short') or '').split()) or title
+    edited = pending_edits(runner.repo)
+    sections = {'Now': 0, 'Next': 1, 'Needs decision': 2}
+    records = sorted((t for t in store.tasks.values() if t.status == 'open' and t.section in sections),
+                     key=lambda t: (sections[t.section], t.rank or 0, t.id))
+    for record in records:
+        task, section = record.id, record.section
+        short = ' '.join(record.short.split()) or ' '.join(record.title.split())
         _, state, cause, why = engine.get(task, (task, '', '', ''))
         question = asked.get(task)
         if task in lanes or state in IN_FLIGHT:
@@ -951,29 +965,29 @@ def task_rows(runner):
             words, kind = f'{WAITING} · Needs decision', 'waiting'
         else:
             words, kind = f'{WAITING} · Ready' if state in ('', 'ready') else state, 'ready'
+        if task in edited:
+            words += ' · Edit not committed'
         short = short if len(short) <= 40 else short[:39].rstrip() + '…'
         rows.append(TaskRow(task=task, short=short, section=section, state=words, kind=kind,
-                            why='you: ' + question.needs if question else why, question=bool(question)))
+                            why='you: ' + question.needs if question else why, question=bool(question),
+                            pending=task in edited))
     return rows
 
 
 def task_entry(runner, task):
-    """``task``'s whole TODO.md entry, as written."""
+    """``task``'s whole record file (tasks/items/<task>.md), as written in the checkout."""
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', task or ''):
+        return ''
     try:
-        text = Path(runner.repo, 'TODO.md').read_text()
+        return Path(runner.repo, 'tasks', 'items', f'{task}.md').read_text()
     except (OSError, TypeError, ValueError):
         return ''
-    block = next((b for b in goals_module().task_blocks(text) if b['id'] == task), None)
-    return block['core'] if block else ''
 
 
 def open_goals(runner):
-    """(id, title) of the goals in ``runner``'s goals.json not yet met: a new task's choices."""
-    try:
-        data = json.loads(Path(runner.repo, 'goals.json').read_text())
-        return [(g['id'], g.get('title') or '') for g in data.get('goals') or [] if g.get('status') != 'met']
-    except (OSError, TypeError, ValueError, KeyError, AttributeError):
-        return []
+    """(id, title) of the goals in ``runner``'s task store not yet met: a new task's choices."""
+    store = task_store(runner.repo) if runner.repo else None
+    return [(g.id, g.title) for g in store.goals.values() if g.status != 'met'] if store else []
 
 
 def task_view(rows, view):
@@ -986,11 +1000,11 @@ def task_view(rows, view):
 
 
 def task_actions(runner, row, *, command, script, agent=None):
-    """What the Tasks window can do with one task: re-sort it (TODO.md order is the priority),
+    """What the Tasks window can do with one task: re-sort it (its rank is the priority),
     clear or set aside its hold, or answer the owner's questions in an agent."""
     repo, name, task = runner.repo, runner.name, row.task
-    out = [Action('u', 'Up', [command, 'move', task, 'up', name]),
-           Action('d', 'Down', [command, 'move', task, 'down', name]),
+    out = [Action('u', 'Up', [command, 'tasks', 'move', task, 'up', name]),
+           Action('d', 'Down', [command, 'tasks', 'move', task, 'down', name]),
            Action('s', 'Section', [], interactive=True)]  # the TUI asks which: Now, Next or Needs decision
     if row.kind == 'held':
         out.append(Action('c', 'Clear', [command, 'clear-held', name, task],
@@ -1015,26 +1029,20 @@ class Answer:
 
 def answers(runner, question, *, command, today=None):
     """The answers a question's kind supports, written where the runner reads them: the task's
-    TODO.md entry. Questions about no task (FULL-CHECK, LEDGER) have none: an agent answers them."""
+    record. Questions about no task (FULL-CHECK, LEDGER) have none: an agent answers them."""
     task, name = question.id, runner.name
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', task) or task in ('FULL-CHECK', 'LEDGER'):
         return []
     day = today or datetime.date.today()
     out = []
-    if question.kind == 'claim':
-        until = day + datetime.timedelta(days=7)
-        out.append(Answer('o', 'Open', 'no one is working on it: Status: open, so the runner runs it',
-                          [command, 'field', task, 'Status', 'open', name]))
-        out.append(Answer('h', 'Held', f'someone is: Held by: the owner; until {until}',
-                          [command, 'field', task, 'Held by', f'the owner; until {until}', name]))
     fingerprint = re.search(r'Blocker resolution: (\S+?);', question.answer or '')
     if question.kind == 'quick_hold' and fingerprint:
         out.append(Answer('r', 'Resolve', 'name the producer task or the decision that unblocks it',
-                          [command, 'field', task, 'Blocker resolution', f'{fingerprint[1]}; {{text}}', name], True))
-    out.append(Answer('w', 'Write', 'your decision, as a dated Owner decision line in its entry',
-                      [command, 'field', task, 'Owner decision', f'{day}: {{text}}', name], True))
+                          [command, 'tasks', 'field', task, 'Blocker resolution', f'{fingerprint[1]}; {{text}}', name], True))
+    out.append(Answer('w', 'Write', 'your decision, as a dated Owner decision note in its record',
+                      [command, 'tasks', 'field', task, 'Owner decision', f'{day}: {{text}}', name], True))
     out.append(Answer('d', 'Defer', 'move it to Needs decision, with your reason as its Owner decision',
-                      [command, 'place', task, 'Needs decision', name, '--decision', f'{day}: deferred: {{text}}'], True))
+                      [command, 'tasks', 'place', task, 'Needs decision', name, '--decision', f'{day}: deferred: {{text}}'], True))
     return out
 
 
@@ -1054,7 +1062,7 @@ class Readiness:
         return 'not a repository' if not self.repo else 'needs ' + ', '.join(self.problems)
 
 
-REQUIRED = ('TODO.md', 'goals.json')
+REQUIRED = ('tasks',)
 
 
 def uncommitted_planning(repo, base, required=REQUIRED):
@@ -1065,7 +1073,7 @@ def uncommitted_planning(repo, base, required=REQUIRED):
 
 
 def readiness(path):
-    """A repository root with TODO.md and goals.json committed on its main branch is ready."""
+    """A repository root with its tasks/ store committed on its main branch is ready."""
     path = str(Path(path).expanduser())
     out = Readiness(path=path)
     if not Path(path).is_dir():
@@ -1081,14 +1089,14 @@ def readiness(path):
     out.repo = top.stdout.strip()
     if Path(out.repo).resolve() != Path(path).resolve():
         out.problems.append(f'its repository root ({out.repo})')
-    out.problems += [name for name in REQUIRED if not (Path(out.repo) / name).is_file()]
+    out.problems += [name for name in REQUIRED if not (Path(out.repo) / name).is_dir()]
     branch = subprocess.run(['git', '-C', out.repo, 'symbolic-ref', '--quiet', '--short', 'HEAD'],
                             capture_output=True, text=True, timeout=10).stdout.strip()
     out.branch = branch
     if branch not in ('main', 'master'):
         out.problems.append('main checked out' if branch else 'a branch (HEAD is detached)')
     elif not any(name in out.problems for name in REQUIRED) and uncommitted_planning(out.repo, branch):
-        out.problems.append(f'commit TODO.md and goals.json on {branch} first')
+        out.problems.append(f'commit tasks/ on {branch} first')
     out.ready = not out.problems
     return out
 
@@ -1097,12 +1105,10 @@ def how_to_fix(ready):
     """One line per missing piece, for the TUI and `autowork start`."""
     hints = []
     for problem in ready.problems:
-        if problem == 'TODO.md':
-            hints.append('Create TODO.md: plan the work with /plan-with-me or Docs Sync in any host.')
-        elif problem == 'goals.json':
-            hints.append('Create goals.json from TODO.md: /docs-sync, or '
-                         'python3 <toolset>/skills/docs-sync/scripts/goals.py init <repo> --intent JSON.')
-        elif problem.startswith('commit TODO.md and goals.json on '):
+        if problem == 'tasks':
+            hints.append(f'No task store: run `autowork migrate {ready.repo}` once to convert TODO.md and '
+                         'goals.json, or plan the work with /plan-with-me in any host.')
+        elif problem.startswith('commit tasks/ on '):
             hints.append(problem)
         elif problem.startswith('main checked out') or problem.startswith('a branch'):
             hints.append(f'Check out main in {ready.repo}: the runner works only from the main branch checkout.')

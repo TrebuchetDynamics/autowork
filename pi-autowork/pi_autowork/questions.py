@@ -2,8 +2,8 @@
 
 Owner direction (2026-10-16): the owner only plans and answers; questions live in the
 repository, never in a chat. Each cycle the runner turns what holds its queue into a
-fixed set of questions, without a model: held tasks no attempt can finish, claims that
-will not be adopted, TODO entries the engine will not run, outside conditions and
+fixed set of questions, without a model: held tasks no attempt can finish, task records that
+the engine will not run as their records state them, outside conditions and
 dependency cycles. They live under BLOCKERS.md's `## Active`, between
 
     <!-- pi-autowork:questions:start -->
@@ -13,9 +13,11 @@ and nothing outside those markers changes. `/blockers` reads this block to
 resolve them with the owner, easiest first; an answered question leaves the block when
 its cause is gone (Git history keeps it).
 """
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from hashlib import sha1
+from pathlib import Path
 import re
+import sys
 
 START = '<!-- pi-autowork:questions:start -->'
 END = '<!-- pi-autowork:questions:end -->'
@@ -38,36 +40,14 @@ def _question_id(value):
     return 'COND-' + sha1(text.encode('utf-8'), usedforsecurity=False).hexdigest()[:8]
 
 
-def _title(todo, task, goals):
+def _store(repo):
+    """The task store at the repository's HEAD, or None when it cannot be read."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'engine'))
+    import task_queue
     try:
-        bodies = goals.task_bodies(todo).get(task) or []
-    except (ValueError, AttributeError):
-        bodies = []
-    if not bodies:
-        return ''
-    first = bodies[0][0].splitlines()[0]
-    first = re.sub(r'^[-*]\s+\[[ xX]\]\s+', '', first).strip().strip('*')
-    return re.sub(r'^(?:`?' + re.escape(task) + r'`?)?\s*[—–:-]\s*', '', first).strip(' *')
-
-
-def held_by(todo, task, goals, today=None):
-    """(holder, until, expired) from the entry's `Held by: <who>; until <YYYY-MM-DD>` line, the
-    answer to a claim question (TOOLSET-198-8f), or None. Without a date it holds until removed."""
-    try:
-        bodies = goals.task_bodies(todo).get(task) or []
-        value = goals.task_fields(bodies[0][0]).get('Held by') if bodies else None
-    except (ValueError, AttributeError, IndexError):
-        value = None
-    if not value:
-        return None
-    value = ' '.join(value.split())
-    found = re.search(r';?\s*until\s+(\d{4}-\d{2}-\d{2})\s*$', value)
-    holder = value[:found.start()].strip(' ;') if found else value
-    try:
-        until = date.fromisoformat(found[1]) if found else None
-    except ValueError:
-        until = None
-    return holder, until, bool(until and until < (today or date.today()))
+        return task_queue, task_queue.store(Path(repo))
+    except task_queue.StoreError:
+        return task_queue, None
 
 
 def technical(row):
@@ -93,15 +73,21 @@ def exhausted(row):
                                           or bool(row.get('quick_hold')))
 
 
-def build(snapshot, todo, goals, repairs=(), resolving=(), *, now=None):
-    """Questions from an engine status snapshot, without a model: dicts sorted easiest first.
+def build(snapshot, repo, repairs=(), resolving=(), *, now=None):
+    """Questions from an engine status snapshot and the task store at ``repo``'s HEAD, without a
+    model: dicts sorted easiest first.
     ``resolving`` names held conflicts the runner's merge resolver still settles by itself: seven
     such holds were posted as owner questions while three resolvers were clearing them."""
     now = datetime.now(timezone.utc).timestamp() if now is None else now
     rows = {r.get('task'): r for r in snapshot.get('tasks') or [] if r.get('task')}
     roots = {r['id']: r for r in snapshot.get('roots') or []}
     found = {}
-    deferred = goals.deferred_tasks(goals.task_bodies(todo))
+    task_queue, store = _store(repo)
+    deferred = task_queue.deferred(store) if store else set()
+
+    def title_of(task):
+        record = store.tasks.get(task) if store else None
+        return record.title if record else ''
 
     def add(qid, kind, effort, needs, answer, task_line, unblocks):
         qid = _question_id(qid)
@@ -111,17 +97,17 @@ def build(snapshot, todo, goals, repairs=(), resolving=(), *, now=None):
 
     if snapshot.get('ledger_errors'):
         add('LEDGER', 'ledger', 'investigate',
-            'invalid goals.json: ' + '; '.join(snapshot['ledger_errors']),
-            'DOCS-MAINTAINER could not repair the ledger. Read the validation errors above and its '
-            'run record under the runner state directory (maintainer.json); add a task for remaining '
-            'goal proof or correct evidence/status in TODO.md and goals.json, then run goals.py validate.',
-            'LEDGER — goals.json validation', len(rows))
+            'invalid task store: ' + '; '.join(snapshot['ledger_errors']),
+            'DOCS-MAINTAINER could not repair the task store. Read the errors above (each names a file '
+            'and line) and its run record under the runner state directory (maintainer.json); fix those '
+            'task or goal files, then run `autowork tasks validate --worktree`.',
+            'LEDGER — task store validation', len(rows))
 
     for task, row in rows.items():
         hold = row.get('quick_hold')
         if row.get('state') != 'held' or not hold:
             continue
-        title = _title(todo, task, goals)
+        title = title_of(task)
         attempts = ', '.join(
             f"{a['attempt']}: {a['seconds']:.0f}s "
             f"(held {datetime.fromtimestamp(a['held_at'], timezone.utc):%Y-%m-%d %H:%M:%S UTC})"
@@ -129,20 +115,20 @@ def build(snapshot, todo, goals, repairs=(), resolving=(), *, now=None):
         add(task, 'quick_hold', 'input',
             f"Repeated quick hold: {hold['reason']}; attempts {attempts}. Automatic reruns stopped.",
             f"Produce the missing input (add its producer task and dependency), or move {task} to Needs decision. "
-            f"To rerun, add `Blocker resolution: {hold['fingerprint']}; <producer task or decision evidence>` "
-            'to its TODO.md entry. Other entry edits do not answer this blocker.',
+            f"To rerun, add the note `Blocker resolution: {hold['fingerprint']}; <producer task or decision "
+            f"evidence>` to tasks/items/{task}.md. Other edits to the record do not answer this blocker.",
             f'{task} — {title}' if title else task, (roots.get(task) or {}).get('blocks', 0))
 
     for repair in repairs:
         task = repair['task']
         if task in found:
             continue
-        title = _title(todo, task, goals)
+        title = title_of(task)
         add(task, 'maintainer', 'decision',
             f"{repair['reason']}; DOCS-MAINTAINER already changed {', '.join(repair['fields'])}, "
             'but the task is still waiting for the same reason.',
-            f"Decide the missing input or disposition in {task}'s TODO.md entry, or move it to Needs decision. "
-            'The maintainer will not repeat this repair unless the entry or waiting reason changes.',
+            f"Decide the missing input or disposition in tasks/items/{task}.md, or move it to Needs decision. "
+            'The maintainer will not repeat this repair unless the record or waiting reason changes.',
             f'{task} — {title}' if title else task, (roots.get(task) or {}).get('blocks', 0))
 
     for task, row in rows.items():
@@ -155,7 +141,7 @@ def build(snapshot, todo, goals, repairs=(), resolving=(), *, now=None):
                 continue
         elif not exhausted(row):
             continue
-        title = _title(todo, task, goals)
+        title = title_of(task)
         line = f'{task} — {title}' if title else task
         blocks = (roots.get(task) or {}).get('blocks', 0)
         if waits:
@@ -165,71 +151,49 @@ def build(snapshot, todo, goals, repairs=(), resolving=(), *, now=None):
                 'The runner resumes this task on the same attempt when all prerequisites close.', line, blocks)
         elif row.get('cause') in INPUT_CAUSES:
             add(task, 'held', 'input', row.get('reason') or 'the worker stopped and asked for input', (
-                f"Answer in {task}'s TODO.md entry: widen `Touches:`, supply the input, narrow the acceptance, "
-                "or add a dated `Owner decision:` line. The runner reruns it when the entry changes."), line, blocks)
+                f"Answer in tasks/items/{task}.md: widen `touches`, supply the input, narrow the acceptance, "
+                "or add a dated `Owner decision:` note. The runner reruns it when the record changes."), line, blocks)
         else:
             add(task, 'held', 'investigate', row.get('reason') or 'held with no attempt left', (
                 f"Read the evidence (the worker's report and validation log under .git/autowork-execution/"
-                f"slot-data/{task}/), then rescope or split {task} in its TODO.md entry. The runner reruns it "
-                "when the entry changes."), line, blocks)
+                f"slot-data/{task}/), then rescope or split {task} in tasks/items/{task}.md. The runner reruns "
+                "it when the record changes."), line, blocks)
     for qid, root in roots.items():
         kind, blocks = root.get('kind'), root.get('blocks', 0)
         if _question_id(qid) in found:
             continue
-        title = _title(todo, qid, goals)
+        title = title_of(qid)
         line = f'{qid} — {title}' if title else qid
         if kind == 'claim':
-            answered = held_by(todo, qid, goals)
-            if answered and not answered[2]:
-                continue  # answered: its entry names who holds it, and until when
-            expired = (f'The recorded answer (Held by: {answered[0]}; until {answered[1]}) has expired. '
-                       if answered else '')
-            note, after = root.get('held_by'), root.get('adoptable_after')
-            answer = (f"If no one is working on {qid}, set `Status: open` in its TODO.md entry (the runner then "
-                      "runs it); otherwise add `Held by: <who>; until <YYYY-MM-DD>` to that entry, and the runner "
-                      "stops asking until that date.")
-            if note:
-                needs = f'{qid} is kept in_progress by the note: "{note}".'
-                answer = (f"Answer the note in {qid}'s TODO.md entry, or remove the hold and set `Status: open` "
-                          "when it is ready to run.")
-            elif after == 0:
-                continue  # the runner can adopt it without an owner answer
-            elif after is not None:
-                hour = datetime.fromtimestamp(now + after, timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
-                needs = f'{qid} is inside the idle window; it becomes adoptable at {hour} if it stays idle.'
-            else:
-                needs = f'{qid} is marked in_progress by another session; ' + (
-                    root.get('reason') or 'automatic adoption has not been verified') + '.'
-            add(qid, kind, 'quick', f'{expired}{needs} {blocks} waiting task(s) depend on it.',
-                answer, line, blocks)
+            continue  # its `Held by:` note is the answer; `autowork tasks release` lifts it
         elif kind == 'cycle':
             add(qid, kind, 'quick', f'{qid} is part of a dependency cycle.', (
-                f"Cut one dependency in the cycle: edit the `Dependencies:` line of {qid} or of the task it "
-                "waits on."), line, blocks)
+                f"Cut one dependency in the cycle: edit `depends_on` in tasks/items/{qid}.md or in the record "
+                "of the task it waits on."), line, blocks)
         elif kind == 'contract':
             row = rows.get(qid) or {}
-            add(qid, kind, 'decision', row.get('reason') or 'its TODO entry is not runnable as written', (
-                f"Fix {qid}'s TODO.md entry as the reason says (for example add the missing Scope, Acceptance "
-                "or Checks field), or move it out of Now/Next."), line, blocks)
+            add(qid, kind, 'decision', row.get('reason') or 'its task record is not runnable as written', (
+                f"Fix tasks/items/{qid}.md as the reason says (for example add the missing scope, acceptance "
+                "or checks), or move it out of Now/Next."), line, blocks)
         elif kind == 'outside':
             if qid.startswith('Live authorization: '):
                 task = qid.removeprefix('Live authorization: ')
                 if task not in found:
-                    title = _title(todo, task, goals)
+                    title = title_of(task)
                     add(task, kind, 'decision', f'{task} requires owner action or recorded live authorization; '
                         'an unattended runner cannot run it.', (
-                            f'Run it yourself, record `Live authorization: <record>` in {task}\'s TODO.md entry '
-                            '(who authorized which live scope and when), or move it to Needs decision. '
-                            'Keep `Ownership:`, `Resources:` and `Live authorization:` fields unique.'),
+                            f'Run it yourself, set `live = "authorized"` in tasks/items/{task}.md with an '
+                            '`Owner decision:` note (who authorized which live scope and when), or move it to '
+                            'Needs decision. Only the owner grants it; a worker\'s edit to the record never does.'),
                         f'{task} — {title}' if title else task, blocks)
                 continue
             if qid in deferred:
                 continue  # the dated owner deferral is already the answer; its dependents wait
             add(qid, kind, 'decision', f'{blocks} waiting task(s) depend on "{qid}", which is not a Now/Next task '
                 '(an outside condition, or a task in Needs decision).', (
-                    'Decide it: record the decision in the dependent tasks\' `Dependencies:` lines, or move the '
+                    'Decide it: record the decision in the dependent tasks\' `depends_on`, or move the '
                     'task that owns it into Now or Next. To defer it, keep that task in Needs decision with a dated '
-                    '`Owner decision:` line; its dependents then wait without another question.'),
+                    '`Owner decision:` note; its dependents then wait without another question.'),
                 qid if not title else line, blocks)
     order = {e: i for i, e in enumerate(EFFORT_ORDER)}
     return sorted(found.values(), key=lambda q: (order[q['effort']], -q['unblocks'], q['id']))
@@ -263,7 +227,7 @@ def planning(base):
     return dict(id='RUNNER-PLANNING', type='USER_INPUT', effort='quick', unblocks=0,
                 task='Runner startup', kind='runner',
                 needs=f'planning files are not committed on {base}',
-                answer=f'commit TODO.md and goals.json on {base} first. The runner resumes automatically; '
+                answer=f'commit tasks/ on {base} first. The runner resumes automatically; '
                        'it will not commit these files for you at startup.')
 
 

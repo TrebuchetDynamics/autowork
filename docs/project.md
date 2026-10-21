@@ -3,18 +3,19 @@
 Autowork (formerly hermes-toolset) coordinates repository planning, documentation and development.
 This document records accepted scope and the current implementation. Operator
 procedures belong in [installation](installation.md), [cross-host setup](cross-host.md)
-and [removal/recovery](uninstall.md); outstanding work belongs in [TODO.md](../TODO.md).
+and [removal/recovery](uninstall.md); outstanding work belongs in the [task store](../tasks/).
 
 ## Accepted requirements
 
 Status: Accepted
 
 This metadata records the existing accepted workflow scope below; it does not
-accept unresolved policy choices in TODO.md or authorize implementation.
+accept unresolved policy choices in the task store or authorize implementation.
 
 - Plan With Me asks the user for missing requirements and saves accepted decisions.
 - Plan For Me investigates, chooses supported approaches and records plans/tasks.
-- Docs Sync maintains source-backed documents and a central TODO.md work queue.
+- Docs Sync maintains source-backed documents; tasks and goals live in the
+  repository's `tasks/` store, edited with `autowork tasks`.
 - Autowork executes authorized work, verifies it and makes scoped local commits
   unless prohibited. Stalled preparation invokes bounded planning and retries
   execution without requiring a separate planner command from the user.
@@ -30,8 +31,8 @@ unattended completion; verification must distinguish dispatch, execution and del
 
 The accepted [TODO-first execution plan](#todo-first-execution-without-kanban)
 is implemented: Autowork executes from repository tasks without Kanban prerequisites,
-including historical-card gates. The direct execution path loads only the task
-index helpers. Unreachable native owner-cycle orchestration and its dedicated
+including historical-card gates; since [Task Store v2](#task-store-v2-2026-10-20) those
+tasks are the `tasks/` store. Unreachable native owner-cycle orchestration and its dedicated
 fixtures have been removed; historical guidance remains evidence, not an alternate
 executor. Current-reference helpers (including acceptance receipts and backlog
 planning) and the profile collectors remain. See the source-bound
@@ -45,7 +46,7 @@ planning) and the profile collectors remain. See the source-bound
 | Hermes diagnostics | [bundle](../bundle.py), [menu policy](../telegram_menu_policy.py) | Distinguish core registration from integration readiness and prioritize public commands |
 | Fleet installation | [orchestrator](../setup_bundle.py), [preflight](../setup_preflight.py), [finalization](../setup_runtime.py) | Validate prerequisites, install resources/configuration, check profiles and refresh supported gateways |
 | Autowork execution | [cycle](../pi-autowork/engine/owner_cycle.py), [task execution](../pi-autowork/engine/task_execution.py) | Select repository tasks and coordinate direct execution with live-writer protection; the agent implements and reports actual results |
-| Task index and history | [goals helper](../skills/docs-sync/scripts/goals.py), [archive helper](../skills/docs-sync/scripts/todo_archive.py) | Validate and update goals.json, render TODO coverage and archive explicitly closed, ledger-done bodies and separately labelled superseded history under the shared Git lock; supersession does not claim completion |
+| Task store | [TaskStore](../pi-autowork/engine/task_store.py), [selection](../pi-autowork/engine/task_select.py), [`autowork tasks`](../pi-autowork/pi_autowork/task_commands.py), [`autowork migrate`](../pi-autowork/pi_autowork/task_migrate.py) | Read `tasks/` at a pinned commit, select by section, rank and goal, edit task and goal files with whole-store validation, and convert a TODO.md + goals.json repository once ([reference](../pi-autowork/task-store.md)) |
 | Codex package | [manifest](../.codex-plugin/plugin.json), [marketplace](../.agents/plugins/marketplace.json) | Install portable skills into Codex; no Hermes gateway or configuration dependency |
 | Pi package | [manifest](../package.json), [extension](../adapters/pi.mjs) | Register native commands, expose `adapters/skills` as Pi skills and pass literal arguments to portable workflows |
 | Portable behavior | [host contract](../adapters/skills/COMMON.md) | Use the current host's tools; preserve permissions, memory and credentials |
@@ -78,40 +79,20 @@ These are conversation interfaces, not an owned HTTP service; there is no Toolse
 OpenAPI contract. Collisions preserve the existing command owner, as described in
 [workflows](workflows.md#commands).
 
-The task index uses version 1 JSON with goals, tasks, IDs, statuses, dependencies
-and optional milestone focus. [The helper](../skills/docs-sync/scripts/goals.py)
-rejects unsupported versions, duplicate keys and inconsistent membership. Goal
-completion requires executed passing evidence and all linked tasks done. Full
-scope, acceptance, dependencies and ownership stay in TODO task bodies; rendering
-coverage does not reconstruct those bodies or prove their acceptance.
-
-`goals.py init <repo> --intent FILE [--todo-file FILE]` provides the first-index
-interface for empty and TODO-only repositories. It reuses the version-1 schema
-and consumer body checks, requires user-supplied local accepted source headings,
-and preserves existing TODO/history/ownership/focus rather than inferring intent.
-Equivalent existing state is a byte-preserving no-op; conflicts require explicit
-maintenance, not overwrite. Run formatting, validation, rendering and consumer
-readiness separately. See the
-[executable initialization path](../skills/docs-sync/references/document-scaffold.md#first-task-index-initialization).
-
-Ledger operations share a Git-common-directory advisory lock and support revision
-checks. Commands target the requested checkout, including linked worktrees;
-explicit canonical targeting selects another checkout of the same repository.
-Historical native backlog bindings are ignored. Stale revisions and unsafe paths are refused;
-cooperating locks do not prevent an uncoordinated direct writer. See
-[concurrent maintenance](../skills/docs-sync/references/concurrent-maintenance.md).
-
-Rendering also selects the established archive and moves only explicitly closed,
-ledger-done bodies. Review both TODO and that archive after rendering, preserve
-historical bytes and verify unchanged second-pass output. Ambiguous or conflicting
-completion metadata stays live. See the
-[archive contract](../skills/docs-sync/references/todo-archive.md) and
-[offline checks](testing.md#archive-and-ownership-regression-checks).
+Tasks and goals are one file each under `tasks/` (schema 1, TOML frontmatter plus free
+notes), read only at a pinned commit through [TaskStore](../pi-autowork/task-store.md);
+an invalid file refuses the whole snapshot with a `path:line` error, and a repository
+without `tasks/` selects nothing and names `autowork migrate`. Goal completion is the
+goal's typed status; a met goal records its executed evidence. Writes go through
+`autowork tasks`, which edits the working tree, refuses a file changed since it was read
+and keeps a change only when the whole store still validates. Task edits merge per file
+like any text; integration judges them by contract hash, and a close carries a receipt
+in `tasks/evidence/`. `TODO.archive.md`, where it exists, is frozen history.
 
 Setup, upgrade, migration and removal procedures remain with the
 [installation runbook](installation.md) and [recovery guide](uninstall.md).
-Preview success is not rollback protection. The task-index initialization helper
-does not initialize installer/runtime stores or add live qualification.
+Preview success is not rollback protection. Creating a task store does not initialize
+installer/runtime stores or add live qualification.
 
 ## Data and trust boundaries
 
@@ -129,10 +110,9 @@ is the authoritative boundary description.
 
 ## Planned work and verification
 
-[TODO.md](../TODO.md) owns implementation priorities. Its open entries describe planned
-changes; completed entries record bounded local results and qualification limits.
-The [goals.json](../goals.json) index mirrors the current queue and retains completed
-task history. TOOLSET-002's first-time initialization interface is independently
+The [task store](../tasks/) owns implementation priorities. Its open tasks describe planned
+changes; closed tasks and their receipts record bounded local results and qualification
+limits. TOOLSET-002's first-time initialization interface is independently
 reviewed and integrated locally; its bounded completion evidence is in
 [the archive](../TODO.archive.md). TOOLSET-003 retains live recovery qualification.
 Historical completion notes are not new executed proof.
@@ -151,7 +131,7 @@ then explicitly selected the faster ready-task path as the default. This accepta
 covers that startup outcome, not parallel execution, weaker verification, or a
 changed continuation policy. TOOLSET-012 is independently reviewed and integrated
 locally; its completion evidence is in [the archive](../TODO.archive.md).
-Measured native qualification remains pending in [TOOLSET-013](../TODO.md).
+Measured native qualification remains pending in [TOOLSET-013](../tasks/).
 
 ### Outcome and scope
 
@@ -242,7 +222,7 @@ establish live worker or scheduled execution.
 At task-context simplification, the user requested simpler tasks for faster
 Autowork execution. The five then-pending IDs stayed unchanged: TOOLSET-003,
 TOOLSET-011, TOOLSET-012, TOOLSET-013 and TOOLSET-008.
-The compact [TODO.md](../TODO.md) bodies stated the remaining action, acceptance,
+The compact [TODO.md](../tasks/) bodies stated the remaining action, acceptance,
 checks, exclusions, dependencies, ownership and next step directly. This was an
 editorial simplification, not reduced scope or weaker completion criteria; the
 completed TOOLSET-008/012 bodies now reside in [the archive](../TODO.archive.md).
@@ -421,7 +401,8 @@ It records prior intent and failed/unchecked evidence, not current dispatch step
 
 ## TODO-first execution without Kanban
 
-Status: Accepted
+Status: Accepted; its task records moved to `tasks/` with [Task Store v2](#task-store-v2-2026-10-20)
+(2026-10-20). The card-free execution below stands; read "TODO.md" as the task store.
 
 Decision: The user wants TODO.md and its repository documents to be the work board
 so any developer can join through ordinary Git/project tools. On 2026-10-14 the
@@ -574,8 +555,8 @@ future model-driven scheduled behavior must be reported separately.
 
 ## TODO-owned task priority
 
-Status: Superseded by [Task Store v2](#task-store-v2-2026-10-20) (2026-10-20): priority moves to
-each task's `section` and `rank`; this contract holds until the cutover lands.
+Status: Superseded by [Task Store v2](#task-store-v2-2026-10-20) (2026-10-20): priority is
+each task's `section` and `rank`; nothing records or reconciles a separate order.
 
 Decision: On 2026-10-14 the user accepted that TODO.md order is the human priority
 authority and goals.json is the execution index. Synchronization is explicit and a
@@ -1249,7 +1230,7 @@ size instead of the measured index and unchanged review/verification use.
 
 ## Parallel Autowork (2026-10-15)
 
-Status: Accepted
+Status: Accepted; since [Task Store v2](#task-store-v2-2026-10-20) the coordinator reads `tasks/` where this section says TODO.md/goals.json, and its bookkeeping is the task files and receipts.
 
 Request (user, 2026-10-15, delegated with `/plan_for_me`): evolve Autowork into one
 coordinator with several workers. The coordinator picks independent eligible tasks
@@ -1935,9 +1916,9 @@ Git-native store at the repository root, `tasks/`: one file per task
 under TOML frontmatter (`+++`), plus sanitized completion receipts under
 `tasks/evidence/`. The owner chose a clean cut: **the engine reads only `tasks/`**,
 and each repository converts once with `autowork migrate <repo>`. An unconverted
-repository's runner stops with that instruction instead of reading the old files;
-there is no second reader, generated `goals.json` or dual write. `TODO.archive.md`
-stays as history.
+repository selects nothing: a one-shot run exits with that instruction and the service
+waits with it, at zero tokens, instead of reading the old files; there is no second
+reader, generated `goals.json` or dual write. `TODO.archive.md` stays as frozen history.
 
 Rules the implementation keeps:
 
@@ -1983,3 +1964,21 @@ built on the branch `task-store-v2` by an interactive session and land on main i
 merge together with this repository's conversion: any one of them alone on main would
 stop every unconverted repository's runner, this one's included. They stay in Needs
 decision so the runner never dispatches them.
+
+Implemented (branch `task-store-v2`, landed with this repository's conversion). Choices
+made while cutting over, within the rules above:
+
+- Docs Sync's goals.py, its TODO/ledger/archive modules, plan lint, the planning merge
+  drivers and the pending skill's TODO parser are removed; `autowork migrate` keeps a
+  frozen private copy of the parsers it needs, used by nothing else. Planning skills
+  edit tasks and goals with `autowork tasks` (`add`, `goal`, `field`, `place`, `move`,
+  `hold`, `release`, `done`, `supersede`).
+- Admitted work is set aside when a contract label changes since its dispatch (scope,
+  acceptance, checks, dependencies, authority fields, exclusions, a move to Needs
+  decision); a Touches-only change keeps it, since Touches only schedule work.
+- After every merge into the session, the runner reopens a done task whose receipt pins
+  another contract hash than its merged record, before main moves; the resolver's
+  prompt is guidance only. A task closed without a receipt (by a person, with its
+  evidence note) is not checked.
+- A hold is a `Held by:` note and never an owner question; the runner's TUI answers write
+  notes through `autowork tasks`.

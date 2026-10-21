@@ -96,15 +96,14 @@ iterations differ) and record spent and unspent amounts; early stop does not con
 the whole grant. Reopening a closed remainder reuses its actual remaining amount
 and scope, not a fresh default.
 
-## Archive verified completion
+## Close verified completion
 
-At verified closeout and reconciliation of completed bodies, align TODO and ledger
-status, then run `python3 "<skills-root>/docs-sync/scripts/goals.py" archive <repo>`.
-This automatically moves closed bodies to `TODO.archive.md` or the existing archive;
-do not wait for a Docs Sync job. Keep ledger evidence. Without goals.json, inspect
-checks and pass verified closed IDs with `archive <repo> --verified-tasks ID1,ID2`.
-Report retained conflicts; read-only runs skip this write. Follow the
-[archive contract](../../docs-sync/references/todo-archive.md).
+Close a task only after verified acceptance. The engine's verified close writes
+`status = "done"` into `tasks/items/<ID>.md` and the receipt `tasks/evidence/<ID>.toml`
+in one commit; a replay writes nothing. A close without the engine uses
+`autowork tasks done ID --evidence TEXT`. Closed records stay in `tasks/items/`;
+nothing is moved to an archive, and an existing `TODO.archive.md` is frozen history.
+Do not wait for a Docs Sync job. Read-only runs skip this write.
 
 ## Partial delivery and the critical path
 
@@ -124,6 +123,6 @@ union of mandatory affected checks over a full rebuild/review for each tiny guar
 Reuse a sanitized cache/target and check receipts only when their bound inputs
 match; retain required mutations, independent review and integration checks.
 Integrate a partial slice only when repository policy permits it; record its
-commit and exact remaining gates under the original TODO ID. Never call focused
+commit and exact remaining gates under the original task ID. Never call focused
 passes a full-suite pass, waive a gate, close the parent, or infer dependency,
 publication or upstream authority from partial delivery.

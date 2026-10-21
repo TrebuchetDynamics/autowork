@@ -3,6 +3,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+
+import store_fixture
 from audit_profiles import backlog_readiness, inspect_profile, progress, safe
 
 
@@ -23,9 +25,10 @@ class CorrectnessTests(unittest.TestCase):
             'tasks': [{'id': 'T1', 'title': 'fixture task', 'goal': 'G1', 'status': 'open', 'section': 'Now'}]}
         (root / 'goals.json').write_text(json.dumps(ledger))
         (root / 'PLAN.md').write_text('# Accepted\nStatus: Accepted\n')
-        (root / 'TODO.md').write_text('## Now\n- [ ] T1: fixture\n  Goal: G1\n  Scope: one file\n  Acceptance: run test\n  Dependencies: none\n  Sources: [accepted](PLAN.md#accepted)\n')
+        (root / 'TODO.md').write_text('## Now\n- [ ] T1: fixture\n  Goal: G1\n  Scope: one file\n  Acceptance: run test\n  Checks: run test\n  Dependencies: none\n  Sources: [accepted](PLAN.md#accepted)\n')
         self.git(root, 'add', '.')
         self.git(root, 'commit', '-m', 'fixture')
+        store_fixture.convert(root)
         return root
 
     def git(self, root, *args):
@@ -100,11 +103,12 @@ class CorrectnessTests(unittest.TestCase):
         self.assertEqual(ready['tasks'][0]['state'], 'ready_for_autowork')
         self.assertEqual(ready['live_ownership'], 'unknown')
         self.assertEqual(before, {p.name: p.read_bytes() for p in root.iterdir() if p.is_file()})
-        (root / 'TODO.md').write_text((root / 'TODO.md').read_text().replace('  Scope: one file\n', ''))
+        record = root / 'tasks/items/T1.md'
+        record.write_text(record.read_text().replace('scope = "one file"\n', ''))
+        self.git(root, 'commit', '-qam', 'scope removed')
         held = backlog_readiness(root, [])
-        self.assertEqual(held['eligible_task_ids'], ['T1'])
-        self.assertIn('T1: missing Scope', held['tasks'][0]['reasons'])
-        self.assertEqual(held['tasks'][0]['state'], 'draft_saved')
+        # Without Scope the record is a draft: listed by the store, never ready.
+        self.assertEqual((held['eligible_task_ids'], held['state']), ([], 'no_ledger_eligible_task'))
 
     def test_linked_worktree_readiness_observes_local_contract_without_writes(self):
         root = self.repo()

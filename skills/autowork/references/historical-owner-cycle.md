@@ -2,6 +2,7 @@
 > evidence, not current instructions. Use [direct execution](owner-cycle.md).
 > Retired helper paths below resolve through the [removal commit](https://github.com/TrebuchetDynamics/autowork/commit/026e23baf4c226aac2c672e3d0e984a77996b9da).
 > See the [removal record](../../../docs/plans/2026-10-20-owner-cycle-retirement.md) for the inventory and retry provenance.
+> The current task store is `tasks/`, edited through `autowork tasks`; the TODO.md, goals.json and `goals.py` named below no longer exist.
 
 # Autonomous recovery cycle
 

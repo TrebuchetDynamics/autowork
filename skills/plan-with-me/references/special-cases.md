@@ -9,8 +9,9 @@ apply; these add the lessons learned for specific kinds of planning.
 When the matching task was cancelled, separate permission to revisit its plan,
 to reactivate it and to execute it; ask which boundary changes rather than reviving an
 old execution grant. On reactivation reuse its ID and keep the cancellation in
-history. If the owner instead requests a new replacement, allocate its successor
-against the current queue with `goals.py new-id`, then supersede the old task with an explicit link;
+history. If the owner instead requests a new replacement, add its successor with
+`autowork tasks add`, then supersede the old task with `autowork tasks supersede ID
+--by NEW --reason TEXT`;
 preserve original acceptance/results without importing withdrawn scope or
 historical allowance. Report queue eligibility separately from execution authority.
 
@@ -59,13 +60,13 @@ not implement it, renew an execution budget or dispatch a worker.
 the queue, is [`/blockers`](../../blockers/SKILL.md): routine planning repairs first, then
 genuine owner decisions, easiest first, one question at a time. An
 answer that needs replanning is planned here, with the planning craft, and saved
-through Docs Sync before the next question. The rest of this section applies to a
+with `autowork tasks` before the next question. The rest of this section applies to a
 broader blockers question.
 
 For a broad "blockers" request, separate owner-input blockers from everything
 preventing delivery; an empty BLOCKERS.md does not prove execution is unblocked.
 If scope is unclear, ask whether it means the current task, repository-wide
-delivery or only owner decisions. Inspect the full task body, implementation and
+delivery or only owner decisions. Inspect the full task record, implementation and
 execution evidence first; do not ask the user to decide facts or routine repairs.
 For recovery planning, refresh the original task, review, target and delivery
 state before decomposing: observed delivery can supersede a reported pending
@@ -154,8 +155,8 @@ When an answer settles broad scope, mark it
 settled in its decision owner and reconcile affected conditional tasks and summary
 wording; leave only unresolved subchoices Open. Put the current scope and an
 explicit supersession notice before preserved obsolete guidance. Reconcile an
-investor-brief, jurisdiction or deadline change into the existing affected TODO
-bodies and goals index, not only the narrative plan. If a scheduled research job
+investor-brief, jurisdiction or deadline change into the existing affected task and
+goal records, not only the narrative plan. If a scheduled research job
 still names the old scope, inspect its full saved instruction and disclose the
 mismatch; update it only under existing scheduling authority, preserving cadence,
 paused state, history and no-code/publication limits. A one-time commit/push request

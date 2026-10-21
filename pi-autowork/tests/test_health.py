@@ -54,7 +54,7 @@ class HealthTests(unittest.TestCase):
 
     def test_waiting_tasks_are_grouped_by_why_they_wait(self):
         """TOOLSET-166-b4: the view shows why tasks wait without calling the engine."""
-        reasons = ['overlapping paths with TASK-140', 'overlapping paths with in_progress TASK-140',
+        reasons = ['overlapping paths with TASK-140', 'overlapping paths with held TASK-140',
                    'dependency: TASK-1', 'dependency: TASK-2, TASK-3', 'priority waits for TASK-9',
                    'resource gate: load average 27.16 >= 24 CPUs', 'all 8 worker slots busy', 'something new',
                    'wait for deferred TASK-D']

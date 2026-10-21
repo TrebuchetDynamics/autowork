@@ -70,12 +70,12 @@ class DirtyLandingTests(LandingFixture):
         self.git(self.repo, 'config', 'user.name', 'T')
         self.git(self.repo, 'config', 'user.email', 't@example.invalid')
         self.original = 'owner: old\n' + '\n'.join(f'section {i}' for i in range(20)) + '\nsession: old\n'
-        self.note = self.repo / 'TODO.md'
+        self.note = self.repo / 'BLOCKERS.md'
         self.note.write_text(self.original)
-        self.git(self.repo, 'add', 'TODO.md')
+        self.git(self.repo, 'add', 'BLOCKERS.md')
         self.git(self.repo, 'commit', '-qm', 'plan')
         self.git(self.integ, 'merge', '--no-edit', 'main')
-        (self.integ / 'TODO.md').write_text(self.original.replace('session: old', 'session: new'))
+        (self.integ / 'BLOCKERS.md').write_text(self.original.replace('session: old', 'session: new'))
         (self.integ / 'landed.txt').write_text('delivered\n')
         self.git(self.integ, 'add', '.')
         self.git(self.integ, 'commit', '-qm', 'session work')
@@ -100,14 +100,14 @@ class DirtyLandingTests(LandingFixture):
             os.umask(old_mask)
         self.assertEqual((self.repo / 'landed.txt').stat().st_mode & 0o777, 0o600)
         self.assertEqual(self.head('main'), self.head('pi-autowork/s'))
-        self.assertEqual(self.git(self.repo, 'show', 'HEAD:TODO.md'),
+        self.assertEqual(self.git(self.repo, 'show', 'HEAD:BLOCKERS.md'),
                          self.original.replace('session: old', 'session: new').strip())
         self.assertEqual(self.note.read_text(), self.parked.replace('session: old', 'session: new'))
         self.assertEqual((self.repo / 'landed.txt').read_text(), 'delivered\n')
         self.assertEqual(self.note.stat().st_mode & 0o777, permissions)
         self.assertEqual(self.git(self.repo, 'diff', '--cached', '--name-only'), 'other.txt')
         self.assertEqual(self.git(self.repo, 'show', ':other.txt'), 'unrelated staged work')
-        diff = self.git(self.repo, 'diff', '--', 'TODO.md')
+        diff = self.git(self.repo, 'diff', '--', 'BLOCKERS.md')
         self.assertIn('+owner: parked', diff)
         self.assertNotIn('+session:', diff)
 
@@ -142,7 +142,7 @@ class DirtyLandingTests(LandingFixture):
                            if case == 'conflict' else self.parked)
                 self.note.write_text(content)
                 if case == 'staged':
-                    self.git(self.repo, 'add', 'TODO.md')
+                    self.git(self.repo, 'add', 'BLOCKERS.md')
                 if case == 'conversion':
                     self.git(self.repo, 'config', 'core.autocrlf', 'true')
                 before_index = index.read_bytes()
@@ -185,14 +185,14 @@ class DirtyLandingTests(LandingFixture):
                     else:
                         self.assertEqual(self.note.read_text(), content + ('new owner edit\n' if case == 'changed' else ''))
                     self.assertIn({'merge': 'progress', 'index-full': 'index', 'cas': 'compare-and-swap'}
-                                  .get(case, 'TODO.md'), self.runner.merge_pending)
+                                  .get(case, 'BLOCKERS.md'), self.runner.merge_pending)
                     self.assertFalse((self.repo / 'landed.txt').exists())
                 finally:
                     if holder:
                         holder.close()
                     marker.unlink(missing_ok=True)
                     if case == 'staged':
-                        self.git(self.repo, 'restore', '--staged', 'TODO.md')
+                        self.git(self.repo, 'restore', '--staged', 'BLOCKERS.md')
                     if case == 'conversion':
                         self.git(self.repo, 'config', '--unset', 'core.autocrlf')
 

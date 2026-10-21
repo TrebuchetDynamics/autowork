@@ -2,8 +2,8 @@
 
 Read from each repository's engine journal and Git history, without a model call:
 
-- closed: tasks whose checked entry was added to the TODO archive in the window, however
-  they were closed (the engine, the maintainer or a person);
+- closed: tasks whose record became done in the window, however they were closed (the
+  engine, the maintainer or a person);
 - held: the share of integrations (a slot leaving `integrating`) that ended `held`
   rather than `integrated`, the rework a failed review or check costs;
 - start to merge: the median time from a task's first dispatch to its integration;
@@ -14,6 +14,7 @@ from pathlib import Path
 import re
 import statistics
 import subprocess
+import sys
 import time
 
 JOURNAL = Path('autowork-execution') / 'journal.jsonl'
@@ -48,10 +49,6 @@ def journal_events(common, since):
     return sorted(events, key=lambda e: e['timestamp'])
 
 
-ARCHIVES = ('docs/TODO-archive.md', 'TODO.archive.md', 'todo.archive.md')
-CHECKED = re.compile(r'(?m)^\s*[-*] \[[xX]\]\s+[*`]*([A-Za-z][\w.-]*\d[\w.-]*)')
-
-
 def git_text(repo, *argv):
     try:
         return subprocess.run(['git', '-C', str(repo), *argv], capture_output=True, text=True, timeout=120).stdout
@@ -59,18 +56,27 @@ def git_text(repo, *argv):
         return ''
 
 
-def archived(repo, days):
-    """Task IDs checked in the TODO archive now but not at the last commit before the window:
-    every close, however it was made, and none twice when a commit rewrites the archive."""
-    tracked = set(git_text(repo, 'ls-files', '--', *ARCHIVES).split())
+def done(repo, rev):
+    """IDs of the done tasks in the store at ``rev``, or None when it has no readable store."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'engine'))
+    from task_store import StoreError, TaskStore
+    try:
+        return {t.id for t in TaskStore.at(repo, rev).tasks.values() if t.status == 'done'}
+    except StoreError:
+        return None
+
+
+def closed(repo, days):
+    """Task IDs done now but not at the last commit before the window: every close, however it
+    was made. A window that starts before the repository's conversion counts from the
+    conversion commit, which closes nothing."""
+    now = done(repo, 'HEAD') or set()
     start = git_text(repo, 'rev-list', '-1', f'--before={days} days ago', 'HEAD').strip()
-    now, before = set(), set()
-    for path in ARCHIVES:
-        if path not in tracked:
-            continue
-        now |= set(CHECKED.findall(git_text(repo, 'show', f'HEAD:{path}')))
-        if start:
-            before |= set(CHECKED.findall(git_text(repo, 'show', f'{start}:{path}')))
+    before = done(repo, start) if start else None
+    if before is None:
+        since = [f'{start}..HEAD'] if start else ['HEAD']
+        first = git_text(repo, 'rev-list', '--reverse', *since, '--', 'tasks').split()
+        before = (done(repo, first[0]) or set()) if first else set()
     return now - before
 
 
@@ -103,7 +109,7 @@ def measure(repo, days, now=None):
         elif previous == 'integrating' and state == 'held':
             held += 1
     attempts = integrated + held
-    return {'repo': str(repo), 'closed': len(archived(repo, days)), 'integrations': attempts,
+    return {'repo': str(repo), 'closed': len(closed(repo, days)), 'integrations': attempts,
             'held_share': round(held / attempts, 2) if attempts else None,
             'start_to_merge_minutes': round(statistics.median(merge_minutes)) if merge_minutes else None,
             'questions': owner_questions(repo, days)}

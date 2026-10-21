@@ -31,12 +31,12 @@ the matching section of [special cases](references/special-cases.md).
 
 Size the work first and say the size in plain words
 ([planning craft](../shared/PLANNING-CRAFT.md#know-what-you-know)): a clear task
-gets one complete saved TODO task without an interview, not immediate execution;
+gets one complete saved task record without an interview, not immediate execution;
 a project gets a written plan section and tasks with real dependencies. Plan all
 requested projects in one coherent batch, retaining independent ready lanes.
 
 Inspect project instructions, relevant implementation and tests, existing docs,
-accepted decisions, TODO.md/goals.json and active task ownership. Reuse existing
+accepted decisions, `autowork tasks list` and the records it names, and active task ownership. Reuse existing
 answers and task IDs. Compare practical approaches and record the evidence for
 the selected one. Own the complex part: resolve design, decomposition, interfaces
 and acceptance within delegated scope, and choose reversible engineering details and
@@ -74,36 +74,44 @@ deployment, legal or explicit owner approval remain user inputs. For backlog rec
 
 ## Save the plan and hand off
 
-Follow the [TODO work center](../shared/TODO-WORKCENTER.md) and
+Follow the [work center](../shared/TODO-WORKCENTER.md) and
 [single-pass handoff](../shared/PLAN-HANDOFF.md#one-planning-pass-one-handoff).
 Use [Docs Sync](../docs-sync/SKILL.md) to persist findings and decisions in the
-existing document owners and actionable tasks in TODO.md, synchronized with
-goals.json. Include acceptance criteria, dependencies, verification and Now/Next
-ordering; distinguish proposed decisions from accepted scope. Save observable
-criteria under `Acceptance:` and exact verification commands under a separate,
-unique `Checks:` field. Give each executable task `Touches:` (and `Resources:` where
-needed) from the paths your investigation found, per the TODO work center. Cut and
+existing document owners. Save the batch as task records with `autowork tasks add
+--goal G --title T --short S --scope ... --acceptance ... --checks ... --touches ...
+--depends-on ...`, adding or updating its goal first with `autowork tasks goal`.
+Include acceptance criteria, dependencies, verification and Now/Next placement;
+distinguish proposed decisions from accepted scope. Save observable criteria in
+`acceptance` and exact verification commands in `checks`. Give each executable task
+`touches` from the paths your investigation found, and `resources` where
+needed, per the work center; set further fields and notes such as `Sources:` with
+`autowork tasks field`. Cut and
 write the tasks by the [planning craft](../shared/PLANNING-CRAFT.md#size-each-task):
 small tasks with disjoint write sets, acceptance that names a failing test, and a
-pre-mortem whose guards land in the owning tasks. Inspect the current execution consumer's required fields
-before calling a handoff executable: ledger/backlog readiness alone may not check
-its contract shape. Do not claim a task or launch execution just to validate a
+pre-mortem whose guards land in the owning tasks. A record missing contract fields
+is a draft the runner never selects: `autowork tasks validate --worktree .` lists
+drafts, and after the commit `autowork tasks why ID` shows whether a task can run.
+Check both before calling a handoff executable. Do not claim a task or launch execution just to validate a
 planning handoff. Reconcile one affected batch and reuse input-bound checks when
 the evidence is unchanged.
 
 For future work whose content depends on implementation evidence, follow
 [rolling planning](../shared/TODO-WORKCENTER.md#rolling-planning): save only the
 first batch whose content is known now, at most 8 new tasks total including one
-closing `Kind: plan` task under the same Goal. Give it `Plan round: 1 of 10` by
-default and dependencies on every building task in the batch. Its Scope names the
-goal and what the next round must find out from the finished batch's evidence.
-When continuing an existing chain, advance N in `Plan round: N of M` without
-resetting its limit; apply the shared stopping rules. A small or single-batch plan
-adds no planning task and keeps the existing saving flow.
+closing planning task (`kind = "plan"`, set with `autowork tasks field ID kind plan`)
+under the same goal. Note `Plan round: 1 of 10` by default (`autowork tasks field
+ID "Plan round" "1 of 10"`) and give it dependencies on every building task in the
+batch. Its scope names the goal and what the next round must find out from the
+finished batch's evidence. When the runner hands you a planning task, close it with
+`autowork tasks done ID --evidence TEXT` in the same commit as the batch it
+produced; a successor advances N in `Plan round: N of M` without resetting its
+limit. Apply the shared stopping rules. A small or single-batch plan adds no
+planning task and keeps the existing saving flow.
 
 For a rolling plan, the final report says the chain will continue on its own under
 an already running, authorized Autowork runner, gives its round limit (10 by default),
-and explains how to stop it: move the planning task to `Needs decision`. Saving the
+and explains how to stop it: move the planning task to `Needs decision`
+(`autowork tasks place ID "Needs decision"`). Saving the
 chain does not start a runner or grant execution authority.
 
 Before reporting the plan ready, run the
@@ -111,20 +119,21 @@ Before reporting the plan ready, run the
 reader in Autowork's place lists what it would have to guess. Write answers already
 known into the tasks, settle minor ones as the planner's call, and ask the user only
 the questions that change what gets built, in one message. Keep just the affected
-tasks pending until they answer; independent tasks stay ready. Then lint the batch
-with `goals.py plan-lint <repo> --tasks ID,ID,...`: fix every error and report each
-warning with your call on it ([plan handoff](../shared/PLAN-HANDOFF.md)).
+tasks pending until they answer; independent tasks stay ready. Then run `autowork
+tasks validate --worktree .`, fix every error and draft you did not mean, and commit
+the batch once ([plan handoff](../shared/PLAN-HANDOFF.md)).
 
 Planning includes saving this work by default. Explicit read-only, chat-only,
 no-write or dry-run requests save nothing. Planning alone does not authorize
-implementation, commits, worker dispatch or a recurring schedule. An explicit
+implementation, worker dispatch or a recurring schedule; its one commit holds only
+the saved plan and records. An explicit
 standalone planning request narrows this occurrence despite earlier unrelated
 implementation permission. Return an Autowork-owned planning substep to its same
 coordinator; execution resumes there, not inside this planning substep.
 
 An audit or an "is it ready?" request is planning too: give the verdict in one line,
 then save each gap as a task (or name the existing task it updates), owner-only gaps
-in `Needs decision` with their one question. Findings without task IDs are not a
+in `Needs decision` with their one `Question:` note. Findings without task IDs are not a
 finished plan.
 
 Finish with the chosen approach, supporting evidence, the planner's calls, changed

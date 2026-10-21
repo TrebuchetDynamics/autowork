@@ -3,7 +3,6 @@ import json
 import os
 from pathlib import Path
 import select
-import shlex
 import subprocess
 import sys
 import tempfile
@@ -130,30 +129,6 @@ class ReleaseCheckTests(unittest.TestCase):
         release.prune(root, proc=str(proc))
         self.assertEqual(len(list(root.glob('*/'))), 3)  # usage unknown: everything kept
 
-    def test_legacy_driver_pins_a_stopped_runners_release_until_registration_moves(self):
-        # Isolate driver references from live-process retention on a busy host.
-        glob = Path.glob
-        self.enterContext(patch.object(Path, 'glob', lambda path, pattern:
-            iter(()) if path == Path('/proc') else glob(path, pattern)))
-        selected = release.prepare(self.state_root, self.toolset)
-        (self.own / 'status.json').write_text(json.dumps({'repo': str(self.work)}))
-        key = 'merge.docs-sync-archive.driver'
-        self.git(self.work, 'config', '--local', key,
-                 f'{shlex.quote(sys.executable)} '
-                 f'{shlex.quote(str(selected / "skills/docs-sync/scripts/goals.py"))} '
-                 'merge-driver archive %O %A %B')
-        for number in (2, 3):
-            self.publish(f'STATE_SCHEMA = 1\n# {number}\n', f'release {number}')
-            self.git(self.toolset, 'pull', '-q', '--ff-only')
-            release.prepare(self.state_root, self.toolset)
-        self.assertTrue(selected.is_dir(), 'Git still names this release even though its runner stopped')
-        self.git(self.work, 'config', '--local', key,
-                 f'{shlex.quote(sys.executable)} '
-                 f'{shlex.quote(str(self.toolset / "skills/docs-sync/scripts/goals.py"))} '
-                 'merge-driver archive %O %A %B')
-        release.prepare(self.state_root, self.toolset)
-        self.assertFalse(selected.exists(), 'a replaced registration must no longer pin the old release')
-
     def test_status_does_not_create_or_prune_release_worktrees(self):
         cli = self.toolset / 'pi-autowork/pi_autowork/cli.py'
         cli.parent.mkdir(parents=True)
@@ -219,7 +194,7 @@ class InstalledToolsetTests(unittest.TestCase):
             base = Path(folder).resolve()
             old, new = base / 'old-toolset', base / 'autowork'
             for copy in (old, new):
-                for name in ('pi-autowork/engine/owner_cycle.py', 'skills/docs-sync/scripts/goals.py'):
+                for name in ('pi-autowork/engine/owner_cycle.py', 'pi-autowork/engine/task_store.py'):
                     (copy / name).parent.mkdir(parents=True, exist_ok=True)
                     (copy / name).touch()
             pi = base / 'pi'

@@ -4,7 +4,7 @@ Shared method for Plan With Me and Plan For Me. It decides how well a plan is
 understood and written; first load the
 [planning artifact/authority contract](RESEARCH-PLAN.md#planning-artifact-and-authority-contract).
 [The handoff](PLAN-HANDOFF.md) decides where it is saved and who executes it. Adapted from obra/superpowers `brainstorming` and mattpocock/skills
-`grilling` and `domain-modeling` (both MIT), fitted to the TODO.md work queue.
+`grilling` and `domain-modeling` (both MIT), fitted to the `tasks/` work queue.
 
 ## Know what you know
 
@@ -14,7 +14,7 @@ in plain words; the user can override it.
 
 | Size | Signal | Plan |
 |------|--------|------|
-| Clear task | everything that matters is in the request | no interview; save one complete TODO task (reuse its ID), then stop planning |
+| Clear task | everything that matters is in the request | no interview; save one complete task record (reuse its ID), then stop planning |
 | Small change | one outcome, few decisions | brief, decisions and one or two tasks |
 | Project | several outcomes, real trade-offs | written plan section, decisions and dependent tasks |
 
@@ -130,10 +130,10 @@ finished without anyone:
   it. Do not forbid "unrelated" fixes that the task's own checks depend on.
 - **Offline acceptance.** Acceptance is what the worker can check here. Devices,
   production, live services and human review go under live checks, not Acceptance.
-- **Independent tasks first.** Prefer tasks with disjoint `Touches` that can run
+- **Independent tasks first.** Prefer tasks with disjoint `touches` that can run
   at once. For a dependency chain longer than three tasks, state why each link
   depends on the last. Split a task that touches unrelated areas.
-- **Resources mean resources.** Use `Resources: exclusive` or `live` only for a
+- **Resources mean resources.** Use the `exclusive` or `live` resource only for a
   real shared thing, such as a device, a port the code cannot move, or a live
   account. Never use them for caution: a task marked so runs alone and holds back
   the queue.
@@ -147,21 +147,21 @@ finished without anyone:
 
 ## Size each task
 
-One task, one reviewable outcome: about five files or fewer in `Touches:`, at most
-three acceptance criteria, one test seam, and a body a reader takes in within a
+One task, one reviewable outcome: about five files or fewer in `touches`, at most
+three acceptance criteria, one test seam, and a record a reader takes in within a
 minute. Split a larger task along file ownership, each piece owning its code, tests
 and docs, not by layer (model, then API, then UI): a layer split chains every piece
 to the one before it and leaves none testable alone.
 
 ## Disjoint write sets
 
-`Touches:` is the task's expected write set. Parallel Autowork runs likely-independent
+`touches` is the task's expected write set. Parallel Autowork runs likely-independent
 work first, and a task naming a file that unlanded work also names waits until it lands
 (a directory or glob only ranks). The plan is what keeps write sets apart, so tasks can
 run together:
 
 - Tasks that can run together have disjoint writes. Re-cut shared ownership where
-  useful; otherwise report the scheduling overlap. Add `Dependencies:` only for a
+  useful; otherwise report the scheduling overlap. Add `depends_on` only for a
   real prerequisite, not merely a shared path or a preferred sequence.
 - A hot file, one named by three or more open tasks or longer than about 1500 lines,
   gets a first task that extracts the part being changed into its own module; later
@@ -170,26 +170,26 @@ run together:
   shared large suite.
 - Name exact files when you know them. Only when you do not, widen to the owning
   directories rather than omit the field.
-- Never list the coordinator's files: `TODO.md`, `TODO.archive.md`, `goals.json`,
+- Never list the coordinator's files: `tasks/`, `BLOCKERS.md`, `TODO.archive.md`,
   `CHANGELOG.md`.
 - A shared registry (command table, route list, export index) changes in one task,
   or in a closing glue task that depends on the others.
 
 ## Interfaces between dependent tasks
 
-When one task uses what another makes, write the seam in both: `Produces:` in the
-producer and `Consumes:` in the consumer, each naming the exact function, CLI
+When one task uses what another makes, write the seam in both: a `Produces:` note in the
+producer and a `Consumes:` note in the consumer, each naming the exact function, CLI
 command or field and its shape, such as
-`parse_feed(path) -> list[Entry(id: str, seen: datetime)]`. Both fields are
+`parse_feed(path) -> list[Entry(id: str, seen: datetime)]`. Both notes are
 optional; the builder check compares them.
 
 ## Executable acceptance
 
 Write each acceptance criterion as given/when/then and name the test that proves
 it, new or existing (`tests/test_feed.py::test_skips_blank_rows`), which fails on
-today's code. `Checks:` runs those tests directly. A criterion no test can check
-here is a live check, not Acceptance. The task's next action starts with the failing
-test named in its Acceptance.
+today's code. `checks` runs those tests directly. A criterion no test can check
+here is a live check, not acceptance. The task's next action starts with the failing
+test named in its acceptance.
 
 ## Pre-mortem before saving
 
@@ -205,8 +205,8 @@ task (for example "the on-disk format does not change").
 Before reporting a written plan as ready, have it read as the builder who cannot ask
 questions. Dispatch a fresh subagent (`delegate_task`, or the host's equivalent) with:
 
-> You are the engineer who will implement TODO task(s) IDS in REPO. You cannot talk
-> to the planner. Read the task bodies and the plan section they cite. Report only
+> You are the engineer who will implement task(s) IDS in REPO. You cannot talk
+> to the planner. Read the task records (`tasks/items/<ID>.md`) and the plan section they cite. Report only
 > the questions you would still need answered before you could implement well:
 > places where you would have to guess and a wrong guess would matter. For each,
 > give the question and why the answer changes the work, ranked by importance. Skip
@@ -225,10 +225,10 @@ Without a subagent tool, read the tasks as that builder yourself. Sort the quest
 - **Theirs**: only the user can answer it, and the answer changes what gets built.
 
 Then check the batch yourself and fix it before handoff: each executable task
-declares bounded `Touches:` (or `Resources: exclusive` with a real resource reason);
-shared writes are re-cut or explicitly nonparallel, true prerequisites have
-`Dependencies:` edges, and unrelated lanes remain independent. `Dependencies:`
-lists task IDs only; each `Consumes:` matches its producer's `Produces:`. Map every
+declares bounded `touches` (and the `exclusive` resource only with a real resource
+reason); shared writes are re-cut or explicitly nonparallel, true prerequisites have
+`depends_on` edges, and unrelated lanes remain independent. `depends_on` lists task
+IDs only; each `Consumes:` matches its producer's `Produces:`. Map every
 requested outcome to a complete saved task or a scoped unresolved choice; future
 roadmap ideas do not replace the requested batch.
 

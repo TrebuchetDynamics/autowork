@@ -1,15 +1,20 @@
 import tempfile
 import json
 from pathlib import Path
+import shutil
+import subprocess
+import sys
 import unittest
 import backlog_plan
+
+FIXTURE = Path(__file__).parent / 'fixtures' / 'task_store'
 
 class BacklogPlanTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.state=Path(self.tmp.name)
         self.cycle={'consumer':'/fixture/repo','plan':'SPEC.md#accepted','task_ids':['T1'],
-                    'fingerprint':'stable-inputs','unchanged_runs':2,'ready_queue':[],
+                    'fingerprint':'stable-inputs','unchanged_runs':2,
                     'recovery':{'gate':'consumer_readiness'}}
     def test_repeated_hold_plans_once_until_inputs_change(self):
         first=backlog_plan.decide(self.cycle,self.state)
@@ -18,26 +23,53 @@ class BacklogPlanTests(unittest.TestCase):
         self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'],'resolve_recorded_blocker')
         self.cycle['fingerprint']='changed-inputs'
         self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'],'plan')
-    def test_empty_queue_plans_on_first_occurrence_then_reuses_receipt(self):
-        self.cycle.update(unchanged_runs=0, ready_queue=[], task_ids=[])
+    def store(self, *, empty):
+        """A converted consumer: one runnable task, or none (its only task closed)."""
+        repo = Path(self.tmp.name) / ('empty' if empty else 'ready')
+        shutil.copytree(FIXTURE, repo)
+        if empty:
+            path = repo / 'tasks/items/T-1.md'
+            path.write_text(path.read_text().replace('status = "open"', 'status = "done"'))
+        git = ['git', '-C', str(repo), '-c', 'user.email=f@example.invalid', '-c', 'user.name=F']
+        subprocess.run([*git, 'init', '-q'], check=True)
+        subprocess.run([*git, 'add', '-A'], check=True)
+        subprocess.run([*git, 'commit', '-qm', 'tasks'], check=True)
+        return repo
+
+    def check(self):
+        """The real entry point: backlog_plan.py check --cycle FILE, the queue read from the store."""
+        path = Path(self.tmp.name) / 'cycle.json'
+        path.write_text(json.dumps(self.cycle))
+        out = subprocess.run([sys.executable, str(Path(backlog_plan.__file__)), 'check', '--cycle', str(path),
+                              '--state-dir', str(self.state)], capture_output=True, text=True, check=True)
+        return json.loads(out.stdout)
+
+    def test_an_empty_store_plans_on_first_occurrence_then_reuses_receipt(self):
+        self.cycle.update(consumer=str(self.store(empty=True)), unchanged_runs=0, task_ids=[],
+                          ready_queue=[{'id': 'stale'}])  # a hand-written queue is ignored
         self.cycle['recovery']['gate']=None
-        self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'], 'plan')
+        self.assertEqual(self.check()['action'], 'plan')
         backlog_plan.record(self.cycle,self.state,'fixture://empty-queue-plan','canonical_reconciled')
-        self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'], 'reuse')
+        self.assertEqual(self.check()['action'], 'reuse')
+
+    def test_a_store_with_ready_work_executes_it(self):
+        self.cycle.update(consumer=str(self.store(empty=False)), unchanged_runs=0, ready_queue=[])
+        self.cycle['recovery']['gate']=None
+        self.assertEqual(self.check()['action'], 'execute_ready_work')
+        self.assertEqual(backlog_plan.ready_queue(self.cycle), [{'id': 'T-1', 'title': 'Read tasks', 'goal': 'G-1'}])
 
     def test_unknown_queue_does_not_count_as_observed_empty(self):
-        self.cycle.update(unchanged_runs=0)
-        self.cycle.pop('ready_queue')
+        self.cycle.update(unchanged_runs=0)  # /fixture/repo does not exist: the queue is unknown
         self.cycle['recovery']['gate']=None
+        self.assertIsNone(backlog_plan.ready_queue(self.cycle))
         self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'], 'recover_first')
 
     def test_missing_canonical_inputs_need_integration_not_another_proposal(self):
         self.cycle['recovery']['gate']='ledger'
         self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'],'integrate_existing_inputs')
-    def test_ready_work_and_owned_work_skip_planning(self):
-        self.cycle['ready_queue']=[{'id':'T2'}]
-        self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'],'execute_ready_work')
-        self.cycle['ready_queue']=[];self.cycle['recovery']['gate']='ownership'
+    def test_owned_work_skips_planning(self):
+        self.cycle.update(consumer=str(self.store(empty=False)))
+        self.cycle['recovery']['gate']='ownership'
         self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'],'reconcile_owner')
     def test_repository_scope_keeps_deciding_beyond_cached_task_hold(self):
         self.cycle['scope']='repository'
@@ -57,12 +89,12 @@ class BacklogPlanTests(unittest.TestCase):
             self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'],action)
 
     def test_observed_queue_does_not_hide_held_selected_task(self):
-        self.cycle.update(scope='repository', backlog_ready=False, ready_queue=[{'id':'T2'}])
+        self.cycle.update(scope='repository', backlog_ready=False, consumer=str(self.store(empty=False)))
         self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'], 'discover_repository_work')
 
     def test_handoff_preparation_plans_without_waiting_for_user(self):
         self.cycle.update(scope='tasks', admission='handoff_preparation',
-                          selected_task={'id':'T1'}, ready_queue=[{'id':'T1'}],
+                          selected_task={'id':'T1'},
                           unchanged_runs=0)
         result=backlog_plan.decide(self.cycle,self.state)
         self.assertEqual(result['action'],'plan')

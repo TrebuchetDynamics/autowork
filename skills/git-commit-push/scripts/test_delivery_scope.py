@@ -66,7 +66,7 @@ class DeliveryScopePolicyTests(unittest.TestCase):
     def test_remote_additions_conserved_in_isolated_reconciliation(self):
         self.both_require('fresh upstream', 'isolated candidate',
                           'preserve newer remote entries', 'never delete remote lines',
-                          'supported `goals.py task`/`add-task`/`fmt`/`render`',
+                          'supported `autowork tasks` operations',
                           'anchored prose edits', 'validate and inspect the resulting diff')
 
     def test_worker_local_only_audit_and_allowlist_do_not_gain_authority(self):

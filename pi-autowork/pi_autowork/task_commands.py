@@ -1,12 +1,13 @@
 """`autowork tasks ...`: read and edit a repository's tasks/ store. Standard library only.
 
 Reads (list, show, why, validate) use a pinned commit, HEAD by default; validate
---worktree checks uncommitted edits. Writes (add, field, place, move, supersede)
+--worktree checks uncommitted edits. Writes (add, field, place, move, hold, release, done, supersede, goal)
 change task files in the working tree and never commit; each refuses a file that
 changed since it was read, and the whole would-be store is validated before the
 write is kept. A written file grants no authority beyond its typed fields, and a
 declared check still needs the existing approval to run.
 """
+import argparse
 import hashlib
 import json
 import os
@@ -120,14 +121,14 @@ def place_between(ranked, position):
 
 
 def new_id(repo, store, prefix=None):
-    """Next number plus a two-hex hash, as goals.py allocates; the archive's IDs are taken too."""
+    """Next number plus a two-hex hash; IDs in the frozen TODO.archive.md history are taken too."""
     ids = set(store.tasks) | set(store.goals)
     archive = Path(repo) / 'TODO.archive.md'
     if archive.is_file():
         ids |= set(re.findall(r'\b[A-Za-z][A-Za-z0-9_]*-\d+(?:-[0-9a-f]{2})?\b', archive.read_text()))
     numbered = [m.groups() for m in (re.fullmatch(r'([A-Za-z][A-Za-z0-9_]*)-(\d+)(?:-[0-9a-f]{2})?', i)
                                      for i in ids) if m]
-    if prefix is None:  # the tasks' most common prefix, as goals.py chooses it; never a goal's
+    if prefix is None:  # the tasks' most common prefix; never a goal's
         own = [m.group(1) for m in (re.fullmatch(r'([A-Za-z][A-Za-z0-9_]*)-\d+(?:-[0-9a-f]{2})?', t)
                                     for t in store.tasks) if m]
         pool = own or [p for p, n in numbered if f'{p}-{n}' not in store.goals]
@@ -221,6 +222,55 @@ def cmd_add(repo, goal, title, short, section='Now', scope=None, acceptance=(), 
     return tid
 
 
+def cmd_goal(repo, gid, title=None, source=None, priority=None, status=None, focus=None, depends_on=None,
+             evidence=None):
+    """Add a goal, or change the given fields of an existing one. A met goal names its evidence
+    (an executed, passing check), kept as the goal's `Evidence:` note; focus moves to this goal
+    from any other. The first goal of a repository starts its store. Returns 'added' or 'changed'."""
+    if any(p.is_file() for p in (Path(repo) / 'tasks').glob('*/*.md')):
+        store = worktree_store(repo)
+    else:  # no record yet: this goal starts tasks/ (Git keeps no empty folder)
+        if any((Path(repo) / name).exists() for name in ('TODO.md', 'goals.json')):
+            raise CommandError(f'{repo} keeps its tasks in TODO.md and goals.json: run `autowork migrate` instead')
+        store = TaskStore(rev='', tasks={}, goals={})
+        (Path(repo) / 'tasks' / 'goals').mkdir(parents=True, exist_ok=True)
+        (Path(repo) / 'tasks' / 'items').mkdir(exist_ok=True)
+    if gid in store.tasks:
+        raise CommandError(f'{gid} is a task, not a goal')
+    changes = {k: v for k, v in dict(title=title, source=source, priority=priority, status=status, focus=focus,
+                                      depends_on=list(depends_on) if depends_on is not None else None).items()
+               if v is not None}
+    if status == 'met' and not (evidence or '').strip():
+        raise CommandError('a met goal needs --evidence naming the executed, passing check')
+    for other in depends_on or ():
+        if other not in store.goals:
+            raise CommandError(f'unknown goal {other}')
+    note = ('Evidence', ' '.join(evidence.split())) if evidence else None
+    path = _path(repo, gid, goal=True)
+    if focus:
+        for other in store.goals.values():
+            if other.focus and other.id != gid:
+                other_path = _path(repo, other.id, goal=True)
+                before = other_path.read_bytes()
+                _write(repo, other_path, before, task_store.edit(before.decode(), {'focus': False}, goal=True))
+    if gid not in store.goals:
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', gid):
+            raise CommandError('a goal ID uses letters, digits, underscores or hyphens')
+        missing = [f'--{k}' for k in ('title', 'source', 'priority') if k not in changes]
+        if missing:
+            raise CommandError('a new goal needs ' + ', '.join(missing))
+        fields = dict(dict(schema=1, id=gid, status='unmet', focus=False, depends_on=[]), **changes)
+        text = task_store.render(fields, '\n', goal=True)
+        _write(repo, path, None, task_store.set_note(text, *note) if note else text)
+        return 'added'
+    if not changes and not note:
+        raise CommandError('nothing to change')
+    before = path.read_bytes()
+    text = task_store.edit(before.decode(), changes, goal=True) if changes else before.decode()
+    _write(repo, path, before, task_store.set_note(text, *note) if note else text)
+    return 'changed'
+
+
 TYPED = {'rank': int, 'depends_on': list, 'touches': list, 'resources': list, 'acceptance': list,
          'checks': list, 'exclusions': list, 'title': str, 'short': str, 'scope': str, 'goal': str,
          'kind': str, 'ownership': str, 'live': str}
@@ -248,14 +298,17 @@ def cmd_field(repo, tid, key, value):
         _set(repo, tid, {}, (key, ' '.join(value.split())))
 
 
-def cmd_place(repo, tid, section):
+def cmd_place(repo, tid, section, decision=None):
+    """Move an open task to the bottom of a section; ``decision`` also records why, as its
+    `Owner decision:` note."""
     store = worktree_store(repo)
     t = _task(store, tid)
     if t.status != 'open':
         raise CommandError(f'{tid} is {t.status}')
     if section not in ('Now', 'Next', 'Needs decision'):
         raise CommandError('section is Now, Next or Needs decision')
-    _set(repo, tid, {'section': section, 'rank': bottom_rank(store, section, without=tid)})
+    note = ('Owner decision', ' '.join(decision.split())) if decision else None
+    _set(repo, tid, {'section': section, 'rank': bottom_rank(store, section, without=tid)}, note)
 
 
 def cmd_move(repo, tid, direction):
@@ -273,6 +326,54 @@ def cmd_move(repo, tid, direction):
     for other, rank in sorted(changes.items(), key=lambda item: item[0] != tid):
         _set(repo, other, {'rank': rank})
     return changes
+
+
+def cmd_hold(repo, tid, by, until=None):
+    """Keep the runner off an open task: its record's `Held by:` note, never its status. A
+    held task is never selected or dispatched, and still blocks its dependents and tasks that
+    share its resources or serial work, until the note is removed or its date passes."""
+    t = _task(worktree_store(repo), tid)
+    if t.status != 'open':
+        raise CommandError(f'{tid} is {t.status}; only an open task can be held')
+    if until and not re.fullmatch(r'\d{4}-\d{2}-\d{2}', until):
+        raise CommandError('--until is a date: YYYY-MM-DD')
+    value = ' '.join(by.split()) + (f'; until {until}' if until else '')
+    _set(repo, tid, {}, ('Held by', value))
+
+
+def cmd_release(repo, tid):
+    """Remove the task's `Held by:` note so the runner may select it again."""
+    _task(worktree_store(repo), tid)
+    path = _path(repo, tid)
+    before = path.read_bytes()
+    text = before.decode()
+    after = re.sub(r'(?m)^- Held by: .*\n?', '', text)
+    if after == text:
+        raise CommandError(f'{tid} is not held')
+    _write(repo, path, before, after)
+
+
+def cmd_done(repo, tid, evidence):
+    """Close a task without the engine's verified closure: a planning task, or one whose
+    acceptance the evidence shows already met. The evidence is kept as the task's note."""
+    t = _task(worktree_store(repo), tid)
+    if t.status != 'open':
+        raise CommandError(f'{tid} is {t.status}')
+    if not evidence.strip():
+        raise CommandError('done needs --evidence naming why the acceptance is met')
+    _set(repo, tid, {'status': 'done'}, ('Evidence', ' '.join(evidence.split())))
+
+
+def reopen(repo, tid, reason):
+    """Open a done task again, at the bottom of its section, with why as its `Reopened:` note:
+    the runner's answer to a close whose receipt no longer matches the task's contract."""
+    store = worktree_store(repo)
+    t = _task(store, tid)
+    if t.status != 'done':
+        raise CommandError(f'{tid} is {t.status}')
+    section = t.section or 'Now'
+    _set(repo, tid, {'status': 'open', 'section': section, 'rank': bottom_rank(store, section, without=tid)},
+         ('Reopened', ' '.join(reason.split())))
 
 
 def cmd_supersede(repo, tid, by, reason):
@@ -318,13 +419,32 @@ def add_parser(sub):
     p = verbs.add_parser('place')
     p.add_argument('task'); p.add_argument('section', choices=('Now', 'Next', 'Needs decision'))
     p.add_argument('repo', nargs='?', default='.')
+    p.add_argument('--decision', help='also record this as its Owner decision (dated, one line)')
     p = verbs.add_parser('move')
     p.add_argument('task'); p.add_argument('direction', choices=('up', 'down'))
     p.add_argument('repo', nargs='?', default='.')
+    p = verbs.add_parser('hold', help="keep the runner off an open task (its `Held by:` note)")
+    p.add_argument('task'); p.add_argument('repo', nargs='?', default='.')
+    p.add_argument('--by', required=True, help='who holds it, for example "an interactive session"')
+    p.add_argument('--until', help='YYYY-MM-DD; the hold ends after this day')
+    p = verbs.add_parser('release', help='remove the hold so the runner may select the task')
+    p.add_argument('task'); p.add_argument('repo', nargs='?', default='.')
+    p = verbs.add_parser('done', help='close an open task with the evidence that its acceptance is met')
+    p.add_argument('task'); p.add_argument('repo', nargs='?', default='.')
+    p.add_argument('--evidence', required=True)
     p = verbs.add_parser('supersede')
     p.add_argument('task'); p.add_argument('repo', nargs='?', default='.')
     p.add_argument('--by', action='append', required=True)
     p.add_argument('--reason', required=True)
+    p = verbs.add_parser('goal', help='add a goal, or change its title, source, priority, status, focus or dependencies')
+    p.add_argument('goal'); p.add_argument('repo', nargs='?', default='.')
+    p.add_argument('--title'); p.add_argument('--source', help='the accepted plan or spec it comes from, path#anchor')
+    p.add_argument('--priority', type=int, help='1 is first among goals')
+    p.add_argument('--status', choices=('unmet', 'partial', 'unverified', 'met'))
+    p.add_argument('--focus', action=argparse.BooleanOptionalAction, default=None,
+                   help='the one goal whose tasks go first')
+    p.add_argument('--depends-on', action='append', help='a goal that must be met first')
+    p.add_argument('--evidence', help='for --status met: the executed, passing check')
     return tasks
 
 
@@ -349,14 +469,25 @@ def run(args, repo):
             cmd_field(repo, args.task, args.label, args.value)
             out = f'ok {args.task} {args.label}'
         elif verb == 'place':
-            cmd_place(repo, args.task, args.section)
+            cmd_place(repo, args.task, args.section, args.decision)
             out = f'ok {args.task} -> {args.section}'
         elif verb == 'move':
             changes = cmd_move(repo, args.task, args.direction)
             out = 'ok ' + ', '.join(f'{tid} rank {rank}' for tid, rank in changes.items())
+        elif verb == 'hold':
+            cmd_hold(repo, args.task, args.by, args.until)
+            out = f'ok {args.task} held'
+        elif verb == 'release':
+            cmd_release(repo, args.task)
+            out = f'ok {args.task} released'
+        elif verb == 'done':
+            cmd_done(repo, args.task, args.evidence)
+            out = f'ok {args.task} done'
         elif verb == 'supersede':
             cmd_supersede(repo, args.task, args.by, args.reason)
             out = f'ok {args.task} superseded'
+        elif verb == 'goal':
+            out = f'{cmd_goal(repo, args.goal, args.title, args.source, args.priority, args.status, args.focus, args.depends_on, args.evidence)} goal {args.goal}'
     except (CommandError, StoreError, WriteError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
