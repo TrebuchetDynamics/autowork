@@ -41,6 +41,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- **A failed batch's halves are checked side by side** (TOOLSET-340-64b75d92). Halving a
+  failed batch checked one half after the other, and a merge-train car stacked on a failing
+  half was discarded with it; six clean candidates waited up to 2.5 h behind one bad one.
+  The next half now starts beside the running one, on the same base, and lands if it passes
+  whatever the other half does (a passing half ahead lands first, and the independent half is
+  checked again on the new base). Landing still reuses a verdict only for the exact tree it
+  checked. `PI_AUTOWORK_INDEPENDENT_HALVES=0` turns it off.
 - **Shared test modules no longer serialize work** (TOOLSET-341-eb82856d). A path named by
   three unfinished contracts became a hot file, and tasks sharing it waited for each other;
   nearly every engine task adds tests to `tests/test_pi_autowork.py`, so five tasks waited on
