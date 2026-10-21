@@ -1,6 +1,7 @@
 """Offline parallel dispatch checks with a deterministic fake worker CLI."""
 import contextlib
 import errno
+import fcntl
 import hashlib
 import io
 import json
@@ -122,9 +123,152 @@ class DispatchTests(unittest.TestCase):
         self.assertIn('No person is attached to this session', plain)  # TOOLSET-282-43
         self.assertIn('Do not run the full check (`python3 scripts/check.py`)', gated)
         self.assertIn('Leave the full check out of the report', gated)
+        for text in ('autowork-run', 'more than two minutes', 'focused tests directly',
+                     'worker_check_slot_wait_seconds'):
+            self.assertIn(text, gated)
         for text in ('unrelated_failures', 'environment_failures', 'rerun each alone once',
                      'git worktree add --detach', 'commit anyway', 'never blockers'):
             self.assertIn(text, gated)
+
+    def test_long_worker_checks_share_a_slot_and_keep_the_command_exit_code(self):
+        with patch.dict(os.environ, PI_AUTOWORK_CHECK_ROOT=str(self.root / 'checks'),
+                        PI_AUTOWORK_WORKER_CHECK_SLOTS='1'):
+            checks = self.root / 'checks'
+            checks.mkdir(mode=0o700)
+            runner_slot = (checks / 'slot-0').open('a')
+            self.addCleanup(runner_slot.close)
+            fcntl.flock(runner_slot, fcntl.LOCK_EX)  # runner full checks use a separate pool
+            workers = []
+            for name in ('first', 'second'):
+                data = self.common / 'slot-data' / name / 'attempt-1'
+                data.mkdir(parents=True)
+                prompt = data / 'prompt.md'
+                prompt.write_text('fixture')
+                code = ('import subprocess,sys; from pathlib import Path; '
+                        'rc=subprocess.call(["autowork-run", *sys.argv[2:]]); '
+                        'Path(sys.argv[1], "exit").write_text(str(rc))')
+                check = ('from pathlib import Path; import sys,time; p=Path(sys.argv[1]); '
+                         '(p/"started").touch(); '
+                         'exec(\'while not (p/"release").exists(): time.sleep(.01)\'); sys.exit(23)')
+                worker = dispatch.launch([sys.executable, '-c', code, str(data), sys.executable,
+                                          '-c', check, str(data)], self.repo, data, 1, prompt)
+                self.addCleanup(dispatch.stop, worker, str(self.repo))
+                workers.append(data)
+                target = data / ('started' if name == 'first' else 'worker.log')
+                self.await_file(target, 'waiting for a worker check slot' if name == 'second' else None)
+            first, second = workers
+            self.assertFalse((second / 'started').exists())
+            (first / 'release').touch()
+            self.await_file(second / 'started')
+            self.await_file(first / 'exit')
+            self.assertEqual((first / 'exit').read_text(), '23')
+            (second / 'release').touch()
+            self.await_file(second / 'exit')
+            self.assertEqual((second / 'exit').read_text(), '23')
+            records = [json.loads(p.read_text()) for p in (second / 'worker-checks').glob('*.json')]
+            self.assertEqual(len(records), 1)
+            self.assertGreater(records[0]['wait_seconds'], 0)
+            self.assertEqual((second / 'worker.log').read_text().count('waiting for a worker check slot'), 1)
+
+    def await_file(self, path, text=None):
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            if path.exists() and (text is None or text in path.read_text()):
+                return
+            time.sleep(.01)
+        self.fail(f'did not observe {text or path}: {path.parent}')
+
+    def test_worker_report_sums_slot_waits_without_replacing_its_checks(self):
+        import autowork_run
+        directory = self.root / 'worker-checks'
+        directory.mkdir()
+        for index, seconds in enumerate((1.25, 2.0)):
+            (directory / f'{index}.json').write_text(json.dumps(
+                {'waiting_since': 1, 'updated': 9, 'wait_seconds': seconds}))
+        report = self.root / 'report.json'
+        report.write_text(json.dumps({'task': 'A', 'checks': [{'result': 'pass'}]}))
+        autowork_run.report_wait(directory, report)
+        self.assertEqual(json.loads(report.read_text()),
+                         {'task': 'A', 'checks': [{'result': 'pass'}], 'worker_check_slot_wait_seconds': 3.25})
+
+    def test_a_killed_worker_check_holder_releases_its_slot(self):
+        import shlex
+        env = dict(os.environ, PI_AUTOWORK_CHECK_ROOT=str(self.root / 'checks'),
+                   PI_AUTOWORK_WORKER_CHECK_SLOTS='1')
+        wrapper = [sys.executable, str(SCRIPTS / 'autowork_run.py')]
+        for mode in ('killed', 'shell', 'python'):
+            with self.subTest(mode=mode):
+                env['PI_AUTOWORK_CHECK_ROOT'] = str(self.root / f'checks-{mode}')
+                started = self.root / mode
+                check = [sys.executable, '-c', 'import os,signal,sys,time; from pathlib import Path; '
+                         'signal.signal(signal.SIGTERM, signal.SIG_IGN); '
+                         'Path(sys.argv[1]).write_text(str(os.getpid())); time.sleep(30)', str(started)]
+                command = (['bash', '-c', shlex.join(check) + '; :'] if mode == 'shell' else
+                           [sys.executable, '-c',
+                            'import subprocess,sys; subprocess.run(sys.argv[1:], start_new_session=True)', *check]
+                           if mode == 'python' else check)
+                holder = subprocess.Popen([*wrapper, *command], env=env, start_new_session=True)
+                self.addCleanup(holder.wait)
+                self.addCleanup(lambda h=holder: h.kill() if h.poll() is None else None)
+                self.await_file(started)
+                child = int(started.read_text())
+                group = os.getpgid(child)
+                def kill_survivors(group=group):
+                    try:
+                        os.killpg(group, 9)
+                    except ProcessLookupError:
+                        pass
+                self.addCleanup(kill_survivors)
+                if mode == 'killed':
+                    holder.kill()
+                    kill_survivors()
+                else:
+                    holder.terminate()
+                self.assertEqual(holder.wait(timeout=5), -9 if mode == 'killed' else 143)
+                result = subprocess.run([*wrapper, sys.executable, '-c', 'raise SystemExit(7)'],
+                                        env=env, capture_output=True, timeout=5)
+                self.assertEqual(result.returncode, 7, result.stderr)
+                stat = Path(f'/proc/{child}/stat')
+                if stat.exists():
+                    self.assertEqual(stat.read_text().rsplit(')', 1)[1].split()[0], 'Z')
+
+    def test_slot_waiting_is_not_a_stuck_command_but_running_still_is(self):
+        sys.path.insert(0, str(SCRIPTS.parents[2] / 'pi-autowork'))
+        from pi_autowork import pi_runtime
+        checks = self.root / 'checks'
+        checks.mkdir(mode=0o700)
+        records = self.root / 'worker-checks'
+        records.mkdir()
+        env = dict(os.environ, PI_AUTOWORK_CHECK_ROOT=str(checks),
+                   PI_AUTOWORK_WORKER_CHECK_SLOTS='1', AUTOWORK_WORKER_CHECK_DIR=str(records))
+        started = self.root / 'started'
+        command = [sys.executable, str(SCRIPTS / 'autowork_run.py'), sys.executable, '-c',
+                   'from pathlib import Path; import sys,time; '
+                   'Path(sys.argv[1]).touch(); time.sleep(30)', str(started)]
+        import shlex
+        # Preserve the shell ancestor: its age includes both queueing and execution.
+        shell = shlex.join(command) + '; :'
+        with (checks / 'worker-slot-0').open('a') as lease, patch.dict(os.environ, env):
+            fcntl.flock(lease, fcntl.LOCK_EX)
+            pi = subprocess.Popen([sys.executable, '-c',
+                                   'import subprocess,sys; sys.exit(subprocess.call(["bash", "-c", sys.argv[1]]))',
+                                   shell], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                  start_new_session=True)
+            self.addCleanup(pi.stdout.close)
+            self.addCleanup(pi.wait)
+            self.addCleanup(lambda: os.killpg(pi.pid, 9) if pi.poll() is None else None)
+            self.assertIn(b'waiting for a worker check slot', pi.stdout.readline())
+            time.sleep(.6)
+            stopping = {}
+            self.assertEqual(pi_runtime.stop_stuck_commands(os.getpid(), .4, stopping), [])
+            self.assertIsNone(pi.poll())
+            self.assertFalse(started.exists())
+            fcntl.flock(lease, fcntl.LOCK_UN)
+            self.await_file(started)
+            self.assertEqual(pi_runtime.stop_stuck_commands(os.getpid(), .4, stopping), [])
+            time.sleep(.6)
+            self.assertTrue(pi_runtime.stop_stuck_commands(os.getpid(), .4, stopping))
+            pi.wait(timeout=5)
 
     def test_worker_gets_main_evidence_location_and_repair_instructions(self):
         data = self.common / 'slot-data/A/attempt-1'

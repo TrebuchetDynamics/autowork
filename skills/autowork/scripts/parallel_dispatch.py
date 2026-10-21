@@ -256,7 +256,9 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None,
         '  task\'s Checks, not the whole suite after every edit. Run focused modules through the',
         '  repository\'s sharded check runner when available (for example: python3 scripts/check.py PATH ...).',
         *full_check_rule(),
-        '  One command that runs',
+        '  Run any suite or build expected to take more than two minutes through',
+        '  `autowork-run <command ...>` (on PATH); run focused tests directly. Slot waiting does not',
+        '  count toward the command time limit. One command that runs',
         '  longer than $PI_AUTOWORK_COMMAND_TIMEOUT seconds (default 1800) is stopped: wrap browser,',
         '  device and other long suites in `timeout` and select narrower tests rather than waiting.',
         '- For a full-gate failure, or a failure of the task\'s own Checks commands, only in tests',
@@ -283,9 +285,10 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None,
         '- Finally write JSON to the report file: {"task": ID, "commit": SHA or null,',
         '  "changed_files": [...], "checks": [{"command": ..., "result": "pass"|"fail", "summary": ...}],',
         '  "blockers": [...], "pending_live": [...], "unrelated_failures": [...],',
-        '  "environment_failures": [...], "changelog": "...",',
+        '  "environment_failures": [...], "worker_check_slot_wait_seconds": NUMBER, "changelog": "...",',
         '  "doc_impact": {"status": "not_needed"|"updated"|"pending", "reason": "...",',
         '    "paths": [...], "checks": [...], "resume": "..."}}.',
+        '  The runner records total worker check-slot wait seconds from $AUTOWORK_WORKER_CHECK_DIR.',
         '- Always assess doc impact from the final diff, task Acceptance and actual affected docs.',
         '  "paths" lists repository-relative docs inspected/updated (empty for metadata-only work).',
         '  "not_needed" explains why existing docs already cover the change or no docs are affected.',
@@ -664,9 +667,16 @@ def launch(argv, worktree, data, slot_index, stdin_path):
     # a pinned SDK one task installs is the next task's and every reviewer's too (TOOLSET-169-1d).
     cache = data.parents[2] / 'cache'
     cache.mkdir(exist_ok=True, mode=0o700)
+    tools = data / 'bin'
+    tools.mkdir(exist_ok=True, mode=0o700)
+    wrapper = tools / 'autowork-run'
+    if not wrapper.exists():
+        wrapper.symlink_to(Path(__file__).resolve().with_name('autowork_run.py'))
     base, lease = port_lease(slot_index)
     env.update(TMPDIR=temporary, TMP=temporary, TEMP=temporary, AUTOWORK_CACHE=str(cache), AUTOWORK_SLOT=str(slot_index),
-               AUTOWORK_PORT_BASE=str(base), AUTOWORK_MAIN_EVIDENCE=str(data.parents[2] / 'main-evidence'))
+               AUTOWORK_PORT_BASE=str(base), PATH=str(tools) + os.pathsep + env.get('PATH', os.defpath),
+               AUTOWORK_WORKER_CHECK_DIR=str(data / 'worker-checks'),
+               AUTOWORK_MAIN_EVIDENCE=str(data.parents[2] / 'main-evidence'))
     env[state.WORKER_MARKER] = str(Path(worktree).resolve())
     try:
         with open(data / 'worker.log', 'ab') as log, open(stdin_path, 'rb') as stdin:

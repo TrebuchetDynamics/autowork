@@ -246,6 +246,17 @@ def stop_stuck_commands(runner_pid, limit, stopping, now=None):
                             pass
                 continue
             age = _age(command)
+            directory = os.environ.get('AUTOWORK_WORKER_CHECK_DIR')
+            if age is not None and directory:
+                scripts = str(Path(__file__).resolve().parents[2] / 'skills/autowork/scripts')
+                if scripts not in sys.path:
+                    sys.path.insert(0, scripts)
+                import autowork_run
+                # Merge overlapping waits: two wrappers in one tool call must not double its allowance.
+                end = 0
+                for start, finish in sorted(autowork_run.queue_intervals(directory, command)):
+                    age -= max(0, finish - max(start, end))
+                    end = max(end, finish)
             if age is None or age < limit or DAEMONS.search(line):
                 continue
             for pid in reversed(_tree(command)):
