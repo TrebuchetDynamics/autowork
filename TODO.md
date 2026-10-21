@@ -144,23 +144,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No interactive prompt in `autowork start`; it must stay scriptable.
 - Planner's call (2026-10-19): Now, after 269-f2. A push is publication and needs its own authorization; a clean cut with no compatibility default.
 
-### TOOLSET-271-d6 — A worker-side merge leaves planning files as the base has them, and a hold the runner caused is recovered (GitHub #7)
-
-- [ ] TOOLSET-271-d6 — A worker-side merge leaves planning files as the base has them, and a hold the runner caused is recovered (GitHub #7)
-- Short: Worker merges keep base planning files
-- Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: [GitHub #7](https://github.com/TrebuchetDynamics/autowork/issues/7); [coordinator](pi-autowork/pi_autowork/coordinator.py) (`MERGE_PROMPT`: runs `goals.py merge-finalize` whenever goals.json exists, and opens with the git-commit-push skill); [integration](skills/autowork/scripts/parallel_integrate.py) (`verify_scope` holds `changed files the coordinator owns`; the `touches_held` re-offer skips coordinator files).
-- Evidence (2026-10-19, one fleet runner): a task whose conflicts were only in two source files was merged by Pi, which ran `merge-finalize` and committed a normalized `TODO.md`/`goals.json`. The batch check passed, then `verify_scope` held it for changing coordinator files, recovery never re-offered it, and five dependent tasks stayed blocked.
-- Touches: pi-autowork/pi_autowork/coordinator.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, tests/test_pi_autowork.py
-- Scope: (1) `MERGE_PROMPT` asks for `merge-finalize` only when a planning file is among the conflicted files, and no longer loads the git-commit-push skill. (2) After a worker-side merge, before its commit is checked, the runner restores `TODO.md`, `TODO.archive.md` and `goals.json` from the merged base when the task's own commit did not change them. (3) A scope hold whose outside paths are only coordinator files whose content matches the base is dropped and the commit re-offered once.
-- Acceptance: In fixtures: a merge conflicting only in a source file, where the agent also rewrites `goals.json`, integrates with the base's planning files; a conflict in `TODO.md` still runs `merge-finalize`; an existing hold for coordinator files equal to the base is re-offered and lands.
-- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 -m unittest tests.test_pi_autowork; python3 scripts/check.py
-- Dependencies: None.
-- Ownership: Toolset coordinator.
-- Exclusions: No relaxing of `verify_scope` for coordinator files a task's own commit changed.
-- Planner's call (2026-10-19): Now. The runner's own procedure must never fail a correct task; any one of the three changes breaks the loop, and all three together keep it broken.
-
 ### TOOLSET-274-f0 — An unusable repository stops the service deliberately instead of a restart loop (GitHub #6)
 
 - [ ] TOOLSET-274-f0 — An unusable repository stops the service deliberately instead of a restart loop (GitHub #6)

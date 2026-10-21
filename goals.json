@@ -1170,14 +1170,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-271-d6",
-      "section": "Now",
-      "status": "open",
-      "title": "A worker-side merge leaves planning files as the base has them, and a hold the runner caused is recovered (GitHub #7)"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-274-f0",
       "section": "Now",
       "status": "open",
@@ -3380,6 +3372,14 @@
       "section": "Done",
       "status": "done",
       "title": "A runner never commits or publishes uncommitted changes it did not make (GitHub #3)"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-271-d6",
+      "section": "Done",
+      "status": "done",
+      "title": "A worker-side merge leaves planning files as the base has them, and a hold the runner caused is recovered (GitHub #7)"
     },
     {
       "depends_on": [],
