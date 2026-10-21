@@ -654,5 +654,56 @@ class FleetViewTests(unittest.TestCase):
         self.assertIn('PILOT OK', result.stdout)
 
 
+class ActionStyleTests(unittest.TestCase):
+    """TOOLSET-343-9356fe48: each action line is colored by its kind and fits one line."""
+
+    def test_each_kind_of_action_gets_its_color(self):
+        cases = {
+            'editing pi-autowork/x.py': 'cyan',
+            fleet_view.doing_text('bash: python3 scripts/check.py tests/test_x.py'): 'yellow',
+            fleet_view.doing_text('bash: rg -n foo src'): 'dim',
+            fleet_view.doing_text('grep: foo'): 'dim',
+            fleet_view.doing_text('bash: ruff check .'): 'dim',
+            fleet_view.doing_text('bash: git status --short'): 'blue',
+            fleet_view.doing_text('bash: python3 - <<PY'): 'blue',
+            fleet_view.doing_text('subagent: start'): 'magenta',
+            fleet_view.doing_text('subagent_wait: x'): 'magenta',
+            'reviewer: editing a.py': 'cyan',
+            'landing: passed in its batch': 'green',
+            'said: PI_AUTOWORK_VERIFY: pass — acceptance met': 'bold green',
+            'said: PI_AUTOWORK_RESULT: completed, then a sentence': 'bold green',
+            'said: PI_AUTOWORK_VERIFY: fail — the timing cause remains': 'bold red',
+            'said: PI_AUTOWORK_RESULT: blocked — needs a decision': 'bold red',
+            'reviewer: committed as `d3ce7ecc`. Notes follow': 'bold',
+            'said: Committed TOOLSET-1 locally': 'bold',
+            'something new': '',
+        }
+        for line, style in cases.items():
+            with self.subTest(line=line):
+                self.assertEqual(fleet_view.action_style(line), style)
+
+    def test_task_states_get_their_colors(self):
+        row = lambda **kw: fleet_view.TaskRow(**{**dict(task='T', short='s', section='Next', state='ready',
+                                                        kind='ready', why=''), **kw})
+        cases = ((row(kind='working', state='implementing'), 'bold green'),
+                 (row(kind='waiting', state='waiting'), 'bold yellow'),
+                 (row(kind='held', state='held'), 'bold red'),
+                 (row(kind='waiting', state='failed', why='merge conflict'), 'bold red'),
+                 (row(section='Needs decision', state='open'), 'bold magenta'),
+                 (row(state='done'), 'dim'), (row(), ''))
+        for value, style in cases:
+            with self.subTest(row=value):
+                self.assertEqual(fleet_view.state_style(value), style)
+
+    def test_a_long_action_fits_one_line_with_an_ellipsis(self):
+        long = 'running tests: ' + ' '.join(f'tests/test_{i}.py' for i in range(30))
+        fitted = fleet_view.fit_line(long, 60)
+        self.assertEqual(len(fitted), 60)
+        self.assertTrue(fitted.endswith('…'))
+        self.assertNotIn('\n', fleet_view.fit_line('a\nb  c', 80))
+        self.assertEqual(fleet_view.fit_line('short', 60), 'short')
+        self.assertEqual(fleet_view.fit_line(long, 0), ' '.join(long.split()))  # no width: whole
+
+
 if __name__ == '__main__':
     unittest.main()

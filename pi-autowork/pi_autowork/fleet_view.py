@@ -297,6 +297,51 @@ def doing_text(activity):
     return f'{tool}: {arg}'.strip(': ')
 
 
+FAILED_WORDS = re.compile(r'\b(fail(ed|s|ure)?|blocked|error|refused|held)\b', re.I)
+PASSED_WORDS = re.compile(r'\b(pass(ed|es)?|completed|green|ok)\b', re.I)
+ACTION_KINDS = (('editing ', 'cyan'), ('running tests', 'yellow'), ('building', 'blue'), ('running:', 'blue'),
+                ('reading', 'dim'), ('searching', 'dim'), ('checking', 'dim'), ('git ', 'blue'), ('gh ', 'blue'),
+                ('starting a sub-agent', 'magenta'), ('waiting on a sub-agent', 'magenta'),
+                ('landing', 'green'), ('integrat', 'green'), ('batch check', 'yellow'),
+                ('waiting for a check slot', 'dim'), ('waiting to integrate', 'dim'))
+
+
+def action_style(text):
+    """The Rich style a TUI gives an action line (doing_text, doing), by its kind: verdicts bold,
+    green when they pass and red when they fail; edits cyan; tests yellow; reads dim; commands
+    blue; sub-agents magenta (TOOLSET-343-9356fe48)."""
+    text = ' '.join(str(text).split())
+    inner = text.removeprefix('reviewer: ')
+    kind = next((style for prefix, style in ACTION_KINDS if inner.startswith(prefix)), None)
+    # What a worker said, or a reviewer's words that are no tool call: a verdict.
+    if inner.startswith('said: ') or (text.startswith('reviewer: ') and kind is None):
+        if FAILED_WORDS.search(inner):
+            return 'bold red'
+        return 'bold green' if PASSED_WORDS.search(inner) else 'bold'
+    return kind or ''
+
+
+def state_style(row):
+    """A task row's state color: working green, waiting yellow, held or failed red, an owner
+    decision (Needs decision) magenta, done dim."""
+    words = f'{getattr(row, "state", "")} {getattr(row, "why", "")}'.lower()
+    if getattr(row, 'kind', '') == 'held' or 'failed' in words:
+        return 'bold red'
+    if getattr(row, 'section', '') == 'Needs decision':
+        return 'bold magenta'
+    if getattr(row, 'kind', '') == 'working':
+        return 'bold green'
+    if getattr(row, 'kind', '') == 'waiting':
+        return 'bold yellow'
+    return 'dim' if str(getattr(row, 'state', '')).startswith('done') else ''
+
+
+def fit_line(text, width):
+    """``text`` on one line of ``width`` columns, cut with an ellipsis when longer."""
+    text = ' '.join(str(text).split())
+    return text if width <= 0 or len(text) <= width else text[:max(1, width - 1)].rstrip() + '…'
+
+
 QUIET_AFTER = 300
 
 

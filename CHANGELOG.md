@@ -41,6 +41,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- **Colored, one-line task activity in the TUI** (TOOLSET-343-9356fe48). A worker's action
+  log, a task's last actions and the Doing column color each action by kind: edits cyan,
+  tests yellow, reads and searches dim, commands blue, sub-agents magenta, and verdicts bold,
+  green when they pass and red when they fail or block. Long commands are cut to one line with
+  an ellipsis (`w` shows them whole in the worker log). Task states: working green, waiting
+  yellow, held or failed red, Needs decision magenta, done dim; a Blocker lane is red.
 - **A failed batch's halves are checked side by side** (TOOLSET-340-64b75d92). Halving a
   failed batch checked one half after the other, and a merge-train car stacked on a failing
   half was discarded with it; six clean candidates waited up to 2.5 h behind one bad one.
