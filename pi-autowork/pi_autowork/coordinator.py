@@ -1470,8 +1470,9 @@ class Coordinator:
         one `No task can start now` line covers them), and states already reached when the
         runner started are not replayed (quiet)."""
         word = lifecycle(state, paused=paused)
-        if self.seen.get(task) == word or (self.seen.get(task) == 'landing' and word == 'implemented'):
-            # A batch-passed candidate waiting out a busy checkout is still landing: the two lines
+        waiting = self.seen.get(task) == 'landing' or (self.seen.get(task) == 'verifying' and 'busy-' + task in self.seen)
+        if self.seen.get(task) == word or (waiting and word == 'implemented'):
+            # A candidate waiting out a busy checkout is still landing or verifying: the two lines
             # alternated every 30 s, 66 times for one task.
             return
         self.seen[task] = word

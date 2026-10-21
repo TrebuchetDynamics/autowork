@@ -915,6 +915,19 @@ class BatchLandingTests(unittest.TestCase):
                 runner.note_state('B', 'held', 'merge conflict')
             self.assertEqual(said, ['B: implemented', 'B: landing — passed in its batch; not reviewed again',
                                     'B: failed — merge conflict'])
+            said.clear()
+            busy = {'outcome': 'BUSY', 'reason': 'live session in the checkout'}
+            with patch.object(coordinator.LOG, 'say', side_effect=said.append):
+                for _ in range(3):  # a single review behind the same busy checkout
+                    runner.note_state('C', 'reported')
+                    runner.note_integrating('C', [])
+                    runner.integrated('C', busy)
+                runner.integrated('C', {'outcome': 'HELD', 'cause': 'conflict', 'reason': 'merge conflict'},
+                                  resolve_conflicts=False)
+                runner.note_state('C', 'reported')  # requeued after a real review: said again
+            self.assertEqual(said, ['C: implemented', 'C: verifying',
+                                    'C: waiting to integrate until another session leaves the main checkout '
+                                    '(live session in the checkout)', 'C: failed — merge conflict', 'C: implemented'])
 
     def test_a_day_old_commit_is_set_aside_and_its_task_runs_fresh(self):
         """Twenty day-old commits conflicted with each other at every landing and held back every
