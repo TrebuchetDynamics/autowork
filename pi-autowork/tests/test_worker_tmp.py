@@ -915,6 +915,19 @@ class BatchLandingTests(unittest.TestCase):
                 runner.note_state('B', 'held', 'merge conflict')
             self.assertEqual(said, ['B: implemented', 'B: landing — passed in its batch; not reviewed again',
                                     'B: failed — merge conflict'])
+            said.clear()
+            busy = {'outcome': 'BUSY', 'reason': 'live session in the checkout'}
+            with patch.object(coordinator.LOG, 'say', side_effect=said.append):
+                for _ in range(3):  # a single review behind the same busy checkout
+                    runner.note_state('C', 'reported')
+                    runner.note_integrating('C', [])
+                    runner.integrated('C', busy)
+                runner.integrated('C', {'outcome': 'HELD', 'cause': 'conflict', 'reason': 'merge conflict'},
+                                  resolve_conflicts=False)
+                runner.note_state('C', 'reported')  # requeued after a real review: said again
+            self.assertEqual(said, ['C: implemented', 'C: verifying',
+                                    'C: waiting to integrate until another session leaves the main checkout '
+                                    '(live session in the checkout)', 'C: failed — merge conflict', 'C: implemented'])
 
     def test_a_day_old_commit_is_set_aside_and_its_task_runs_fresh(self):
         """Twenty day-old commits conflicted with each other at every landing and held back every
@@ -945,6 +958,27 @@ class BatchLandingTests(unittest.TestCase):
             self.assertEqual(said, ['A: its commit waited 25 h to merge; set aside as autowork/A-set-aside-1, '
                                     'and the task runs fresh on current main',
                                     'D: could not set aside its day-old commit: its interrupted integration already landed'])
+
+    def test_a_busy_checkout_ends_the_pass_so_the_batch_lands_in_order(self):
+        """A session in the checkout answered BUSY for the first of three batch-passed candidates;
+        the second was tried next, off its batch's order, and both were reviewed again."""
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator = self.runner(folder, {})
+            runner.stop, runner.known_at_start, runner.once_task = False, True, None
+            rows = [{'task': t, 'state': 'reported'} for t in ('A', 'B', 'C')]
+            started = []
+            for name, value in dict(finish_resolvers=lambda: None, status=lambda: {}, set_aside_stale=lambda r: False,
+                                    session_busy=lambda: False, reverify_held=lambda r: None,
+                                    batch_chain=lambda: ['A', 'B', 'C'], batch_conflicts=lambda: [],
+                                    batch_due=lambda r: [], reexec_due=lambda: '', follow_base=lambda: None,
+                                    resolve_deferred=lambda d: False, start_integration=started.append).items():
+                setattr(runner, name, value)
+            runner.tasks = lambda snapshot=None: rows
+            runner.collect_integration = lambda wait=0: (
+                (started[-1], {'outcome': 'BUSY', 'reason': 'live session in the checkout'}) if wait else None)
+            with patch.object(coordinator.LOG, 'say'):
+                runner.settle()
+            self.assertEqual(started, ['A'])
 
     def test_a_due_reload_starts_no_merge_resolver(self):
         """Each new resolver kept the reload pending, and a due reload starts no batch: commits
