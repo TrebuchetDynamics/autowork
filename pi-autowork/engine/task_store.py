@@ -118,18 +118,35 @@ def _hash(value: dict) -> str:
                               separators=(',', ':')).encode('utf-8'))
 
 
-def _git(repo, *args) -> bytes:
+def _git(repo, *args, stdin=None) -> bytes:
     # Do not let inherited GIT_DIR/GIT_INDEX_FILE redirect the requested repo.
     env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
     try:
         result = subprocess.run(['git', '--no-optional-locks', '--no-replace-objects',
-                                 '-C', str(repo), *args], env=env,
+                                 '-C', str(repo), *args], env=env, input=stdin,
                                 capture_output=True, timeout=30)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise StoreError(f'tasks/:1: Git read failed: {exc}') from exc
     if result.returncode:
         raise StoreError('tasks/:1: Git read failed: ' + result.stderr.decode('utf-8', 'replace').strip())
     return result.stdout
+
+
+def _blobs(repo, oids) -> list[bytes]:
+    """Every blob in one `git cat-file --batch` call: one process per snapshot, not per file."""
+    if not oids:
+        return []
+    out = _git(repo, 'cat-file', '--batch', stdin=''.join(oid + '\n' for oid in oids).encode())
+    blobs, cursor = [], 0
+    for oid in oids:
+        end = out.index(b'\n', cursor)
+        header = out[cursor:end].split()
+        if len(header) != 3 or header[0].decode() != oid or header[1] != b'blob':
+            raise StoreError(f'tasks/:1: Git read failed: unexpected object header for {oid}')
+        size = int(header[2])
+        blobs.append(out[end + 1:end + 1 + size])
+        cursor = end + 1 + size + 1
+    return blobs
 
 
 class _Document:
@@ -218,6 +235,9 @@ class _Document:
             fields = {key: data[key] for key in ('priority', 'source', 'status', 'focus')}
             return GoalRecord(**common, **fields, contract_hash=_hash(fields))
         contract = {key: data.get(key) for key in _CONTRACT_FIELDS}
+        # Writing an authority field's default must not look like a contract change.
+        contract.update(kind=data.get('kind', 'unknown'), ownership=data.get('ownership', 'unknown'),
+                        live=data.get('live', 'denied'))
         contract['section_group'] = ('runnable' if data.get('section') in ('Now', 'Next')
                                      else data.get('section'))
         fields = {key: tuple(data.get(key, ())) for key in _TASK_LISTS}
@@ -246,7 +266,10 @@ class TaskStore:
         # symlink/gitlink replacing a store directory, disguising it as empty.
         tree = _git(repo, 'ls-tree', '-rtz', '--full-tree', pinned, '--', 'tasks')
         tasks, goals, documents = {}, {}, {}
-        seen = {}
+        seen, files = {}, []
+        if not any(entry.split(b'\t', 1)[-1] == b'tasks' for entry in tree.split(b'\0') if entry):
+            # An unconverted repository has no store; it is never an empty queue.
+            raise StoreError(f'tasks/:1: no task store at {pinned[:12]}')
         for entry in tree.split(b'\0'):
             if not entry:
                 continue
@@ -263,7 +286,8 @@ class TaskStore:
                 raise StoreError(f'{path}:1: expected a regular Markdown file')
             if Path(path).suffix != '.md' or len(Path(path).parts) != 3:
                 raise StoreError(f'{path}:1: expected tasks/items/<ID>.md or tasks/goals/<ID>.md')
-            blob = _git(repo, 'show', f'{pinned}:{path}')
+            files.append((path, _oid.decode()))
+        for path, blob in zip((path for path, _ in files), _blobs(repo, [oid for _, oid in files])):
             document = _Document(path, blob)
             is_goal = path.startswith('tasks/goals/')
             record = document.record(blob, is_goal)
@@ -272,6 +296,9 @@ class TaskStore:
             seen[record.id] = path
             documents[path] = document
             (goals if is_goal else tasks)[record.id] = record
+        focused = [goal for goal in goals.values() if goal.focus]
+        if len(focused) > 1:
+            documents[focused[1].path].fail(f'only one goal may have focus (also {focused[0].id})', 'focus')
         for task in tasks.values():
             if task.goal is not None and task.goal not in goals:
                 documents[task.path].fail(f'unknown goal {task.goal}', 'goal')

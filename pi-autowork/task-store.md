@@ -8,8 +8,8 @@ TODO.md/goals.json; this reader adds no writer, CLI or migration.
 ## Snapshot API
 
 - `TaskStore.at(repo, rev)` resolves a Git revision to a commit SHA once, then
-  reads `tasks/items/<ID>.md` and `tasks/goals/<ID>.md` with `git ls-tree` and
-  `git show` at that SHA. The returned `rev` is that pinned SHA, not the input
+  reads `tasks/items/<ID>.md` and `tasks/goals/<ID>.md` with `git ls-tree` and one
+  `git cat-file --batch` call at that SHA, whatever the number of files. The returned `rev` is that pinned SHA, not the input
   branch name. Working-tree edits never become records. Git replacement refs
   are disabled so they cannot substitute content for the pinned object IDs.
 - `store.tasks` and `store.goals` are immutable mappings keyed by ID, containing
@@ -25,7 +25,9 @@ TODO.md/goals.json; this reader adds no writer, CLI or migration.
   wrong types, duplicate IDs (including across tasks and goals), unknown goals,
   filename/ID mismatches, non-regular or misplaced files, and symlinked store
   directories are refused.
-  An empty store has empty mappings; conversion checks belong to later consumers.
+  A commit without a `tasks/` tree is refused (`no task store`): an unconverted
+  repository never reads as an empty queue. A `tasks/` tree with no records has
+  empty mappings. More than one goal with `focus = true` is refused.
 
 ## File schema
 
@@ -80,7 +82,9 @@ frontmatter formatting and free notes. Task `contract_hash` is SHA-256 of canoni
 UTF-8 JSON (sorted keys, compact separators) over scope, acceptance, checks,
 depends_on, touches, status, resources, kind, ownership, live and exclusions,
 plus `section_group`: Now/Next becomes `"runnable"`; Needs decision stays distinct.
-Missing values hash as null, preserving missing versus explicit empty authority.
+Missing values hash as null, preserving missing versus explicit empty authority,
+except `kind`, `ownership` and `live`, which hash as their defaults (`unknown`,
+`unknown`, `denied`): writing a default out grants nothing new and changes no contract.
 Array order is preserved. Exclusions are included because changing a prohibition
 changes the work contract.
 

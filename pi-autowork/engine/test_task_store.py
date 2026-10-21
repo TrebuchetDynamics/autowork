@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import unittest.mock
 
 from task_store import TaskStore, StoreError, Kind, Ownership, LiveAuthorization
 
@@ -168,6 +169,39 @@ class TaskStoreTests(unittest.TestCase):
                 finally:
                     target.unlink()
                     shutil.move(saved, target)
+
+    def test_missing_store_fails_closed(self):
+        self.git('rm', '-rq', 'tasks')
+        (self.repo / 'TODO.md').write_text('# legacy queue\n')
+        with self.assertRaisesRegex(StoreError, r'tasks/:1: no task store'):
+            TaskStore.at(self.repo, self.commit())
+
+    def test_two_focused_goals_fail_closed(self):
+        goal = (self.repo / 'tasks/goals/G-1.md').read_text()
+        (self.repo / 'tasks/goals/G-2.md').write_text(goal.replace('"G-1"', '"G-2"'))
+        with self.assertRaisesRegex(StoreError, r'tasks/goals/G-2.md:\d+:.*only one goal may have focus'):
+            TaskStore.at(self.repo, self.commit())
+
+    def test_an_explicit_default_keeps_the_contract_hash(self):
+        explicit = TaskStore.at(self.repo, self.rev).tasks['T-1']
+        implicit = self.load_edit(self.original.replace('live = "denied"\n', ''))
+        self.assertEqual(implicit.contract_hash, explicit.contract_hash)
+
+    def test_one_git_read_per_snapshot(self):
+        for n in range(30):
+            (self.repo / f'tasks/items/T-{n + 2}.md').write_text(
+                self.original.replace('id = "T-1"', f'id = "T-{n + 2}"'))
+        rev = self.commit()
+        calls = []
+        real = subprocess.run
+        def run(argv, **kwargs):
+            calls.append(argv)
+            return real(argv, **kwargs)
+        import task_store
+        with unittest.mock.patch.object(task_store.subprocess, 'run', run):
+            store = TaskStore.at(self.repo, rev)
+        self.assertEqual(len(store.tasks), 31)
+        self.assertLessEqual(len(calls), 3)
 
     def test_draft_is_visible_not_runnable(self):
         task = self.load_edit(self.original.replace('acceptance = ["Pinned reads"]\n', ''))
