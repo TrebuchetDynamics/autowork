@@ -21,7 +21,7 @@ import sys
 import tempfile
 import time
 
-from . import main_check, pi_runtime, workspaces
+from . import main_check, optimistic, pi_runtime, workspaces
 from .common import dirty, git, push_guard, safe_name
 
 REVIEW = ('You are an independent reviewer verifying task {task} in {checkout}, which holds a worker\'s commit '
@@ -677,6 +677,13 @@ def verify(state, task):
     try:
         if batch_gate:  # a batch already passed the full check on a tree containing this one
             return batch_review(state, task, checkout, json.loads(batch_gate))
+        if optimistic.enabled():
+            # Optimistic landing (TOOLSET-344-7dadea23): its own checks and the review decide;
+            # main's full check runs after it lands, and a regression there reverts it.
+            if os.environ.get('PI_AUTOWORK_REVIEW', '1') == '0':
+                return 0
+            head_before = git(checkout, 'rev-parse', 'HEAD')
+            return review(state, task, checkout, head_before, OPTIMISTIC_NOTE)
         ok, reason = full_suite_gate(state, task, checkout)
         if not ok:
             # The engine puts this line into the hold reason, which the retry's prompt quotes.
@@ -1041,6 +1048,11 @@ def verify_batch(state, session, script, tasks):
             subprocess.run(['git', '-C', session, 'worktree', 'remove', '--force', '--force', str(path)],
                            capture_output=True)
         shutil.rmtree(root, ignore_errors=True)
+
+
+OPTIMISTIC_NOTE = ('The runner did not run the full test suite before this review (optimistic landing): it lands '
+                   'when you pass it, and main\'s full check runs afterwards and reverts it if it broke anything. '
+                   'Run the task\'s own checks and the tests nearest its changes yourself before you pass it.')
 
 
 def gate_note(state, task, checkout):
