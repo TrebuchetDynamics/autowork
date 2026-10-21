@@ -41,6 +41,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- **One full check of main, not two** (TOOLSET-336-3c). The runner started a background
+  full check of main beside every batch check of main plus its candidates, two full suites
+  at once on an already loaded host. Main's check now waits while a batch or the merge
+  train runs (up to twice MAIN_CHECK_WAIT since its last check), and when a passing full
+  check of the same command already ran on exactly main's tree (its `full-check/tree-*.json`
+  receipt), main is recorded green from it instead of running the suite again.
 - **No more "Repository busy" pauses on the runner's own work** (TOOLSET-333-34). The
   dispatch pass took `writer.lock` and `dispatch.lock` without waiting, so whenever the
   runner's own background review, landing or a status read held one for its few seconds,
