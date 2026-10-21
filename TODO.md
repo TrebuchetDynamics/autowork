@@ -200,6 +200,24 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No change to how red results with named tests, flaky reruns or busy-host rechecks work; no change to worker-side check receipts in this slice.
 - Planner's call: classify where the exit is observed, and keep the full rerun only for outcomes a rerun can change; after the coordinator split, which owns `finish_main_check`.
 
+### TOOLSET-302-06 — A main-check evidence bundle that a task names or that shows the last failure is never pruned
+
+- [ ] TOOLSET-302-06 — A main-check evidence bundle that a task names or that shows the last failure is never pruned
+- Short: Keep cited main-check evidence
+- Status: open
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [main check](pi-autowork/pi_autowork/main_check.py) (`publish`: one read-only bundle per checked revision, then `revisions[5:]` removed by age); [maintainer](pi-autowork/pi_autowork/maintainer.py) (MAIN repairs write the bundle directory into the repair task's Evidence, `main_evidence`).
+- Evidence: The maintainer cites a bundle path in an open repair task; five later checked revisions delete it, so the task and the maintainer's next pass point at files the runner removed. A run of green checks also deletes the last failing bundle, the only record of what broke.
+- Touches: pi-autowork/pi_autowork/main_check.py, pi-autowork/tests/test_main_check_retention.py
+- Scope: (1) Pruning keeps, beyond the five newest, every bundle whose path an open task's entry in TODO.md names, the newest non-green bundle, and the bundle of `red_since`. (2) A kept bundle is pruned once no open entry names it and a newer non-green bundle exists. (3) A missing cited bundle is reported once in the log as `evidence <path> named by <task> is missing`, never silently. Bundles stay read-only.
+- Acceptance: Given an open task naming a bundle and six later green checks, the bundle remains (`pi-autowork/tests/test_main_check_retention.py::test_a_cited_bundle_survives_pruning`); after the task closes, the next publish prunes it (`test_an_uncited_bundle_is_pruned`); the newest red bundle survives any number of green checks until a newer non-green one exists (`test_the_last_failure_is_kept`).
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_main_check_retention.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to bundle contents or the main check itself; no copying of bundles into worktrees or commits.
+- Planner's call: retain by citation, not by a bigger count: evidence lives as long as something relies on it, and the store stays bounded.
+
 ### TOOLSET-298-05 — A task claim names its holder, and a claim whose holder is gone is adoptable at once
 
 - [ ] TOOLSET-298-05 — A task claim names its holder, and a claim whose holder is gone is adoptable at once
@@ -235,6 +253,60 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Ownership: Toolset coordinator.
 - Exclusions: No change to what makes a claim adoptable.
 - Planner's call: a display slice after the holder record, so the hot status and TUI files change once, after the journal change in the same reader.
+
+### TOOLSET-303-0e — An unchanged main failure does not rewrite its repair task again: the runner reports why the repair is not running
+
+- [ ] TOOLSET-303-0e — An unchanged main failure does not rewrite its repair task again: the runner reports why the repair is not running
+- Short: Unchanged main failure escalates
+- Status: open
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [maintainer](pi-autowork/pi_autowork/maintainer.py) (`matches`: a MAIN item counts as handled only for the same evidence bundle path; `stalled` skips MAIN and LEDGER; the MAIN prompt updates the repair task's Evidence with each new bundle); [coordinator](pi-autowork/pi_autowork/coordinator.py) (`finish_main_check` calls `maintain(main_only=True)` on every red or broken result); [questions](pi-autowork/pi_autowork/questions.py) (`repairs=` from `stalled`).
+- Evidence: Every commit to main makes a new revision and bundle, so the same failure looks new and the DOCS-MAINTAINER rewrites the repair task's Evidence again ("repairing the task docs of MAIN") while the repair itself does not run. Re-documenting is counted as handling the failure.
+- Touches: pi-autowork/pi_autowork/maintainer.py, pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_maintainer_main_loop.py
+- Scope: (1) A MAIN item matches its receipt by failure identity (sorted failing tests, or the outcome and crash line for a broken check), not bundle path; an unchanged failure with an open repair task already naming it gets no maintainer run. (2) After a merged MAIN repair, the same failure on two later checked revisions makes the item stalled: no further Evidence rewrite; instead the repair task's engine state (waiting and why, held and cause, running, never dispatched) goes into BLOCKERS.md as one question naming that state. (3) A changed failure set runs the maintainer as today.
+- Acceptance: Given a red main with a repair task naming its failing tests, three later revisions with the same failures start no maintainer run (`pi-autowork/tests/test_maintainer_main_loop.py::test_an_unchanged_failure_is_not_redocumented`); after a merged repair and two more same-failure revisions, BLOCKERS.md names the repair task and its engine state (`test_a_stalled_main_repair_says_why_it_is_not_running`); a new failing test runs the maintainer again (`test_a_changed_failure_runs_the_maintainer`).
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_maintainer_main_loop.py; python3 -m unittest discover -s pi-autowork/tests -p test_questions.py; python3 scripts/check.py
+- Dependencies: TOOLSET-300-3d.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to per-task maintainer caps (TOOLSET-267-a0) or to LEDGER repairs.
+- Planner's call: identity by failure, not by revision, after the outcome classes exist (TOOLSET-300-3d), so a broken check's identity is its outcome rather than "crashed".
+
+### TOOLSET-304-be — A held exclusive slot with no live worker never stops higher-priority work
+
+- [ ] TOOLSET-304-be — A held exclusive slot with no live worker never stops higher-priority work
+- Short: Held exclusive yields to priority
+- Status: open
+- Goal: PARALLEL
+- Payoff: Run independent Autowork tasks in parallel workers with one coordinator.
+- Sources: [dispatch](skills/autowork/scripts/parallel_dispatch.py) (`occupying`: a held slot that is not exhausted or overlap-held counts as running work); [plan](skills/autowork/scripts/parallel_plan.py) (`plan`: a running exclusive task is a conflict for every task, "live/exclusive resource; must run alone").
+- Evidence: A held task with `Resources: exclusive` whose worker has exited, waiting for its next attempt, stops every other dispatch, including the MAIN repair task first in Now; the queue reads "must run alone (beside <held task>)" with nothing running.
+- Touches: skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/parallel_plan.py, skills/autowork/scripts/test_held_exclusive.py
+- Scope: (1) A held slot with no live worker keeps its exclusive reservation only against tasks below it in TODO.md order; a higher-priority task dispatches past it. (2) While that higher task runs, the held slot's next attempt waits, as any exclusive task waits for running work. (3) The waiting reason names the held slot and its cause (`held exclusive <task> (<cause>), no worker`). A live worker's exclusive stays absolute.
+- Acceptance: Given a held exclusive slot without a worker and a higher-priority open task, the higher task is dispatched (`skills/autowork/scripts/test_held_exclusive.py::test_priority_passes_a_held_exclusive`); a lower task still waits, with the held slot named in its reason (`test_lower_work_waits_for_a_held_exclusive`); with the held worker alive nothing passes it (`test_a_live_exclusive_stays_alone`).
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_held_exclusive.py; python3 -m unittest discover -s skills/autowork/scripts -p 'test_parallel_*.py'; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No narrowing of any task's Resources and no change to drain timing for running exclusive work.
+- Planner's call: priority beats a reservation nobody is using; lower work keeps respecting it, so the held task still runs before anything below it.
+
+### TOOLSET-305-06 — A plan preview shows what a TODO.md change enables, keeps waiting and touches before it is saved
+
+- [ ] TOOLSET-305-06 — A plan preview shows what a TODO.md change enables, keeps waiting and touches before it is saved
+- Short: Preview a plan change before saving
+- Status: open
+- Goal: PARALLEL
+- Payoff: Run independent Autowork tasks in parallel workers with one coordinator.
+- Sources: [status](skills/autowork/scripts/parallel_status.py) (roots and waiting reasons from `parallel_plan.plan`); [execution CLI](skills/autowork/scripts/task_execution.py) (`--parallel-status`); [docs-sync](skills/docs-sync/scripts/goals.py) (`plan-lint`: per-task lint only).
+- Evidence: A planning edit (narrowing Resources, adding a dependency, releasing a claim) is judged only after it is committed and the runner runs again; nothing says beforehand which tasks it frees, which still wait and why, or that it adds a cycle or names paths outside the repository.
+- Touches: skills/autowork/scripts/plan_preview.py, skills/autowork/scripts/task_execution.py, skills/autowork/scripts/test_plan_preview.py
+- Scope: (1) `--parallel-preview` (read-only, no owner) plans the working-tree TODO.md and goals.json against the same live slots and claims as the committed ones (HEAD, or `--against REV`). (2) It reports tasks newly admissible, newly waiting (with reasons), dependencies unchanged and changed, Touches and Resources changed per task, new cycles, and Touches outside the repository. (3) JSON and a short text summary (`enables 2, still waiting 83 (dependencies 61, overlap 14, claims 8), 1 cycle`). Writes nothing.
+- Acceptance: Given a working tree that narrows one exclusive task's Resources, the preview lists the tasks it frees and the unchanged waiting count by cause (`skills/autowork/scripts/test_plan_preview.py::test_a_narrowed_reservation_lists_what_it_frees`); a new dependency loop and a Touches path outside the repository are reported (`test_cycles_and_outside_paths_are_reported`); the repository, index and journal are byte-identical afterwards (`test_preview_writes_nothing`).
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_plan_preview.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to dispatch, admission or the saved plan; /blockers and Plan With Me may call it, but wiring them is a later slice.
+- Planner's call: reuse the planner on both trees instead of a second model of admission, so the preview cannot disagree with dispatch.
 
 ### TOOLSET-287-44 — A merge conflict the resolver may still adopt is never an owner question
 
