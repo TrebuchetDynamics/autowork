@@ -144,6 +144,21 @@ class MigrateTests(unittest.TestCase):
         self.assertIn('"slot_set_aside"', (common / 'journal.jsonl').read_text())
         self.assertEqual(TaskStore.at(self.repo, 'HEAD').tasks['T-001'].status, 'open')
 
+    def test_a_numbered_acceptance_over_several_lines_becomes_one_item_per_point(self):
+        """2026-10-21: twelve entries of one repository wrote Acceptance as a numbered list, and
+        conversion refused each as a line break it could not write."""
+        text = (self.repo / 'TODO.md').read_text()
+        alpha = text.index('### T-001')
+        listed = ('- Acceptance:\n  1. Given a run, the report validates;\n     its hashes match.\n'
+                  '  2. Given a tampered file, it is rejected.\n')
+        text = text[:alpha] + text[alpha:].replace('- Acceptance: it works\n', listed, 1)
+        (self.repo / 'TODO.md').write_text(text)
+        self.commit()
+        result = self.migrate()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(TaskStore.at(self.repo, 'HEAD').tasks['T-001'].acceptance,
+                         ('Given a run, the report validates; its hashes match.', 'Given a tampered file, it is rejected.'))
+
     def test_other_held_slots_still_refuse(self):
         alive = task_execution.identity(os.getpid())
         for name, make in (('a held finished commit', lambda: self.slot('held', cause='validation', commit='abc')),

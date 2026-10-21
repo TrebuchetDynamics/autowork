@@ -198,9 +198,9 @@ def _task_record(tid, title, entry, fields, rank, known, listed=()):
     if fields.get('Scope', '').strip():
         header['scope'] = fields['Scope'].strip()
     if fields.get('Acceptance', '').strip():
-        header['acceptance'] = [fields['Acceptance'].strip()]
+        header['acceptance'] = _items(fields['Acceptance'])
     if checks and checks.strip():
-        header['checks'] = [checks.strip()]
+        header['checks'] = _items(checks)
     if fields.get('Exclusions', '').strip():
         header['exclusions'] = [fields['Exclusions'].strip()]
     labels = [label for label, _ in listed]
@@ -216,6 +216,25 @@ def _task_record(tid, title, entry, fields, rank, known, listed=()):
     if not fields.get('Touches', '').strip():
         notes.append(('Touches', 'none before conversion; ** stands for the whole repository'))
     return header, _notes(tid, notes)
+
+
+ITEM = re.compile(r'(?:\d+[.)]|[-*])\s+')
+
+
+def _items(text):
+    """An array field's value: one item per numbered or bulleted point of a value written over
+    several lines (`1. ...` / `- ...`, its continuation lines joined), in order; otherwise the
+    whole value as one item, its line breaks folded."""
+    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
+    if len(lines) > 1 and ITEM.match(lines[0]):
+        items = []
+        for line in lines:
+            if ITEM.match(line):
+                items.append(ITEM.sub('', line, count=1))
+            else:
+                items[-1] += ' ' + line
+        return items
+    return [' '.join(lines)]
 
 
 def _notes(tid, notes):
