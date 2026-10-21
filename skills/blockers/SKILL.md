@@ -3,7 +3,7 @@ name: blockers
 description: "Use to resolve blocked tasks: ask only what the owner must."
 license: MIT
 metadata:
-  version: 0.2.1
+  version: 0.3.0
   hermes:
     tags: [blockers, interview, planning, autowork]
 ---
@@ -26,6 +26,11 @@ duplicate its checks. An invocation authorizes bounded local blocker repair, not
 unrelated implementation, live operations, credentials or publication. Explicit
 questions-only, planning-only and read-only requests execute nothing; read-only also
 writes nothing. Updating an already authorized plan needs no new owner decision.
+
+Central rule: before asking the owner anything, look for an authorized technical
+recovery that lets independent work run. After applying it, verify its effect on the
+runner's selection and execution. If the block persists, explain the exact cause;
+do not repeat the same advice or count an edited plan as progress.
 
 ## 1. Gather and filter
 
@@ -74,6 +79,15 @@ retained reports with current queue evidence and say how fresh they are. Count a
 sort what remains programmatically, and treat an `unblocks` count as the notice's
 figure, not measured impact.
 
+Classify each hold by cause before handling it, and never report them all as
+"dependencies": functional dependency (needs another task's result), resource
+reservation (`Resources:` such as `exclusive`, `live` or a port), live owner,
+failed validation (a broken main or task check), and external input. Measure each
+root's real reach: count the waiting tasks that are otherwise admissible and would
+start if it cleared. Handle the widest first. One held or long-running task with
+`Resources: exclusive` can stop hundreds of independent tasks; inspect that
+reservation before asking about receipts or access that stop no local work.
+
 - **Established answer or routine recovery:** use existing authorization. Inspect
   repository/session facts yourself. Preserve the agreed scope and acceptance;
   repair the cause and verify the supported continuation, not merely another Next
@@ -87,6 +101,14 @@ figure, not measured impact.
   no-push/deploy/package-delivery exclusions. Do not ask “Pi or this session?” or
   ask permission to reuse the reviewed fix. Do not label this an owner decision or
   mark delivery complete. Separate genuine live qualification still pending.
+- **Over-broad resource reservation:** a generic `exclusive` (or other shared
+  resource) that serializes unrelated work is a planning repair, not an owner
+  question. Narrow it from evidence: the retained diff or candidate decides the
+  task's `Touches:` and concrete resources. Keep `exclusive` where the evidence
+  shows a real global effect (lockfiles, migrations, shared generated output,
+  live services) or when there is no evidence. Narrow one task at a time; never
+  strip exclusivity in bulk, and never change the contract of a task a live worker
+  holds.
 - **Live or uncertain ownership:** leave live work and claims alone. A historical
   ACTIVE/in_progress label alone proves neither activity nor abandonment. If activity
   cannot be established, retain the hold, identify the missing evidence, and continue
@@ -105,7 +127,8 @@ reconfirm it because it remains under `Needs decision`. A brief approval accepts
 recommended option only, never every alternative or permission to deploy. A task
 that only waits on unfinished dependencies is not a question: a release task waiting
 for features is not a request to approve publication. Waiting for overlapping files
-or a running dependency is scheduling, never a blocker.
+or a running dependency is scheduling, never an owner question; a reservation wider
+than the task's evidence is still a repair to make.
 
 Resolve each runner question in the form the runner recognizes, so it leaves the
 block on the next cycle; a question you only filtered out keeps showing as "Waiting
@@ -186,6 +209,22 @@ prerequisite can remain held: retain its evidence and continue independent repai
 Escalate only unavailable input, consequential intent or ungranted authority—not
 routine implementation choices. Do not promise every hold can be removed safely.
 
+Never repeat a recovery that already failed. If a requeue or retry returns the same
+failure, investigate before trying again: read the log and report to tell an aborted
+process (killed, timed out, out of memory, crashed before any result) from a suite
+that completed with failing tests, and name the failing tests or the abort signal.
+A generic "crashed" message is not a diagnosis.
+
+Protect the agreed priority. Before releasing a hold or narrowing a reservation,
+check what the runner will select next (`goals.py next REPO --json` and the
+parallel status) and whether that lets the priority repair, such as the fix for a
+broken main check, run. Do not free a slot only for lower-priority work to take it
+while the global blocker waits.
+
+A recovery counts only when delivered: validate it, commit only your own files
+(section 5), confirm the runner received that commit in its session, then observe
+the new state. A local uncommitted edit is not a delivered recovery.
+
 Write each answer or supported planning repair where the queue reads it, right away.
 An approved clerical index correction is planning: apply it through Docs Sync and
 record it in the task. An answer supplies only the selected intent or authority;
@@ -234,9 +273,10 @@ answered tasks' hunks and their ledger rows, check the staged diff, and leave th
 rest as it was. Never commit unrelated changes. This workflow never pushes; route
 separately requested publication through Git Commit Push with its existing authority.
 Validate a changed index and read the engine status before reporting. Keep apart:
-answer saved, blocker removed, picked up by the runner, worker running, and work
-done; a successor can still wait on the same unfinished prerequisite. Planning
-readiness is not completed integration.
+plan corrected, received by the runner, admitted, worker running, and work done; a
+successor can still wait on the same unfinished prerequisite. Planning readiness is
+not completed integration. One task starting does not unblock the queue: report how
+many tasks remain held and why, by cause.
 
 ## 6. Report to the owner
 

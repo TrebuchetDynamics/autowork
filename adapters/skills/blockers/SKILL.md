@@ -13,7 +13,9 @@ bounded authorized local recovery and verify the exact outcome. Do not stop at a
 planning note when a safe repair is available. Reuse retained work, preserve live
 owners, attempts, checks, privacy and publication constraints, and ask only about
 genuinely missing owner decisions or inputs. Report repaired, still held, waiting
-on an active owner and externally gated tasks separately. Use this host's available picker (Claude Code
+on an active owner and externally gated tasks separately. Classify holds by cause
+(dependency, resource reservation, live owner, failed validation, external input),
+repair the widest first, and count a recovery only once the runner received it. Use this host's available picker (Claude Code
 `AskUserQuestion`, Codex `request_user_input` in a mode that permits it or
 `request_user_input_async`; otherwise numbered options in chat), two to four concrete plan
 changes with the recommended one first. Plan a task that needs replanning with
