@@ -18,3 +18,4 @@ checks = ["python3 -m unittest discover -s pi-autowork/tests; python3 scripts/ch
 exclusions = []
 +++
 
+- Coordination: TOOLSET-304-9e landed a per-checkout write lock around every autowork tasks write (task_commands.locked) and --expect REV; still open here: rollback restoring only this call's bytes, and all-or-nothing multi-file move and goal focus.
