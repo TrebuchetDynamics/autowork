@@ -7,16 +7,10 @@ patterns, not current files, so not-yet-created files are protected too.
 from collections import Counter
 from fnmatch import fnmatchcase
 from functools import lru_cache
-import importlib.util
-from pathlib import Path
 import re
 
-# Load only the shared policy, not plan_lint (which itself imports this engine).
-_policy_spec = importlib.util.spec_from_file_location(
-    'hot_file_policy', Path(__file__).resolve().parents[2] / 'skills/docs-sync/scripts/hot_file_policy.py')
-_policy = importlib.util.module_from_spec(_policy_spec)
-_policy_spec.loader.exec_module(_policy)
-HOT_TASKS = _policy.HOT_TASKS
+# Open tasks naming one file before it counts as hot.
+HOT_TASKS = 3
 
 # Reversible built-in serial policy, including nested packages and CI files.
 SERIAL_NAMES = (

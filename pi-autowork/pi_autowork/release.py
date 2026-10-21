@@ -17,7 +17,6 @@ import time
 import os
 from pathlib import Path
 import re
-import shlex
 import subprocess
 import sys
 
@@ -68,7 +67,7 @@ def release_lock(state_root):
 
 
 def prune(root, keep=(), proc='/proc'):
-    """Retain the newest two snapshots and releases used by processes or Git drivers.
+    """Retain the newest two snapshots and releases used by processes.
 
     Unreadable environments of interpreter processes mean usage is unknown:
     retain everything. Ignore privileged system daemons and exited zombies;
@@ -102,35 +101,6 @@ def prune(root, keep=(), proc='/proc'):
     snapshots = [p for p in root.iterdir() if re.fullmatch(r'[0-9a-f]{40,64}', p.name)
                  and (p / '.git').is_file()]
     snapshots.sort(key=lambda p: (p / '.git').stat().st_mtime_ns, reverse=True)
-    # Legacy registrations used a release path. Stopped runners still need it:
-    # their status survives runner.json and Git can invoke a driver at any time.
-    repos = set()
-    for record in (*root.parent.glob('*/runner.json'), *root.parent.glob('*/status.json')):
-        try:
-            repo = json.loads(record.read_text()).get('repo')
-        except FileNotFoundError:
-            continue  # a runner exited while we read its record
-        except (OSError, ValueError, AttributeError):
-            return  # usage is unknown; retain rather than break a registration
-        if isinstance(repo, str) and repo:
-            repos.add(repo)
-    for repo in repos:
-        if not Path(repo).exists():
-            continue  # a removed repository cannot invoke its drivers
-        try:
-            drivers = _git(repo, 'config', '--local', '--null', '--get-regexp',
-                           r'^merge\.docs-sync-(goals|todo|archive)\.driver$')
-        except (OSError, subprocess.SubprocessError):
-            return
-        if drivers.returncode not in (0, 1):
-            return  # cannot prove that an unreadable config uses no old release
-        for entry in drivers.stdout.split('\0'):
-            try:
-                arguments = shlex.split(entry.partition('\n')[2])
-            except ValueError:
-                return
-            used.update(str(folder) for folder in snapshots
-                        if any(str(folder) in argument for argument in arguments))
     for folder in snapshots[2:]:
         if str(folder) not in used:
             # Only our detached snapshots, including their disposable Python caches.

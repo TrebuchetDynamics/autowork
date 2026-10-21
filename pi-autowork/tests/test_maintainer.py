@@ -30,7 +30,7 @@ class MaintainerTests(unittest.TestCase):
                 {'task': 'D', 'state': 'waiting', 'reason': 'all 8 worker slots busy'}]
         found = maintainer.overlaps(rows)
         self.assertEqual([(t, k) for t, k, _ in found], [('B', 'overlap'), ('C', 'overlap')])
-        text = maintainer.prompt(found, '/repo', 'goals.py')
+        text = maintainer.prompt(found, '/repo', 'autowork tasks')
         for phrase in ('merge it into the other task', 'split the shared-file part', 'never widen product scope',
                        'Never edit the entry of a task that is running'):
             self.assertIn(phrase, text)
@@ -154,7 +154,7 @@ class MaintainerTests(unittest.TestCase):
                 fresh = maintainer.triggers([], main, reported_flakes=reported)
                 self.assertEqual(maintainer.item_key(fresh[0]), identity)
                 self.assertEqual(maintainer.pending(state, fresh), fresh)
-                message = maintainer.prompt(fresh, '/repo', 'goals.py')
+                message = maintainer.prompt(fresh, '/repo', 'autowork tasks')
                 self.assertIn(main['evidence'], message)
                 self.assertIn('update its Evidence', message)
                 self.assertIn('never add a second task', message)
@@ -398,7 +398,7 @@ class MaintainerTests(unittest.TestCase):
                     self.assertTrue(error, case)
 
     def test_prompt_prefers_independent_parts_when_unblocking_a_chain(self):
-        message = maintainer.prompt([('A', 'not runnable', 'not runnable: dependency chain')], '/repo', 'goals.py')
+        message = maintainer.prompt([('A', 'not runnable', 'not runnable: dependency chain')], '/repo', 'autowork tasks')
         self.assertIn('re-sort to unblock a dependency chain, preferring to split off independent parts '
                       'with disjoint Touches', message)
 
@@ -418,7 +418,7 @@ class MaintainerTests(unittest.TestCase):
             self.assertEqual({k: record[k] for k in ('role', 'key', 'at', 'outcome', 'triggers', 'changed', 'tries')},
                              {'role': 'DOCS-MAINTAINER', 'key': 'k1', 'at': 100, 'outcome': 'merged',
                               'triggers': ['A'], 'changed': ['A'], 'tries': 1})
-            self.assertIn('- A (held: scope): x', maintainer.prompt(found, '/repo', 'goals.py'))
+            self.assertIn('- A (held: scope): x', maintainer.prompt(found, '/repo', 'autowork tasks'))
 
 
 if __name__ == '__main__':

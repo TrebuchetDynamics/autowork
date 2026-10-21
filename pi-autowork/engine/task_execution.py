@@ -1,4 +1,4 @@
-"""Small TODO execution boundary. Repository files remain the task authority.
+"""Small task execution boundary. The repository's tasks/ store remains the task authority.
 
 Private state contains a live process lease and command receipts, never task
 statuses. A successful command is not task acceptance, review or completion.
@@ -6,11 +6,8 @@ statuses. A successful command is not task acceptance, review or completion.
 import argparse
 import ctypes
 from contextlib import contextmanager
-from copy import deepcopy
-from functools import lru_cache
 import fcntl
 import hashlib
-import importlib.util
 import json
 import math
 import os
@@ -24,115 +21,12 @@ import tempfile
 import time
 import uuid
 
-import parallel_plan
 import task_queue
 from worktree_paths import canonical_root, worktree_path
 
 
 class NoEligibleTask(ValueError):
-    """No TODO task passes selection; the queue is idle rather than malformed."""
-
-
-@lru_cache(maxsize=1)
-def goals_module():
-    path = Path(__file__).resolve().parents[2] / 'skills/docs-sync/scripts/goals.py'
-    spec = importlib.util.spec_from_file_location('todo_goals', path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def file_content(path):
-    """Read bytes, not mtime/size: same-size edits and atomic replacements matter."""
-    path = Path(path).absolute()
-    blob = path.read_bytes()
-    return str(path), hashlib.sha256(blob).digest(), blob
-
-
-@lru_cache(maxsize=32)
-def _task_document(content):
-    text = content[2].decode().replace('\r\n', '\n').replace('\r', '\n')
-    return text, goals_module().task_bodies(text)
-
-
-def task_bodies(path):
-    """A caller-owned view of the cached parse, keyed by path and bytes digest."""
-    return deepcopy(_task_document(file_content(path))[1])
-
-
-def _contract_parts(body):
-    return _cached_contract_parts(body.strip())
-
-
-@lru_cache(maxsize=1024)
-def _cached_contract_parts(body):
-    goals = goals_module()
-    labels = tuple(re.findall(r'^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?([A-Za-z][A-Za-z /-]*):',
-                              goals.task_prose(body), re.M))
-    return goals.task_fields(body), labels
-
-
-def contract_fields(body):
-    return deepcopy(_contract_parts(body)[0])
-
-
-def contract_labels(body):
-    return _contract_parts(body)[1]
-
-
-@lru_cache(maxsize=1)
-def archive_module():
-    path = Path(__file__).resolve().parents[2] / 'skills/docs-sync/scripts/todo_archive.py'
-    spec = importlib.util.spec_from_file_location('todo_archive_owner', path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-@lru_cache(maxsize=16)
-def _archive_navigation(content):
-    text, bodies = _task_document(content)
-    return archive_module().navigation(text, goals_module().markdown_prose(text), set(bodies))
-
-
-def archive_file(repo):
-    """The TODO history owner as Docs Sync chooses it: a linked archive such as
-    docs/TODO-archive.md, else TODO.archive.md. Task sources never select it."""
-    try:
-        return Path(repo) / archive_module().archive_owner(
-            Path(repo), _archive_navigation(file_content(Path(repo) / 'TODO.md')))
-    except SystemExit as exc:
-        raise ValueError(str(exc)) from exc
-
-
-def archived_done(repo):
-    """IDs closed in the TODO archive; an ambiguous archive closes nothing."""
-    try:
-        archive = archive_file(repo)
-    except ValueError:
-        return set()
-    if not archive.is_file():
-        return set()
-    return set(_archived_done(file_content(archive)))
-
-
-@lru_cache(maxsize=16)
-def _archived_done(content):
-    text, bodies = _task_document(content)
-    archive = archive_module()
-    prose = re.sub(r'<!--.*?-->', lambda m: re.sub(r'[^\r\n]', ' ', m[0]),
-                   goals_module().markdown_prose(text), flags=re.S)
-    records, _ = archive.entries(text, prose, set(bodies))
-    # Only independently closed heading-only tasks delimit checkbox bodies.
-    # An Evidence/Acceptance subsection must retain its overlap and ambiguity.
-    headings = {tid for start, end, tid, mark in records
-                if mark is None and archive.explicitly_closed(prose[start:end], mark)}
-    records, _ = archive.entries(text, prose, set(bodies) | headings)
-    return frozenset(tid for start, end, tid, mark in records
-                     if sum(row[2] == tid for row in records) == 1
-                     and not any(other_start < end and start < other_end
-                                 for other_start, other_end, other_id, _ in records if other_id != tid)
-                     and archive.explicitly_closed(prose[start:end], mark))
+    """No task passes selection; the queue is idle rather than malformed."""
 
 
 def unique(pairs):

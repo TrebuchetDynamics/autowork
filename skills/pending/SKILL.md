@@ -3,26 +3,27 @@ name: pending
 description: "Use to see what is pending or done in a task ledger."
 license: MIT
 metadata:
-  version: 0.1.0
+  version: 0.2.0
   hermes:
     tags: [tasks, pending, done, query, read-only]
 ---
 
 # Pending
 
-Answer "what is left, what is next, what was done" from the repository's own task
-records without changing them. Run the bundled read-only query helper and report its
-outcome in the user's language, leading with what matters and keeping task IDs:
+Answer "what is left, what is next, what was done" from the repository's task store
+(`tasks/`) without changing it. Use the read-only `autowork tasks` queries, which read
+the store at a commit (HEAD by default), and report the outcome in the user's language,
+leading with what matters and keeping task IDs:
 
 ```sh
-python3 scripts/task_query.py pending                       # open work, next eligible first
-python3 scripts/task_query.py detail --id <TASK-ID>         # one task with its sources
-python3 scripts/task_query.py search --text <words>         # open and closed tasks matching
-python3 scripts/task_query.py history --since <date>        # what was closed, with dates
+autowork tasks list [repo]                 # every task: status, section, rank, next-eligible position
+autowork tasks show <TASK-ID> [repo]       # one task: its contract, notes and record revision
+autowork tasks why <TASK-ID> [repo]        # why it is or is not the next eligible task
+git -C <repo> log --since=<date> --format='%ad %s' --date=short -- tasks/evidence/   # closes, dated
 ```
 
-The helper writes nothing, runs nothing and claims nothing it cannot read from
-`TODO.md`, `goals.json`, the archive and Git history. Its eligibility is recorded
-dependency and priority evidence, not worker admission or liveness. The full
-contract, including `--repo`, time zones and limits, is in
-[the query contract](references/query-contract.md).
+Open work is `status: open` in Now and Next, in `position` order; Needs decision items
+wait for a person. A verified close has a receipt in `tasks/evidence/<ID>.toml`. The
+queries write nothing and run nothing; eligibility is recorded dependency and priority
+evidence, not worker admission or liveness. A repository without `tasks/` is not
+converted yet: say so and name `autowork migrate <repo>`; do not read TODO.md instead.

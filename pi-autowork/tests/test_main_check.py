@@ -199,7 +199,7 @@ class MainCheckTests(unittest.TestCase):
                 self.assertEqual(len(found), int(rev == 'c'))
                 if found:
                     self.assertEqual(found[0][:2], ('MAIN', 'flaky test'))
-                    self.assertIn(test_id, maintainer.prompt(found, '/repo', 'goals.py'))
+                    self.assertIn(test_id, maintainer.prompt(found, '/repo', 'autowork tasks'))
                     maintainer.remember(runner.state, trigger_key=maintainer.key(found),
                                         found=found, outcome='merged')
 
@@ -295,7 +295,7 @@ class MainCheckTests(unittest.TestCase):
             self.assertEqual(main_check.line(record), 'main check broken at abc123: ' + record['crash'])
             found = maintainer.triggers([], record)
             self.assertEqual([kind for _, kind, _ in found], ['check broken'])
-            self.assertIn('Never add a repair task for test names', maintainer.prompt(found, '/repo', 'goals.py'))
+            self.assertIn('Never add a repair task for test names', maintainer.prompt(found, '/repo', 'autowork tasks'))
 
     def test_crash_line_ranks_terminal_messages_and_uses_the_last_match(self):
         cases = [

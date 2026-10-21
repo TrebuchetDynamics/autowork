@@ -1,13 +1,8 @@
 """Offline real-ledger lifecycle; review receipts are simulated, no model/native runs."""
-import json
 from pathlib import Path
-import subprocess
-import sys
-import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-GOALS = ROOT / 'skills/docs-sync/scripts/goals.py'
 
 
 class CycleGuidanceTests(unittest.TestCase):
@@ -154,125 +149,6 @@ class CycleGuidanceTests(unittest.TestCase):
                       'ci-cd-and-automation', 'observability-and-instrumentation',
                       'frontend-ui-engineering', 'context-engineering', 'code-simplification'):
             self.assertIn(skill, cycle)
-
-
-class LedgerCycleTests(unittest.TestCase):
-    def setUp(self):
-        temporary = tempfile.TemporaryDirectory(prefix='offline engineering cycle ')
-        self.addCleanup(temporary.cleanup)
-        self.repo = Path(temporary.name)
-        initialized = subprocess.run(['git', 'init', str(self.repo)],
-                                     capture_output=True, text=True, timeout=10)
-        self.assertEqual(initialized.returncode, 0, initialized.stderr)
-        data = {'version': 1, 'goals': [], 'tasks': []}
-        for number in (1, 2):
-            data['goals'].append({'id': f'G{number}', 'title': f'Artifact {number}',
-                'source': 'SPEC.md#accepted', 'status': 'unmet', 'priority': number,
-                'tasks': [f'T{number}'], 'depends_on': ['G1'] if number == 2 else []})
-            data['tasks'].append({'id': f'T{number}', 'goal': f'G{number}',
-                'title': f'Write artifact {number}', 'status': 'open', 'section': 'Now',
-                'depends_on': ['T1'] if number == 2 else []})
-        (self.repo / 'goals.json').write_text(json.dumps(data))
-        (self.repo / 'SPEC.md').write_text('# Accepted\n\nStatus: Accepted\n\nWrite two artifacts in order.\n')
-        self.bodies = {}
-        for number, content in ((1, 'first'), (2, 'second')):
-            dependencies = 'T1, G1' if number == 2 else 'None'
-            self.bodies[f'T{number}'] = (
-                f'- [ ] T{number}: Write artifact {number}\n'
-                f'  Goal: G{number}\n  Scope: artifact{number}.txt\n'
-                f'  Acceptance: artifact contains {content} followed by a newline\n'
-                f'  Dependencies: {dependencies}\n'
-                '  Ownership: fixture integration owner; no live workers\n'
-                '  Sources: [Accepted spec](SPEC.md#accepted)\n\n')
-        (self.repo / 'TODO.md').write_text('# TODO\n\n## Now\n\n' + ''.join(self.bodies.values()))
-        self.cli('fmt')
-
-    def cli(self, command, *args, expected=0):
-        result = subprocess.run([sys.executable, str(GOALS), command, str(self.repo), *args],
-                                capture_output=True, text=True, timeout=10)
-        self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
-        return result.stdout
-
-    def data(self):
-        return json.loads((self.repo / 'goals.json').read_text())
-
-    def goal_status(self, goal):
-        return next(g['status'] for g in self.data()['goals'] if g['id'] == goal)
-
-    def picks(self):
-        return [row['task']['id'] for row in json.loads(self.cli('next', '--json'))]
-
-    def evidence(self, goal, kind, result, ref='offline fixture receipt'):
-        self.cli('evidence', goal, '--kind', kind, '--ref', ref, '--result', result)
-
-    def test_completion_without_executed_pass_cannot_promote_goal(self):
-        self.cli('task', 'T1', 'done')
-        self.evidence('G1', 'inspection', 'pass')
-        self.assertEqual(self.goal_status('G1'), 'unmet')
-        self.assertNotIn('T2', self.picks())
-        self.evidence('G1', 'executed', 'fail')
-        self.assertEqual(self.goal_status('G1'), 'unmet')
-        self.assertNotIn('T2', self.picks())
-        self.assertIn('unmet goal has no open task', self.cli('validate', expected=1))
-
-    def test_two_tasks_require_owner_closure_then_advance_and_render_stably(self):
-        self.assertEqual(self.picks(), ['T1'])
-        ready = json.loads(self.cli('backlog-check', '--plan', 'SPEC.md#accepted', '--tasks', 'T1'))
-        self.assertEqual(ready['state'], 'ready_for_autowork')
-        for number, content in ((1, 'first'), (2, 'second')):
-            task, goal = f'T{number}', f'G{number}'
-            self.cli('task', task, 'in_progress')
-            check = [sys.executable, '-c',
-                f'from pathlib import Path; assert Path("artifact{number}.txt").read_text() == "{content}\\n"']
-            red = subprocess.run(check, cwd=self.repo, capture_output=True, text=True, timeout=10)
-            self.assertNotEqual(red.returncode, 0)
-            (self.repo / f'artifact{number}.txt').write_text(content + '\n')
-            green = subprocess.run(check, cwd=self.repo, capture_output=True, text=True, timeout=10)
-            self.assertEqual(green.returncode, 0, green.stderr)
-            receipt = json.dumps(check)
-            self.evidence(goal, 'executed', 'pass', receipt)
-            # Passing checks cannot promote while the task is still owned/in progress.
-            self.assertEqual(self.goal_status(goal), 'unmet')
-            # Review is simulated owner evidence, not a goals.py runtime review gate.
-            review = {'task': task, 'status': 'pending', 'check': receipt, 'fixture': True}
-            (self.repo / 'fixture-review.json').write_text(json.dumps(review))
-            if number == 1:
-                self.assertNotIn('T2', self.picks())
-            review['status'] = 'accepted'
-            (self.repo / 'fixture-review.json').write_text(json.dumps(review))
-            self.assertEqual(json.loads((self.repo / 'fixture-review.json').read_text())['status'], 'accepted')
-            # Only the simulated integration owner applies canonical closure.
-            self.cli('task', task, 'done')
-            self.evidence(goal, 'executed', 'pass', receipt)
-            self.assertEqual(self.goal_status(goal), 'met')
-            # Simulate the owner's narrow documentation reconciliation, not model behavior.
-            todo = self.repo / 'TODO.md'
-            text = todo.read_text().replace(self.bodies[task], '', 1)
-            if '## Done\n' not in text:
-                text += '\n## Done\n\n'
-            completed = self.bodies[task].replace('- [ ]', '- [x]', 1)
-            todo.write_text(text + completed)
-            self.assertNotIn(self.bodies[task], todo.read_text())
-            self.assertIn(completed, todo.read_text().split('## Done\n', 1)[1])
-            self.cli('validate')
-            self.cli('render')
-            if number == 1:
-                ready = json.loads(self.cli('backlog-check', '--plan', 'SPEC.md#accepted', '--tasks', 'T2'))
-                self.assertEqual(ready['state'], 'ready_for_autowork')
-            self.assertEqual(self.picks(), ['T2'] if number == 1 else [])
-        first = {name: (self.repo / name).read_bytes() for name in ('goals.json', 'TODO.md')}
-        self.cli('fmt')
-        self.cli('render')
-        self.assertEqual(first, {name: (self.repo / name).read_bytes() for name in first})
-        todo = (self.repo / 'TODO.md').read_text()
-        self.assertNotIn('- [ ]', todo)
-        for body in self.bodies.values():
-            completed = body.replace('- [ ]', '- [x]', 1)
-            self.assertNotIn(completed, todo)
-            # Archived bodies drop their trailing separator blank line (TOOLSET-042).
-            archived = completed.rstrip('\n') + '\n'
-            self.assertEqual((self.repo / 'TODO.archive.md').read_text().count(archived), 1)
-        self.assertFalse((self.repo / 'tasks/todo.md').exists())
 
 
 if __name__ == '__main__':
