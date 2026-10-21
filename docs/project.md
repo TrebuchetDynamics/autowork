@@ -1923,3 +1923,51 @@ or it ends; a second session works read-only or in `.worktrees/<task>/` through
 always work in the main checkout: two sessions there at once swept and reset each
 other's uncommitted files (2026-10-20), the root cause the reliability research ranks
 first. Implementation: TOOLSET-290-12.
+
+## Task Store v2 (2026-10-20)
+
+Status: Accepted
+
+Decision: project tasks and goals move from `TODO.md` and `goals.json` into a
+Git-native store at the repository root, `tasks/`: one file per task
+(`tasks/items/<ID>.md`) and per goal (`tasks/goals/<ID>.md`), each a Markdown body
+under TOML frontmatter (`+++`), plus sanitized completion receipts under
+`tasks/evidence/`. The owner chose a clean cut: **the engine reads only `tasks/`**,
+and each repository converts once with `autowork migrate <repo>`. An unconverted
+repository's runner stops with that instruction instead of reading the old files;
+there is no second reader, generated `goals.json` or dual write. `TODO.archive.md`
+stays as history.
+
+Rules the implementation keeps:
+
+- The code lives in pi-autowork (`pi-autowork/engine/task_store.py`); planning skills
+  create and edit tasks through the `autowork` CLI, never by parsing files.
+- Every consumer (selection, dispatch, integration, closure, the runner and the TUI)
+  receives immutable task records from one TaskStore interface, read from a pinned
+  Git commit, never a half-edited working tree. Uncommitted task edits show as
+  pending.
+- Two fingerprints per task: a record revision (any byte) and a contract hash (scope,
+  acceptance, checks, dependencies, Touches, authority fields). Only a contract change
+  invalidates admitted or verified work; rank, section within Now/Next, title and
+  notes do not. Moving to Needs decision or superseding a task does.
+- Every field that grants execution authority (`Resources`, ownership, live
+  authorization, kind) is typed; an absent field never grants permission. A check
+  declared in a task file is not thereby approved to run with the coordinator's rights.
+- Git status (`open`, `done`, `superseded`) is not a worker lease; the engine's private
+  state stays the authority on running, held and integrating work. Closure publishes
+  one bookkeeping-only commit (task status and its receipt) through the existing
+  journal, exactly once.
+- Selection order is unchanged: focused goal, section, rank (stored per task), goal
+  priority, derived goal status, then ID; a differential test proves it against the
+  current selector before the cut.
+- The CLI explains scheduling with structured reasons (`autowork tasks why ID`). A
+  corrupt store fails closed; an incomplete task draft stays visible but not runnable.
+- TOML is read with `tomllib`; writes go through a small schema-bound writer that
+  round-trips every valid record and refuses input it cannot preserve.
+
+Out of scope: distributed leases across hosts (one integration coordinator per
+repository), and SQLite until profiling shows a need. The fleet's repositories are
+converted by their owner, one at a time; this repository converts first, at no cost,
+with its queue empty.
+
+Implementation: goal TASK-STORE, tasks TOOLSET-294-f6 through TOOLSET-302-33.
