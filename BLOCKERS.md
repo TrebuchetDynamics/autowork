@@ -1,7 +1,7 @@
 # External input blockers
 
 Only confirmed USER_INPUT, SUDO or USER_DECISION blockers belong here. Internal
-engineering and integration work remain in [TODO.md](TODO.md). This file creates
+engineering and integration work remain in the [`tasks/`](tasks/) store. This file creates
 no extra approval step or execution authority.
 
 ## Active

@@ -366,13 +366,17 @@ protocols load only when needed; registration is not proof a technique was appli
 
 `tasks/` holds accepted scope, task priority, checks and progress: one file per task
 (`tasks/items/<ID>.md`) and per goal (`tasks/goals/<ID>.md`). Edit them with
-`autowork tasks` (`list`, `show`, `add`, `field`, `move`, `place`, `done`, ...), which
-validates the whole store and never commits; commit the result like any change.
+`autowork tasks` (`list`, `show`, `add`, `field`, `move`, `place`, `done`, ...).
+Task-editing verbs validate the whole store and never commit; commit their result
+like any change. The `prepare` conversion lifecycle is the exception described below.
 You never set the store up by hand: `/docs_sync` runs `autowork tasks prepare` first,
 which converts a repository that still has `TODO.md` and `goals.json` (one proven local
 commit; it refuses while work is in flight), finishes an interrupted conversion, and in
 a new repository lists the accepted plan headings that goals may come from. `autowork
-tasks prepare --check` reports the same without writing anything.
+tasks prepare --check` writes nothing: it diagnoses the committed store at HEAD
+and reports pending paths without validating their uncommitted contents. Use
+`autowork tasks validate --worktree .` to validate working-tree edits. For a
+conversion, `prepare --no-commit` stages the result without moving HEAD.
 Contributors can use ordinary Git and project tools; see
 [working on a task](docs/contributing.md#work-on-a-repository-task).
 

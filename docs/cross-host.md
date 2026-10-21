@@ -216,7 +216,7 @@ subsequent release preparation. Do not edit release directories. `--dry-run` and
 | (none) | Run until stopped; when no task is runnable, wait and check again |
 | `--once` | Run one task |
 | `--until-empty` | Exit when no runnable task remains |
-| `--workers N` | Most tasks run at once, 1 to 8 (default 8); free memory and load decide how many start |
+| `--workers N` | Most tasks run at once, 1 to 16 (default 8); free memory and load decide how many start |
 | `--dry-run`, `--status` | Show the repository, models, budget, session and each task's state; no repository changes (may cache release code) |
 | `--repo PATH` | Work on the repository at `PATH` |
 | `--interval SECONDS` | Idle check interval (default 60) |
@@ -365,14 +365,14 @@ and the next cycle dispatches newly runnable tasks and re-queues answered held o
 `--interval` is only the longest wait. Watching is `git status` of `tasks/` and file
 checks once a second; it calls no model.
 
-Auto work commits and merges all work. Before each merge the runner commits anything
-left uncommitted in its own session worktree. In the main checkout, uncommitted changes
-untouched for `PI_AUTOWORK_PLANNING_QUIET` seconds (600) and open for writing nowhere
-are committed too: planning files alone as `docs(tasks): owner planning (pi-autowork)`,
-anything else as `chore: uncommitted work in the main checkout (pi-autowork)`. Untracked
-files that look like secrets (`.env`, keys, tokens, credentials) stay untracked, and a
-merge, rebase or cherry-pick in progress is left alone; a change still being edited
-waits, and the message says why.
+Before each merge the runner commits recoverable uncommitted work in its own
+session worktree. The main-checkout sweep is narrower: only publishable planning
+changes untouched for `PI_AUTOWORK_PLANNING_QUIET` seconds (600) and open for writing
+nowhere are committed as `docs(tasks): owner planning (pi-autowork)`. It excludes
+`tasks/evidence/`. Other main-checkout work belongs to its writer regardless of age
+and is left untouched; an overlapping landing waits as `Merge pending`. Files that
+look like secrets remain excluded, and an unfinished merge, rebase or cherry-pick
+is left alone. A planning change still being edited waits with its reason.
 
 Questions for the owner live in the repository's `BLOCKERS.md`, in a block the runner
 maintains under `## Active` (between `<!-- pi-autowork:questions:start -->` and
@@ -427,7 +427,9 @@ How it works:
   Pi review that runs the task's checks against its acceptance; a reviewer that
   changes any file fails. Only then is the task closed: its record's `status = "done"`
   and its receipt `tasks/evidence/<ID>.toml`, in one commit.
-  A failed review, a conflict or a file outside `Touches:` holds the task; it keeps
+  A failed review, an unresolved conflict or a protected file lacking the required
+  serial admission holds the task; an ordinary out-of-`Touches:` edit is resolved
+  through integration, not held merely for that declaration. The task keeps
   its worktree and gets one fresh retry, and a second failure stays held. If the
   retry of a scope hold makes no commit, the first commit is verified once more.
 - **Task states.** `--status` and the log show each task as `pending`, `running`,

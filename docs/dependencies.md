@@ -28,12 +28,15 @@ Sources: [plugin manifest](../plugin.yaml), [installation inventory](../plugins/
 | textual-serve 1.1.3 (MIT), `autowork web` only | Pinned in [`command.py`](../pi-autowork/pi_autowork/command.py) (`AUTOWORK_TEXTUAL_SERVE`), fetched by `uv run --with` like Textual | Not a runner dependency; only the browser view uses it. |
 | Textual 8.2.8 (MIT), the `autowork` TUI only | Pinned in [`command.py`](../pi-autowork/pi_autowork/command.py) (`AUTOWORK_TEXTUAL`); fetched by `uv run --with` into uv's cache on first use | Not a runner dependency: pi-autowork itself stays standard-library Python, and every other `autowork` command works without it. |
 
-Ordinary installation skips existing resources. `/autowork update` updates bundled
-content, including the pinned engineering pack, while preserving conflicts. External
-imports are not upgraded by that command. A checkout revision alone does not prove
-that native profile copies match it. The updater recognizes exact same-path
-historical copies in bounded trusted Git history; unknown drift is preserved and
-reported as incomplete for reconciliation. Historical byte equality does not
+Ordinary installation skips existing resources. `/autowork update` synchronizes
+bundled content, including the pinned engineering pack, to the release bytes.
+Edited native copies are reset or removed when their release file is removed;
+their original bytes remain in the update backup and the action is reported.
+External imports are not upgraded by that command. A checkout revision alone does
+not prove that native profile copies match it. Exact historical copies can avoid a
+repeated drift notice, but they are still synchronized. The separate guarded
+managed-checkout recovery path uses three-way reconciliation and refuses unresolved
+conflicts rather than discarding local changes. Historical byte equality does not
 prove an older copy was unintentional or compatible with an active worker. Review
 intentional pins and quiesce/reconcile active runs before updating; see the
 [update boundary and recovery](installation.md#update-all-profiles). Two
