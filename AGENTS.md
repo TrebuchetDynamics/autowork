@@ -13,9 +13,13 @@ runtime state out of Git. Do not edit or patch upstream Hermes Agent.
 - Use Context7 (resolve library ID, then query docs) for current external library
   or CLI contracts. Local business logic and instruction edits need no lookup.
 - Full check: `python3 scripts/check.py`
-- Use focused offline regression tests for runtime changes. `python3 scripts/check.py`
-  runs the safe offline check inventory; inspect native/live tests before running
-  them. Registration checks do not prove model execution or Telegram delivery.
+- Test only what your change can affect: `python3 scripts/affected_tests.py --run`
+  selects and runs the test modules that import, run or read the files you changed
+  (since origin/main; `--base REV` otherwise) and prints why each was chosen. Do not
+  rerun whole test directories or the full check for a focused change: the runner
+  checks main in full after landing. `python3 scripts/check.py` runs the safe offline
+  check inventory; inspect native/live tests before running them. Registration
+  checks do not prove model execution or Telegram delivery.
 - Keep public examples generic and preserve existing per-profile job state.
   Instruction changes alone do not prove that a cron job completed a task.
 
