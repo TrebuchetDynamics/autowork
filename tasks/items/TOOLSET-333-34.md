@@ -7,7 +7,7 @@ status = "open"
 goal = "RELIABILITY-2026-10"
 section = "Now"
 rank = 1000
-depends_on = []
+depends_on = ["TOOLSET-328-2e"]
 touches = ["pi-autowork/pi_autowork/coordinator.py", "pi-autowork/engine/parallel_integrate.py", "pi-autowork/engine/parallel_dispatch.py", "pi-autowork/engine/task_execution.py", "tests/test_pi_autowork.py", "pi-autowork/engine/test_parallel_dispatch.py"]
 resources = []
 kind = "implementation"
@@ -18,3 +18,5 @@ checks = ["python3 scripts/check.py tests/test_pi_autowork.py pi-autowork/engine
 exclusions = []
 +++
 
+- Dependencies: ["TOOLSET-328-2e"]
+- Coordination: Run after TOOLSET-328-2e closes: both tasks name tests/test_pi_autowork.py. Its attempt-1 report and candidate f7f4b2211c8aa21b62baf56ca15253e334eb1685 add two issue-2 expected-failure regressions in that file; the slot is reported, awaiting integration. Do not merge into or edit that in-flight task. The lock-contention regressions here verify the same behavior this task implements, so retain them with the implementation rather than split off its acceptance proof. Existing lock-wait and external sequential-owner tests in tests/test_pi_autowork.py remain relevant. No scope, acceptance, checks or owner priority change; this dependency records the existing shared-file wait, not a product prerequisite.
