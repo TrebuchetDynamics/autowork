@@ -510,6 +510,17 @@ class IntegrationTests(unittest.TestCase):
         (self.repo / 'B.txt').write_text('owner edit\n')  # uncommitted, but not a file A changes
         self.assertEqual(module.integrate(session, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
 
+    def test_a_session_in_its_own_worktree_does_not_block_landing(self):
+        """A merge waited 15 minutes on an interactive session busy in its own worktree: the
+        landing writes only the main checkout and the integration worktree, never that one."""
+        session = self.session_checkout()
+        self.worker()
+        module = self.module()
+        other = Path(self.temp.name) / 'elsewhere'
+        self.git('worktree', 'add', '-q', '-b', 'elsewhere', str(other), self.baseline)
+        self.agent_process(cwd=other)
+        self.assertEqual(module.integrate(session, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+
     def test_a_main_checkout_session_on_the_same_files_still_waits(self):
         session = self.session_checkout()
         self.worker()
