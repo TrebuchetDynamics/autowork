@@ -245,6 +245,7 @@ class DispatchTests(unittest.TestCase):
                     self.assertEqual(stat.read_text().rsplit(')', 1)[1].split()[0], 'Z')
 
     def test_slot_waiting_is_not_a_stuck_command_but_running_still_is(self):
+        import autowork_run
         sys.path.insert(0, str(SCRIPTS.parents[1] / 'pi-autowork'))
         from pi_autowork import pi_runtime
         checks = self.root / 'checks'
@@ -270,16 +271,27 @@ class DispatchTests(unittest.TestCase):
             self.addCleanup(pi.wait)
             self.addCleanup(lambda: os.killpg(pi.pid, 9) if pi.poll() is None else None)
             self.assertIn(b'waiting for a worker check slot', pi.stdout.readline())
-            time.sleep(.6)
+            row, = autowork_run.records(records)
+            row.update(waiting_since=100.0, updated=100.0, admitted=None)
             stopping = {}
-            self.assertEqual(pi_runtime.stop_stuck_commands(os.getpid(), .4, stopping), [])
+
+            def stop_at(now):
+                # Keep real ancestry, queue-interval accounting and signals, but make
+                # command age and slot timestamps independent of process startup/load.
+                # Freeze only during classification, not the fixture's readiness waits.
+                with patch.object(pi_runtime, '_age', return_value=now - 100.0), \
+                        patch.object(autowork_run.time, 'monotonic', return_value=now), \
+                        patch.object(autowork_run, 'records', return_value=[row]):
+                    return pi_runtime.stop_stuck_commands(os.getpid(), .4, stopping, now=now)
+
+            self.assertEqual(stop_at(160.0), [])  # 60 seconds queued, no execution
             self.assertIsNone(pi.poll())
             self.assertFalse(started.exists())
             fcntl.flock(lease, fcntl.LOCK_UN)
             self.await_file(started)
-            self.assertEqual(pi_runtime.stop_stuck_commands(os.getpid(), .4, stopping), [])
-            time.sleep(.6)
-            self.assertTrue(pi_runtime.stop_stuck_commands(os.getpid(), .4, stopping))
+            row.update(admitted=160.0, updated=160.0, wait_seconds=60.0)
+            self.assertEqual(stop_at(160.0), [])  # admission does not consume the budget
+            self.assertTrue(stop_at(161.0))  # one second running exceeds the .4-second limit
             pi.wait(timeout=5)
 
     def test_a_resumed_attempt_relaunches_after_its_release_was_pruned(self):
