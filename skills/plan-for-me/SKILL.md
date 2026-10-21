@@ -14,7 +14,9 @@ metadata:
 approach within the user's scope, and saves the plan and tasks. The public skill
 ID is `plan-for-me`; its source directory is `skills/plan-for-me/`.
 
-Read the [planning craft](../shared/PLANNING-CRAFT.md), the
+First read the [planning artifact and authority contract](../shared/RESEARCH-PLAN.md).
+It governs allowed writes and the full requested batch on every route. Then read
+the [planning craft](../shared/PLANNING-CRAFT.md), the
 [shared contract](../shared/COMMON-CONTRACT.md), the pinned
 [Autoresearch plan protocol](../autoresearch/upstream/plan.md), and the
 [planning adaptations](../shared/RESEARCH-PLAN.md). Apply the protocol directly;
@@ -29,8 +31,9 @@ the matching section of [special cases](references/special-cases.md).
 
 Size the work first and say the size in plain words
 ([planning craft](../shared/PLANNING-CRAFT.md#know-what-you-know)): a clear task
-gets one TODO task and no planning pass; a project gets a written plan section and
-dependent tasks. Split several independent projects and plan them in order.
+gets one complete saved TODO task without an interview, not immediate execution;
+a project gets a written plan section and tasks with real dependencies. Plan all
+requested projects in one coherent batch, retaining independent ready lanes.
 
 Inspect project instructions, relevant implementation and tests, existing docs,
 accepted decisions, TODO.md/goals.json and active task ownership. Reuse existing
@@ -61,7 +64,7 @@ Routine planning needs no experiment loop.
 
 When called by Autowork, investigate its named uncertainty and return to the
 current task. For a held or blocked task, return a **fix or skip** decision, never a
-restated blocker: fix with the smallest reversible change inside the delegated scope
+restated blocker: describe the smallest reversible fix inside the delegated scope
 (for example a verified alternative state for a broken external link, or the
 in-scope part of a remediation), recorded as the planner's call; or skip by splitting
 the blocked acceptance into its own task that names the exact missing input, keeping
@@ -88,7 +91,7 @@ its contract shape. Do not claim a task or launch execution just to validate a
 planning handoff. Reconcile one affected batch and reuse input-bound checks when
 the evidence is unchanged.
 
-For work too large for one batch, follow
+For future work whose content depends on implementation evidence, follow
 [rolling planning](../shared/TODO-WORKCENTER.md#rolling-planning): save only the
 first batch whose content is known now, at most 8 new tasks total including one
 closing `Kind: plan` task under the same Goal. Give it `Plan round: 1 of 10` by
@@ -114,8 +117,10 @@ warning with your call on it ([plan handoff](../shared/PLAN-HANDOFF.md)).
 
 Planning includes saving this work by default. Explicit read-only, chat-only,
 no-write or dry-run requests save nothing. Planning alone does not authorize
-implementation, commits, worker dispatch or a recurring schedule. Preserve any
-separate implementation authority already given and the normal Autowork gates.
+implementation, commits, worker dispatch or a recurring schedule. An explicit
+standalone planning request narrows this occurrence despite earlier unrelated
+implementation permission. Return an Autowork-owned planning substep to its same
+coordinator; execution resumes there, not inside this planning substep.
 
 An audit or an "is it ready?" request is planning too: give the verdict in one line,
 then save each gap as a task (or name the existing task it updates), owner-only gaps

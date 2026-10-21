@@ -1,8 +1,9 @@
 # Planning craft
 
 Shared method for Plan With Me and Plan For Me. It decides how well a plan is
-understood and written; [the handoff](PLAN-HANDOFF.md) decides where it is saved and
-who executes it. Adapted from obra/superpowers `brainstorming` and mattpocock/skills
+understood and written; first load the
+[planning artifact/authority contract](RESEARCH-PLAN.md#planning-artifact-and-authority-contract).
+[The handoff](PLAN-HANDOFF.md) decides where it is saved and who executes it. Adapted from obra/superpowers `brainstorming` and mattpocock/skills
 `grilling` and `domain-modeling` (both MIT), fitted to the TODO.md work queue.
 
 ## Know what you know
@@ -13,12 +14,13 @@ in plain words; the user can override it.
 
 | Size | Signal | Plan |
 |------|--------|------|
-| Clear task | everything that matters is in the request | no interview; one TODO task, or say it is ready for Autowork |
+| Clear task | everything that matters is in the request | no interview; save one complete TODO task (reuse its ID), then stop planning |
 | Small change | one outcome, few decisions | brief, decisions and one or two tasks |
 | Project | several outcomes, real trade-offs | written plan section, decisions and dependent tasks |
 
 If it grows mid-plan, say so and step up a size. If it is really several independent
-projects, say so, agree on an order and plan them one at a time.
+projects, identify their order and independent lanes, then finish the whole requested
+batch. Do not finish the invocation after planning just the first project.
 
 ## Facts are yours, decisions are theirs
 
@@ -113,8 +115,9 @@ work first, and a task naming a file that unlanded work also names waits until i
 (a directory or glob only ranks). The plan is what keeps write sets apart, so tasks can
 run together:
 
-- Tasks that can run together share no file unless one depends on the other. Add the
-  `Dependencies:` edge, or re-cut so each file has one owner per batch.
+- Tasks that can run together have disjoint writes. Re-cut shared ownership where
+  useful; otherwise report the scheduling overlap. Add `Dependencies:` only for a
+  real prerequisite, not merely a shared path or a preferred sequence.
 - A hot file, one named by three or more open tasks or longer than about 1500 lines,
   gets a first task that extracts the part being changed into its own module; later
   tasks touch that module.
@@ -177,10 +180,12 @@ Without a subagent tool, read the tasks as that builder yourself. Sort the quest
 - **Theirs**: only the user can answer it, and the answer changes what gets built.
 
 Then check the batch yourself and fix it before handoff: each executable task
-declares `Touches:` (or `Resources: exclusive` with a reason); every pair of tasks
-that share a path, or where one uses the other's output, has a `Dependencies:` edge
-or is re-cut; `Dependencies:` lists task IDs only; and each `Consumes:` matches its
-producer's `Produces:`.
+declares bounded `Touches:` (or `Resources: exclusive` with a real resource reason);
+shared writes are re-cut or explicitly nonparallel, true prerequisites have
+`Dependencies:` edges, and unrelated lanes remain independent. `Dependencies:`
+lists task IDs only; each `Consumes:` matches its producer's `Produces:`. Map every
+requested outcome to a complete saved task or a scoped unresolved choice; future
+roadmap ideas do not replace the requested batch.
 
 Bring the "theirs" pile in one message, most important first. That is the only
 question round the check produces. Until answered, keep just the affected tasks

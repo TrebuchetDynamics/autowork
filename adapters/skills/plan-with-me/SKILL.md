@@ -6,7 +6,8 @@ disable-model-invocation: true
 
 # Plan With Me
 
-Read the [host contract](../COMMON.md), pinned
+First read the [planning artifact and authority contract](../../../skills/shared/RESEARCH-PLAN.md),
+then the [host contract](../COMMON.md), pinned
 [Autoresearch plan protocol](../../../skills/autoresearch/upstream/plan.md) and
 [interactive planning adaptations](../../../skills/shared/RESEARCH-PLAN.md#interactive-planning-plan-with-me).
 Refine the initial prompt into a working brief and investigate relevant evidence.
@@ -39,5 +40,10 @@ and lint them with `goals.py plan-lint <repo> --tasks IDS` before reporting them
 Use the [single-pass handoff](../../../skills/shared/PLAN-HANDOFF.md#one-planning-pass-one-handoff):
 resume accepted decisions and existing task IDs, investigate only missing evidence,
 persist one affected batch, and reuse input-bound checks. Unchanged findings need
-no new docs pass. Follow this host adapter for execution authority; the shared
-contract does not require Hermes-native tooling on this host.
+no new docs pass. Finish every requested outcome in the batch, not just the first
+clear task; preserve independent ready lanes and keep open choices scoped.
+Standalone planning stops despite earlier unrelated implementation permission.
+An Autowork-owned substep returns to that same coordinator without execution inside
+planning or competing workers. A later explicit implementation instruction enters
+the execution workflow. The shared contract requires neither Hermes-native tooling
+nor a claimed hard sandbox on this host.

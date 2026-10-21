@@ -22,12 +22,22 @@ test('Pi registers workflows and all 13 research commands; routes literal argume
   await commands.get('autoresearch_debug').handler(raw, {isIdle: () => false});
   assert.match(messages[1][0], /Selected subcommand: debug/);
   assert.deepEqual(messages[1][1], {deliverAs: 'followUp'});
+  // The actual shared boundary is loaded, not just command registration/skill metadata.
+  const {readFile} = await import('node:fs/promises');
+  const boundary = await readFile(new URL('../skills/shared/RESEARCH-PLAN.md', import.meta.url), 'utf8');
+  for (const name of ['plan_with_me', 'plan_for_me', 'grill_me', 'autoresearch_plan']) {
+    await commands.get(name).handler(raw, {isIdle: () => true});
+    assert.equal(messages.at(-1)[0].includes(boundary), true, name);
+    assert.equal(messages.at(-1)[0].endsWith(raw), true, name);
+  }
+  await commands.get('autoresearch').handler(`plan ${raw}`, {isIdle: () => true});
+  assert.equal(messages.at(-1)[0].includes(boundary), true);
+  assert.equal(messages.at(-1)[0].endsWith(`plan ${raw}`), true);
   await commands.get('grill_me').handler(raw, {isIdle: () => false});
   assert.match(messages.at(-1)[0], /# Plan With Me/);
   assert.match(messages.at(-1)[0], /Selected mode: challenge/);
   assert.equal(messages.at(-1)[0].endsWith(raw), true);
   assert.deepEqual(messages.at(-1)[1], {deliverAs: 'followUp'});
-  const {readFile} = await import('node:fs/promises');
   const selectors = JSON.parse(await readFile(new URL('../skills/autoresearch/UPSTREAM.json', import.meta.url))).commands;
   assert.equal(selectors.length, 13);
   for (const selector of selectors) {

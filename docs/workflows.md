@@ -374,6 +374,45 @@ facilities when available; do not claim a hard sandbox from Markdown instruction
 Validation must inspect actual changed paths/tool actions in disposable fixtures,
 not merely search for the sentence “do not implement”.
 
+The source implementation now loads one
+[artifact/authority contract](../skills/shared/RESEARCH-PLAN.md#planning-artifact-and-authority-contract)
+before supporting planning methods. Native planners and challenge compatibility
+load it explicitly; Pi injects its actual bytes for planner, challenge and explicit
+research-plan commands. Other portable hosts follow the same shared reference.
+Markdown executable skills are implementation artifacts, not writable planning
+documents. Earlier unrelated coding permission does not widen a standalone
+planning request; an Autowork-owned substep returns to its same coordinator.
+A later explicit implementation instruction transitions to execution under the
+normal repository gates. These are instructional boundaries, not a hard sandbox.
+
+The [disposable behavioral specimens](../tests/fixtures/planning/README.md) cover
+both planners, complete batches, old unrelated authority, a coding-urging supporting
+skill, no-write/challenge scopes, later explicit execution and coordinator return.
+Their inventory includes all writes; read transcripts as well as final paths and
+full task bodies. Wrapper/package tests establish loading, request and mode
+preservation only. Source-model runs do not prove installed/native-host or Telegram
+behavior; record actual loaded paths/hashes and keep those qualification gaps
+explicit. The existing plan lint can suggest dependency edges for overlapping
+writes; treat these as scheduling warnings, not new product prerequisites. Re-cut
+or retain the warning with a reason instead of inventing dependencies. Interview
+quality and recommendation application remain the separate TOOLSET-136-0b/137-cd
+scope below.
+
+TOOLSET-135-16 source evaluation: 15 fresh-context Pi delegate cases
+(`gpt-6.1-sol`) inspected the actual loaded sources, tool traces, before/after bytes
+and final task bodies/lint. Both native and portable planner entrypoints covered
+easy fixes and bulk output; the nine-outcome variants retained all known tasks
+without a rolling-cap truncation. Standalone runs changed planning owners only,
+plus empty Docs Sync coordination locks where the helper was used. Questions-only
+and challenge runs changed no fixture files. The same-session later-execution
+case first saved planning only, then changed its implementation/test pair after
+an explicit execution message and observed red/green checks. Coordinator-owned
+planning returned without dispatch. Two unchanged-source baseline cases already
+complied: this did not reproduce the reported editing incidents. Non-Git TODO-only
+fixtures do not establish indexed-consumer eligibility; `draft_saved` from the
+index-only checker was retained honestly, without manufacturing an index. These
+results do not qualify installed caches, native host execution or live delivery.
+
 #### Question quality — TOOLSET-136-0b
 
 Use a compact uncertainty map: user/outcome, concrete success/failure example,
@@ -483,9 +522,12 @@ qualification is relevant; do not create another live task or launch it here.
 
 TOOLSET-135-16 establishes the boundary/batch contract; TOOLSET-136-0b and
 TOOLSET-137-cd depend on it and own interview quality and skill handoff respectively.
-Existing planning and suite-thinning task IDs/priorities remain. New behavioral
-tests are proposed and unrun; this pass writes plans/backlog only and authorizes
-no implementation, worker dispatch, installation, scheduling or publication.
+Existing planning and suite-thinning task IDs/priorities remain. The original
+accepted planning pass authorized no implementation, worker dispatch, installation,
+scheduling or publication. TOOLSET-135-16 supplies the bounded boundary/batch
+specimens linked above; interview-quality and recommendation-application scenarios
+remain proposed until their own runs. No source update alone establishes installed
+behavior or live qualification.
 
 ### Source names and compatibility
 

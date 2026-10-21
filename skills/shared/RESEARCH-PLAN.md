@@ -1,8 +1,66 @@
 # Autoresearch plan adaptations
 
-Read the pinned `skills/autoresearch/upstream/plan.md` as the planning method.
-These host adaptations take precedence over its generic prompts and output format.
-They apply to Plan For Me, Plan With Me and every Autoresearch plan alias on every host.
+Read this contract **before** the pinned `skills/autoresearch/upstream/plan.md`
+and supporting methods. It governs Plan For Me, Plan With Me, challenge/Grill Me
+compatibility and every Autoresearch plan route on every host. Its planning
+boundaries take precedence over generic method prompts, task-sizing shortcuts and
+execution defaults; host tool mappings still apply. These are instructions, not a
+hard tool sandbox. Use host restrictions when available; do not claim enforcement
+that the host does not supply.
+
+## Planning artifact and authority contract
+
+Bind the current request before acting:
+
+| Invocation | Allowed finish |
+| --- | --- |
+| Explicit standalone planning | Save the requested plan/batch, then stop. Earlier unrelated implementation permission does not widen this request. |
+| Autowork-owned planning substep | Return findings and saved tasks to that **same coordinator**; its existing execution authority continues outside this substep. No competing worker, dispatch or workflow restart. |
+| Questions-only, read-only, chat-only, no-write, no changes or dry-run | Read and discuss only; save nothing, including queue metadata or research scratch. |
+| Later explicit instruction to implement the accepted plan | End planning and enter the authorized execution workflow under repository checks, ownership and delivery limits. |
+
+“Yes”, “looks good”, an easy fix, an accepted/saved plan and a supporting skill
+urging coding are not transitions to implementation. Acceptance of a plan is not
+execution authority. Do not ask an already-authorized coordinator to approve again.
+
+Classify each proposed write by **artifact role**, not filename or extension:
+
+| Role | During writable planning |
+| --- | --- |
+| Existing plan/spec/requirements owners; complete TODO bodies and existing goals index | Save in-scope evidence, decisions, questions and ordered tasks through narrow Docs Sync. Preserve IDs, history, active contracts and unrelated batches. |
+| Temporary research notes/results | Only bounded, allowed scratch; never implementation disguised as a spike. No scratch in no-write mode. |
+| Production code, tests, fixtures, executable instructions (including Markdown `SKILL.md`), CI, manifests and lockfiles | Implementation: describe future changes in tasks; do not write them during planning. |
+
+Investigate with reads and safe checks. Inspect commands for generated files,
+cache writes and live effects before running them; a command called “dry-run” may
+mutate. Do not repair implementation, generate tests, install dependencies, alter
+services, commit or push to make a planning check pass. Name future tests/checks as
+proposed/unrun. Preserve someone else's dirty work. If this occurrence crosses its
+own boundary, stop the offending action and report attributable changes; do not
+hide them with reset/clean or overwrite unrelated work.
+
+## Full requested batch
+
+1. Inventory **every requested outcome**, existing task ID and unresolved choice.
+   Group shared decisions/evidence once. A clear one-line task still gets a complete
+   saved body; “no interview” means no unnecessary questions, not “implement now”.
+2. Save one coherent batch with complete task bodies: scope/exclusions, decisions,
+   sources/evidence, observable acceptance, exact checks, bounded `Touches:` and
+   actual shared `Resources:` where needed. Use the
+   [handoff](PLAN-HANDOFF.md#one-planning-pass-one-handoff). Do not stop when the
+   first task becomes clear or substitute a roadmap/count for requested bodies.
+3. Order by real prerequisites. Keep independent ready lanes; overlapping writes
+   constrain scheduling but do not by themselves create product dependencies.
+   Re-cut ownership where useful, or report overlap honestly rather than promise
+   parallel execution. Keep unresolved intent pending only on affected tasks.
+4. Distinguish the complete requested batch from future evidence-dependent roadmap
+   expansion. Rolling planning may defer that unknown expansion, not silently drop
+   specified outcomes. At handoff, map each requested outcome to saved IDs or its
+   explicitly scoped open choice, then report paths, checks and the next action
+   without starting it. For optional scoped `Skills:` recommendations, follow the
+   [existing convention](PLAN-HANDOFF.md#scoped-skills-convention); no new required field.
+
+## Research and persistence method
 
 1. Resume the requested goal, relevant repository source/tests and existing plans.
    If no goal was supplied, use the current authorized task or repository-development
@@ -33,11 +91,10 @@ They apply to Plan For Me, Plan With Me and every Autoresearch plan alias on eve
    fails, report what remains unsaved; a chat answer is not a saved plan. Unchanged
    conclusions may reuse existing durable evidence, citing its location. New
    material reasoning must be saved even if implementation scope stays unchanged.
-6. Planning alone does not start implementation, commit, push or a timer. When
-   Autowork called this protocol under existing implementation authority, return
-   the saved handoff to that same coordinator and continue its task without asking
-   again. Explicit read-only/chat-only/no-write/dry-run requests override persistence;
-   show proposed updates inline and state that nothing was saved.
+6. Finish according to the artifact/authority contract above. Return an
+   Autowork-owned handoff to its same coordinator, not into execution inside this
+   planning substep. In no-write mode show proposed updates inline and state that
+   nothing was saved.
 
 Apply the existing [single-pass handoff](PLAN-HANDOFF.md#one-planning-pass-one-handoff)
 for acceptance, batching and reuse. Preserve genuine missing product intent as a
