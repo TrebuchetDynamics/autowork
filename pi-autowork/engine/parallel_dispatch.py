@@ -656,6 +656,12 @@ def port_lease(slot_index):
     raise ValueError(f'every one of the {PORT_BLOCKS} worker port blocks on this host is in use')
 
 
+# Workers, and every check and tool they start, run below the coordinator's own priority: on a
+# host they saturate (load 23 on 24 CPUs) the integration check every finished task waits on
+# ran about 3x slower than on a quiet host, at the same priority as eight workers' test runs.
+WORKER_NICE = 10
+
+
 def launch(argv, worktree, data, slot_index, stdin_path):
     data.mkdir(parents=True, exist_ok=True, mode=0o700)
     temporary = str(worker_tmpdir(data, slot_index))
@@ -679,7 +685,8 @@ def launch(argv, worktree, data, slot_index, stdin_path):
     try:
         with open(data / 'worker.log', 'ab') as log, open(stdin_path, 'rb') as stdin:
             process = subprocess.Popen(argv, cwd=worktree, env=env, stdin=stdin, stdout=log, pass_fds=(lease,),
-                                       stderr=subprocess.STDOUT, start_new_session=True)
+                                       stderr=subprocess.STDOUT, start_new_session=True,
+                                       preexec_fn=lambda: os.nice(WORKER_NICE))
     finally:
         os.close(lease)
     for _ in range(50):

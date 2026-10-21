@@ -11,6 +11,7 @@ from pathlib import Path
 import signal
 import subprocess
 import sys
+import time
 
 TEST_DIRS = ('tests', 'pi-autowork/engine', 'skills/docs-sync/scripts',
              'skills/git-commit-push/scripts', 'pi-autowork/tests')
@@ -97,12 +98,35 @@ def run_unit(directory, names, env, timeout, pattern=None):
     return process.returncode == 0, output
 
 
+def _cpu_times():
+    """The host's aggregate CPU times from /proc/stat: user, nice, system, idle, iowait, ..."""
+    with open('/proc/stat') as stat:
+        return [int(x) for x in stat.readline().split()[1:]]
+
+
+def busy_cpus(sample=0.5):
+    """CPUs kept busy at normal priority over ``sample`` seconds, leaving out niced work: an
+    Autowork runner nices its workers, so their load yields to this check rather than
+    competing with it."""
+    first = _cpu_times()
+    time.sleep(sample)
+    delta = [b - a for a, b in zip(first, _cpu_times())]
+    total = sum(delta[:8]) or 1
+    nice, idle, iowait = delta[1], delta[3], delta[4]
+    return (os.cpu_count() or 1) * (total - nice - idle - iowait) / total
+
+
 def default_jobs():
     """The CPUs the host has idle, 4 to 8: tests with fixed timing limits failed when 16
-    processes ran at once on a host already at a load of 25 on 22 CPUs."""
+    processes ran at once on a host already at a load of 25 on 22 CPUs. Niced work does not
+    count against a check that is not niced itself (the integration check every finished task
+    waits on); a niced one, a worker's own check, counts the whole load as before."""
     try:
-        idle = (os.cpu_count() or 1) - int(os.getloadavg()[0])
-    except OSError:
+        if os.getpriority(os.PRIO_PROCESS, 0) == 0:
+            idle = (os.cpu_count() or 1) - math.ceil(busy_cpus())
+        else:
+            idle = (os.cpu_count() or 1) - int(os.getloadavg()[0])
+    except (OSError, ValueError):
         idle = 4
     return max(4, min(8, idle))
 
