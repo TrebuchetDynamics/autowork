@@ -173,8 +173,16 @@ def cmd_start(args, paths):
         raise Fail(f'{ready.repo or ready.path} is not ready for Autowork ({ready.mark}):\n' + '\n'.join(problems))
     name = fleet_view.instance(ready.repo)
     unit = f'pi-autowork@{name}.service'
-    fleet_view.paused_marker(paths['env_dir'], name).unlink(missing_ok=True)  # starting ends a pause
     state = service_state(paths, name)
+    if state in ('active', 'installed'):
+        env_file = Path(paths['env_dir']) / f'{name}.env'
+        saved = fleet_view.read_env(env_file)
+        conflicts = [key for key in service.SETTING_NAMES
+                     if key in os.environ and saved.get(key) != os.environ[key]]
+        if conflicts:
+            raise Fail(f'requested service settings conflict with {env_file}: {", ".join(conflicts)}. '
+                       f'Apply them with: bash {script(paths)} --install-service --repo {ready.repo}')
+    fleet_view.paused_marker(paths['env_dir'], name).unlink(missing_ok=True)  # starting ends a pause
     # Services run from the Pi package installed from PI_SOURCE. A unit that runs another
     # copy (a package installed under an older name) is moved onto it:
     # reinstalling rewrites the shared unit and restarts this service, whose workers pause
