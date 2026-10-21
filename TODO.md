@@ -1486,39 +1486,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Planner's call (2026-10-15 replan): `--plugin-dir` on a clean clone of the published commit replaces a marketplace install into a disposable configuration, which would need an interactive login; it loads the same files for one session and changes no settings.
 - Exclusions: No real user repositories, settings or credentials changed.
 
-### TOOLSET-003 — Qualify automatic planning recovery with a real bounded workflow
-
-- [ ] TOOLSET-003 — Qualify automatic planning recovery with a real bounded workflow
-- Short: Qualify automatic planning recovery
-- Status: open; live qualification not run.
-- Goal: RECOVERY — Prove recovery reaches execution, not just a planning receipt.
-- Sources: [accepted scope](docs/project.md#accepted-requirements), [recovery contract](skills/autowork/references/backlog-planning.md), [existing regressions](skills/autowork/scripts/test_backlog_plan.py), [verification limits](docs/testing.md), [2026-10-15 replan](docs/project.md#backlog-replan-2026-10-15).
-- Scope: In a disposable repository, reproduce missing prerequisites and candidate drift. Observe automatic planning, TODO update and retry of the eligible original slice; repeat unchanged inputs once to verify decision reuse.
-- Acceptance: No extra user planner command; original exclusions and ownership survive; execution is reported separately from planning.
-- Checks: Run focused recovery regressions and one bounded isolated model/native smoke journey covering both cases. Retain exact source, task, commands/results, commit or none, and remaining blocker. Offline tests alone cannot close this task.
-- Exclusions: No production messages/deployment, real user repositories, forbidden prerequisite commits, writer takeover or fabricated completion.
-- Dependencies: None.
-- Environment prerequisite: An installed host CLI with model access, a run budget, and the owner observing the run.
-- Ownership: Next authorized coordinator; no active claim recorded.
-- Current evidence: The shipped containment backend admits only local fixture executables and explicitly excludes provider/network dispatch. Its synthetic spending controller is not a model spending limit. No qualifying model journey was run.
-- Next action: Supply an isolated model endpoint with externally enforced spend and descendant limits, then execute the bounded recovery journey; existing offline fixtures cannot replace it.
-- Owner decision (2026-10-15): run the journey like TOOLSET-091-00, as an owner-observed host session (`hermes chat --oneshot --run-budget S` or `claude -p`) on a disposable repository, with the host's run budget as the bound instead of an externally capped endpoint.
-
-### TOOLSET-098-5d — Refresh the installed OMH plugin in each OMH profile to the Hermes 0.22 release
-
-- [ ] TOOLSET-098-5d — Refresh the installed OMH plugin in each OMH profile to the Hermes 0.22 release
-- Short: Refresh OMH plugin for Hermes 0.22
-- Status: open
-- Goal: OMH-TRIM
-- Sources: [OMH plan](docs/project.md#omh-catalog-trim-2026-10-15), [OMH installer](install-omh.py), TOOLSET-082, [2026-10-15 replan](docs/project.md#backlog-replan-2026-10-15).
-- Scope: List the profiles whose installed OMH plugin requires Hermes <0.22. With the owner's approval, refresh each one's OMH plugin and executable to the release pinned by TOOLSET-082 through the existing installer, with a backup, then rerun `/autowork update` for the affected profiles.
-- Acceptance: In each refreshed profile `hermes memory status` shows the OMH plugin installed and available and `omh doctor --json` passes against the same existing store; `hermes plugins enable autowork` no longer refuses (on 2026-10-15 a newly created profile refused it because its OMH plugin requires Hermes <0.22); stores and memories are untouched; any profile that fails keeps its backup and is reported.
-- Checks: `hermes memory status`, `omh doctor --json` and the `/autowork update` per-profile result before and after in each profile.
-- Dependencies: TOOLSET-082.
-- Environment prerequisite: Owner approval to modify installed plugins in live profiles.
-- Ownership: Toolset coordinator with that approval.
-- Exclusions: No memory-store migration or deletion, no provider switch, no push.
-
 ### TOOLSET-019 — Deploy reviewed local fixes to selected eligible profiles
 
 - [ ] TOOLSET-019 — Deploy reviewed local fixes to selected eligible profiles
@@ -1539,9 +1506,13 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-096-7e — Qualify the worktree runner live on a fleet repository
 
 - [ ] TOOLSET-096-7e — Qualify the worktree runner live on a fleet repository
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Blocker resolution: Repository choice is answered. Remaining work is live qualification through the existing authorized execution workflow with exclusive ownership, not another product decision or permission to escape a worker sandbox.
+- Target: The canonical checkout of the current Autowork repository; resolve it from git worktree list, not the assigned task worktree.
+- Owner decision: 2026-10-20: Owner selected the canonical Autowork repository, with an alternate fleet test repository also permitted in the private owner record. Use this repository first. Preserve no-push and no-Hermes-job-change exclusions; do not launch a competing runner.
 - Short: Qualify the worktree runner live
 - Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Goal: PI-RUNNER
 - Sources: [usage](docs/cross-host.md#run-autowork-continuously).
 - Scope: Run the released runner on a fleet repository alongside its Hermes jobs (owner's choice) until it ends a session, and record what it completed and how the end-of-session merge went.
 - Acceptance: `runs.jsonl` and the repository's main branch show completed tasks merged at the end of a session, or a `Merge pending` with the exact reason and the branch kept; no push by the runner; the repository's uncommitted changes untouched.
@@ -1565,23 +1536,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Ownership: Toolset coordinator under separate live authorization.
 - Exclusions: No push, no unrelated job changes and no job resumption while the owner's stop-all instruction remains in force.
 - Next action: Recheck the remaining repositories' current staged/unstaged changes, actual writers, initial commit and recorded priority state. Re-run the dry-run with a fresh revision for any now-eligible repository; preserve current pauses and genuinely overlapping work. Prior receipt conditions are not permanent holds.
-
-### TOOLSET-011 — Qualify the updated reporting workflow on the affected profile
-
-- [ ] TOOLSET-011 — Qualify the updated reporting workflow on the affected profile
-- Short: Qualify the updated reporting workflow
-- Status: open; original target environment unavailable.
-- Goal: CRON-REPORTING — Verify setup confirmation and scheduled Telegram delivery separately.
-- Sources: [accepted reporting qualification](docs/workflows.md#telegram-reporting-qualification), [reporting contract](skills/cron-autowork/SKILL.md), [verification boundaries](docs/workflows.md), archived TOOLSET-010 source delivery.
-- Scope: On the original host/profile, install the updated bundle through its supported path. Identify the existing job, preserve its state/scope, verify its requested Telegram route, then inspect the next scheduled result.
-- Acceptance: A setup request from another surface confirms once in the intended chat/topic; a scheduled occurrence has attributable execution and Telegram message receipts. Report failed, queued or unverified delivery honestly.
-- Checks: Read back installed source and saved route/state; verify the actual setup message and scheduled result/delivery. These live checks are not run.
-- Exclusions: No duplicate job, implicit resume, immediate development run, budget reset, push/deployment, USB formatting or real-PC changes. Never substitute another profile.
-- Dependencies: TOOLSET-010.
-- Environment prerequisite: Original host, affected profile/job and authorized Telegram transport.
-- Ownership: Coordinator with that access; no active claim.
-- Current evidence: Exact original profile directory and original job ID are absent from this host's root and existing-profile job stores. No replacement job, profile or message was created.
-- Next action: Restore access to the original host/profile/job and its authorized Telegram route, then inspect the setup and scheduled delivery receipts.
 
 ### TOOLSET-149-df — Teach planning and Docs Sync linked task storage with compatible consumers
 
@@ -1640,6 +1594,63 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Current compact-ledger mandate: The owner now makes 149-df → 150-71 → 151-01 the highest-priority chain and delegates local implementation details. Implement compatible readers/writers first, then active-only TODO/goals, then the guarded first conversion here; do not ask again for those reversible decisions. This supersedes older priority comments and planning-only/no-local-adoption wording only for this chain. Preserve mandatory tests/review, existing IDs, evidence, cumulative attempts, live ownership and genuine pauses. No remote push, service/profile/fleet change, new schedule or destructive history removal. The existing live coordinator remains execution owner; current work is not interrupted.
 
 ## Needs decision
+
+### TOOLSET-003 — Qualify automatic planning recovery with a real bounded workflow
+
+- [ ] TOOLSET-003 — Qualify automatic planning recovery with a real bounded workflow
+- Payoff: Prove recovery reaches execution, not just a planning receipt.
+- Observation availability: 2026-10-20: Owner answered that they could observe at a local terminal then. This availability is time-bound, not permanent presence or evidence that the journey ran.
+- Short: Qualify automatic planning recovery
+- Status: open
+- Goal: RECOVERY
+- Sources: [accepted scope](docs/project.md#accepted-requirements), [recovery contract](skills/autowork/references/backlog-planning.md), [existing regressions](skills/autowork/scripts/test_backlog_plan.py), [verification limits](docs/testing.md), [2026-10-15 replan](docs/project.md#backlog-replan-2026-10-15).
+- Scope: In a disposable repository, reproduce missing prerequisites and candidate drift. Observe automatic planning, TODO update and retry of the eligible original slice; repeat unchanged inputs once to verify decision reuse.
+- Acceptance: No extra user planner command; original exclusions and ownership survive; execution is reported separately from planning.
+- Checks: Run focused recovery regressions and one bounded isolated model/native smoke journey covering both cases. Retain exact source, task, commands/results, commit or none, and remaining blocker. Offline tests alone cannot close this task.
+- Exclusions: No production messages/deployment, real user repositories, forbidden prerequisite commits, writer takeover or fabricated completion.
+- Dependencies: None.
+- Environment prerequisite: An installed host CLI with model access, a run budget, and the owner observing the run.
+- Ownership: Next authorized coordinator; no active claim recorded.
+- Current evidence: The shipped containment backend admits only local fixture executables and explicitly excludes provider/network dispatch. Its synthetic spending controller is not a model spending limit. No qualifying model journey was run.
+- Next action: Use the already-approved owner-observed host journey in a disposable repository with supported finite host budget controls. Verify installed CLI flags and current observation availability at execution time; do not redispatch as an unattended coding worker. No renewed routine approval or externally capped endpoint is required by the existing owner decision.
+- Owner decision: 2026-10-15 — run the journey like TOOLSET-091-00, as an owner-observed host session (`hermes chat --oneshot --run-budget S` or `claude -p`) on a disposable repository, with the host's run budget as the bound instead of an externally capped endpoint.
+
+### TOOLSET-098-5d — Refresh the installed OMH plugin in each OMH profile to the Hermes 0.22 release
+
+- [ ] TOOLSET-098-5d — Refresh the installed OMH plugin in each OMH profile to the Hermes 0.22 release
+- Next action: None until the owner explicitly reopens this deferred maintenance. Do not update live profiles or dispatch it unattended.
+- Owner decision: 2026-10-20: Keep deferred; no live profile changes. Preserve installed plugins, executable selections, stores and memories. This is a settled deferral, not an unanswered approval request.
+- Short: Refresh OMH plugin for Hermes 0.22
+- Status: open
+- Goal: OMH-TRIM
+- Sources: [OMH plan](docs/project.md#omh-catalog-trim-2026-10-15), [OMH installer](install-omh.py), TOOLSET-082, [2026-10-15 replan](docs/project.md#backlog-replan-2026-10-15).
+- Scope: List the profiles whose installed OMH plugin requires Hermes <0.22. With the owner's approval, refresh each one's OMH plugin and executable to the release pinned by TOOLSET-082 through the existing installer, with a backup, then rerun `/autowork update` for the affected profiles.
+- Acceptance: In each refreshed profile `hermes memory status` shows the OMH plugin installed and available and `omh doctor --json` passes against the same existing store; `hermes plugins enable autowork` no longer refuses (on 2026-10-15 a newly created profile refused it because its OMH plugin requires Hermes <0.22); stores and memories are untouched; any profile that fails keeps its backup and is reported.
+- Checks: `hermes memory status`, `omh doctor --json` and the `/autowork update` per-profile result before and after in each profile.
+- Dependencies: TOOLSET-082.
+- Environment prerequisite: Owner approval to modify installed plugins in live profiles.
+- Ownership: Toolset coordinator with that approval.
+- Exclusions: No memory-store migration or deletion, no provider switch, no push.
+
+### TOOLSET-011 — Qualify the updated reporting workflow on the affected profile
+
+- [ ] TOOLSET-011 — Qualify the updated reporting workflow on the affected profile
+- Payoff: Verify setup confirmation and scheduled Telegram delivery separately.
+- Owner decision: 2026-10-20: Retire without claiming qualification. Preserve the original unchecked contract and unmet acceptance in history; do not restore the original environment or create a replacement job.
+- Gate: CANCELLED — owner retired this qualification on 2026-10-20 without claiming acceptance. Never execute, substitute a target or mark it done.
+- Short: Qualify the updated reporting workflow
+- Status: open
+- Goal: CRON-REPORTING
+- Sources: [accepted reporting qualification](docs/workflows.md#telegram-reporting-qualification), [reporting contract](skills/cron-autowork/SKILL.md), [verification boundaries](docs/workflows.md), archived TOOLSET-010 source delivery.
+- Scope: On the original host/profile, install the updated bundle through its supported path. Identify the existing job, preserve its state/scope, verify its requested Telegram route, then inspect the next scheduled result.
+- Acceptance: A setup request from another surface confirms once in the intended chat/topic; a scheduled occurrence has attributable execution and Telegram message receipts. Report failed, queued or unverified delivery honestly.
+- Checks: Read back installed source and saved route/state; verify the actual setup message and scheduled result/delivery. These live checks are not run.
+- Exclusions: No duplicate job, implicit resume, immediate development run, budget reset, push/deployment, USB formatting or real-PC changes. Never substitute another profile.
+- Dependencies: TOOLSET-010.
+- Environment prerequisite: Original host, affected profile/job and authorized Telegram transport.
+- Ownership: Coordinator with that access; no active claim.
+- Current evidence: Exact original profile directory and original job ID are absent from this host's root and existing-profile job stores. No replacement job, profile or message was created.
+- Next action: None. Retired without qualification; keep excluded from execution.
 
 ### TOOLSET-123-a0 — Reinstall the live Hermes profiles and host plugins as autowork
 
@@ -1770,6 +1781,6 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | PARALLEL: Run independent Autowork tasks in parallel workers with one coordinator | partial | executed <code>TOOLSET-091-00 live 2026-10-15: Pi 1.2.0 workers (gpt-6.1-sol) via pi-autowork.sh on a disposable repo: 2 overlapping workers, sequential integration, C after A, combined check pass, no push, 158 s vs 240 s sequential; SIGKILLed coordinator restart adopted live workers without duplicates. Codex 0.162.1 workers cannot commit in the workspace-write sandbox (sequential fallback). Hermes workers not run by owner decision.</code> → pass | TOOLSET-279-eb, TOOLSET-292-6a |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
-| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | Terminal drag selection: offline gate, PTY and source review pass ([TOOLSET-275-c1](TODO.archive.md#toolset-275-c1)) | TOOLSET-096-7e, TOOLSET-099-87, TOOLSET-117-cb-LIVE, TOOLSET-118-68, TOOLSET-119-2b, TOOLSET-120-fc, TOOLSET-122-27, TOOLSET-125-3c, TOOLSET-126-02, TOOLSET-127-8f, TOOLSET-129-6c, TOOLSET-129-c4, TOOLSET-130-15, TOOLSET-131-ac, TOOLSET-132-af, TOOLSET-139-62, TOOLSET-144-c0, TOOLSET-145-6d, TOOLSET-147-54, TOOLSET-153-64, TOOLSET-154-d3, TOOLSET-155-e2, TOOLSET-156-75, TOOLSET-158-08, TOOLSET-163-f7, TOOLSET-164-f1, TOOLSET-173-94, TOOLSET-178-47, TOOLSET-179-cf, TOOLSET-182-ce, TOOLSET-184-1d, TOOLSET-192-71, TOOLSET-200-c1, TOOLSET-225-75, TOOLSET-230-bf, TOOLSET-231-49, TOOLSET-234-51, TOOLSET-235-0d, TOOLSET-245-6a, TOOLSET-248-60, TOOLSET-249-5b, TOOLSET-255-55, TOOLSET-256-4b, TOOLSET-257-bd, TOOLSET-260-ae, TOOLSET-261-15, TOOLSET-262-13, TOOLSET-263-94, TOOLSET-264-39, TOOLSET-265-16, TOOLSET-266-7a, TOOLSET-267-a0, TOOLSET-270-a9, TOOLSET-271-d6, TOOLSET-274-f0, TOOLSET-276-11, TOOLSET-276-2c, TOOLSET-276-3d, TOOLSET-276-3f, TOOLSET-276-a9, TOOLSET-277-52, TOOLSET-285-47, TOOLSET-286-32, TOOLSET-287-44, TOOLSET-291-ae |
+| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | Terminal drag selection: offline gate, PTY and source review pass ([TOOLSET-275-c1](TODO.archive.md#toolset-275-c1)) | TOOLSET-096-7e, TOOLSET-099-87, TOOLSET-117-cb-LIVE, TOOLSET-118-68, TOOLSET-119-2b, TOOLSET-120-fc, TOOLSET-122-27, TOOLSET-125-3c, TOOLSET-126-02, TOOLSET-127-8f, TOOLSET-129-6c, TOOLSET-129-c4, TOOLSET-130-15, TOOLSET-131-ac, TOOLSET-132-af, TOOLSET-139-62, TOOLSET-144-c0, TOOLSET-145-6d, TOOLSET-147-54, TOOLSET-153-64, TOOLSET-154-d3, TOOLSET-155-e2, TOOLSET-156-75, TOOLSET-158-08, TOOLSET-163-f7, TOOLSET-164-f1, TOOLSET-173-94, TOOLSET-178-47, TOOLSET-179-cf, TOOLSET-182-ce, TOOLSET-184-1d, TOOLSET-192-71, TOOLSET-200-c1, TOOLSET-225-75, TOOLSET-230-bf, TOOLSET-231-49, TOOLSET-234-51, TOOLSET-235-0d, TOOLSET-245-6a, TOOLSET-248-60, TOOLSET-249-5b, TOOLSET-255-55, TOOLSET-256-4b, TOOLSET-257-bd, TOOLSET-260-ae, TOOLSET-261-15, TOOLSET-262-13, TOOLSET-263-94, TOOLSET-264-39, TOOLSET-265-16, TOOLSET-266-7a, TOOLSET-267-a0, TOOLSET-270-a9, TOOLSET-271-d6, TOOLSET-274-f0, TOOLSET-276-11, TOOLSET-276-2c, TOOLSET-276-3d, TOOLSET-276-3f, TOOLSET-276-a9, TOOLSET-285-47, TOOLSET-286-32, TOOLSET-287-44, TOOLSET-291-ae |
 
 <!-- goals:coverage:end -->
