@@ -110,6 +110,60 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No test rewrites, deletions or new assertions; tests that need changing are reported, not changed.
 - Planner's call: after TOOLSET-291-ae, which changes this module's patch targets, and the Now tasks still editing it (2026-10-20: 269-f2 and 273-e0 have landed); the shared-file rule also holds it until unlanded commits naming the module land. Plan lint: the `tests/test_pi_autowork_*.py` glob is a serial path on purpose, and Acceptance is test-ID parity rather than a new test.
 
+### TOOLSET-295-c8 — Every runner stop or restart names who asked, and a burst of restarts reloads instead
+
+- [ ] TOOLSET-295-c8 — Every runner stop or restart names who asked, and a burst of restarts reloads instead
+- Short: Stops name their caller; bursts reload
+- Status: open
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [CLI](pi-autowork/pi_autowork/command.py) (`restart`, `cmd_restart`, `cmd_stop`: `systemctl restart` whenever `reload_in_place` answers None or `--stop-workers`); [service](pi-autowork/pi_autowork/service.py) (`reload_in_place`; `--install-service` restarts when the unit's ExecStart changed); [coordinator](pi-autowork/pi_autowork/coordinator.py) (the stop path that pauses workers).
+- Evidence (2026-10-16 to 10-20, this repository's runner): 168 starts; 41 full stops ("Stopping: pausing workers") interrupted 48 running workers (journal: 48 running → interrupted); on 10-19 between 19:13 and 21:29 systemd restarted the service six times. Nothing records who asked, so the source cannot be told apart from the runner's own updates.
+- Touches: pi-autowork/pi_autowork/command.py, pi-autowork/pi_autowork/service.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/tests/test_restart_requests.py
+- Scope: (1) Before any stop or restart it asks systemd for, the CLI and the service installer write a request record in the runner's state (`requests/stop-<time>.json`: command, caller pid and command line, TTY, `CLAUDE_SESSION_ID` or `PI_SESSION` when set, reason); the runner logs it on its way down as `Stopping for <caller>: <command>`, and a stop with no record logs `Stopping on a signal no autowork command recorded`. (2) `autowork restart` without `--stop-workers`, asked within PI_AUTOWORK_RESTART_GAP seconds (default 900) of the last start while workers run, reloads in place, or, when the runner cannot reload, refuses with the time left and the `--stop-workers` override, instead of restarting. (3) `autowork status` shows the last three stop records.
+- Acceptance: Given `autowork restart` from a shell, when the runner stops, then its log names that command and caller pid (`pi-autowork/tests/test_restart_requests.py::test_a_requested_stop_is_attributed`); a SIGTERM with no record logs the unattributed line (`test_an_unrecorded_signal_says_so`); a second restart within the gap while a worker runs reloads or refuses without stopping it, while `--stop-workers` still restarts (`test_a_burst_of_restarts_keeps_workers_running`).
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_restart_requests.py; python3 -m unittest discover -s tests -p test_autowork_command.py; python3 scripts/check.py
+- Dependencies: TOOLSET-291-ae.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to the runner's own release reloads, which already keep workers running; no blocking of `systemctl` used directly (it is logged as unrecorded).
+- Planner's call: attribute first, then rate-limit: the record answers who restarts the runner, and the gap stops a loop of restarts without hiding a deliberate one. After the coordinator split, so it edits the module that owns the stop path.
+
+### TOOLSET-296-ee — A runner stop pauses its workers within the service's stop timeout
+
+- [ ] TOOLSET-296-ee — A runner stop pauses its workers within the service's stop timeout
+- Short: A stop finishes inside its timeout
+- Status: open
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [service unit](pi-autowork/pi_autowork/service.py) (`TimeoutStopSec=150`, `KillMode=mixed`, `KillSignal=SIGINT`); [coordinator](pi-autowork/pi_autowork/coordinator.py) (`finish`: pausing workers, merging finished work and releasing slots on the way down).
+- Evidence: 2026-10-19 19:17 and 20:23, `Main process exited, code=killed, status=9` and `Failed with result 'timeout'`: the stop ran past 150 s and systemd killed the runner. A killed runner's engine helper kept the execution lock, which later made a restart exit "Repository busy" (TOOLSET-288-cf).
+- Touches: pi-autowork/pi_autowork/service.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/tests/test_stop_budget.py
+- Scope: (1) Measure what a stop does after SIGINT (pausing each worker, the session merge, slot release) and give it a budget below TimeoutStopSec: work that would not finish in time is skipped and left for the next start (it already resumes), never cut off by SIGKILL. (2) The unit's TimeoutStopSec follows that budget plus a margin, written by `--install-service`. (3) The runner logs the stop's duration.
+- Acceptance: Given a stop while a session merge would take longer than the budget, the runner exits by itself before TimeoutStopSec and leaves the merge for the next start (`pi-autowork/tests/test_stop_budget.py::test_a_slow_merge_is_left_for_the_next_start`); every worker is paused and resumes on the same attempt (`test_workers_resume_after_a_budgeted_stop`); the installed unit's TimeoutStopSec exceeds the budget (`test_the_unit_timeout_covers_the_stop_budget`).
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_stop_budget.py; python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py
+- Dependencies: TOOLSET-291-ae.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to what a reload does; no longer timeout as the only fix.
+- Planner's call: a bounded stop rather than a bigger timeout, so a hung step cannot hold the service for minutes; the next start already resumes what was skipped.
+
+### TOOLSET-297-cb — The engine journal records a dispatch observation only when it changed
+
+- [ ] TOOLSET-297-cb — The engine journal records a dispatch observation only when it changed
+- Short: Journal observations only on change
+- Status: open
+- Goal: PARALLEL
+- Payoff: Run independent Autowork tasks in parallel workers with one coordinator.
+- Sources: [dispatch](skills/autowork/scripts/parallel_dispatch.py) (`dispatch_locked` writes `dispatch_observed` with the full waiting list every pass; `waiting_streaks` reads the last 8 MB, `JOURNAL_TAIL`); [status](skills/autowork/scripts/parallel_status.py) (reads the latest observation and the observation timestamps); [state](skills/autowork/scripts/parallel_state.py) (`event`, the journal writer).
+- Evidence (2026-10-20, this repository): `journal.jsonl` is 87 MB after four days, 80 MB of it 11,625 `dispatch_observed` events of about 7 KB each; 41% are identical to the one before apart from the timestamp. The drain clock re-reads 8 MB on every dispatch, and at about 20 MB a day the tail no longer reaches back to the start of a long wait.
+- Touches: skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/parallel_status.py, skills/autowork/scripts/test_journal_observations.py
+- Scope: (1) A pass whose observation equals the last one written (ignoring its timestamp) writes a small `dispatch_heartbeat` (timestamp only) instead. (2) `waiting_streaks` and the status readers treat a heartbeat as a repeat of the last full observation, so the drain clock, the latest observation and freshness read exactly as before. (3) Existing journals keep working unchanged; no rewrite of past lines.
+- Acceptance: Given 100 identical passes, the journal grows by one observation and 99 heartbeats under 100 bytes each (`skills/autowork/scripts/test_journal_observations.py::test_identical_passes_write_heartbeats`); `waiting_streaks` gives the same streaks for a journal with heartbeats as for the same passes written in full (`test_streaks_match_full_observations`); status shows the same latest observation and observed time (`test_status_reads_through_heartbeats`).
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_journal_observations.py; python3 -m unittest discover -s skills/autowork/scripts -p 'test_parallel_*.py'; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No journal rotation or compaction of existing lines in this slice; slot events are untouched.
+- Planner's call: dedupe at the writer, the cheapest change that bounds growth while every reader keeps its meaning; rotation can follow if the heartbeat rate still matters.
+
 ### TOOLSET-287-44 — A merge conflict the resolver may still adopt is never an owner question
 
 - [ ] TOOLSET-287-44 — A merge conflict the resolver may still adopt is never an owner question

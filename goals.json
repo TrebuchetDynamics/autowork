@@ -569,7 +569,8 @@
         "TOOLSET-090-2d",
         "TOOLSET-091-00",
         "TOOLSET-279-eb",
-        "TOOLSET-292-6a"
+        "TOOLSET-292-6a",
+        "TOOLSET-297-cb"
       ],
       "title": "Run independent Autowork tasks in parallel workers with one coordinator"
     },
@@ -834,7 +835,9 @@
         "TOOLSET-288-cf",
         "TOOLSET-289-71",
         "TOOLSET-291-ae",
-        "TOOLSET-294-9d"
+        "TOOLSET-294-9d",
+        "TOOLSET-295-c8",
+        "TOOLSET-296-ee"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -1217,6 +1220,30 @@
       "section": "Now",
       "status": "open",
       "title": "Split parallel_integrate.py and its tests into integrate, close and retry modules"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-295-c8",
+      "section": "Now",
+      "status": "open",
+      "title": "Every runner stop or restart names who asked, and a burst of restarts reloads instead"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-296-ee",
+      "section": "Now",
+      "status": "open",
+      "title": "A runner stop pauses its workers within the service's stop timeout"
+    },
+    {
+      "depends_on": [],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-297-cb",
+      "section": "Now",
+      "status": "open",
+      "title": "The engine journal records a dispatch observation only when it changed"
     },
     {
       "depends_on": [],
