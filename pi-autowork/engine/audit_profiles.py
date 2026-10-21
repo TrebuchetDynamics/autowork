@@ -371,9 +371,6 @@ def inspect_profile(name, home, launch):
         for field in ('held_task_ids', 'repairs', 'blocker', 'resolved_requests'):
             if isinstance(cycle_raw.get(field), list):
                 owner_cycle[field] = [safe(v) for v in cycle_raw[field] if isinstance(v, str)][:100]
-        queue = cycle_raw.get('ready_queue')
-        owner_cycle['ready_queue'] = [project(t, ('id', 'title', 'goal'))
-                                    for t in (queue if isinstance(queue, list) else []) if isinstance(t, dict)][:3]
         owner_cycle.update(project(cycle_raw, ('queue_shortfall', 'routing_gap')))
         owner_cycle['boundary'] = 'Reported owner-cycle evidence; not fresh worker, remote or product acceptance verification'
     elif cycle_raw is not None:
