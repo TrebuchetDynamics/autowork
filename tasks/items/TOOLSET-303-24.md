@@ -1,0 +1,26 @@
++++
+schema = 1
+id = "TOOLSET-303-24"
+title = "Harden managed-recovery interruption test isolation"
+short = "Stable recovery interruption fixture"
+status = "open"
+goal = "RELIABILITY-2026-10"
+section = "Next"
+rank = 1000
+depends_on = []
+touches = ["tests/test_update_bundle.py"]
+resources = []
+kind = "implementation"
+ownership = "worker"
+scope = "Investigate isolation, resource load and fixture timing in test_update_bundle.ManagedRecoveryTests.test_interrupted_publication_resumes_original_backup; harden only test-owned setup, fault injection and cleanup in tests/test_update_bundle.py. Preserve the updater recovery contract; no product-code repair."
+acceptance = ["`test_update_bundle.ManagedRecoveryTests.test_interrupted_publication_resumes_original_backup` deterministically reaches every existing interruption point, raises its injected Killed exception and still proves same-original-backup resume, preservation of original source/profile bytes, and publication of the originally selected target after upstream moves. Record evidence distinguishing isolation, resource-load and fixture-timing hypotheses; retain all existing assertions and subtests. Repeated isolated runs, the module and the full offline gate show the fixture improvement without skipping cases, weakening assertions, inflating sleeps/timeouts or adding production test hooks; report commands, repetitions and any remaining flake. Cleanup restores patches and disposable Git/home fixtures even after failure."]
+checks = ["Planned: `for run in 1 2 3; do python3 scripts/check.py tests/test_update_bundle.py -k test_interrupted_publication_resumes_original_backup || exit; done`; `python3 scripts/check.py tests/test_update_bundle.py`; `python3 scripts/check.py`; `git diff --check`. Use a fresh short TMPDIR; these are required checks, not passing evidence."]
+exclusions = ["No update_bundle.py or other product-code repair; no changed recovery policy, global process-visibility suppression, weakened check classification, real Hermes profiles, native/model/live qualification, publication or worker edits to coordinator-owned planning files."]
++++
+
+- Coordination: Keep the owner's TASK-STORE Now order and all current contracts unchanged. This test-only Next slice has no product prerequisite on that migration or the archived recovery task. Its Touches are disjoint from the current TaskStore reader. TOOLSET-299-d9 broadly names tests/ for its later runner/fleet cutover: retain that future scope, and serialize if both tasks become ready; do not add a false migration prerequisite or edit its contract just to silence lint. Historical recovery acceptance and live exclusions remain intact.
+- Next action: Start with the named test and inspect its disposable Git identity/timestamps, inherited fixture patches, process/environment isolation and each injected interruption seam. Compare isolated/module/full-check context and resource load, capturing an unexpected early-return result before changing the fixture; choose a test-only correction supported by observations, not an assumed timing cause.
+- Ownership: Toolset coordinator; one writer per affected workspace.
+- Evidence: Full-check failure followed by isolated pass on cc24267381e079ccee1914fb919ccecdc788313e, f9c49c20cb822442f9f85d767eff67e03081d67b and 04997ef075924de339871d03eca38b07c85ac665. Read the bundle in place at <git-common-dir>/autowork-execution/main-evidence/04997ef075924de339871d03eca38b07c85ac665 (or $AUTOWORK_MAIN_EVIDENCE/04997ef075924de339871d03eca38b07c85ac665): main_check.json, main-check.log, main-check.exit, main-check-reruns.log, flaky_history.json. Full check exit 1, four directories passed and one failed; the rename subtest reports AssertionError: Killed not raised at tests/test_update_bundle.py:1269. The saved isolated command (runner-resolved Python executable) `python3 -m unittest test_update_bundle.ManagedRecoveryTests.test_interrupted_publication_resumes_original_backup` in the scratch checkout tests directory exits 0 (one test, 7.138s). main_check.json records green with this flaky ID; main is not red for this test. The history lists the other two revisions, not their individual rerun logs. All three revision commits change planning documents only (TODO.md, TODO.archive.md and/or goals.json; 04997ef also docs/project.md), not updater code. The completed recovery worker report at <git-common-dir>/autowork-execution/slot-data/TOOLSET-172-92/attempt-1/report.json reports earlier module passes at 5ed86c9, not current stability or a cause. Do not copy runtime bundles into Git or require an owner to provide them.
+- Sources: [accepted managed checkout recovery](docs/project.md#managed-hermes-checkout-recovery); [interruption fixture](tests/test_update_bundle.py) (`ManagedRecoveryTests.setUp`, `test_interrupted_publication_resumes_original_backup`, inherited `UpdateTests.setUp`); [offline checker](scripts/check.py); [completed recovery task](TODO.archive.md#toolset-172-92--recover-verified-managed-hermes-checkouts-when-updates-cannot-fast-forward); DOCS-MAINTAINER MAIN (flaky test) instruction, 2026-10-20.
+- Payoff: Restore confidence in the offline updater regression without treating a suite-only flake as a product failure; grouped with existing reliability maintenance, not new recovery behavior.
