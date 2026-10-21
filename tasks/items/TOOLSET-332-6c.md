@@ -18,3 +18,4 @@ checks = ["python3 scripts/check.py tests/test_update_bundle.py"]
 exclusions = []
 +++
 
+- Also seen: CI on 15b8d15d failed ScopedUpdateTests.test_killed_after_slot_move_resumes_original_backup in the same class and passed on the next commit; fix it with the same approach, under the same acceptance
