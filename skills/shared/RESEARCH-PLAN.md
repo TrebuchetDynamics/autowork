@@ -107,7 +107,7 @@ When Autowork already has a card and partial work, distinguish product uncertain
 from a session-continuation, accounting or runtime failure. If no product decision
 is missing, return the exact failed operation and evidence to the same coordinator
 for supported recovery. Do not create a replacement implementation task, rerun this
-plan protocol, reset its budget or present another product plan as progress. Save
+plan protocol or present another product plan as progress. Save
 new technical findings to its existing task journal only when they add evidence.
 
 ## Interactive planning: Plan With Me

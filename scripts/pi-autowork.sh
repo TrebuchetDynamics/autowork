@@ -4,7 +4,7 @@
 # The engine (pi-autowork/engine/owner_cycle.py --parallel) plans, dispatches,
 # verifies and closes tasks; the pi-autowork component (pi-autowork/pi_autowork/)
 # drives its coordinator loop and supplies what the engine leaves to the host: Pi
-# workers with model choice and fallback, an independent verification step, budgets,
+# workers with model choice and fallback, an independent verification step,
 # a session branch merged into the main branch at the end, locking, graceful shutdown
 # and a systemd service. This file only finds that component and runs it; the
 # component then continues in the toolset release it resolves. See --help.

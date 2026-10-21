@@ -54,9 +54,8 @@ python3 <toolset>/pi-autowork/engine/owner_cycle.py /absolute/repo \
 It runs that foreground command under the shared repository lock and retains its exact
 argv, executable and selected file hashes. Detached descendants are stopped at command
 exit; leftover children make the result unsuccessful. This is cooperative local
-process cleanup, not a hostile-code sandbox. The optional `--budget-seconds` caps
-cumulative command walltime for this task ID; an interrupted pending receipt requires
-usage reconciliation and a later tick cannot refill it.
+process cleanup, not a hostile-code sandbox. `--timeout` bounds each command; there is
+no cumulative allowance per task.
 It retains execution evidence;
 it never closes the task. A command-only invocation needs no persistent PID
 unless recovering that owner's existing claim. This bundled runner currently requires Linux process inspection for durable ownership
@@ -66,13 +65,9 @@ a transport interruption is not a pass and requires inspecting the original run.
 
 ## Limits and recovery
 
-Honor explicit task/caller limits and known consumed usage; unknown usage is not
-zero. The helper's timeout enforces wall time only, not provider spend, tokens or
-lifetime task turns. Require the host's real enforcement for a requested cap; its
-absence holds only the operation needing that cap. Read-only inspection and
+Honor explicit task/caller scope. The helper's timeout bounds one command's wall
+time; there are no token, cost or task-lifetime budgets. Read-only inspection and
 already-authorized local verification/integration are separate from launching work.
-A fresh occurrence never resets an exhausted allocation. No default native 100-turn
-allocation or universal lifetime-task budget is created by this helper.
 
 No old card lookup, import, release, native continuation API or same-card registration
 is required. Preserve existing dirty candidates, accepted constraints and historical
@@ -128,8 +123,7 @@ When a fix spans shared Toolset source and consumer profiles:
 3. Verify source integration, installed bytes and the consumer's next transition
    separately. Callers of shared-source absolute paths can see a source change even
    when installed copies are unchanged. Offline regressions do not prove consumer execution.
-4. Under execution authority, resume the original task with its pins, evidence and
-   consumed budget. A planning-only pass records steps and acceptance through Docs
+4. Under execution authority, resume the original task with its pins and evidence. A planning-only pass records steps and acceptance through Docs
    Sync instead of deploying or resuming jobs. Keep private runtime IDs and profile
    paths out of Git.
 5. Report shared fix, deployment, consumer transition and product acceptance as

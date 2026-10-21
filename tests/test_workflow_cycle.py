@@ -16,7 +16,7 @@ class CycleGuidanceTests(unittest.TestCase):
             'explicit continuation': 'Explicit continuation or whole-spec scope',
             'recurring occurrence': 'Recurrence authorizes the saved occurrence',
             'saved batch limit': 'saved stop/batch limits',
-            'exhausted allocation': 'exhaustion requires explicit additional allocation',
+            'no budgets': 'no token, cost or time budgets',
         }
         for path in paths:
             text = (ROOT / path).read_text()
@@ -27,23 +27,25 @@ class CycleGuidanceTests(unittest.TestCase):
                 with self.subTest(path=path, case=case):
                     self.assertIn(requirement, text)
             self.assertNotIn('Only an explicit whole-spec implementation request authorizes', text)
+            for removed in ('unknown usage is not zero', 'exhausted allocation', 'additional allocation'):
+                self.assertNotIn(removed, text)
 
     def test_same_task_recovery_and_independent_fallback_keep_real_holds(self):
         iteration = (ROOT / 'skills/autowork/references/iteration-and-decisions.md').read_text()
         for requirement in ('Never block\n   on a first failure', 'non-privileged tooling',
-                            'same task', 'consequential choices', 'no automatic failure retry',
-                            'never reset an exhausted allocation'):
+                            'same task', 'consequential choices', 'no automatic failure retry'):
             self.assertIn(requirement, iteration)
         recovery = (ROOT / 'skills/autowork/references/blocker-recovery.md').read_text()
-        for requirement in ('original pin', 'consumed budget', 'pending_approval',
+        for requirement in ('original pin', 'original admission evidence', 'pending_approval',
                             'resume step', 'another channel', 'live resource ownership',
                             'inside its contract'):
             self.assertIn(requirement, recovery)
         scheduled = (ROOT / 'skills/autowork/references/scheduled-policy.md').read_text()
         for requirement in ('saved stop/batch limits', 'at-most-one-new-batch',
                             'provenance', 'current ownership', 'checks and required review',
-                            'non-overlapping', 'unknown usage is not zero'):
+                            'non-overlapping'):
             self.assertIn(requirement, scheduled)
+        self.assertNotIn('unknown usage is not zero', scheduled)
 
     def test_ready_native_and_portable_guidance_use_composition_not_duplicate_validation(self):
         native = (ROOT / 'skills/autowork/SKILL.md').read_text()
@@ -53,8 +55,9 @@ class CycleGuidanceTests(unittest.TestCase):
         self.assertNotIn('run `scripts/start_goal.py … --validate-only`', native)
         self.assertIn('one host-native', portable)
         self.assertIn('No Kanban lookup', portable)
-        self.assertIn('consumed budget', native)
-        self.assertIn('consumed budget', portable)
+        self.assertIn('no token, cost or time budgets', native)
+        self.assertIn('no token, cost or time budgets', portable)
+        self.assertNotIn('consumed budget', native + portable)
 
     def test_autowork_starts_the_runner_service_and_works_by_hand_only_when_it_cannot(self):
         """`/autowork start` did the work in the session while the repository's runner sat unused."""
@@ -79,7 +82,7 @@ class CycleGuidanceTests(unittest.TestCase):
         direct = (ROOT / 'skills/autowork/references/owner-cycle.md').read_text()
         for requirement in ('`tasks/` owns product requirements', 'Selection reads `tasks/` at the base commit',
                             'actual process plus workspace/Git', 'explicit finite timeout',
-                            'not provider spend, tokens', 'it never closes the task'):
+                            'no token, cost or task-lifetime budgets', 'it never closes the task'):
             self.assertIn(requirement, direct)
 
     def test_cross_profile_audit_verifies_publication_without_takeover(self):

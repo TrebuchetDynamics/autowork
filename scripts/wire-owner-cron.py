@@ -72,7 +72,7 @@ def owner_prompt(prompt, enabled):
         'with --root DEFAULT_HERMES_HOME --profile CURRENT_PROFILE --job-id CURRENT_JOB_ID --repo CANONICAL_REPOSITORY --apply, '
         'substituting verified current occurrence identity, never guessed values. '
         'Repair this exact existing job managed wiring and read back the saved result before reporting recovery; '
-        'preserve scope, pauses, schedule, model, delivery and consumed budgets. '
+        'preserve scope, pauses, schedule, model and delivery. '
         'If a failure recurs, fix its attributable Toolset cause within existing authority and verify the same failed consumer; '
         'do not end with another unchanged diagnosis when a supported local repair is available. '
         'Develop this repository within its established purpose and the scope above. '
@@ -81,13 +81,12 @@ def owner_prompt(prompt, enabled):
         'A separate explicit plan request remains planning-only; it neither grants new implementation authority nor revokes this independently authorized job. Honor explicit no-write, pause and scope restrictions. '
         'Do not ask whether to implement already authorized offline work; ask only for a genuinely missing material decision or external-action authority. '
         'No external owner acknowledgement is required. Execute in the current agent session; delegate only when useful and authorized through host-native tools. '
-        'Reconcile actual running workers and completed results first; preserve useful candidates and consumed budgets. '
+        'Reconcile actual running workers and completed results first; preserve useful candidates. '
         'Check actual cron occurrence and manual-continuation liveness before admission or canonical integration, using actual process identity plus workspace/source evidence. '
         'Use owner_cycle.py --apply --owner-pid ACTUAL_SESSION_PID --profile CURRENT_PROFILE --state-dir VERIFIED_PROFILE_HOME/autowork for managed profile repository coordination; resolve the profile home from verified occurrence context, never guess identity or claim that metadata alone executes work. '
         'Retain the exact named --plan/--tasks filter and source-derived checks; use --scope repository only for broad repository authority. '
         'There is no separate mandatory validate-only, planning interview, broad docs audit, full suite or optional engineering tour before ready implementation. '
-        'Apply explicit task/caller limits and real host execution controls; unknown usage is not zero and never reset an exhausted allocation. '
-        'A new cron tick grants no fresh allocation. Missing cap enforcement holds only the operation requiring that cap, not independent read-only checks or authorized local closeout. '
+        'Apply explicit task/caller scope. Autowork has no token, cost or time budgets: usage is measured, never a reason to stop, and a task that still declares a budget is not held for it. '
         'Use source-bound receipts for interrupted checks and review; inspect actual candidate changes before reuse and rerun invalidated or required gates. '
         'When the selected task is held or blocked, run autowork:plan-for-me on that exact blocker in this occurrence before reporting. '
         'It must fix or skip: fix means choose a reversible change within this scope, record it as the planner\'s call and implement it now; '
@@ -98,7 +97,7 @@ def owner_prompt(prompt, enabled):
         'Reconcile newly approved exact candidates, verify the integration gate and serialize permitted local integration before selecting another slice. A prior review-pending report is continuity, not current review state. '
         'Report reviewed offline slices separately from full TODO acceptance; keep unproved live acceptance open and report partial progress without inventing whole-task completion. '
         'Scope one coherent delivery batch around the remaining accepted outcome, not one task per file. '
-        'Group connected eligible consumers, runners and tests; split only for concrete dependency, writer, authority or budget boundaries. '
+        'Group connected eligible consumers, runners and tests; split only for concrete dependency, writer or authority boundaries. '
         'Reuse approved exact-source checks when inputs match and policy allows; run changed-input and required canonical checks. '
         'For partial deliveries, lead with delivered behavior and commit stage; explain why the parent task remains open separately. '
         'Within the exact authorized task filter/scope only, select a useful, dependency-ready TODO task. If unavailable, inspect independent bugs, documentation, UI/UX, tests, refactoring and reliability or performance work; never widen a named-only job to unrelated tasks. '
@@ -138,7 +137,7 @@ def audit_prompt(prompt, *, repair=False, pause_stalled=False, repair_jobs=False
             'Read back every exact edit and retry the same failed consumer when safe; report configured, attempted recovery, '
             'admitted worker and verified task completion separately. Never count a prompt edit or fixture as an unblock. '
             'Continue a supported repair in this occurrence rather than another unchanged audit. '
-            'Respect original evidence, pins, budgets, live writers and no-Agent-edit boundaries; never resume, trigger, '
+            'Respect original evidence, pins, live writers and no-Agent-edit boundaries; never resume, trigger, '
             'cancel or replace workers, bypass guards or borrow product/live credentials. No product writes.\n')
     if not pause_stalled:
         return result
@@ -160,7 +159,7 @@ def audit_prompt(prompt, *, repair=False, pause_stalled=False, repair_jobs=False
         'An empty board, an empty selector, all work dependency-held or no eligible task is not no tasks left. '
         'Do not manufacture busywork to keep a schedule enabled. Missing evidence is unknown, not exhaustion. '
         'Recheck actual worker and manual-continuation liveness immediately before pausing; '
-        'do not classify an actually progressing worker as stalled. Preserve cards, budgets, candidates and history; '
+        'do not classify an actually progressing worker as stalled. Preserve cards, candidates and history; '
         'never cancel a worker, trigger a run, reset retries or launch a replacement. '
         'Use the supported command hermes -p PROFILE cron pause JOB_ID; read back enabled=false '
         'on that exact job and unchanged cadence/model/delivery, and save before/after plus reason '
@@ -203,7 +202,7 @@ def _audit_prompt(prompt, *, repair=False):
             'Commit only verified owned source paths locally when attribution is established. Do not push. '
             'Respect each owner current authority and exclusions; the auditor never borrows owner live/DB/S3 authority. '
             'No product writes, sibling config/job/memory changes, worker launch, lease takeover, Agent edits or guard bypass. '
-            'Do not reset budgets, retry counters, candidate pins or history; '
+            'Do not reset retry counters, candidate pins or history; '
             'actual execution remains separate from registration and metadata readiness. '
             'Preserve paused jobs; do not trigger schedules or replace blocked workers. '
             'An owner waiting for a released compatible helper is a maintainer action, not another user permission question. '
@@ -214,7 +213,7 @@ def _audit_prompt(prompt, *, repair=False):
             'never repeat an unchanged proposal or failed command without changed evidence. '
             'One collector, at most one bounded consultation wave for changed/expired/unknown subjects '
             'and one repair batch per tick; honor existing overlap locks, '
-            'no catch-up runs or automatic budget extensions. '
+            'no catch-up runs. '
             'Report every subject via existing automatic delivery: current task/stage, concrete fix/checks, '
             'deployed or prepared status, same-consumer result, exact remaining gate and next owner action. '
             'Successful cron delivery or fixtures alone never proves product recovery. End with skipped checks and risk.\n')
@@ -247,7 +246,7 @@ def delivery_sync_prompt(prompt, clone_helper):
         'a changed origin pin is a reconciliation hold, never permission to refresh old task pins. '
         'Clone preparation does not clear provenance, acceptance, ownership or publication gates. '
         'Continue the saved eligible delivery only after its existing required checks pass. '
-        'No new worker, schedule, resume, budget reset, force push or deployment is authorized.\n')
+        'No new worker, schedule, resume, force push or deployment is authorized.\n')
 
 
 def verify_edit(before, after, prompt):

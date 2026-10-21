@@ -21,7 +21,7 @@ Require a profile-matched `ready` / `commands_reloaded` receipt. Finalization do
 not update native skill copies or prove the original Telegram invocation succeeded;
 keep installation, live registration and message retry separate. If this route is
 unavailable, request `/reload-skills` in the receiving bot. A fresh subprocess
-resolution alone is not live-cache proof. Preserve schedules, workers and budgets.
+resolution alone is not live-cache proof. Preserve schedules and workers.
 
 ## Resolve the job
 
@@ -131,8 +131,7 @@ Repair attributable task/docs metadata and retry selection in this occurrence.
 Use Plan For Me only for unresolved planning; save findings through Docs Sync.
 For broad repository scope, replenish justified tasks when none is ready; for a
 task filter, stay within that scope and its authorized prerequisites.
-Preserve consumed budgets, partial work, retry history and paused jobs. A cron tick
-does not grant a fresh allocation to an exhausted task. Do not edit Hermes Agent.
+Preserve partial work, retry history and paused jobs. Do not edit Hermes Agent.
 Follow references/cron-autoheal.md: repair this exact job managed wiring with the
 installed scripts/heal-owner-cron.py and verified occurrence identity; read back.
 Fix attributable Toolset faults within existing authority before the next occurrence.
@@ -154,7 +153,7 @@ preference; replace the template's every-occurrence lines with that policy when
 applicable. An inherited generic silence default is not a user quiet preference.
 
 Do not invent model overrides, spend limits, worker turn increases, push permission,
-deployment authority or live-device access. Cron cadence is not a task budget.
+deployment authority or live-device access.
 The scheduler's execution window may end before a worker: the next occurrence
 reconciles that worker rather than duplicating it. Do not promise overlap prevention
 or cumulative enforcement the installed scheduler/runtime does not provide.

@@ -2566,20 +2566,6 @@ class EngineTests(Fixture):
         self.assertEqual(self.runs('touches'), [])
         self.assertNotIn('declare Touches', self.git(self.repo, 'log', '--format=%s'))
 
-    def test_budget_persists_across_restarts(self):
-        self.env['PI_AUTOWORK_MAX_COST'] = '0.05'
-        self.run_runner('--status')  # materializes code only, not execution state
-        self.run_runner('--once')
-        key_dir, = (p.parent for p in self.state.glob('*/runs.jsonl'))
-        spent_now = sum(r['cost_usd'] for r in self.records())
-        with (key_dir / 'runs.jsonl').open('a') as runs:
-            runs.write(json.dumps({'time': '2026-01-01T00:00:00+00:00', 'cost_usd': 100}) + '\n')  # outside the window
-            runs.write(json.dumps({'time': time.strftime('%Y-%m-%dT%H:%M:%S%z'), 'cost_usd': 0.05 - spent_now}) + '\n')
-        self.log.unlink()
-        result = self.run_runner('--until-empty')
-        self.assertIn('Budget reached', result.stdout)
-        self.assertEqual(self.runs(), [])
-
     def test_merge_instructions_reconcile_only_conflicted_task_files(self):
         sys.path.insert(0, str(ROOT / 'pi-autowork'))
         from pi_autowork import coordinator

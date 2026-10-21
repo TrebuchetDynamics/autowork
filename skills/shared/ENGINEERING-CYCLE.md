@@ -11,9 +11,9 @@ Default interactive execution completes one slice, including authorized recovery
 and closeout. An explicit one-task limit stops new selection after that task;
 standing authority cannot override the caller's narrower stop. Explicit continuation or whole-spec scope
 permits further eligible batches only within its accepted bounds.
-Recurrence authorizes the saved occurrence, not wider scope or extra budgets.
-Reconcile consumed history first; unknown usage is not zero, and
-exhaustion requires explicit additional allocation, never a new occurrence or session.
+Recurrence authorizes the saved occurrence, not wider scope. Reconcile consumed
+history first. There are no token, cost or time budgets: usage is measured, never a
+reason to stop.
 Design approval alone does not authorize execution. Preserve no-commit, no-push,
 no-deploy and other user boundaries throughout; skill defaults cannot expand them.
 
@@ -237,8 +237,8 @@ coverage. Mark unavailable required checks NOT_CHECKED, never pretend they passe
    current host's tools only when useful and authorized.
 3. Implement, run discriminating checks and update scoped documentation. Retain
    task IDs, source/candidate identity, changed paths, actual commands/results and
-   remaining gaps. Honor explicit task/caller limits and real host controls; a
-   receipt cannot enforce spending and a new occurrence cannot reset allocations.
+   remaining gaps. Honor explicit task/caller scope; spending money stays an
+   authority only the owner grants.
    Delegated workers stay within their assigned scope and return evidence to the
    integration owner rather than modifying unrelated canonical task state.
 4. Verify implementation evidence and required independent review acceptance at
@@ -261,7 +261,7 @@ coverage. Mark unavailable required checks NOT_CHECKED, never pretend they passe
    rather than overwrite or repin old evidence. Required doc failure/interruption
    retains implementation and pending resume evidence, not a false documentation
    pass or implementation replay. Needed closeout stays within once/until-empty
-   scope; stops, pauses and exhausted budgets launch no new work.
+   scope; stops and pauses launch no new work.
    The Pi runtime's closeout Maintain pass belongs to DOCS-MAINTAINER (TOOLSET-266-7a),
    not a second close authority inside its atomic transaction. Report evidence alone
    neither launches that pass nor proves documentation acceptance.
@@ -276,9 +276,9 @@ coverage. Mark unavailable required checks NOT_CHECKED, never pretend they passe
    These checks do not prove model adherence or live task completion.
 6. Re-read the eligible queue (`autowork tasks list`) and actual ownership after reconciliation. Under an active Autowork
    invocation/job, finish authorized closeout. Select another batch only when caller
-   scope permits it and saved stop/batch limits and remaining allocation allow it.
+   scope permits it and saved stop/batch limits allow it.
    Default interactive, planning-only and explicit one-task requests report the next
    slice and stop; explicit continuation/whole-spec mandates use their named scope.
-   Exhausted budget, unresolved review/capability or ownership is recorded honestly;
+   Unresolved review/capability or ownership is recorded honestly;
    it never grants broader scope. Report implementation, checks, review, integration
    and delivery separately. Offline fixtures are not native/model execution proof.
