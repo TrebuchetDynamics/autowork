@@ -430,8 +430,9 @@ class ActivationTests(Repo):
         self.bootstrap()
         self.git('add', '-A')
         self.commit('store')
-        old = subprocess.run(['git', '-C', str(ROOT), 'rev-parse', '71e1a385^'], capture_output=True,
-                             text=True).stdout.strip()
+        # A shallow clone (CI's checkout) has no history before the task store: nothing to compare.
+        old = subprocess.run(['git', '-C', str(ROOT), 'rev-parse', '--verify', '-q', '71e1a385^^{commit}'],
+                             capture_output=True, text=True).stdout.strip()
         if not old:
             self.skipTest('the toolset history before the task store is not available here')
         with mock.patch.dict(os.environ, {'PI_AUTOWORK_STATE_DIR': str(self.runner_on(old))}):
