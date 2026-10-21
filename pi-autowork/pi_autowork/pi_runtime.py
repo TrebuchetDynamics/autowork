@@ -29,10 +29,12 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 
 if __package__:
-    from . import telemetry
+    from . import accounting, telemetry
 else:
+    import accounting
     import telemetry  # pi_runtime.py is also a standalone subprocess entry point.
 
 PROVIDER_FAILURE = re.compile(
@@ -138,13 +140,28 @@ def analyse(raw):
     gaveup = [e for e in events if e.get('type') == 'auto_retry_end' and e.get('success') is False]
     gaveup = gaveup[-1] if gaveup else {}
 
-    def number(value):
-        return value if isinstance(value, (int, float)) else 0
+    usage = [m.get('usage') or {} for m in messages]
+
+    def token_sum(field):
+        values = [accounting.number(u.get(field)) for u in usage]
+        return sum(values) if values and all(v is not None for v in values) else None
+
+    # Pi's ordinary usage.cost is calculated from catalog rates. It is not a bill.
+    # Only an explicitly provenance-labelled provider amount is measurable; an
+    # adapter that does not supply that provenance leaves spend unknown.
+    costs = [accounting.number((u.get('cost') or {}).get('total'))
+             if u.get('cost_source') == 'provider_reported' and u.get('billing') != 'subscription'
+             else None for u in usage]
+    measured = sum(c for c in costs if c is not None)
+    complete = bool(costs) and all(c is not None for c in costs)
     return dict(settled=settled is not None, aborted=bool((settled or {}).get('aborted')),
                 stop=last.get('stopReason'), error=last.get('errorMessage') or gaveup.get('finalError'),
                 retries=sum(e.get('type') == 'auto_retry_start' for e in events),
-                tokens=sum(number((m.get('usage') or {}).get('totalTokens')) for m in messages),
-                cost=sum(number(((m.get('usage') or {}).get('cost') or {}).get('total')) for m in messages),
+                tokens=token_sum('totalTokens'), input_tokens=token_sum('input'), output_tokens=token_sum('output'),
+                cost=measured if complete else None, measured_cost_usd=measured,
+                cost_source='provider_reported' if any(c is not None for c in costs) else 'missing',
+                billing=('subscription' if usage and all(u.get('billing') == 'subscription' for u in usage)
+                         else 'mixed' if any(u.get('billing') == 'subscription' for u in usage) else None),
                 text='\n'.join(c.get('text', '') for c in (last.get('content') or [])
                                if isinstance(c, dict) and c.get('type') == 'text'))
 
@@ -291,13 +308,29 @@ def provider_failure(run):
 
 def record(s, role, task, outcome, model, fallback, run, result='', *, directory=None):
     result = redact(result)[:300]
-    row = {'time': now_iso(), 'role': role, 'task': task, 'outcome': outcome, 'provider': provider(model),
+    attempt_id = None
+    if directory is not None:
+        try:
+            engine = telemetry.engine()
+            slot = engine.execution.read(engine.slot_path(engine.common_dir(directory), task)) or {}
+            attempt_id = slot.get('attempt_id')
+        except (OSError, ValueError, subprocess.SubprocessError):
+            pass
+    row = {'run_id': uuid.uuid4().hex, 'time': now_iso(), 'role': role,
+           'task': accounting.attributed_task(role, task),
+           'host': os.environ.get('AUTOWORK_TELEMETRY_HOST') or 'pi', 'attempt_id': attempt_id,
+           'outcome': outcome, 'provider': provider(model),
            'model': model_name(model), 'seconds': run.get('seconds', 0), 'session': s.session_label,
            'pi_retries': run.get('retries', 0), 'fallback_reason': fallback or None,
-           'tokens': run.get('tokens', 0), 'cost_usd': run.get('cost', 0),
+           'tokens': run.get('tokens'), 'input_tokens': run.get('input_tokens'),
+           'output_tokens': run.get('output_tokens'), 'cost_usd': run.get('cost'),
+           'measured_cost_usd': run.get('measured_cost_usd', 0),
+           'cost_source': run.get('cost_source', 'missing'), 'billing': run.get('billing'),
            'error': run.get('error') or None, 'result': result or None}
-    with open(s.state / 'runs.jsonl', 'a') as stream:  # one short append per run
-        stream.write(json.dumps(row) + '\n')
+    try:
+        accounting.append(s.state / 'runs.jsonl', row)
+    except OSError as exc:
+        print(f'pi-autowork: could not record usage: {exc}', file=sys.stderr)
     if directory is not None:
         telemetry.model_run(directory, role, task, model, outcome, run)
 

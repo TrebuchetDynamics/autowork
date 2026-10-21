@@ -9,7 +9,7 @@ import time
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pi_autowork import pi_runtime as runtime  # noqa: E402
+from pi_autowork import accounting, pi_runtime as runtime  # noqa: E402
 
 # A fake `pi`: `auth check` reads FAKE_UNAUTH; a run pops its behavior from FAKE_PLAN.
 FAKE = r'''#!/usr/bin/env python3
@@ -80,7 +80,10 @@ class RuntimeTests(unittest.TestCase):
         self.assertIn('PI_AUTOWORK_RESULT: completed', result['text'])
         (row,) = self.records()
         self.assertEqual((row['outcome'], row['provider'], row['tokens'], row['cost_usd']),
-                         ('finished', 'openai-codex', 7, 0.25))
+                         ('finished', 'openai-codex', 7, None))
+        self.assertEqual(row['cost_source'], 'missing')
+        self.assertTrue(row['run_id'])
+        self.assertEqual(row['host'], 'pi')
         self.assertEqual(row['result'], 'PI_AUTOWORK_RESULT: completed with key [redacted]')
         self.assertEqual(list((self.state / 'runs').iterdir()), [])  # the raw stream is gone
 
@@ -98,6 +101,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertTrue(result['ok'])
         self.assertEqual([c['provider'] for c in self.calls()], ['openai-codex', 'openrouter'])
         self.assertEqual([r['outcome'] for r in self.records()], ['provider_failure', 'finished'])
+        self.assertEqual({r['attempt_id'] for r in self.records()}, {'fixture'})
         self.assertNotIn('secret123', json.dumps(self.records()))
         self.assertTrue(runtime.primary_cooling(runtime.Settings(self.state)))
         self.assertIn('reconcile its partial work', self.calls()[1]['message'])
@@ -121,6 +125,33 @@ class RuntimeTests(unittest.TestCase):
         self.assertFalse(result['ok'])
         self.assertLess(time.monotonic() - started, 20)
         self.assertEqual([r['outcome'] for r in self.records()], ['timeout'])
+
+    def test_usage_preserves_tokens_but_never_prices_missing_or_subscription_billing(self):
+        for billing, source, cost, expected in (
+                ('api', None, 0.25, None), ('api', 'provider_reported', 0.25, 0.25),
+                ('subscription', 'provider_reported', 0, None), ('api', None, None, None)):
+            with self.subTest(billing=billing, source=source):
+                usage = dict(input=10, output=3, totalTokens=15, cacheRead=2, billing=billing,
+                             cost={'total': cost}, cost_source=source)
+                run = runtime.analyse(json.dumps({'type': 'message_end', 'message':
+                                                 {'role': 'assistant', 'usage': usage}}))
+                self.assertEqual((run['input_tokens'], run['output_tokens'], run['tokens']), (10, 3, 15))
+                self.assertEqual(run['cost'], expected)
+                self.assertEqual(run['measured_cost_usd'], expected or 0)
+        # A mixed run is still unknown overall, but its billed API subset must survive.
+        messages = [dict(input=1, output=2, totalTokens=3, cost={'total': amount},
+                         cost_source='provider_reported', billing=billing)
+                    for amount, billing in ((3, 'api'), (0, 'subscription'))]
+        run = runtime.analyse('\n'.join(json.dumps(dict(type='message_end', message=
+                              dict(role='assistant', usage=usage))) for usage in messages))
+        runtime.record(runtime.Settings(self.state), 'merge', 'T-1', 'finished', 'p/m', '', run)
+        (row,) = self.records()
+        self.assertEqual(row['task'], 'T-1')
+        total = accounting.bucket()
+        accounting.add(total, row)
+        self.assertIsNone(total['cost_usd'])
+        self.assertEqual(total['measured_cost_usd'], 3)
+        self.assertEqual((total['input_tokens'], total['output_tokens']), (2, 4))
 
     def test_model_choice_and_the_budget(self):
         settings = runtime.Settings(self.state)
