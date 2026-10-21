@@ -2300,10 +2300,10 @@ finally:
         module.integrate(self.repo, self.owner, 'A', ['true'], 10)
         original = module.git
         from unittest.mock import patch
-        def fail(repo, *argv):
+        def fail(repo, *argv, **options):
             if argv[:2] == failure:
                 raise ValueError('injected cleanup failure')
-            return original(repo, *argv)
+            return original(repo, *argv, **options)
         with patch.object(module, 'git', side_effect=fail):
             with self.assertRaisesRegex(ValueError, 'injected cleanup'):
                 module.close(self.repo, self.owner, 'A')

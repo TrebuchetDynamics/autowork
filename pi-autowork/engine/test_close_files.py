@@ -8,7 +8,6 @@ re-exporting it keeps both true.
 """
 from pathlib import Path
 import sys
-import tempfile
 import unittest
 
 SCRIPTS = Path(__file__).resolve().parent
@@ -21,23 +20,11 @@ class CloseFilesTests(unittest.TestCase):
         import parallel_state
         self.assertIs(parallel_integrate.close_files, parallel_state.close_files)
 
-    def test_close_files_names_todo_goals_and_the_archive(self):
+    def test_close_files_name_the_task_record_its_receipt_and_its_live_followup(self):
         import parallel_integrate
-        with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            (repo / 'TODO.md').write_text('# TODO\n\n## Next\n\n- [ ] A — a thing\n')
-            (repo / 'goals.json').write_text('{"version": 1, "goals": [], "tasks": []}')
-            self.assertEqual(parallel_integrate.close_files(repo),
-                             ['TODO.md', 'goals.json', 'TODO.archive.md'])
-
-    def test_a_linked_archive_is_named_relative_to_the_repository(self):
-        import parallel_integrate
-        with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            (repo / 'docs').mkdir()
-            (repo / 'docs' / 'TODO-archive.md').write_text('# Archive\n')
-            (repo / 'TODO.md').write_text('See [history](docs/TODO-archive.md).\n')
-            self.assertEqual(parallel_integrate.close_files(repo)[2], 'docs/TODO-archive.md')
+        self.assertEqual(parallel_integrate.close_files('/repo', 'A'),
+                         ['tasks/items/A.md', 'tasks/evidence/A.toml', 'tasks/items/A-LIVE.md'])
+        self.assertEqual(parallel_integrate.close_files('/repo'), ['tasks/items/', 'tasks/evidence/'])
 
 
 if __name__ == '__main__':
