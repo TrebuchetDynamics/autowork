@@ -5876,3 +5876,28 @@ Source section: Now
 - Ownership: Toolset coordinator.
 - Exclusions: goals.py keeps working on unconverted repositories until TOOLSET-301-32; no commit or push from these commands.
 - Delivered: 2026-10-21, merge 8b7425af. Offline evidence only: `test_task_store_write` 4 tests OK (round trip of every fixture and hand-written form, byte-preserving edits, refusals); `tests/test_task_commands.py` 10 tests OK (add/show, field, place into Needs decision changes the contract hash, move changes only rank, local rebalancing with no gap, supersede, why/list reason codes, validate fails on a broken file, a store-breaking write is undone, an unconverted repo is refused); `python3 scripts/check.py` 5 test directories passed, 0 failed, 4 modules excluded. The commands are wired into pi_autowork/command.py, which provides `autowork` (the entry named cli.py).
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-297-41"></a>
+
+### TOOLSET-297-41 — autowork migrate converts a repository to tasks/ once
+
+- [x] TOOLSET-297-41 — autowork migrate converts a repository to tasks/ once
+- Short: autowork migrate
+- Status: done
+- Goal: TASK-STORE
+- Payoff: Convert each repository in one checked step, with nothing lost and the same next task.
+- Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20); [TODO rules](skills/shared/TODO-WORKCENTER.md); [archive contract](skills/docs-sync/references/todo-archive.md).
+- Evidence: the owner chose a one-time conversion per repository with no dual reader.
+- Touches: pi-autowork/pi_autowork/cli.py, pi-autowork/pi_autowork/task_migrate.py, tests/test_task_migrate.py
+- Scope: (1) `autowork migrate <repo> [--dry-run]` reads TODO.md and goals.json, writes `tasks/items/` and `tasks/goals/` (rank from TODO.md order, every body field kept), removes TODO.md and goals.json (no pointer or stub is left; `autowork tasks overview` prints the board on demand); TODO.archive.md is untouched. (2) Before writing, it checks parity: same task set, same contract fields, and `task_select` order equal to the current selector's; any mismatch refuses with the difference. (3) It refuses a dirty planning file, a live runner slot, a held lease or claim, an unfinished integration or closure transaction in that repository, or an already converted repository, and makes one local commit on success.
+- Acceptance: `tests/test_task_migrate.py`: a fixture with focus, three goals, Needs decision, dependencies and archived tasks converts with identical order and field content (`test_migration_keeps_order_and_fields`); a dirty TODO.md, a live slot, a held claim, an unfinished closure and a converted repo each refuse (`test_migration_refuses_unsafe_states`); a body field the schema cannot hold refuses rather than drops it, and `--dry-run` writes nothing (`test_migration_refuses_unlossless_input`).
+- Checks: python3 -m unittest discover -s tests -p test_task_migrate.py; python3 scripts/check.py
+- Dependencies: TOOLSET-295-57, TOOLSET-296-9f.
+- Ownership: Toolset coordinator.
+- Exclusions: Does not convert any repository itself and never pushes; no reverse migration.
+- Delivered: 2026-10-21, merge 71ede8c2. Offline evidence only: `tests/test_task_migrate.py` 4 tests OK (test_migration_keeps_order_and_fields, test_migration_refuses_unsafe_states with a dirty TODO.md, a live slot, an unfinished integration, a claimed task and a converted repo, test_a_placeholder_live_authorization_is_not_a_grant, test_migration_refuses_unlossless_input with --dry-run writing nothing); `python3 scripts/check.py` 5 test directories passed, 0 failed, 4 modules excluded. Wired as `autowork migrate` in pi_autowork/command.py (the entry named cli.py). The converter reads the old files through the current docs-sync and engine parsers; the cutover (TOOLSET-301-32) must keep a reader for it, since other repositories convert after the cut.

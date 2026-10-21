@@ -276,17 +276,6 @@
   },
   "tasks": [
     {
-      "depends_on": [
-        "TOOLSET-295-57",
-        "TOOLSET-296-9f"
-      ],
-      "goal": "TASK-STORE",
-      "id": "TOOLSET-297-41",
-      "section": "Now",
-      "status": "in_progress",
-      "title": "autowork migrate converts a repository to tasks/ once"
-    },
-    {
       "depends_on": [],
       "goal": "RELIABILITY-2026-10",
       "id": "TOOLSET-303-24",
@@ -682,6 +671,17 @@
       "section": "Done",
       "status": "done",
       "title": "A schema-bound writer and the autowork tasks commands edit the store"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-295-57",
+        "TOOLSET-296-9f"
+      ],
+      "goal": "TASK-STORE",
+      "id": "TOOLSET-297-41",
+      "section": "Done",
+      "status": "done",
+      "title": "autowork migrate converts a repository to tasks/ once"
     }
   ],
   "version": 1

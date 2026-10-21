@@ -10,24 +10,6 @@ admission or live qualification.
 
 ## Now
 
-### TOOLSET-297-41 — autowork migrate converts a repository to tasks/ once
-
-- [ ] TOOLSET-297-41 — autowork migrate converts a repository to tasks/ once
-- Held by: an interactive session implementing TASK-STORE on the owner's instruction (relayed 2026-10-20); do not dispatch or adopt; until 2026-10-27
-- Short: autowork migrate
-- Status: open
-- Goal: TASK-STORE
-- Payoff: Convert each repository in one checked step, with nothing lost and the same next task.
-- Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20); [TODO rules](skills/shared/TODO-WORKCENTER.md); [archive contract](skills/docs-sync/references/todo-archive.md).
-- Evidence: the owner chose a one-time conversion per repository with no dual reader.
-- Touches: pi-autowork/pi_autowork/cli.py, pi-autowork/pi_autowork/task_migrate.py, tests/test_task_migrate.py
-- Scope: (1) `autowork migrate <repo> [--dry-run]` reads TODO.md and goals.json, writes `tasks/items/` and `tasks/goals/` (rank from TODO.md order, every body field kept), removes TODO.md and goals.json (no pointer or stub is left; `autowork tasks overview` prints the board on demand); TODO.archive.md is untouched. (2) Before writing, it checks parity: same task set, same contract fields, and `task_select` order equal to the current selector's; any mismatch refuses with the difference. (3) It refuses a dirty planning file, a live runner slot, a held lease or claim, an unfinished integration or closure transaction in that repository, or an already converted repository, and makes one local commit on success.
-- Acceptance: `tests/test_task_migrate.py`: a fixture with focus, three goals, Needs decision, dependencies and archived tasks converts with identical order and field content (`test_migration_keeps_order_and_fields`); a dirty TODO.md, a live slot, a held claim, an unfinished closure and a converted repo each refuse (`test_migration_refuses_unsafe_states`); a body field the schema cannot hold refuses rather than drops it, and `--dry-run` writes nothing (`test_migration_refuses_unlossless_input`).
-- Checks: python3 -m unittest discover -s tests -p test_task_migrate.py; python3 scripts/check.py
-- Dependencies: TOOLSET-295-57, TOOLSET-296-9f.
-- Ownership: Toolset coordinator.
-- Exclusions: Does not convert any repository itself and never pushes; no reverse migration.
-
 ## Next
 
 ### TOOLSET-303-24 — Harden managed-recovery interruption test isolation
