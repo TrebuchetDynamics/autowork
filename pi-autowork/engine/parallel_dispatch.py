@@ -674,8 +674,13 @@ def launch(argv, worktree, data, slot_index, stdin_path):
     tools = data / 'bin'
     tools.mkdir(exist_ok=True, mode=0o700)
     wrapper = tools / 'autowork-run'
-    if not wrapper.exists():
-        wrapper.symlink_to(Path(__file__).resolve().with_name('autowork_run.py'))
+    target = Path(__file__).resolve().with_name('autowork_run.py')
+    # A paused attempt can outlive its release: the link then dangles (exists() follows it and
+    # says missing, and symlink_to raised EEXIST), or names an older one. Point it at this one.
+    if not (wrapper.is_symlink() and Path(os.readlink(wrapper)) == target):
+        if wrapper.is_symlink() or wrapper.exists():
+            wrapper.unlink()
+        wrapper.symlink_to(target)
     base, lease = port_lease(slot_index)
     env.update(TMPDIR=temporary, TMP=temporary, TEMP=temporary, AUTOWORK_CACHE=str(cache), AUTOWORK_SLOT=str(slot_index),
                AUTOWORK_PORT_BASE=str(base), PATH=str(tools) + os.pathsep + env.get('PATH', os.defpath),
