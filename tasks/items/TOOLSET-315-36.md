@@ -7,7 +7,7 @@ status = "open"
 goal = "TASK-STORE"
 section = "Next"
 rank = 11000
-depends_on = []
+depends_on = ["TOOLSET-304-2c", "TOOLSET-314-23"]
 touches = ["pi-autowork/pi_autowork/task_commands.py", "pi-autowork/pi_autowork/task_migrate.py", "pi-autowork/engine/task_store.py", "pi-autowork/engine/test_task_store.py", "tests/"]
 resources = []
 kind = "implementation"
@@ -19,3 +19,4 @@ exclusions = ["No git gc, prune, repack or removal of .git/gc.log, and no ref de
 +++
 
 - Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20)
+- Coordination: Overlap repair: wait for TOOLSET-304-2c atomic writes and the earlier-ranked TOOLSET-314-23 JSON input changes before isolating throwaway Git objects in task_commands.py. Task Store v2 and the current worktree_store and migration proof paths identify the shared validation machinery; removing the CLI from Touches would conceal required work. Keep the object-isolation checks and ref-reachability report together: an inspection-only split would not implement the no-new-objects acceptance. Preserve all Acceptance, Checks, exclusions and existing priority.
