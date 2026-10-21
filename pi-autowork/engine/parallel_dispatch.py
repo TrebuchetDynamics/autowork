@@ -966,13 +966,16 @@ def waiting_streaks(common, now=None):
 def merge_backlog(common, current, *, workers, now=None, env=os.environ):
     """Back-pressure from finished commits; only queue time counts, not worker runtime.
 
-    The default threshold is two commits per worker: one batch lands a whole pool's
-    work, so a fixed 3 left an 8-worker runner with one worker after every batch.
+    Landing finished work comes before starting more. The default threshold is half the
+    pool, at least two: two per worker (16 for 8 workers) never paused, and seven finished
+    commits waited up to 1h39m while new workers took the CPU their checks needed. (A fixed
+    3 left an 8-worker runner with one worker after every batch; a landed batch now drops
+    the count below the threshold and refills the pool.)
     The journal keeps the queue clock and pause across coordinator restarts. A pause
     lasts until the count drops below the threshold, even if the oldest merges first.
     """
     limits = {}
-    for name, default in (('MERGE_BACKLOG', 2 * workers), ('MERGE_BACKLOG_AFTER', 1200)):
+    for name, default in (('MERGE_BACKLOG', max(2, workers // 2)), ('MERGE_BACKLOG_AFTER', 1200)):
         try:
             value = int(env.get('PI_AUTOWORK_' + name, str(default)))
             limits[name] = value if value >= 0 else default

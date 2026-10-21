@@ -42,6 +42,11 @@ claim of a tagged release, completed installation or live workflow qualification
   still declares a budget is not held for it. Cost and tokens are still recorded per
   run in `runs.jsonl`, for measurement only; timeouts, runtime, cycle and failure
   limits and the owner's authority over spending money are unchanged.
+- **Finished work lands first.** The merge backlog that pauses fresh dispatch now defaults
+  to half the worker count, at least 2 (4 for 8 workers), instead of twice it: at 16 it never
+  paused, and seven finished commits waited up to 1h39m while new workers took the CPU their
+  checks needed. The pause still needs the oldest to have waited `PI_AUTOWORK_MERGE_BACKLOG_AFTER`
+  (20 minutes) and lifts once the count drops below the threshold.
 - **Merge train.** While a batch runs its full check, candidates that finish meanwhile board
   the next car: a batch built on the running batch's chain tip (published before its check)
   and checked beside it, needing only one candidate. Its verdicts hold for the trees the
