@@ -47,6 +47,11 @@ claim of a tagged release, completed installation or live workflow qualification
   green when they pass and red when they fail or block. Long commands are cut to one line with
   an ellipsis (`w` shows them whole in the worker log). Task states: working green, waiting
   yellow, held or failed red, Needs decision magenta, done dim; a Blocker lane is red.
+- **A failed small batch's candidates are checked side by side** (TOOLSET-342-0153a52b). A
+  failed batch of two or three integrated its candidates strictly one after another. While one
+  is reviewed alone, the next now starts beside it as an independent one-candidate car on the
+  same base; it keeps its verdict if that review is held, and is checked again if it passes and
+  lands first.
 - **A failed batch's halves are checked side by side** (TOOLSET-340-64b75d92). Halving a
   failed batch checked one half after the other, and a merge-train car stacked on a failing
   half was discarded with it; six clean candidates waited up to 2.5 h behind one bad one.
