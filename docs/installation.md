@@ -59,9 +59,11 @@ still leave partial setup.
 See [compatibility](testing.md#compatibility) for the verified environment.
 
 Setup is broader than installing this plugin: the current source inventory targets
-all profiles for OMH, Ponytail, Graphify, speech support and OMH memory. Setup selects OMH with bounded `auto-safe` capture (an existing
-store keeps an explicitly stored mode); no external
-memory server or connection JSON is required.
+all profiles for OMH, Ponytail, Graphify, speech support and OMH memory. With the
+checked-in defaults, setup requests bounded `auto-safe` capture while preserving
+existing store bindings. An explicitly stored mode is retained only when the
+configured `memory_mode` is `preserve`; binding preservation alone does not preserve
+that policy. No external memory server or connection JSON is required.
 
 ```sh
 hermes plugins install TrebuchetDynamics/autowork
@@ -180,8 +182,9 @@ skills and shared support files into that profile's native skill directory, usin
 the same offline provisioner as full setup. Existing flat and categorized skills
 are preserved; an incomplete existing slot is never replaced and is logged as a
 warning while the remaining skills and every command still register.
-Ordinary plugin loading writes only inside the owning profile (its config and
-`scripts/`); it never installs network dependencies, changes sibling profiles, or
+Ordinary plugin loading writes only inside the owning profile: its config,
+`scripts/`, and missing bundled native skills and shared support under `skills/`.
+It never installs network dependencies, changes sibling profiles, or
 reloads a gateway. Full setup provisions native skills across all
 profiles before external plugin setup.
 Setup refreshes running gateway command handlers and checks their activation
@@ -396,7 +399,9 @@ separate. It does not upgrade unrelated plugins, Hermes Agent or external import
 Existing setup prerequisites still apply; this is not a policy-neutral operation.
 
 `maintenance/toolset-update/latest.json` in the root Hermes home records status,
-source revisions, profiles, merged or kept `local_edits` and the backup location. For updates started from chat,
+source revisions, profiles, reset or removed `local_edits` and the backup location.
+Managed-checkout recovery has separate merge evidence; ordinary skill-copy reset
+is not a three-way merge. For updates started from chat,
 `run.log` holds updater and setup output (terminal updates print it);
 per-run backups include original skill files and a manifest. An `incomplete` result
 may follow partial application: preserve the backups, fix the reported cause and

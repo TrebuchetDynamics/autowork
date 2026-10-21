@@ -1444,7 +1444,9 @@ claim of a tagged release, completed installation or live workflow qualification
 - Hermes skill discovery publishes Plan With Me, Plan For Me and Docs Sync;
   previous command spellings remain compatibility aliases (`bcb72c5`).
 - Grill Me becomes a challenge mode in the Hermes plugin catalog; portable
-  catalog alignment remains tracked in [TODO.md](TODO.md) (`bcb72c5`).
+  catalog alignment was tracked in the historical `TODO.md` (`bcb72c5`).
+  The current queue is [`tasks/`](tasks/); this historical note does not establish
+  present completion or outstanding work.
 - Autowork routes stalled preparation to bounded planning, persists findings and
   retries execution within existing authority (`bcb72c5`). This is a workflow
   contract and tested helper behavior, not proof of live task completion.

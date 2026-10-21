@@ -120,9 +120,12 @@ the durable result. If status says the process stopped without a receipt, inspec
 
 ### The update refuses, or reports `local_edits`
 
-- **Uncommitted changes or local commits in a plugin checkout:** the updater
-  only fast-forwards. Commit, move or reconcile your changes; it never stashes,
-  resets or force-pulls.
+- **Uncommitted changes or local commits in a plugin checkout:** ordinary source
+  updates require a clean equal or fast-forward checkout. Qualifying managed
+  checkouts have a separate [guarded recovery path](installation.md#managed-checkout-recovery)
+  with preserved local work and explicit refusal conditions; this is not permission
+  to discard unproven commits. Otherwise commit, move or reconcile your changes;
+  the ordinary update does not stash, reset or force-pull the source checkout.
 - **`local_edits`:** a profile edited its installed skill copy. `reset` means the copy
   was replaced by the release and the edited bytes are in the update's backup (the
   receipt's `backup`); port lessons that should reach every profile into the bundle.
