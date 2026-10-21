@@ -2508,6 +2508,7 @@ class EngineTests(Fixture):
 
     def test_other_quiet_uncommitted_work_stays_uncommitted_while_the_session_merges_and_pushes(self):
         """GitHub #3: quietness does not transfer ownership of main-checkout work."""
+        self.env['PI_AUTOWORK_PUSH'] = '1'
         for name in ('notes.txt', 'staged.txt', 'deleted.txt'):
             (self.repo / name).write_text('original\n')
         self.git(self.repo, 'add', '.')
@@ -2623,6 +2624,7 @@ class EngineTests(Fixture):
         """TOOLSET-188-75: a session landed only when a task closed or the queue emptied; with
         every task running, waiting or held, its questions and repairs stayed off main for hours."""
         self.plan({'worker:A': ['blocked', 'blocked'], 'worker:B': ['slow']})
+        self.env['PI_AUTOWORK_PUSH'] = '1'
         bare = self.origin()
         runner = self.start_runner('--interval', '1')
         self.addCleanup(lambda: runner.poll() is None and runner.kill())
@@ -2833,7 +2835,14 @@ class EngineTests(Fixture):
 
     def test_merged_work_is_pushed_to_main_upstream(self):
         bare = self.origin()
+        envs = self.root / 'envs'
+        envs.mkdir()
+        self.env['PI_AUTOWORK_ENV_DIR'] = str(envs)
+        saved = f'PI_AUTOWORK_REPO={self.repo}\nPI_AUTOWORK_PUSH=1\n'
+        settings = envs / 'project.env'
+        settings.write_text(saved)
         result = self.run_runner('--until-empty')
+        self.assertEqual(settings.read_text(), saved)  # repeated cycles reuse, not rewrite, the grant
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue(self.done('A', 'B', 'C'))
         self.assertIn('Pushed main to origin/main', result.stdout)
@@ -2854,6 +2863,7 @@ class EngineTests(Fixture):
         self.assertTrue(self.git(bare, 'log', '--format=%s', 'main').count('an earlier landing'))
 
     def test_upstream_commits_are_pulled_into_main_after_a_task_before_its_push(self):
+        self.env['PI_AUTOWORK_PUSH'] = '1'
         bare = self.origin()
         other = self.root / 'other'
         subprocess.run(['git', 'clone', '-q', str(bare), str(other)], check=True)
@@ -2869,6 +2879,7 @@ class EngineTests(Fixture):
         self.assertTrue(self.done('A', 'B', 'C'))
 
     def test_a_rejected_push_merges_the_upstream_and_pushes_again(self):
+        self.env['PI_AUTOWORK_PUSH'] = '1'
         bare = self.origin()
         other = self.root / 'other'
         subprocess.run(['git', 'clone', '-q', str(bare), str(other)], check=True)
@@ -2887,6 +2898,7 @@ class EngineTests(Fixture):
     def test_a_conflicting_owner_plan_is_landed_after_each_task(self):
         """india: the owner's plan commit conflicted with the session's own task-file commits, and
         the runner kept planning from its stale copy without saying so."""
+        self.env['PI_AUTOWORK_PUSH'] = '1'
         self.write_todo(todo([('A', None), ('B', None)]))
         self.git(self.repo, 'commit', '-qam', 'A and B')
         self.plan({'worker:A': ['slow'], 'worker:B': ['blocked'] * 5})

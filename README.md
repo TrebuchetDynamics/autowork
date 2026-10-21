@@ -260,12 +260,14 @@ main/master or Merge pending
   without a model call rather than inventing tasks.
 - **Evidence before closure.** Worker commits and reports are claims. Project checks
   and, by default, a separate Pi review gate integration and task closure.
-- **Delivery is automatic and visible.** After each closed task the runner merges its
-  session into `main`/`master` (Pi resolves a conflict with the owner's newer plan),
-  fast-forwards the main checkout and pushes it to its upstream: fast-forward only,
-  never forced; a rejected push merges the upstream and tries once more. What cannot
-  land is reported as `Merge pending` and shown as the runner's blocker; the session
-  is retained. Workers never push. `PI_AUTOWORK_PUSH=0` keeps main local.
+- **Local delivery is automatic; push is opt-in.** After each closed task the runner
+  merges its session into `main`/`master` (Pi resolves a conflict with the owner's
+  newer plan) and fast-forwards the main checkout. Main stays local unless an explicit
+  `PI_AUTOWORK_PUSH=1` grant enables upstream publication: fast-forward only, never
+  forced; a rejected push merges the upstream and tries once more. What cannot land
+  is reported as `Merge pending` and shown as the runner's blocker; the session is
+  retained. Workers never push. Saved per-repository grants are reused; existing
+  saved on/off settings are preserved. See the [grant and status commands](pi-autowork/README.md#the-autowork-command).
 
 From your project's main-branch checkout, after the Pi installation above:
 
