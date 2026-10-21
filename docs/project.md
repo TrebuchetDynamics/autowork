@@ -1953,8 +1953,14 @@ Rules:
 - Engine slot states (`dispatched`, `reported`, `held`, …) stay internal names; the
   display derives the headline from them and their evidence. Runner-level states
   (working, paused, stopped, unavailable) are a separate axis and keep their labels.
+- The fleet's counts add up: every open task is in exactly one of Active, Mergeable,
+  Waiting, Blocker and Decision (the Needs-decision tasks, waiting for the owner), and
+  they sum to Total. The detail's Waiting row has the Waiting count, split into
+  labelled reasons that sum to it: commits in flight by phase (implemented, waiting for
+  review; reviewed, waiting for their merge turn; …), the queue's reasons, and overlap
+  holds.
 
-Implementation: TOOLSET-289-71.
+Implementation: TOOLSET-289-71; counts that add up: TOOLSET-351-54bd774c.
 
 ## Interactive checkout writer (2026-10-20)
 

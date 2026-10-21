@@ -93,9 +93,10 @@ async def main():
             runners = app.query_one('#runners')
             # TOOLSET-289-71 (test_runner_columns): the owner's four headlines.
             assert [str(c.label) for c in runners.columns.values()] == ['Runner', 'State', 'Active', 'Mergeable',
-                                                                        'Waiting', 'Blocker', 'Total', 'Needs', 'Now']
-            assert [str(c) for c in runners.get_row_at(0)[2:7]] == ['0', '0', '23', '1', '24']
-            assert '19 wait for TASK-036 (overlapping' in str(runners.get_row_at(0)[7]), runners.get_row_at(0)  # cut to fit
+                                                                        'Waiting', 'Blocker', 'Decision', 'Total',
+                                                                        'Needs', 'Now']
+            assert [str(c) for c in runners.get_row_at(0)[2:8]] == ['0', '0', '23', '1', '0', '24']
+            assert '19 wait for TASK-036 (overlap' in str(runners.get_row_at(0)[8]), runners.get_row_at(0)  # cut to fit
             assert 'Tasks      24 open · 0 active · 0 mergeable · 23 waiting · 1 blocker' in detail, detail
             # The keys, in the menu bar at the top (a GUI app's "File Edit View"), each word's first
             # letter highlighted in it; one key per action. The detail pane holds no keys.
