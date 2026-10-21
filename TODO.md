@@ -10,24 +10,6 @@ admission or live qualification.
 
 ## Now
 
-### TOOLSET-296-9f — A schema-bound writer and the autowork tasks commands edit the store
-
-- [ ] TOOLSET-296-9f — A schema-bound writer and the autowork tasks commands edit the store
-- Held by: an interactive session implementing TASK-STORE on the owner's instruction (relayed 2026-10-20); do not dispatch or adopt; until 2026-10-27
-- Short: Store writer and tasks CLI
-- Status: open
-- Goal: TASK-STORE
-- Payoff: Let planners and skills change tasks without parsing or hand-editing files.
-- Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20); [current planning commands](skills/docs-sync/scripts/goals.py) (`add-task`, `field`, `place`, `move`, `new-id`, `supersede`); [CLI](pi-autowork/pi_autowork/cli.py).
-- Evidence: planning skills edit TODO.md and goals.json through goals.py; the decision moves these edits to the `autowork` CLI over `tasks/`.
-- Touches: pi-autowork/engine/task_store.py, pi-autowork/engine/test_task_store_write.py, pi-autowork/pi_autowork/cli.py, pi-autowork/pi_autowork/task_commands.py, tests/test_task_commands.py
-- Scope: (1) A writer that emits canonical TOML for the known schema only, round-trips every valid record byte-for-byte and refuses values it cannot represent (multi-line strings it would reflow, unknown keys, control characters). (2) `autowork tasks list|show|why|validate <repo>` read at HEAD; `autowork tasks add|field|place|move|supersede|new-id <repo> ...` write `tasks/` files in the working tree; new tasks take the next multiple of 1000 in their section and `move` takes the midpoint between its neighbours' ranks, equal ranks allowed with the ID breaking the tie; when no integer remains it rebalances only the contiguous run of gapless neighbours, to multiples of 1000 within that run's bounds, prints the files it will change and never renumbers the queue with the same ID allocation and goal-priority rules as goals.py, and never write TODO.md or goals.json; a task file written this way grants no authority beyond its typed fields, and a declared check still needs the existing approval to run. (3) `validate` exits 1 with path:line errors on a corrupt store.
-- Acceptance: `test_task_store_write.test_round_trips_every_fixture` and `test_refuses_input_it_cannot_preserve`; `tests/test_task_commands.py` covers add then show, field, place into Needs decision (contract hash changes), move (only rank changes), a move with no gap left (only the gapless run is rewritten, `test_move_without_a_gap_rebalances_locally`), supersede, `why` output and `validate` failing on a broken file.
-- Checks: python3 -m unittest discover -s pi-autowork/engine -p test_task_store_write.py; python3 -m unittest discover -s tests -p test_task_commands.py; python3 scripts/check.py
-- Dependencies: TOOLSET-294-f6, TOOLSET-295-57.
-- Ownership: Toolset coordinator.
-- Exclusions: goals.py keeps working on unconverted repositories until TOOLSET-301-32; no commit or push from these commands.
-
 ### TOOLSET-297-41 — autowork migrate converts a repository to tasks/ once
 
 - [ ] TOOLSET-297-41 — autowork migrate converts a repository to tasks/ once

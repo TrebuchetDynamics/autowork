@@ -277,17 +277,6 @@
   "tasks": [
     {
       "depends_on": [
-        "TOOLSET-294-f6",
-        "TOOLSET-295-57"
-      ],
-      "goal": "TASK-STORE",
-      "id": "TOOLSET-296-9f",
-      "section": "Now",
-      "status": "in_progress",
-      "title": "A schema-bound writer and the autowork tasks commands edit the store"
-    },
-    {
-      "depends_on": [
         "TOOLSET-295-57",
         "TOOLSET-296-9f"
       ],
@@ -682,6 +671,17 @@
       "section": "Done",
       "status": "done",
       "title": "Task selection from the store matches the current selector"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-294-f6",
+        "TOOLSET-295-57"
+      ],
+      "goal": "TASK-STORE",
+      "id": "TOOLSET-296-9f",
+      "section": "Done",
+      "status": "done",
+      "title": "A schema-bound writer and the autowork tasks commands edit the store"
     }
   ],
   "version": 1
