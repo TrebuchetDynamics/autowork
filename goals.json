@@ -12,7 +12,7 @@
       "id": "RELIABILITY-2026-10",
       "priority": 15,
       "source": "docs/project.md#reliability-bug-harvest-2026-10-15",
-      "status": "partial",
+      "status": "met",
       "tasks": [
         "MAIN-001-38",
         "TOOLSET-043",
@@ -249,8 +249,8 @@
       "depends_on": [],
       "goal": "RELIABILITY-2026-10",
       "id": "MAIN-001-38",
-      "section": "Now",
-      "status": "open",
+      "section": "Done",
+      "status": "done",
       "title": "Restore the offline gate after the queue reset and integration diagnostic change"
     },
     {

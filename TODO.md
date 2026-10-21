@@ -10,25 +10,6 @@ admission or live qualification.
 
 ## Now
 
-### MAIN-001-38 — Restore the offline gate after the queue reset and integration diagnostic change
-
-- [ ] MAIN-001-38 — Restore the offline gate after the queue reset and integration diagnostic change
-- Planning: Keep one main-repair task as requested. Hot-file scope is limited to the status assertions/docs and the integration regression with its owning implementation/tests; there is no other open task to order behind. No unrelated updater, fleet/TUI or dispatch change is prescribed by these failures.
-- Next action: Run the focused Checks; reconcile reset-ledger assumptions and the integration fixture with current accepted behavior, investigate cleanup behind the cgroup follow-on error, and fix any demonstrated local defect without undoing the queue reset or writer protections.
-- Failing tests: `test_project_status.ProjectStatusTests.test_live_qualification_stays_open_and_separate`; `test_project_status.ProjectStatusTests.test_reviewed_delivery_is_current_not_pending`; `test_task_execution.RecoveryTests.test_runner_jobs_do_not_block_integration_but_outside_scratch_sessions_do`.
-- Evidence: `<git-common-dir>/autowork-execution/main-evidence/868ae56442381e511bb83532883b2c9be466f9f5/` (`main_check.json`, `main-check.log`, `main-check.exit`, `main-check-reruns.log`, `flaky_history.json`), checked `868ae56442381e511bb83532883b2c9be466f9f5`, last green `616cb7f335056db1a7a31e281d22c80d3e418d62`. Full check exit 1; all three isolated reruns exit 1; no current flaky classification. Since-green commits: `868ae564`, `0cc75087`, `5729fd49`, `09d65eaa`, `6ab2c115`, `892d4311`, `e92b490f`; messages and source changes are recorded in the accepted repair.
-- Ownership: Autowork worker; independent review and serialized integration by the coordinator.
-- Touches: tests/test_project_status.py, docs/project.md, skills/autowork/scripts/test_task_execution.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py
-- Payoff: Restore the safe offline gate while preserving the owner queue reset, historical delivery evidence and outside-writer protection.
-- Sources: [Accepted repair](docs/tasks/main-868ae564-offline-repair.md#accepted-repair); owner queue-reset commit `0cc75087`; integration-diagnostic commit `5729fd49`.
-- Short: Restore the red main offline gate
-- Status: open
-- Goal: RELIABILITY-2026-10
-- Scope: Repair the three reproducible offline failures at 868ae564 without undoing the owner queue reset or the file-specific writer diagnostic; preserve live qualification boundaries.
-- Acceptance: `test_project_status.ProjectStatusTests.test_live_qualification_stays_open_and_separate`, `test_project_status.ProjectStatusTests.test_reviewed_delivery_is_current_not_pending`, `test_task_execution.RecoveryTests.test_runner_jobs_do_not_block_integration_but_outside_scratch_sessions_do` and the full offline check pass with regressions covering an intentionally reset ledger and file-specific integration holds; no deleted task is restored or live acceptance fabricated.
-- Checks: `python3 scripts/check.py tests/test_project_status.py skills/autowork/scripts/test_task_execution.py skills/autowork/scripts/test_parallel_integrate.py`; `python3 scripts/check.py`
-- Dependencies: None.
-
 ## Next
 
 ## Needs decision
@@ -41,7 +22,7 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 
 | Goal | Status | Evidence | Task |
 | --- | --- | --- | --- |
-| RELIABILITY-2026-10: Fix the reproduced high-ROI reliability bugs from the 2026-10-15 harvest | partial | executed <code>python3 scripts/check.py on integrated main (437/575/209/8 offline tests passed, includes the TOOLSET-043..051 regressions) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | MAIN-001-38 |
+| RELIABILITY-2026-10: Fix the reproduced high-ROI reliability bugs from the 2026-10-15 harvest | met | executed <code>python3 scripts/check.py on integrated main (437/575/209/8 offline tests passed, includes the TOOLSET-043..051 regressions) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | — |
 | README-DESIGN: Vendor the README design skill and use it on this README | met | executed <code>TOOLSET-060/061 (b15bbc7, 5a9c044, ff7196f): python3 scripts/check.py 4/4 directories passed, node --test tests/portable_pi.test.mjs passed, docs.py check ok, vendored audit_readme.py passed with 2 local images; independent review of the vendoring; offline only</code> → pass; executed <code>TOOLSET-116-fc: python3 scripts/check.py passed 575/715/217/8 tests (one skip/eight excluded modules); all 12 focused README-audit tests and exact-source independent review approved; mixed-text single-line examples and adjacent-image preservation verified offline</code> → pass | — |
 | PRIORITY: Make TODO.md order the enforced human priority | met | Executed check: pass ([TOOLSET-029](TODO.archive.md#toolset-029)) | — |
 | ARCHIVAL: Integrate archival and reconcile the rendering contract | met | executed <code>Reviewed 218865c; coordinator exact-commit Python 3.12 scripts/check.py: 253/448/139/8 offline tests passed, 2 skipped, 8 excluded; native same-card review approved; local integration only</code> → pass; executed <code>cd skills/docs-sync/scripts &amp;&amp; python3 -m unittest test_todo_archive test_archive_policy test_render_safety (31 tests; offline only)</code> → pass; executed <code>python3 scripts/check.py (411/572/204/8 offline tests passed; includes TOOLSET-042 archive newline, git diff --check and legacy-retry regressions); offline only</code> → pass | — |
