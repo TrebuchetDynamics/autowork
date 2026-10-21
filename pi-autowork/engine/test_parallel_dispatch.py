@@ -832,6 +832,36 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.assertNotIn('A', [s['task_id'] for s in state.slots(self.common)])
         self.assertNotIn('A', [d['task'] for d in freed.get('dispatched') or []])
 
+    def test_closed_at_base_is_not_redispatched(self):
+        """An older session still has A open; the base closed it: A never starts again."""
+        self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 0.1}, 'B': {'files': {'b.txt': 'b'}, 'sleep': 0.1}})
+        self.close_on_base(task('A', 'a.txt').replace('- [ ] A', '- [x] A'), task('B', 'b.txt'),
+                           task('C', 'c.txt', 'A'), task('E', 'e.txt'), task('D', 'a.txt'))
+        self.assertEqual(task_queue.record(self.repo, 'A').status, 'open')  # the session's own store
+        for _ in range(2):
+            _, result = self.apply('--base-ref', 'trunk')
+            self.assertNotIn('A', [d['task'] for d in result['dispatched']], result)
+            self.wait_until_idle()
+        self.assertNotIn('A', [e.get('task') for e in self.events()])
+
+    def test_unconverted_repo_names_migrate(self):
+        bare = self.root / 'unconverted'
+        bare.mkdir()
+        self.git('init', '-q', repo=bare)
+        (bare / 'TODO.md').write_text('# Work queue\n\n## Next\n\n' + task('A', 'a.txt'))
+        self.git('add', '-A', repo=bare)
+        self.git('-c', 'user.email=f@example.invalid', '-c', 'user.name=F', 'commit', '-qm', 'old plan', repo=bare)
+        argv = [str(bare), '--owner-pid', str(self.owner), '--apply', '--parallel', '--worker-command',
+                json.dumps([sys.executable, str(FAKE), '{prompt_file}', '{worktree}'])]
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = execution.main(argv)
+        result = json.loads(out.getvalue())
+        self.assertNotEqual(code, 0)
+        self.assertIn(f'run `autowork migrate {bare}`', json.dumps(result))
+        self.assertFalse(result.get('dispatched'))
+        self.assertEqual(self.events(), [])  # no worker started
+
     def test_a_task_closed_only_on_the_base_never_starts(self):
         self.close_on_base(task('A', 'a.txt'), task('B', 'b.txt'), task('C', 'c.txt', 'A'),
                            task('E', 'e.txt').replace('- [ ] E', '- [x] E'), task('D', 'a.txt'))

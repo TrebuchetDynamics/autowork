@@ -146,6 +146,33 @@ class FleetViewTests(unittest.TestCase):
         question = fleet_view.read_questions(str(self.base))[0]
         self.assertEqual((question.id, question.kind, question.answer), ('T-2', 'quick_hold', 'add `Blocker resolution: ab12cd; x`'))
 
+    def test_fleet_counts_match_store(self):
+        """The Tasks window counts what the store holds: open tasks per section, in rank order;
+        done and superseded tasks, and a draft's missing fields, change nothing."""
+        import task_queue
+        repo = self.base / 'counted'
+        repo.mkdir()
+        store_fixture.write_todo(repo, '# TODO\n\n## Now\n\n- [ ] N-1 — One\n\n- [ ] N-2 — Two\n\n- [x] N-0 — Done\n\n'
+                                       '## Next\n\n- [ ] X-1 — Next one\n\n- [ ] X-2 — Next two\n\n'
+                                       '## Needs decision\n\n- [ ] D-1 — Asked\n')
+        import task_store
+        path = repo / 'tasks/items/X-1.md'
+        path.write_text(task_store.set_note(task_store.edit(path.read_text(), {'status': 'superseded'}),
+                                            'Superseded by', 'X-2; one task does both'))
+        subprocess.run(['git', '-C', str(repo), '-c', 'user.name=T', '-c', 'user.email=t@example.invalid',
+                        'commit', '-qam', 'X-2 supersedes X-1'], check=True)
+        store = task_queue.store(repo)
+        rows = fleet_view.task_rows(fleet_view.Runner(name='counted', repo=str(repo), state_dir=str(self.base / 'none')))
+        expected = sorted((t for t in store.tasks.values() if t.status == 'open'),
+                          key=lambda t: (['Now', 'Next', 'Needs decision'].index(t.section), t.rank, t.id))
+        self.assertEqual([r.task for r in rows], [t.id for t in expected])
+        for section in ('Now', 'Next', 'Needs decision'):
+            self.assertEqual(sum(r.section == section for r in rows),
+                             sum(t.status == 'open' and t.section == section for t in store.tasks.values()), section)
+        self.assertEqual([r.task for r in rows], ['N-1', 'N-2', 'X-2', 'D-1'])
+        self.assertEqual(sorted(g for g, _ in fleet_view.open_goals(fleet_view.Runner(name='counted', repo=str(repo)))),
+                         sorted(g.id for g in store.goals.values() if g.status != 'met'))
+
     def test_tasks_list_every_open_task_in_order_with_what_the_runner_says(self):
         repo = self.base / 'repo'
         repo.mkdir()

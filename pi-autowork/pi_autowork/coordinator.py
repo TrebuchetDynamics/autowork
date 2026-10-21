@@ -2705,6 +2705,18 @@ class Coordinator:
 
     def planning_ready(self):
         """A session sees the committed base, not the owner's untracked planning files."""
+        if not (Path(self.repo) / 'tasks').is_dir():
+            # Unconverted: nothing is selected and no model runs until the owner migrates it.
+            blocker = f'no tasks/ store: run `autowork migrate {self.repo}` to convert this repository once'
+            if self.mode != 'continuous':
+                raise Finish(4, blocker)
+            if self.last_waiting != 'planning:' + blocker:
+                LOG.say(f'Runner blocked: {blocker}')
+            self.last_waiting = 'planning:' + blocker
+            self.runner_blocker = blocker
+            self.health_update({'outcome': 'PARALLEL_STATUS', 'tasks': [], 'roots': []})
+            self.pause(self.interval)
+            return False
         missing = fleet_view.uncommitted_planning(self.repo, self.base)
         path = Path(self.repo) / 'BLOCKERS.md'
         old = path.read_text() if path.exists() else None

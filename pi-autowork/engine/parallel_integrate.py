@@ -718,6 +718,10 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
             if missing := state.missing_commit_report(common, slot):
                 return hold(common, slot, missing, cause='report')
             contracts = {t['id']: t for t in dispatch.contracts(repo)}
+            if slot['state'] == 'reported' and task in contracts and admitted_contract_changed(common, slot, contracts[task]):
+                # A rank, title or note edit keeps the attempt; a contract edit since dispatch
+                # does not: the work was built against another contract (TOOLSET-298-c2).
+                return hold(common, slot, 'task contract changed since dispatch', cause='contract_changed')
             slots = {s['task_id']: s for s in state.slots(common) if s['state'] in ('reported', 'integrating')
                      and not state.missing_commit_report(common, s)}
             # A candidate refused for a live writer steps aside for a bounded window, so one
@@ -1098,6 +1102,16 @@ def dispatched_contract(common, slot):
     if marker is None:
         return None
     return text[marker.end():].split('\nFresh retry after a held integration.', 1)[0].strip()
+
+
+def admitted_contract_changed(common, slot, contract):
+    """Whether ``contract`` (the task's current one) is not what this attempt was admitted
+    against: the hash pinned at dispatch, or the text of an owner's rescope. Without either
+    record there is nothing to compare."""
+    if slot.get('rescoped_contract'):
+        return slot['rescoped_contract'].strip() != contract['contract'].strip()
+    pinned = pinned_hash(common, slot)
+    return bool(pinned) and pinned != contract.get('contract_hash')
 
 
 def pinned_hash(common, slot):

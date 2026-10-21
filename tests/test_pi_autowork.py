@@ -2087,6 +2087,58 @@ class EngineTests(Fixture):
                 self.assertNotIn('planning files are not committed', question.read_text())
                 self.assertIn('Owner note: preserve me.', question.read_text())
 
+    def test_nested_task_edit_wakes_coordinator(self):
+        """Editing a task file in place need not change its directory's timestamp."""
+        self.write_todo(todo([('Z', None)]).replace('- [ ] Z', '- [x] Z').replace('Status: open', 'Status: done'))
+        self.git(self.repo, 'commit', '-qam', 'nothing open')
+        runner = self.start_runner('--interval', '300')
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 60
+        while 'Queue empty; checking again in 300s' not in log():
+            self.assertLess(time.monotonic(), deadline, log())
+            self.assertIsNone(runner.poll(), log())
+            time.sleep(0.2)
+        folder = self.repo / 'tasks/items'
+        stamp = folder.stat()
+        with (folder / 'Z.md').open('a') as record:  # the owner's note, in place and uncommitted
+            record.write('- Owner note: revisit next week\n')
+        os.utime(folder, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+        self.assertEqual(folder.stat().st_mtime_ns, stamp.st_mtime_ns)
+        changed = time.monotonic()
+        while 'changed; checking now' not in log():
+            self.assertLess(time.monotonic() - changed, 30, log())  # well inside the 300 s interval
+            self.assertIsNone(runner.poll(), log())
+            time.sleep(0.2)
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=120)
+
+    def test_unconverted_repo_idles_with_migrate_hint(self):
+        self.git(self.repo, 'rm', '-r', '-q', 'tasks')
+        (self.repo / 'TODO.md').write_text(self.scenario)
+        self.git(self.repo, 'add', 'TODO.md')
+        self.git(self.repo, 'commit', '-qm', 'a repository from before the task store')
+        once = self.run_runner('--once')
+        self.assertEqual(once.returncode, 2, once.stdout + once.stderr)
+        self.assertIn(f'Run `autowork migrate {self.repo}`', once.stderr)
+        runner = self.start_runner('--interval', '1')  # the service's mode: it waits
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 60
+        while 'Runner blocked: no tasks/ store: run `autowork migrate' not in log():
+            self.assertLess(time.monotonic(), deadline, log())
+            self.assertIsNone(runner.poll(), log())
+            time.sleep(0.2)
+        time.sleep(3)  # several cycles: no worker, no model, one line
+        self.assertIsNone(runner.poll(), log())
+        self.assertEqual(log().count('Runner blocked:'), 1, log())
+        self.assertEqual(self.runs(), [])
+        status = json.loads(next(self.state.glob('*/status.json')).read_text())
+        self.assertIn(f'run `autowork migrate {self.repo}`', status['blocker'])
+        self.assertEqual(self.git(self.repo, 'status', '--porcelain'), '')  # nothing written
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=120)
+
     def test_an_idle_runner_starts_new_work_as_soon_as_todo_changes(self):
         """The owner plans; the runner reacts to the plan, not to its polling interval."""
         self.write_todo(todo([]))

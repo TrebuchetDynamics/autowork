@@ -2649,6 +2649,164 @@ sys.exit(1)
         self.assertEqual(missed, [late.pid])
         late.returncode = -9  # reaped by the cleanup, not by Popen
 
+    # --- Task Store v2 acceptance (TOOLSET-298-c2, TOOLSET-302-33, TOOLSET-300-68) -------------
+
+    def edit_record(self, task, changes, message):
+        """An owner's edit to a task record, committed on the canonical branch."""
+        import task_store
+        path = self.repo / 'tasks/items' / f'{task}.md'
+        path.write_text(task_store.edit(path.read_text(), changes))
+        self.git('commit', '-qam', message)
+
+    def edit_during_validation(self, task, key, value):
+        """A validation command that commits one edit to ``task``'s record once while it runs, as
+        the runner does when it takes main beside a review, counting its runs."""
+        runs = Path(self.temp.name) / 'runs'
+        path = self.repo / 'tasks/items' / f'{task}.md'
+        script = (f'echo run >> {runs}; if [ ! -e {runs}.moved ]; then touch {runs}.moved; '
+                  f'sed -i "s/^{key} = .*/{key} = {value}/" {path}; '
+                  f'git -C {self.repo} -c user.email=o@example.invalid -c user.name=Owner commit -qam "owner {key}"; fi')
+        return ['bash', '-c', script], runs
+
+    def test_rank_edit_keeps_admitted_work(self):
+        self.worker()  # dispatched against A's contract, and reported
+        self.edit_record('A', {'rank': 99999, 'title': 'Task A, renamed'}, 'the owner re-sorts A')
+        result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual(self.module().close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
+
+    def test_contract_edit_invalidates_admitted_work(self):
+        self.worker()
+        self.edit_record('A', {'acceptance': ['a requirement no one verified']}, 'the owner changes A')
+        result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual((result['outcome'], result.get('cause')), ('HELD', 'contract_changed'), result)
+        self.assertEqual((self.repo / 'A.txt').read_text(), 'base\n')  # the attempt's commit did not land
+        self.assertNotEqual(self.record('A').status, 'done')
+        retry = self.module().retry_held(self.retry_args())  # set aside; it runs fresh against the new contract
+        self.assertEqual((retry.get('outcome'), retry['renamed'][0]['branch_now']), ('REQUEUED', 'autowork/A-set-aside-1'))
+        self.assertEqual(state.slots(self.common), [])
+
+    def test_a_superseded_or_closed_admitted_task_is_set_aside(self):
+        """Status is outside the contract hash, so a close is checked as its own transition."""
+        for status in ('superseded', 'done'):
+            with self.subTest(status=status):
+                self.worker()
+                pinned = self.record('A').contract_hash
+                self.edit_record('A', {'status': status}, f'the owner marks A {status}')
+                self.assertEqual(self.record('A').contract_hash, pinned)  # the hash alone would keep it
+                result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
+                self.assertIn('set aside', result['reason'], result)
+                self.assertEqual((self.repo / 'A.txt').read_text(), 'base\n')
+                self.assertEqual(state.slots(self.common), [])
+                self.edit_record('A', {'status': 'open'}, 'A reopens for the next case')
+
+    def test_rank_edit_on_base_keeps_the_remerge_shortcut(self):
+        self.worker()
+        argv, runs = self.edit_during_validation('A', 'rank', '77777')
+        result = self.module().integrate(self.repo, self.owner, 'A', argv, 30)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual(runs.read_text().count('run'), 1)  # a rank is bookkeeping: validated once
+        self.assertEqual(self.record('A').rank, 77777)
+
+    def test_acceptance_edit_on_base_requires_revalidation(self):
+        self.worker()
+        argv, runs = self.edit_during_validation('A', 'acceptance', "['changed while it was checked']")
+        result = self.module().integrate(self.repo, self.owner, 'A', argv, 30)
+        self.assertNotEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual((result.get("cause"), self.record("A").status), ("contract_changed", "open"), (result, runs.read_text()))
+        self.assertEqual((self.repo / 'A.txt').read_text(), 'base\n')
+
+    def test_worker_cannot_grant_authority_via_task_edit(self):
+        """A worker branch that adds a task with live authorization, or grants another task
+        resources, checks or live authorization, is held, never merged as bookkeeping."""
+        for t in 'CD':
+            self.repo.joinpath(t + '.txt').write_text('base\n')
+        self.git('add', '.')
+        self.set_todo(self.todo + ''.join(
+            f'\n- [ ] {t} — Task {t}\n  Scope: {t}.txt\n  Touches: {t}.txt\n  Acceptance: offline fixture\n'
+            f'  Checks: true\n  Dependencies: None.\n  Status: open\n' for t in 'CD'))
+        self.baseline = self.git('rev-parse', 'HEAD')
+        grants = {
+            'A': ('tasks/items/NEW.md', self.task_text('B').replace('id = "B"', 'id = "NEW"').replace(
+                'resources = []', 'resources = ["live"]').replace('kind = "implementation"',
+                                                                 'kind = "implementation"\nlive = "authorized"')),
+            'C': ('tasks/items/B.md', self.task_text('B').replace('resources = []', 'resources = ["port:80"]')),
+            'D': ('tasks/items/B.md', self.task_text('B').replace('checks = ["true"]', 'checks = ["true", "deploy"]')),
+        }
+        for worker, (path, text) in grants.items():
+            with self.subTest(grant=path, worker=worker):
+                self.worker(worker, {f'{worker}.txt': 'worker\n', path: text})
+                result = self.module().integrate(self.repo, self.owner, worker, ['true'], 10)
+                self.assertEqual((result['outcome'], result['cause'], result['outside']), ('HELD', 'scope', [path]), result)
+                self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
+                self.assertIsNone(self.record('NEW'))
+                self.assertEqual((self.record('B').resources, self.record('B').checks), ((), ('true',)))
+        self.assertEqual(self.module().retry_held(self.retry_args())['outcome'], 'IDLE')  # never offered again
+
+    def close_committed(self, task='A'):
+        result = self.module().close(self.repo, self.owner, task)
+        if result['files']:
+            self.git('add', '--', *result['files'])
+            self.git('commit', '-qm', f'docs(tasks): close {task}')
+        return result
+
+    def test_closure_is_one_commit(self):
+        self.worker()
+        self.assertEqual(self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        before = self.git('rev-parse', 'HEAD')
+        result = self.close_committed()
+        self.assertEqual(result['files'], ['tasks/evidence/A.toml', 'tasks/items/A.md'])
+        self.assertEqual(self.git('rev-list', '--count', f'{before}..HEAD'), '1')
+        self.assertEqual(self.git('show', '--format=', '--name-only', 'HEAD').split(),
+                         ['tasks/evidence/A.toml', 'tasks/items/A.md'])  # only that task's file and receipt
+        self.assertEqual(self.record('A').status, 'done')
+        receipt = (self.repo / 'tasks/evidence/A.toml').read_text()
+        slot = state.slots(self.common)[0] if state.slots(self.common) else None
+        self.assertIn(f'contract_hash = "{self.record("A").contract_hash}"', receipt)
+        self.assertIn('candidate = "', receipt)
+        self.assertIn('tree = "', receipt)
+        self.assertTrue(slot is None or slot['state'] == 'closed')
+
+    def test_replayed_closure_is_a_noop(self):
+        self.worker()
+        self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.close_committed()
+        head = self.git('rev-parse', 'HEAD')
+        again = self.close_committed()
+        self.assertEqual((again['outcome'], again['files']), ('CLOSED', []))
+        self.assertEqual(self.git('rev-parse', 'HEAD'), head)
+        self.assertEqual(self.git('status', '--porcelain'), '')
+
+    def test_crash_mid_closure_resumes_once(self):
+        """A crash after the status write and before the receipt: the next close finishes it, and
+        the closure is still one commit."""
+        self.worker()
+        self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
+        before = self.git('rev-parse', 'HEAD')
+        path = self.repo / 'tasks/items/A.md'
+        path.write_text(path.read_text().replace('status = "open"', 'status = "done"'))  # the crash point
+        result = self.close_committed()
+        self.assertEqual(result['outcome'], 'CLOSED', result)
+        self.assertEqual(self.git('rev-list', '--count', f'{before}..HEAD'), '1')
+        self.assertTrue((self.repo / 'tasks/evidence/A.toml').is_file())
+        self.assertEqual(self.close_committed()['files'], [])
+        self.assertEqual(self.git('rev-list', '--count', f'{before}..HEAD'), '1')
+
+    def test_receipt_has_no_private_paths(self):
+        self.worker()
+        secret = 'sk-fixture-secret-9f3a'
+        command = ['bash', '-c', f'test -d {self.repo} && test -n "{secret}"']
+        with patch.dict(os.environ, FIXTURE_API_TOKEN=secret):
+            self.assertEqual(self.module().integrate(self.repo, self.owner, 'A', command, 10)['outcome'], 'INTEGRATED')
+            self.close_committed()
+        receipt = (self.repo / 'tasks/evidence/A.toml').read_text()
+        for private in (str(self.repo), self.temp.name, str(Path.home()), secret):
+            self.assertNotIn(private, receipt)
+        self.assertIn('[REDACTED]', receipt)
+        self.assertIn('<path>', receipt)
+        for key in ('time', 'log', 'transcript'):
+            self.assertNotIn(f'\n{key} =', '\n' + receipt)
+
 
 class ExpectedBranchTests(unittest.TestCase):
     """Found qualifying pi-autowork: a restarted worker was held as 'unexpected worker branch'."""

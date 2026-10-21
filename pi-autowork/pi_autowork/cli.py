@@ -273,7 +273,8 @@ def main(argv):
     repo = git(start, 'rev-parse', '--show-toplevel')
     if not repo:
         die(2, f'Not inside a Git repository: {start}')
-    if not (Path(repo) / 'tasks').is_dir():
+    if not (Path(repo) / 'tasks').is_dir() and opts['mode'] != 'continuous':
+        # A continuous runner (the service) waits for the conversion instead, at zero tokens.
         die(2, f'No tasks/ store at {repo}. Run `autowork migrate {repo}` once to convert TODO.md and '
                'goals.json, or plan the work first, for example with /plan-with-me.')
     base = git(repo, 'symbolic-ref', '--short', '-q', 'HEAD')
