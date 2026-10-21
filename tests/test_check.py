@@ -38,7 +38,7 @@ class OfflineCheckTests(unittest.TestCase):
     def test_listing_is_import_free_and_uses_owned_directories(self):
         sentinel = "raise RuntimeError('unsafe import must never run')\n"
         self.write('tests/test_unit.py', sentinel)
-        self.write('skills/autowork/scripts/test_task_execution.py', sentinel)
+        self.write('pi-autowork/engine/test_task_execution.py', sentinel)
         self.write('vendor/examples/test_external.py', sentinel)
         self.write('skills/autowork/references/vendor/test_external.py', sentinel)
         self.write('skills/docs-sync/scripts/test_goal_gap_regression.py', sentinel)
@@ -46,7 +46,7 @@ class OfflineCheckTests(unittest.TestCase):
         result = self.run_check('--list')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('RUN tests/test_unit.py', result.stdout)
-        self.assertIn('RUN skills/autowork/scripts/test_task_execution.py', result.stdout)
+        self.assertIn('RUN pi-autowork/engine/test_task_execution.py', result.stdout)
         self.assertIn('EXCLUDE skills/docs-sync/scripts/test_goal_gap_regression.py [model]', result.stdout)
         self.assertIn('EXCLUDE tests/integration_plugin.py [integration]', result.stdout)
         self.assertNotIn('test_external.py', result.stdout)
@@ -67,9 +67,8 @@ class OfflineCheckTests(unittest.TestCase):
 
     def test_symlinked_directory_components_never_import_external_tests(self):
         cases = (('tests', 'test_external.py'),
-                 ('skills', 'autowork/scripts/test_external.py'),
-                 ('skills/autowork', 'scripts/test_external.py'),
-                 ('skills/autowork/scripts', 'test_external.py'))
+                 ('pi-autowork', 'engine/test_external.py'),
+                 ('pi-autowork/engine', 'test_external.py'))
         base = self.root
         for index, (link_name, module_name) in enumerate(cases):
             with self.subTest(component=link_name):

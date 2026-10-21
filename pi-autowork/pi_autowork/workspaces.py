@@ -21,7 +21,7 @@ import sys
 
 def task_path(toolset, repo, name):
     """Use the same canonical location policy as the engine and Claude hooks."""
-    source = Path(toolset) / 'skills/autowork/scripts/worktree_paths.py'
+    source = Path(toolset) / 'pi-autowork/engine/worktree_paths.py'
     spec = importlib.util.spec_from_file_location('autowork_worktree_paths', source)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

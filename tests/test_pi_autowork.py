@@ -20,7 +20,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / 'scripts/pi-autowork.sh'
-ENGINE_DIR = ROOT / 'skills/autowork/scripts'
+ENGINE_DIR = ROOT / 'pi-autowork/engine'
 
 
 def setUpModule():
@@ -38,7 +38,7 @@ def setUpModule():
     subprocess.run(['git', '-C', str(ROOT), 'checkout', '-q', '--detach', head], check=True)
     # Snapshot dependencies together: a merge can change both the engine's CLI
     # and the helpers it calls, not just the runner entry points.
-    paths = ['pi-autowork/pi_autowork', 'skills/autowork/scripts',
+    paths = ['pi-autowork/pi_autowork', 'pi-autowork/engine',
              'skills/docs-sync/scripts', 'scripts/pi-autowork.sh']
     patch = subprocess.run(['git', '-C', str(source), 'diff', '--binary', 'HEAD', '--', *paths],
                            check=True, capture_output=True).stdout
@@ -48,7 +48,7 @@ def setUpModule():
         subprocess.run(['git', '-C', str(ROOT), '-c', 'user.email=t@example.invalid', '-c', 'user.name=T',
                         'commit', '-qam', 'production code under test'], check=True)
     RUNNER = ROOT / 'scripts/pi-autowork.sh'
-    ENGINE_DIR = ROOT / 'skills/autowork/scripts'
+    ENGINE_DIR = ROOT / 'pi-autowork/engine'
 
 
 def tearDownModule():
@@ -3133,7 +3133,7 @@ class SetupTests(Fixture):
     def test_a_release_that_cannot_read_current_state_is_never_installed(self):
         package = self.installed_package()
         def schema_2_only(tree):
-            state = tree / 'skills/autowork/scripts/parallel_state.py'
+            state = tree / 'pi-autowork/engine/parallel_state.py'
             state.write_text(state.read_text().replace('STATE_SCHEMA_READS = (1,)', 'STATE_SCHEMA_READS = (2,)'))
         self.publish(schema_2_only, 'reads only schema 2')
         runner = self.run_until(package / 'scripts/pi-autowork.sh', 'Toolset update deferred')

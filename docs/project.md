@@ -44,7 +44,7 @@ planning) and the profile collectors remain. See the source-bound
 | Hermes registration | [entry point](../__init__.py), [workflow aliases](../workflow_commands.py), [research aliases](../autoresearch_commands.py) | Discover skill folders, provision them and `skills/shared` into the profile, apply runtime defaults and cron scripts, publish current skill IDs, register commands (with `/autowork status` and imported-skill aliases from [bundle](../bundle.py)) and route conversation arguments |
 | Hermes diagnostics | [bundle](../bundle.py), [menu policy](../telegram_menu_policy.py) | Distinguish core registration from integration readiness and prioritize public commands |
 | Fleet installation | [orchestrator](../setup_bundle.py), [preflight](../setup_preflight.py), [finalization](../setup_runtime.py) | Validate prerequisites, install resources/configuration, check profiles and refresh supported gateways |
-| Autowork execution | [cycle](../skills/autowork/scripts/owner_cycle.py), [task execution](../skills/autowork/scripts/task_execution.py) | Select repository tasks and coordinate direct execution with live-writer protection; the agent implements and reports actual results |
+| Autowork execution | [cycle](../pi-autowork/engine/owner_cycle.py), [task execution](../pi-autowork/engine/task_execution.py) | Select repository tasks and coordinate direct execution with live-writer protection; the agent implements and reports actual results |
 | Task index and history | [goals helper](../skills/docs-sync/scripts/goals.py), [archive helper](../skills/docs-sync/scripts/todo_archive.py) | Validate and update goals.json, render TODO coverage and archive explicitly closed, ledger-done bodies and separately labelled superseded history under the shared Git lock; supersession does not claim completion |
 | Codex package | [manifest](../.codex-plugin/plugin.json), [marketplace](../.agents/plugins/marketplace.json) | Install portable skills into Codex; no Hermes gateway or configuration dependency |
 | Pi package | [manifest](../package.json), [extension](../adapters/pi.mjs) | Register native commands, expose `adapters/skills` as Pi skills and pass literal arguments to portable workflows |
@@ -187,7 +187,7 @@ useful model action, savings or live delivery. Retain that evidence in
 [the archive](../TODO.archive.md), not as a current requirement to call the retired
 native handoff.
 
-The [current owner cycle](../skills/autowork/scripts/owner_cycle.py) selects and
+The [current owner cycle](../pi-autowork/engine/owner_cycle.py) selects and
 coordinates direct repository execution. Use its
 [current-session contract](../skills/autowork/references/owner-cycle.md#current-session)
 for actual owner identity and source-bound checks. An `EXECUTE` result is a contract
@@ -457,9 +457,9 @@ production runs and external message delivery are separate outcomes.
 
 ### Evidence and diagnosis
 
-At planning time, `skills/autowork/scripts/owner_cycle.py::run_locked` reconciled a retained
+At planning time, `pi-autowork/engine/owner_cycle.py::run_locked` reconciled a retained
 native handoff before selection and could return `BLOCKED` without selecting a TODO
-task. [`skills/autowork/scripts/reconcile.py` (historical source)](https://github.com/TrebuchetDynamics/autowork/blob/0d7c2bf16d4baf549b3f90033a31a9d0021280e8/skills/autowork/scripts/reconcile.py) calls
+task. [`pi-autowork/engine/reconcile.py` (historical source)](https://github.com/TrebuchetDynamics/autowork/blob/0d7c2bf16d4baf549b3f90033a31a9d0021280e8/pi-autowork/engine/reconcile.py) calls
 `continuation_capability.assess(None)`, while
 `skills/autowork/references/historical-owner-cycle.md#original-card-continuation-capability`
 explicitly documents the missing binding. These are concrete native-integration
@@ -839,7 +839,7 @@ Findings:
   toolset-written protocol needs its own entry point.
 - Measured baseline on `75fb76f`: `python3 scripts/check.py` runs 1,247 offline tests
   (455/575/209/8) in 242 s wall time, directories one after another.
-  `skills/autowork/scripts` takes 146 s; `test_delivery_state.py` holds 10 of its 15
+  `pi-autowork/engine` takes 146 s; `test_delivery_state.py` holds 10 of its 15
   slowest tests (about 40 s). coverage.py 7.13.5 and pytest 8.3.3 are installed;
   no mutation tool is. The suite runs once per checkout, not once per profile.
 

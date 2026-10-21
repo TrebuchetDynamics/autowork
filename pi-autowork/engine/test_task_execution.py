@@ -290,7 +290,10 @@ class RecoveryTests(ExecutionFixtureMixin, unittest.TestCase):
                         with patch.object(Path, 'read_text', other_unit):
                             result = integrate.integrate(self.repo, owner, task, ['true'], 10)
                         self.assertEqual(result['outcome'], 'BUSY', result)
-                        self.assertIn('(session:', result['reason'])
+                        # In the main checkout the wait names the file it left uncommitted;
+                        # elsewhere the process itself is named.
+                        self.assertIn('uncommitted changes in the main checkout: fixture.py' if cwd == self.repo
+                                      else '(session:', result['reason'])
                         (self.repo / 'fixture.py').unlink(missing_ok=True)
                         outsider.kill(); outsider.wait()
                 env = dict(os.environ)
@@ -536,7 +539,7 @@ class SelectionCacheTests(unittest.TestCase):
                 'tasks': [{'id': 'A', 'title': 'parse once', 'goal': 'G',
                            'status': 'open', 'section': 'Now'}]}))
             parses = []
-            scripts = SCRIPT.parents[2] / 'docs-sync/scripts'
+            scripts = SCRIPT.parents[2] / 'skills/docs-sync/scripts'
             def observe(frame, event, arg):
                 if (event == 'call' and frame.f_code.co_name == 'task_bodies'
                         and Path(frame.f_code.co_filename).parent == scripts):

@@ -29,7 +29,7 @@ if str(HERE) not in sys.path:
 import goals  # noqa: E402  (inside `goals.py`, sys.modules['goals'] is that running module)
 from hot_file_policy import HOT_TASKS  # noqa: E402
 
-ENGINE_DIR = HERE.parents[1] / 'autowork' / 'scripts'
+ENGINE_DIR = HERE.parents[2] / 'pi-autowork' / 'engine'
 
 # contract_reason's duplicate-label set; Checks/Verification together are duplicates too.
 DUPLICATE_LABELS = ('Scope', 'Acceptance', 'Checks', 'Verification', 'Dependencies', 'Status', 'Sources', 'Touches')

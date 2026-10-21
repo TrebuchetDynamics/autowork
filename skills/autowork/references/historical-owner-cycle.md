@@ -290,7 +290,7 @@ acceptance; an open combined task does not mean no implementation occurred.
 Use the shared runner rather than assembling status JSON by hand:
 
 ```sh
-python3 <autowork>/scripts/owner_cycle.py /absolute/consumer \
+python3 <toolset>/pi-autowork/engine/owner_cycle.py /absolute/consumer \
   --plan SPEC.md#slice --tasks T1 \
   --state-dir "$HERMES_HOME/autowork"
 ```

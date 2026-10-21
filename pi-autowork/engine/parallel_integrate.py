@@ -659,12 +659,16 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
             slot = slot_for(common, task)
             if not slot or slot['state'] not in ('reported', 'integrating'):
                 raise ValueError('integration requires a reported or abandoned integrating slot')
-            if slot['state'] == 'reported' and task in dispatch.retired(repo, base):
-                # Closed meanwhile (TOOLSET-218-d0): a duplicate of finished work never lands.
+            gone = slot['state'] == 'reported' and task in dispatch.removed(repo)
+            if gone or (slot['state'] == 'reported' and task in dispatch.retired(repo, base)):
+                # Closed meanwhile (TOOLSET-218-d0): a duplicate of finished work never lands; a task
+                # a person deleted never lands either, and its work is kept under -set-aside names.
                 with execution.lock(common / 'dispatch.lock'):
                     aside = _retire(repo, common, dict(slot, cause='closed_on_base'), False)
                 state.event(common, 'closed_on_base', task_id=task, base=base or '')
-                return dict(aside, reason=f'{task} is closed on {base or "this branch"}; its commit is set aside')
+                return dict(aside, reason=(f'{task} was removed from TODO.md' if gone
+                                           else f'{task} is closed on {base or "this branch"}')
+                            + '; its commit is set aside')
             if missing := state.missing_commit_report(common, slot):
                 return hold(common, slot, missing, cause='report')
             contracts = {t['id']: t for t in dispatch.contracts(repo)}
@@ -884,7 +888,7 @@ def recover_integration(repo, common, slot, contracts):
 
 
 def goals_command(repo, *argv):
-    script = Path(__file__).resolve().parents[2] / 'docs-sync/scripts/goals.py'
+    script = Path(__file__).resolve().parents[2] / 'skills/docs-sync/scripts/goals.py'
     result = subprocess.run([sys.executable, str(script), argv[0], str(repo), *argv[1:]],
                             capture_output=True, text=True, timeout=60)
     if result.returncode:
@@ -1764,8 +1768,9 @@ def retire_closed(args):
         slots = [s for s in state.slots(common) if s['state'] in RETIRABLE]
         if not slots:
             return [], []
-        closed = dispatch.retired(repo, base)
-        doomed = [s for s in slots if s['task_id'] in closed]
+        closed, gone = dispatch.retired(repo, base), dispatch.removed(repo)
+        # A held slot of a deleted task keeps its own path (retry_held sets it aside, not requeued).
+        doomed = [s for s in slots if s['task_id'] in closed or (s['task_id'] in gone and s['state'] != 'held')]
         for slot in doomed:
             if state.worker_live(slot):
                 dispatch.stop(slot.get('worker'), slot.get('worktree'))

@@ -25,14 +25,14 @@ retain the candidate and continue only independently authorized work.
 
 ## Remove finished worktrees with the helper
 
-`scripts/worktree_closeout.py` removes finished worktrees deterministically. The
+`<toolset>/pi-autowork/engine/worktree_closeout.py` removes finished worktrees deterministically. The
 task helper (`owner_cycle.py CONSUMER --apply`) runs it on every task claim, so
 worktrees left by earlier tasks, sessions or hosts are cleaned up without a model
 having to remember. After integrating, run it for the task's own worktree from the
 canonical checkout; naming a worktree skips the 30-minute grace period:
 
 ```sh
-python3 <this-skill-directory>/scripts/worktree_closeout.py "$CANONICAL" --worktree "$TASK_WORKTREE" --apply
+python3 <toolset>/pi-autowork/engine/worktree_closeout.py "$CANONICAL" --worktree "$TASK_WORKTREE" --apply
 ```
 
 Without `--worktree` it considers every registered worktree of the repository;

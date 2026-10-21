@@ -1,6 +1,6 @@
 """The pi-autowork coordinator loop.
 
-The toolset's Parallel Autowork engine (skills/autowork/scripts/owner_cycle.py) is
+The toolset's Parallel Autowork engine (pi-autowork/engine/owner_cycle.py) is
 the only authority for task state: it plans, dispatches, verifies and closes. This
 loop holds the engine lease (its PID is the owner) and supplies what the engine
 leaves to the host: a session branch merged into the main branch at the end, Pi jobs
@@ -209,7 +209,7 @@ class Coordinator:
         self.landed_at, self.land_soon = time.monotonic(), False
         self.plan_seen = None
         self.stall_after = env.get('PI_AUTOWORK_STALL_AFTER', '1800')
-        self.engine_path = Path(self.toolset) / 'skills/autowork/scripts/owner_cycle.py'
+        self.engine_path = Path(self.toolset) / 'pi-autowork/engine/owner_cycle.py'
         self.goals = Path(self.toolset) / 'skills/docs-sync/scripts/goals.py'
         self.process_script = str(Path(self.toolset) / 'scripts/pi-autowork.sh')
         self.worker_command = json.dumps(['/bin/bash', self.process_script, '--worker', str(self.state), '{worktree}',

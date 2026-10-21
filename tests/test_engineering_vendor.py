@@ -12,7 +12,9 @@ ROOT=Path(__file__).resolve().parents[1]
 PACK=ROOT/'skills/engineering'
 
 class EngineeringVendorTests(unittest.TestCase):
-    def test_live_helper_delivery_retains_local_dependency_closure(self):
+    def test_the_engine_ships_with_pi_autowork_not_the_installed_skill(self):
+        """The autowork skill carries no code: profiles get its instructions and Docs Sync's
+        helpers, and the engine runs from the toolset's pi-autowork/engine."""
         spec = importlib.util.spec_from_file_location('ready_install_fixture', ROOT / 'install_skills.py')
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
@@ -20,11 +22,11 @@ class EngineeringVendorTests(unittest.TestCase):
             home = Path(td)
             selected = [ROOT / 'skills' / name for name in ('autowork', 'docs-sync', 'engineering')]
             self.assertEqual(module.install(ROOT / 'skills', [('fixture', home)], skills=selected, report=lambda _: None), 0)
-            for path in ('autowork/scripts/owner_cycle.py', 'autowork/scripts/task_execution.py',
-                         'autowork/scripts/parallel_dispatch.py', 'autowork/scripts/source_freshness.py',
-                         'autowork/scripts/retry_selection.py', 'docs-sync/scripts/goals.py'):
-                self.assertEqual((home / 'skills' / path).read_bytes(), (ROOT / 'skills' / path).read_bytes())
-            result = subprocess.run(['python3', str(home / 'skills/autowork/scripts/owner_cycle.py'), '--help'],
+            self.assertTrue((home / 'skills/autowork/SKILL.md').is_file())
+            self.assertFalse((home / 'skills/autowork/scripts').exists())
+            self.assertEqual((home / 'skills/docs-sync/scripts/goals.py').read_bytes(),
+                             (ROOT / 'skills/docs-sync/scripts/goals.py').read_bytes())
+            result = subprocess.run(['python3', str(ROOT / 'pi-autowork/engine/owner_cycle.py'), '--help'],
                                     capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn('--source-path', result.stdout)

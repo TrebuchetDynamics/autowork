@@ -858,6 +858,23 @@ def retired(repo, base=None):
     return ids | (closed_on(repo, base) if base else set())
 
 
+def removed(repo):
+    """Task IDs with a slot whose entry is gone from TODO.md, its archive and goals.json: a person
+    deleted the task. Their commits are set aside like closed ones; after the queue was reset,
+    eight finished commits asked to integrate every minute and were refused as 'first: None'.
+    Without a TODO.md nothing reads as removed."""
+    if not (repo / 'TODO.md').is_file():
+        return set()
+    present = set()
+    for name in LEDGER_ARCHIVES:
+        path = repo / name
+        if path.is_file():
+            present.update(execution.task_bodies(path))
+    if (repo / 'goals.json').is_file():
+        present.update(t['id'] for t in execution.task_ledger(repo).get('tasks', []))
+    return {slot['task_id'] for slot in state.slots(state.common_dir(repo))} - present
+
+
 def closed_on(repo, base):
     """Task IDs closed on the ``base`` branch (TOOLSET-218-d0). A session's ledger takes the
     base only when the session lands, so a task the owner closed there kept its worker for

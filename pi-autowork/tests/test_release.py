@@ -13,7 +13,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import release  # noqa: E402
 
-STATE = 'skills/autowork/scripts/parallel_state.py'
+STATE = 'pi-autowork/engine/parallel_state.py'
 
 
 class ReleaseCheckTests(unittest.TestCase):
@@ -219,7 +219,7 @@ class InstalledToolsetTests(unittest.TestCase):
             base = Path(folder).resolve()
             old, new = base / 'old-toolset', base / 'autowork'
             for copy in (old, new):
-                for name in ('skills/autowork/scripts/owner_cycle.py', 'skills/docs-sync/scripts/goals.py'):
+                for name in ('pi-autowork/engine/owner_cycle.py', 'skills/docs-sync/scripts/goals.py'):
                     (copy / name).parent.mkdir(parents=True, exist_ok=True)
                     (copy / name).touch()
             pi = base / 'pi'

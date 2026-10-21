@@ -88,7 +88,7 @@ class StatusWaitTests(unittest.TestCase):
         with patch.object(execution, 'external_workers', return_value=[]):
             value = status.snapshot(self.repo, now=22600)
         self.assertIsNone(value['roots'][0]['adoptable_after'])
-        sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'pi-autowork'))
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'pi-autowork'))
         from pi_autowork import questions
         self.assertEqual([q['id'] for q in questions.build(value, todo, execution.goals_module())], ['A'])
 
@@ -104,7 +104,7 @@ class StatusWaitTests(unittest.TestCase):
         self.assertIn('wait for deferred D', status.render(value))
         self.assertEqual([(r['id'], r['kind'], r.get('deferred')) for r in value['roots']],
                          [('D', 'outside', True)])
-        sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'pi-autowork'))
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'pi-autowork'))
         from pi_autowork import health, questions
         self.assertEqual(questions.build(value, todo, execution.goals_module()), [])
         self.assertEqual(health.waiting_groups(value['tasks'])[0]['label'], 'wait for deferred D')

@@ -7,7 +7,7 @@ from pathlib import Path
 import platform
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'skills/autowork/scripts'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'pi-autowork/engine'))
 from test_parallel_e2e import ABCWorkload
 
 

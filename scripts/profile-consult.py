@@ -235,7 +235,7 @@ def read_database(path):
 
 
 _output_spec = importlib.util.spec_from_file_location(
-    'cron_output', Path(__file__).resolve().parents[1] / 'skills/autowork/scripts/cron_output.py')
+    'cron_output', Path(__file__).resolve().parents[1] / 'pi-autowork/engine/cron_output.py')
 assert _output_spec is not None and _output_spec.loader is not None
 _output = importlib.util.module_from_spec(_output_spec)
 _output_spec.loader.exec_module(_output)
@@ -344,7 +344,7 @@ def reuse_fingerprint(name, root, hermes, seconds):
         paths = [source / 'scripts/profile-consult.py', source / 'scripts/wire-owner-cron.py',
                  source / 'skills/autowork/references/profile-feedback.md']
         # Include helper dependencies, not just the entry points named in a prompt.
-        with os.scandir(source / 'skills/autowork/scripts') as entries:
+        with os.scandir(source / 'pi-autowork/engine') as entries:
             for index, entry in enumerate(entries):
                 if index >= 256:
                     return None

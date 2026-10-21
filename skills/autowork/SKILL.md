@@ -53,10 +53,13 @@ review step. Keep Hermes Agent unchanged.
    Keep source/candidate identity, actual owner/session, explicit limits and known
    consumed budget in private evidence. One coherent delivery batch may include
    connected code, tests and docs; do not split it merely by file.
+   The engine is not part of this skill: it ships with pi-autowork, in
+   `<toolset>/pi-autowork/engine/`, where `<toolset>` is the installed Autowork toolset
+   (the Pi package `~/.pi/agent/git/github.com/TrebuchetDynamics/autowork`, or a clone).
    The default is one composed command for selection and coordination:
 
    ```sh
-   python3 <autowork>/scripts/owner_cycle.py /absolute/repo \
+   python3 <toolset>/pi-autowork/engine/owner_cycle.py /absolute/repo \
      --apply --owner-pid ACTUAL_SESSION_PID
    ```
 
@@ -96,7 +99,7 @@ review step. Keep Hermes Agent unchanged.
    explicit scoped authorization. Report actual commit/review/integration separately.
    For worktree-backed work, finish [worktree closeout](references/worktree-closeout.md):
    verify integration on the canonical `main` or `master`, then remove the task's
-   worktree with `scripts/worktree_closeout.py CANONICAL --worktree PATH --apply`.
+   worktree with `<toolset>/pi-autowork/engine/worktree_closeout.py CANONICAL --worktree PATH --apply`.
    Every `--apply` task claim also removes earlier integrated, clean, unused
    worktrees and reports the rest under `worktree_cleanup`. Preserve active, dirty,
    unmerged or recovery-bearing worktrees; report integration/cleanup pending.
