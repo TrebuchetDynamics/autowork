@@ -220,7 +220,8 @@ peak memory instead of asserting a wall clock).
 Offline task-store regressions cover pinned reads and whole-store refusal
 (`pi-autowork/engine/test_task_store.py`), selection order and reasons
 (`test_task_select.py`), the `autowork tasks` writer (`tests/test_task_commands.py`),
-conversion (`tests/test_task_migrate.py`), admission and closure by contract hash
+conversion (`tests/test_task_migrate.py`), preparation/bootstrap/recovery and
+read-only diagnostics (`tests/test_task_prepare.py`), admission and closure by contract hash
 (`test_parallel_dispatch.py`, `test_parallel_integrate.py`) and the runner's reopening of
 a close a merge left under another contract (`pi-autowork/tests/test_task_reopen.py`).
 
@@ -339,14 +340,18 @@ receipt and activation/transport evidence before making those live claims.
 
 ```sh
 python3 scripts/check.py pi-autowork/engine/test_task_store.py pi-autowork/engine/test_task_select.py \
-  tests/test_task_commands.py tests/test_task_migrate.py tests/test_task_store_qualification.py
+  tests/test_task_commands.py tests/test_task_migrate.py tests/test_task_prepare.py \
+  tests/test_task_store_qualification.py
 ```
 
 The fixtures use real disposable Git repositories: a malformed or conflicting record
 refuses the whole store with its `path:line`, a write that would break the store is
 undone, conversion proves the store selects what the old queue selected, and the
 qualification fixture runs one task end to end (refused before migration, selected,
-run and closed with one receipt after). The safe root gate remains:
+run and closed with one receipt after). Preparation cases additionally cover new
+repository bootstrap, conversion staging/recovery, unchanged-repeat behavior,
+read-only HEAD diagnostics and active-contract protection. These are offline
+fixtures, not proof of model adherence. The safe root gate remains:
 
 ```sh
 uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py

@@ -199,7 +199,8 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
                  state=state, since=since,
                  active_workers=snapshot.get('active_workers', 0),
                  in_flight=sum(t.get('state') in IN_FLIGHT for t in snapshot.get('tasks', [])),
-                 waiting=sum(t.get('state') == 'waiting' for t in snapshot.get('tasks', [])),
+                 # A task a restart paused waits to resume: counted nowhere, it fell out of the fleet's Total.
+                 waiting=sum(t.get('state') in ('waiting', 'interrupted') for t in snapshot.get('tasks', [])),
                  held=[dict(task=t['task'], cause=t.get('cause'), reason=t.get('reason'))
                        for t in snapshot.get('tasks', []) if t.get('state') == 'held'],
                  roots=roots[:10], stall_roots=keys if state == 'stalled' else [],

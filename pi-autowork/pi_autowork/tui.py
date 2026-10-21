@@ -860,7 +860,8 @@ class FleetApp(App):
         text.append(f'{runner.name}  ', style='bold')
         text.append(sentence + '\n', style=style)
         active, mergeable, waiting, blocker, total = fleet_view.task_counts(runner)
-        detail_row(text, 'Tasks', f'{total} open · {active} active · {mergeable} mergeable · {waiting} waiting · {blocker} blocker')
+        detail_row(text, 'Tasks', f'{total} open · {active} active · {mergeable} mergeable · {waiting} waiting · {blocker} blocker'
+                   + (f' · {runner.decisions} for your decision' if runner.decisions else ''))
         waiting = fleet_view.waiting_line(runner)
         if waiting:
             detail_row(text, 'Waiting', f'{runner.waiting}: {waiting}')

@@ -628,6 +628,20 @@ class FleetViewTests(unittest.TestCase):
                                    waiting=2, held=[('D', 'conflict')])
         self.assertEqual(fleet_view.task_counts(runner), (2, 0, 3, 1, 6))
 
+    def test_total_counts_every_open_task(self):
+        """The fleet's Total read 12 for a store of 20 open tasks: three a restart had paused were in
+        no column, and four in Needs decision never reach the engine's status."""
+        from pi_autowork import health
+        with tempfile.TemporaryDirectory() as folder:
+            snapshot = {'outcome': 'PARALLEL_STATUS', 'active_workers': 0, 'roots': [],
+                        'tasks': [{'task': 'A', 'state': 'waiting'}, {'task': 'B', 'state': 'interrupted', 'paused': True}]}
+            health.update(folder, snapshot, now=1000)
+            self.assertEqual(json.loads((Path(folder) / 'status.json').read_text())['waiting'], 2)
+        runner = fleet_view.Runner(name='a', waiting=2, decisions=4)
+        self.assertEqual(fleet_view.task_counts(runner), (0, 0, 2, 0, 6))
+        self.assertEqual(fleet_view.needs(fleet_view.Runner(name='a', state='idle', decisions=4)),
+                         '4 tasks need your decision')
+
     def test_mergeable_needs_passed_gates(self):
         """Only an integrated commit (checks and review passed, on the session branch) is Mergeable;
         a commit being verified or merged is Active."""
