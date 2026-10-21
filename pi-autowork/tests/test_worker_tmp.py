@@ -946,6 +946,27 @@ class BatchLandingTests(unittest.TestCase):
                                     'and the task runs fresh on current main',
                                     'D: could not set aside its day-old commit: its interrupted integration already landed'])
 
+    def test_a_busy_checkout_ends_the_pass_so_the_batch_lands_in_order(self):
+        """A session in the checkout answered BUSY for the first of three batch-passed candidates;
+        the second was tried next, off its batch's order, and both were reviewed again."""
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator = self.runner(folder, {})
+            runner.stop, runner.known_at_start, runner.once_task = False, True, None
+            rows = [{'task': t, 'state': 'reported'} for t in ('A', 'B', 'C')]
+            started = []
+            for name, value in dict(finish_resolvers=lambda: None, status=lambda: {}, set_aside_stale=lambda r: False,
+                                    session_busy=lambda: False, reverify_held=lambda r: None,
+                                    batch_chain=lambda: ['A', 'B', 'C'], batch_conflicts=lambda: [],
+                                    batch_due=lambda r: [], reexec_due=lambda: '', follow_base=lambda: None,
+                                    resolve_deferred=lambda d: False, start_integration=started.append).items():
+                setattr(runner, name, value)
+            runner.tasks = lambda snapshot=None: rows
+            runner.collect_integration = lambda wait=0: (
+                (started[-1], {'outcome': 'BUSY', 'reason': 'live session in the checkout'}) if wait else None)
+            with patch.object(coordinator.LOG, 'say'):
+                runner.settle()
+            self.assertEqual(started, ['A'])
+
     def test_a_due_reload_starts_no_merge_resolver(self):
         """Each new resolver kept the reload pending, and a due reload starts no batch: commits
         were resolved again and again for hours while none landed."""

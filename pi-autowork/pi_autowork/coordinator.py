@@ -1639,6 +1639,11 @@ class Coordinator:
             self.integrated(*finished, resolve_conflicts=False)
             if finished[1].get('cause') == 'conflict':
                 deferred.append(task)
+            if finished[1].get('outcome') == 'BUSY':
+                # The next candidate meets the same busy checkout, or lands out of its batch's order:
+                # a session in the checkout sent the second of three batch-passed candidates first,
+                # and both it and the first were reviewed again (19 min) instead of landing.
+                break
         self.resolve_deferred(deferred)
 
     def note_integrating(self, task, chain):
