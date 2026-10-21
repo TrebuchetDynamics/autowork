@@ -570,7 +570,9 @@
         "TOOLSET-091-00",
         "TOOLSET-279-eb",
         "TOOLSET-292-6a",
-        "TOOLSET-297-cb"
+        "TOOLSET-297-cb",
+        "TOOLSET-298-05",
+        "TOOLSET-299-d5"
       ],
       "title": "Run independent Autowork tasks in parallel workers with one coordinator"
     },
@@ -837,7 +839,8 @@
         "TOOLSET-291-ae",
         "TOOLSET-294-9d",
         "TOOLSET-295-c8",
-        "TOOLSET-296-ee"
+        "TOOLSET-296-ee",
+        "TOOLSET-300-3d"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -851,6 +854,9 @@
       "TOOLSET-295-c8",
       "TOOLSET-296-ee",
       "TOOLSET-297-cb",
+      "TOOLSET-300-3d",
+      "TOOLSET-298-05",
+      "TOOLSET-299-d5",
       "TOOLSET-287-44",
       "TOOLSET-270-a9",
       "TOOLSET-274-f0",
@@ -1246,6 +1252,35 @@
       "section": "Now",
       "status": "open",
       "title": "The engine journal records a dispatch observation only when it changed"
+    },
+    {
+      "depends_on": [],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-298-05",
+      "section": "Now",
+      "status": "open",
+      "title": "A task claim names its holder, and a claim whose holder is gone is adoptable at once"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-297-cb",
+        "TOOLSET-298-05"
+      ],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-299-d5",
+      "section": "Now",
+      "status": "open",
+      "title": "Status and the TUI show what a claim waits for, not just claimed elsewhere"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-291-ae"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-300-3d",
+      "section": "Now",
+      "status": "open",
+      "title": "A main check that did not pass says why: failing tests, timeout, killed, environment or incomplete"
     },
     {
       "depends_on": [],
