@@ -216,6 +216,27 @@ class PlanTests(unittest.TestCase):
                 self.assertEqual([w['id'] for w in result['waiting']], ['B', 'C'] if alone else ['B'])
                 self.assertIn(reason, result['waiting'][0]['reason'])
 
+    def test_a_shared_test_module_only_ranks_and_never_serializes(self):
+        """TOOLSET-341-eb82856d: five tasks waited on one for tests/test_pi_autowork.py alone."""
+        from parallel_plan import plan, test_module
+        for path, expected in (('tests/test_pi_autowork.py', True), ('pi-autowork/engine/test_parallel_plan.py', True),
+                               ('pkg/tests/helpers.py', True), ('src/thing_test.py', True),
+                               ('pi-autowork/engine/parallel_plan.py', False), ('src/testing.py', False)):
+            with self.subTest(path=path):
+                self.assertEqual(test_module(path), expected)
+        tasks = [task(f'T{i}', f'mod{i}.py, tests/test_pi_autowork.py') for i in range(1, 4)]
+        result = plan(tasks, all_tasks=tasks)
+        self.assertEqual([t['id'] for t in result['dispatch']], ['T1', 'T2', 'T3'])
+        # The same three tasks sharing a production module still wait for each other.
+        tasks = [task(f'P{i}', f'mod{i}.py, shared/core.py') for i in range(1, 4)]
+        result = plan(tasks, all_tasks=tasks)
+        self.assertEqual([t['id'] for t in result['dispatch']], ['P1'])
+        self.assertEqual({w['reason'] for w in result['waiting']}, {'waits for P1 (shares hot file shared/core.py)'})
+        # Beside a running task that names the test module too.
+        result = plan([task('A', 'a.py, tests/test_pi_autowork.py')], [task('RUN', 'r.py, tests/test_pi_autowork.py')],
+                      all_tasks=[task('X', 'x.py, tests/test_pi_autowork.py')], protected_files=[])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['A'])
+
     def test_a_hot_file_waits_for_its_owner_while_shared_directories_only_rank(self):
         """Three unfinished contracts make shared/x.py hot, including the idle claim.
         A hot file waits; a directory or glob still only ranks
