@@ -766,6 +766,25 @@ class BatchFailureTests(unittest.TestCase):
             self.assertIn('G@g', json.loads(Path(folder, 'batch-failed.json').read_text()))
 
 
+    def test_failed_batch_commits_get_several_reviews_alone_between_two_batches(self):
+        """One review alone per batch left five commits whose batch had failed waiting 6 to 23 hours."""
+        reported = [(t, t.lower()) for t in 'ABCD']
+        with tempfile.TemporaryDirectory() as folder, patch('pi_autowork.coordinator.LOG'), \
+                patch.dict(os.environ, PI_AUTOWORK_SINGLES_PER_BATCH='2'):
+            Path(folder, 'batch-failed.json').write_text(json.dumps(['A@a']))
+            runner = self.coordinator(folder)
+            self.assertEqual(runner.batch_due(reported), list('BCD'))
+            for extra in 'EF':  # new candidates arrive, yet two reviews alone come first
+                reported.append((extra, extra.lower()))
+                self.assertEqual(runner.batch_due(reported), [], extra)
+                runner.single_started()
+            reported.append(('G', 'g'))
+            self.assertEqual(runner.batch_due(reported), list('BCDEFG'))  # their turns are used: a batch
+            # With nothing whose batch failed waiting, turns left never hold a batch back.
+            Path(folder, 'batch-failed.json').write_text('[]')
+            reported.append(('H', 'h'))
+            self.assertEqual(runner.batch_due(reported), list('ABCDEFGH'))
+
     def test_suspects_integrate_alone_and_the_rest_batch_again(self):
         """Halving cost a full check per round; the failing tests usually name the candidate."""
         reported = [(t, t.lower()) for t in 'ABCD']
@@ -1095,7 +1114,9 @@ class BatchableTests(unittest.TestCase):
             (runner.state / 'batch-failed.json').write_text(json.dumps(['F@f']))
             reported = [('A', 'a'), ('B', 'b'), ('F', 'f')]
             self.assertEqual(runner.batch_due(reported), ['A', 'B'])
-            self.assertEqual(runner.batch_due(reported + [('C', 'c')]), [])  # F's turn, alone
+            for _ in range(3):  # F's turns alone (PI_AUTOWORK_SINGLES_PER_BATCH, default 3)
+                self.assertEqual(runner.batch_due(reported + [('C', 'c')]), [])
+                runner.single_started()
             self.assertEqual(runner.batch_due(reported + [('C', 'c')]), ['A', 'B', 'C'])
             (runner.state / 'batch-failed.json').write_text('[]')
             self.assertEqual(runner.batch_due([('D', 'd'), ('E', 'e')]), ['D', 'E'])  # none failed: batches go on

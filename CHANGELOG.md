@@ -319,6 +319,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A fresh retry no longer starts while a task that must run alone drains the worker pool:
+  `retry_held` now waits, as ordinary dispatch does, when an exclusive task ahead of it has
+  waited past `drain_after`; a split task waited 46 minutes while a retry took the slot.
+- Commits whose batch failed clear faster: after a batch, up to `PI_AUTOWORK_SINGLES_PER_BATCH`
+  (default 3) reviews alone run before the next batch while such commits wait, instead of one.
+  Only real reviews count, not quick refusals or batch-passed landings. Five such commits had
+  waited 6 to 23 hours behind batches that fresh commits kept full.
 - Release pruning no longer stops at a process caught exiting (no command line, its
   environment unreadable): under process churn every fourth prune kept every old release,
   and `test_late_imports_keep_the_selected_release_while_unused_releases_are_pruned`

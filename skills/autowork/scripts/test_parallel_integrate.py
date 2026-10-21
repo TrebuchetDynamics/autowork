@@ -2587,10 +2587,20 @@ finally:
             content = content.replace('Touches: A.txt', 'Touches: A.txt\n  Resources: exclusive')
         elif constraint == 'unknown':
             content = content.replace('  Touches: A.txt\n', '')
+        elif constraint.startswith('draining'):
+            # Z must run alone and has waited past drain_after beside B: ahead of A, or after it.
+            z = ('- [ ] Z — Task Z\n  Scope: Z.txt\n  Touches: Z.txt\n  Resources: exclusive\n'
+                 '  Acceptance: offline fixture\n  Checks: true\n  Dependencies: None.\n  Status: open\n')
+            content = content.replace('- [ ] A ', z + '\n- [ ] A ', 1) if constraint == 'draining' else content + '\n' + z
         todo.write_text(content)
         self.git('commit', '--allow-empty', '-qam', 'scope fixture')
         self.baseline = self.git('rev-parse', 'HEAD')
         self.start_sleeping_slot('B')
+        if constraint.startswith('draining'):  # after B's own dispatch observation, which resets the clock
+            with (self.common / 'journal.jsonl').open('a') as stream:
+                for age in (7200, 60):
+                    stream.write(json.dumps({'timestamp': time.time() - age, 'event': 'dispatch_observed', 'waiting': [
+                        {'id': 'Z', 'reason': 'live/exclusive resource; must run alone (beside B)'}]}) + '\n')
         self.worker()
         state.transition(self.repo, self.owner, 'A', 'held', reason='failure')
         args = self.retry_args()
@@ -2611,6 +2621,13 @@ finally:
     def test_a_retry_with_cold_overlap_runs_beside_the_worker(self):
         """Two tasks naming a file do not make it hot; a free slot can retry."""
         self.retry_blocked_fixture('overlap', 'RETRIED')
+
+    def test_a_retry_waits_while_a_task_ahead_of_it_drains_the_pool(self):
+        """A fresh retry started while an exclusive task drained the pool, so it kept waiting."""
+        self.retry_blocked_fixture('draining', 'WAITING')
+
+    def test_a_retry_ahead_of_the_draining_task_still_runs(self):
+        self.retry_blocked_fixture('draining-below', 'RETRIED')
 
     def test_exclusive_retry_waits_for_worker_pool(self):
         self.retry_blocked_fixture('exclusive')

@@ -271,9 +271,10 @@ class Coordinator:
                  and f'{t}@{commit}' not in failed]
         if size < 2 or len(fresh) < 2 or self.reexec_due() or self.batch_pending():
             return []  # land the last batch first: a new one would be built on another tree
-        if self.seen.pop('batched', None) and any(f'{t}@{commit}' in failed for t, commit in reported):
-            # One review alone between two batches: while resolutions kept the batch fresh, nine
-            # commits whose batch had failed never got a review of their own, one for 15 hours.
+        if self.seen.get('singles', 0) > 0 and any(f'{t}@{commit}' in failed for t, commit in reported):
+            # Reviews alone between two batches while commits whose batch failed wait: with one
+            # per batch, fresh commits kept the batches full and five such commits waited 6 to 23
+            # hours, one until it was nearly set aside as a day old (2026-10-20).
             return []
         half = self.batch_half({f'{t}@{commit}' for t, commit in fresh})
         if half:
@@ -282,9 +283,14 @@ class Coordinator:
         if self.seen.get('batch-tried') == key:
             return []
         self.seen['batch-tried'] = key
-        self.seen['batched'] = True
+        self.seen['singles'] = max(1, worker.setting('PI_AUTOWORK_SINGLES_PER_BATCH', 3))
         self.batch_revisions = [f'{t}@{commit}' for t, commit in fresh]
         return [t for t, _ in fresh]
+
+    def single_started(self):
+        """A review alone began: it uses one of the turns the last batch left them (batch_due)."""
+        if self.seen.get('singles'):
+            self.seen['singles'] -= 1
 
     def batch_failed(self):
         """Revisions whose batch failed its full check: they integrate one at a time. Kept on disk,
@@ -1642,6 +1648,8 @@ class Coordinator:
                 self.note_integrating(task, chain)
                 finished = self.collect_integration(wait=3.5)
             if finished is None:
+                if task not in chain:  # a batch-passed candidate landing is not a review alone
+                    self.single_started()
                 self.resolve_deferred(deferred)
                 return  # a real review: it runs beside the loop until it ends
             handled.add(task)
@@ -1652,6 +1660,8 @@ class Coordinator:
                     queue.insert(0, first[1])
                 continue
             if finished[1].get('outcome') in ('INTEGRATED', 'HELD'):
+                if task not in chain:  # a quick review is one; a refusal ("X first", busy) is not
+                    self.single_started()
                 self.note_integrating(task, chain)  # a quick review still ran: say so before its answer
             self.integrated(*finished, resolve_conflicts=False)
             if finished[1].get('cause') == 'conflict':
