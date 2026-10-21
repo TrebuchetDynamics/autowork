@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-298-c2"
 title = "The engine reads only tasks/"
 short = "Engine cutover to tasks/"
-status = "open"
+status = "done"
 goal = "TASK-STORE"
 section = "Needs decision"
 rank = 2000
@@ -21,5 +21,5 @@ exclusions = ["Integration's change classification is TOOLSET-302-33; the runner
 - Owner decision: Decision 2026-10-20 (supervisor, delegated while owner AFK): built on branch task-store-v2 by an interactive session, never by the runner; it lands on main only inside TOOLSET-301-32's single merge with this repository's conversion, because any one cutover task on main stops every unconverted repository's runner, this one's included
 - Payoff: Remove the second parse of TODO.md and goals.json from selection, dispatch and integration.
 - Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20); [selector](pi-autowork/engine/task_execution.py); [dispatch](pi-autowork/engine/parallel_dispatch.py); [integration](pi-autowork/engine/parallel_integrate.py) (`PLANNING_FILES`, `planning_only`); [claims](pi-autowork/engine/parallel_claims.py); [state](pi-autowork/engine/parallel_state.py); [status](pi-autowork/engine/parallel_status.py); [retry](pi-autowork/engine/retry_selection.py).
-- Evidence: these modules read TODO.md or goals.json directly and detect task changes by file bytes, so a rank edit can invalidate admitted work.
+- Evidence: Offline only: on task-store-v2 (merged 38999d67) the engine selects, dispatches and integrates from tasks/ at a pinned commit; admitted_contract_changed holds contract edits (test_contract_edit_invalidates_admitted_work, test_rank_edit_keeps_admitted_work, test_worker_cannot_grant_authority_via_task_edit pass); closure is one commit (test_closure_is_one_commit, test_replayed_closure_is_a_noop, test_crash_mid_closure_resumes_once); mutants killed; no live qualification.
 - Ownership: Toolset coordinator.

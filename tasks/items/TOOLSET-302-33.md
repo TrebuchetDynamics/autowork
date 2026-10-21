@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-302-33"
 title = "Integration judges task edits by contract hash, not by path"
 short = "Contract-hash change classification"
-status = "open"
+status = "done"
 goal = "TASK-STORE"
 section = "Needs decision"
 rank = 3000
@@ -21,5 +21,5 @@ exclusions = ["No distributed leases; one integration coordinator per repository
 - Owner decision: Decision 2026-10-20 (supervisor, delegated while owner AFK): built on branch task-store-v2 by an interactive session, never by the runner; it lands on main only inside TOOLSET-301-32's single merge with this repository's conversion, because any one cutover task on main stops every unconverted repository's runner, this one's included
 - Payoff: Stop a clean Git merge from closing a task under acceptance nobody verified.
 - Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20); [integration](pi-autowork/engine/parallel_integrate.py) (`PLANNING_FILES`, `planning_only`, the remerge shortcut, the post-verification contract recheck).
-- Evidence: `planning_only` treats `docs/` and the planning files as safe to remerge without rerunning checks; simply adding `tasks/` there would let an acceptance or check edit ride through as "planning only". File-per-task also allows clean textual merges of one task's acceptance edit and another branch's `status = "done"`.
+- Evidence: Offline only: on branch task-store-v2 (merged 38999d67) worker/maintainer planning-only checks classify tasks/ paths and the engine reads only the store; pi-autowork/tests and engine tests pass (test_parallel_status/task_select/parallel_dispatch 79 OK); no live qualification.
 - Ownership: Toolset coordinator.

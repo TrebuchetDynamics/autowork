@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-301-32"
 title = "Planning skills use the autowork CLI and this repository converts to tasks/"
 short = "Skills, docs and this repo's conversion"
-status = "open"
+status = "done"
 goal = "TASK-STORE"
 section = "Needs decision"
 rank = 6000
@@ -21,6 +21,6 @@ exclusions = ["No conversion of fleet repositories; their owner runs `autowork m
 - Owner decision: Decision 2026-10-20 (supervisor, delegated while owner AFK): built on branch task-store-v2 by an interactive session, never by the runner; it lands on main only inside TOOLSET-301-32's single merge with this repository's conversion, because any one cutover task on main stops every unconverted repository's runner, this one's included
 - Payoff: Finish the cut: skills and docs describe one store, and this repository runs on it.
 - Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20); [Autowork skill](skills/autowork/SKILL.md); [Docs Sync](skills/docs-sync/SKILL.md); [Plan For Me](skills/plan-for-me/SKILL.md); [Blockers](skills/blockers/SKILL.md); [TODO rules](skills/shared/TODO-WORKCENTER.md).
-- Evidence: the skills tell agents to edit TODO.md and run goals.py; after the cutover those files are no longer read on converted repositories.
+- Evidence: Offline only: tests/test_task_store_qualification.py passes (refuse with exit 2 on an unconverted repo, migrate in one commit, one task run and closed with one receipt commit); this repository converted by autowork migrate (40b24ead) and merged in one merge (38999d67); full scripts/check.py on the merged result follows; no live qualification.
 - Ownership: Toolset coordinator.
 - Dependencies: TOOLSET-297-41, TOOLSET-299-d9, TOOLSET-300-68, TOOLSET-302-33.

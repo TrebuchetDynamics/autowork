@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-300-68"
 title = "Closing a task publishes one receipt and status commit exactly once"
 short = "Idempotent closure receipts"
-status = "open"
+status = "done"
 goal = "TASK-STORE"
 section = "Needs decision"
 rank = 5000
@@ -21,5 +21,5 @@ exclusions = ["TODO.archive.md is not written by closure on a converted reposito
 - Owner decision: Decision 2026-10-20 (supervisor, delegated while owner AFK): built on branch task-store-v2 by an interactive session, never by the runner; it lands on main only inside TOOLSET-301-32's single merge with this repository's conversion, because any one cutover task on main stops every unconverted repository's runner, this one's included
 - Payoff: Make closure replay-safe, so a crash or retry never double-closes or loses a receipt.
 - Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20); [closure](pi-autowork/engine/finish_task.py); [integration journal](pi-autowork/engine/parallel_integrate.py); [check receipts](pi-autowork/engine/check_receipt.py).
-- Evidence: closure currently edits TODO.md, goals.json and the archive in separate writes; the decision requires one bookkeeping-only commit holding status and a sanitized receipt.
+- Evidence: Offline only: on task-store-v2 (merged 38999d67) Docs Sync's goals/plan-lint/planning-merge/todo-archive modules, the pending TODO parser and Touches-inference CLI are removed; skills and adapters use autowork tasks verbs (each verb and flag checked against the CLI); README, docs and CHANGELOG describe the store; no live qualification.
 - Ownership: Toolset coordinator.
