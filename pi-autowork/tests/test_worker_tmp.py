@@ -907,7 +907,8 @@ class BatchLandingTests(unittest.TestCase):
                 self.assertFalse(runner.merge_main())
             self.assertEqual(said, ['Merge pending: B land first, on the trees their batch passed'])  # said once
             runner.commit_session_leftovers, runner.ahead = (lambda: None), (lambda: 0)
-            with patch.object(coordinator, 'git', return_value='tasks/items/T.md\ndocs/plan.md\n'):
+            with patch.object(coordinator, 'git', return_value='tasks/items/T.md\ndocs/plan.md\n'), \
+                    patch.object(coordinator, 'git_ok', return_value=True):  # main is already in the session
                 self.assertTrue(runner.merge_main())  # planning and docs leave the verdicts valid
 
     def test_a_commit_at_the_merge_limit_runs_fresh_instead_of_asking_the_owner(self):
@@ -1135,6 +1136,25 @@ class BatchLandingTests(unittest.TestCase):
             self.assertIsNone(runner.train)
             self.assertEqual(runner.batch_chain(), ['A', 'B', 'C'])
             self.assertIn('landing them after the batch ahead', said.call_args[0][0])
+
+    def test_no_overlap_re_cut_starts_while_a_reload_is_due(self):
+        """A re-cut started just after a new release arrived: the due reload waited for it, and
+        no review or batch started for its whole Pi job."""
+        with tempfile.TemporaryDirectory() as folder:
+            runner, _ = self.runner(folder, {})
+            runner.integ, runner.stop = folder, False
+            reached = []
+
+            def validate_ledger(*_):
+                reached.append(True)
+                raise RuntimeError('stop here: the re-cut went ahead')
+            runner.validate_ledger = validate_ledger
+            runner.reexec_due = lambda: 'update'
+            self.assertFalse(runner.maintain(overlap=True))
+            self.assertEqual(reached, [])  # returned before any work
+            runner.reexec_due = lambda: None
+            with self.assertRaisesRegex(RuntimeError, 'went ahead'):
+                runner.maintain(overlap=True)  # without a due reload it proceeds as before
 
     def test_the_overlap_re_cut_runs_beside_the_loop(self):
         """Its Pi job held reviews, landings and dispatch for five minutes at a time while workers

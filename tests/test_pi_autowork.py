@@ -483,7 +483,7 @@ class Fixture(unittest.TestCase):
     def stop_workers(self):  # failures must not leave fake workers writing after cleanup
         slots = Path(self.git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')) / 'autowork-execution/slots'
         for path in slots.glob('*.json') if slots.exists() else []:
-            pid = json.loads(path.read_text()).get('worker', {}).get('pid')
+            pid = (json.loads(path.read_text()).get('worker') or {}).get('pid')  # a slot may record None
             if pid:
                 try:
                     os.killpg(pid, signal.SIGKILL)
