@@ -310,10 +310,32 @@ class Check(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('check_jobs', SCRIPT)
         checker = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(checker)
-        for cpus, load, jobs in ((22, 0.5, 8), (22, 16.2, 6), (22, 30.0, 4), (2, 0.0, 4)):
+        # (cpus, load, jobs for a niced check from the load average, jobs from busy CPUs, rounded up)
+        for cpus, load, jobs, unniced in ((22, 0.5, 8, 8), (22, 16.2, 6, 5), (22, 30.0, 4, 4), (2, 0.0, 4, 4)):
+            # A niced check (a worker's own) counts the whole load average, as before.
             with self.subTest(cpus=cpus, load=load), mock.patch.object(checker.os, 'cpu_count', return_value=cpus), \
+                    mock.patch.object(checker.os, 'getpriority', return_value=10), \
                     mock.patch.object(checker.os, 'getloadavg', return_value=(load, load, load)):
                 self.assertEqual(checker.default_jobs(), jobs)
+            # The integration check, not niced, counts only CPU busy at normal priority: niced
+            # workers yield to it (the load average read 23 on 24 CPUs that were 80% idle).
+            with self.subTest(cpus=cpus, busy=load), mock.patch.object(checker.os, 'cpu_count', return_value=cpus), \
+                    mock.patch.object(checker.os, 'getpriority', return_value=0), \
+                    mock.patch.object(checker, 'busy_cpus', return_value=load), \
+                    mock.patch.object(checker.os, 'getloadavg', side_effect=AssertionError('load average read')):
+                self.assertEqual(checker.default_jobs(), unniced)
+
+    def test_busy_cpus_leave_out_niced_time(self):
+        from unittest import mock
+        spec = importlib.util.spec_from_file_location('check_busy', SCRIPT)
+        checker = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(checker)
+        # user nice system idle iowait irq softirq steal: 1000 ticks, 600 of them niced, 200 idle
+        samples = iter([[0] * 8, [100, 600, 100, 200, 0, 0, 0, 0]])
+        with mock.patch.object(checker, '_cpu_times', side_effect=lambda: next(samples)), \
+                mock.patch.object(checker.os, 'cpu_count', return_value=10), \
+                mock.patch.object(checker.time, 'sleep'):
+            self.assertAlmostEqual(checker.busy_cpus(), 2.0)  # 200 of 1000 ticks busy at normal priority
 
     def test_jobs_one_runs_sequentially_with_the_same_output(self):
         self.sleeper('tests/test_slow.py', 1, 'first')

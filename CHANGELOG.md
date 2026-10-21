@@ -29,6 +29,15 @@ claim of a tagged release, completed installation or live workflow qualification
   still declares a budget is not held for it. Cost and tokens are still recorded per
   run in `runs.jsonl`, for measurement only; timeouts, runtime, cycle and failure
   limits and the owner's authority over spending money are unchanged.
+- **Faster integration.** Workers, everything they start and the background main check run
+  at nice 10, so the review and integration check every finished task waits on keep the
+  CPU. `scripts/check.py` sizes its pool from CPU busy at normal priority (`/proc/stat`)
+  rather than the load average when it is not niced itself: the load average read 23 on
+  24 mostly idle CPUs and held each integration check to 4 jobs. The DOCS-MAINTAINER's
+  overlap re-cut runs beside the loop like a merge resolution instead of holding reviews,
+  landings and dispatch for its Pi job. A session busy in another worktree of its own no
+  longer blocks a landing, which writes only the session checkout, the main checkout and
+  the integration worktree.
 - `autowork migrate` is one recoverable transaction: the converted commit is recorded as
   `refs/autowork/migration` before any file changes, staged, then landed by
   compare-and-swap; an interrupted run resumes or refuses, and `--no-commit` stages it.

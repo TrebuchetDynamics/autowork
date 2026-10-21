@@ -282,6 +282,41 @@ class DispatchTests(unittest.TestCase):
             self.assertTrue(pi_runtime.stop_stuck_commands(os.getpid(), .4, stopping))
             pi.wait(timeout=5)
 
+    def test_a_resumed_attempt_relaunches_after_its_release_was_pruned(self):
+        """A paused task failed to relaunch: its autowork-run link named a pruned release, so the
+        dangling link read as missing and creating it again raised EEXIST."""
+        data = self.common / 'slot-data/A/attempt-1'
+        (data / 'bin').mkdir(parents=True)
+        prompt = data / 'prompt.md'
+        prompt.write_text('x')
+        current = (SCRIPTS / 'autowork_run.py').resolve()
+        for case, old in (('dangling', self.common / 'releases/gone/autowork_run.py'),
+                          ('older release', SCRIPTS / 'parallel_state.py')):
+            with self.subTest(case=case):
+                link = data / 'bin/autowork-run'
+                link.unlink(missing_ok=True)
+                link.symlink_to(old)
+                child = dispatch.launch([sys.executable, '-c', 'import time; time.sleep(30)'], self.repo, data, 1, prompt)
+                dispatch.stop(child, str(self.repo))
+                self.assertEqual(Path(os.readlink(link)), current)
+
+    def test_a_worker_runs_below_the_coordinators_priority(self):
+        """The integration check every finished task waits on ran at the same priority as eight
+        workers' test runs; workers and everything they start now yield to it."""
+        data = self.common / 'slot-data/A/attempt-1'
+        data.mkdir(parents=True)
+        prompt = data / 'prompt.md'
+        prompt.write_text('x')
+        output = data / 'niceness'
+        script = 'import os, sys, time; open(sys.argv[1], "w").write(str(os.nice(0))); time.sleep(30)'
+        child = dispatch.launch([sys.executable, '-c', script, str(output)], self.repo, data, 1, prompt)
+        self.addCleanup(dispatch.stop, child, str(self.repo))
+        for _ in range(200):
+            if output.exists() and output.read_text():
+                break
+            time.sleep(.01)
+        self.assertEqual(int(output.read_text()), os.nice(0) + dispatch.WORKER_NICE)
+
     def test_worker_gets_main_evidence_location_and_repair_instructions(self):
         data = self.common / 'slot-data/A/attempt-1'
         data.mkdir(parents=True)

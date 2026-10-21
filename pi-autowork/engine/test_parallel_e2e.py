@@ -192,6 +192,18 @@ class EndToEndTests(unittest.TestCase):
             c = next(r for r in workload.initial['tasks'] if r['task'] == 'C')
             self.assertEqual(c['state'], 'waiting')
             self.assertIn('dependency', c['reason'])
+            import parallel_state as state
+            for slot in state.slots(workload.common):
+                self.assertEqual(slot['checks']['context']['attempt_id'], slot['attempt_id'])
+            state.observe_history(workload.repo, delivered_rev='main')
+            events = state.lifecycle_events(workload.common)['events']
+            for task in 'ABC':
+                journey = [e for e in events if e['task_id'] == task]
+                self.assertEqual([e['event'] for e in journey],
+                                 ['accepted', 'admitted', 'dispatched', 'reviewed',
+                                  'integrated', 'closed', 'delivered'])
+                self.assertTrue(all(e['attempt_id'] and e['host'] and e['model']
+                                    and e['repository'] and e['timestamp'] for e in journey))
 
     def test_abc_with_delayed_initial_observation(self):
         from unittest.mock import patch
@@ -353,8 +365,8 @@ class StatusTests(unittest.TestCase):
             (fixture.common / 'journal.jsonl').write_text('{')
             p = subprocess.run([sys.executable, str(CLI), str(fixture.repo), '--parallel-status', '--json'],
                                capture_output=True, text=True, timeout=10)
-            self.assertEqual(p.returncode, 1)
-            self.assertEqual(json.loads(p.stdout)['outcome'], 'ACTION_REQUIRED')
+            self.assertEqual(p.returncode, 0)
+            self.assertEqual(json.loads(p.stdout)['journal_skipped']['torn'], 1)
 
 
 if __name__ == '__main__':

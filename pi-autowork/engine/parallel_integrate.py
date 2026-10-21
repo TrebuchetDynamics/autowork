@@ -591,8 +591,22 @@ def require_no_writers(repo, files=None):
                        for w in worker.get('workspaces') or [] for root in roots)
         def recorded(worker):  # a slot's leader running somewhere the record does not say
             return any(execution.identity(worker['pid']) == leader for leader in leaders)
+        # The write lands only in these checkouts. A session busy in another worktree of its
+        # own (an interactive session's .worktrees/claude-*) cannot be overwritten there: a
+        # merge waited 15 minutes on one.
+        # Only a registered worktree that is not the runner's own counts: a process somewhere
+        # unknown (/var/tmp) still blocks, and so does one in a runner checkout (pi-scratch-*,
+        # autowork-*, pi-autowork-*), whose commits the runner merges.
+        targets = {str(Path(repo).resolve()), main, str(worktree_path(repo, 'autowork-integration'))}
+        registered = {str(Path(line[9:]).resolve()) for line in
+                      git(repo, 'worktree', 'list', '--porcelain').splitlines() if line.startswith('worktree ')}
+        others = {path for path in registered - targets
+                  if not Path(path).name.startswith(('pi-scratch-', 'autowork-', 'pi-autowork-'))}
+        def elsewhere(worker):
+            spaces = set(worker.get('workspaces') or [])
+            return bool(spaces) and spaces <= others
         workers = [w for w in workers
-                   if not (w['kind'] == 'session' and touches_none_of(w, files, main)
+                   if not (w['kind'] == 'session' and (touches_none_of(w, files, main) or elsewhere(w))
                            and not in_pool(w) and not recorded(w))]
         if files is not None:
             only_uncommitted = {w['pid'] for w in workers
@@ -814,7 +828,8 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
                                                          ledger_edit_dropped=dropped), slot)
                 inputs = {p: execution.digest(root / p) for p in (execution.task_path(task),)}
                 check = execution.bounded_command(argv, root, common, task, timeout, inputs,
-                            receipt_context={'integration_commit': merge}, receipt_writer=save_receipt, run_id=run_id,
+                            receipt_context={'integration_commit': merge, **state.journal.context(common, slot)},
+                            receipt_writer=save_receipt, run_id=run_id,
                             check_slot_wait=True)
                 queued += (check or {}).get('command_receipt', {}).get('check_slot_wait_seconds', 0)
                 if (check or {}).get('outcome') == 'TIMED_OUT':
@@ -929,7 +944,7 @@ def recover_integration(repo, common, slot, contracts):
     # with the exact candidate, including a retained pre-upgrade sibling tree.
     journal = common / 'journal.jsonl'
     paths = {info['worktree']} if info.get('worktree') else {
-        entry['worktree'] for entry in map(json.loads, journal.read_text().splitlines())
+        entry['worktree'] for entry in state.journal.read(common)['events']
         if entry.get('event') == 'worktree_created' and entry.get('branch') == '(detached)'
     } if journal.exists() else set()
     candidates = []
@@ -1060,7 +1075,8 @@ def close(repo, owner_pid, task):
                     (repo / path).parent.mkdir(parents=True, exist_ok=True)
                     (repo / path).write_text(text)
             if slot['state'] != 'closed':
-                slot = state.change(common, slot, 'closed', {})
+                slot = state.change(common, slot, 'closed', {'telemetry_end_revision': state.journal.current_revision(repo)})
+            state.event(common, 'replayed_close', task_id=task)
             dispatch.cleanup_tmpdir(common, slot)
             return {'outcome': 'CLOSED', 'task': task, 'cleaned': cleanup_worker(repo, common, slot),
                     'files': pending_writes(repo, writes)}
@@ -1075,7 +1091,7 @@ def close(repo, owner_pid, task):
                 temporary = target.with_name(f'.{target.name}.{os.getpid()}.tmp')
                 temporary.write_text(text)
                 os.replace(temporary, target)
-            slot = state.change(common, slot, 'closed', {})
+            slot = state.change(common, slot, 'closed', {'telemetry_end_revision': state.journal.current_revision(repo)})
         except BaseException:
             # All or nothing: a half-written close would sit uncommitted in the session.
             for path, data in before.items():
@@ -1242,7 +1258,9 @@ def _retire(repo, common, slot, requeued):
     data = common / 'slot-data' / task
     if data.exists():
         data.rename(target / 'slot-data')
-    execution.save(target / 'slot.json', dict(slot, set_aside={'renamed': moved}))
+    execution.save(target / 'slot.json', dict(slot, set_aside={'renamed': moved},
+                                             telemetry_end_revision=slot.get('telemetry_end_revision')
+                                             or state.journal.current_revision(repo)))
     state.slot_path(common, task).unlink()
     state.event(common, 'slot_set_aside', task_id=task, state=slot['state'], renamed=moved,
                 history=str(target))
@@ -1307,7 +1325,7 @@ def clear_held(repo, owner_pid, task=None):
         for slot in held:
             value = {k: v for k, v in slot.items() if k not in ('reason', 'cause', 'reoffered')}
             value['state'] = 'reported'
-            state.write_slot(common, value, slot)
+            state.write_slot(common, value, slot, observations=('clear_held',))
             cleared.append(slot['task_id'])
         return {'outcome': 'CLEARED', 'tasks': cleared}
 

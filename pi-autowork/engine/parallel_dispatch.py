@@ -392,7 +392,7 @@ def created_by_autowork(common, path, branch):
     journal = common / 'journal.jsonl'
     return journal.exists() and any(
         e.get('event') == 'worktree_created' and e.get('worktree') == str(path) and e.get('branch') == branch
-        for e in map(json.loads, journal.read_text().splitlines()))
+        for e in state.journal.read(common)['events'])
 
 
 def set_aside_number(repo, pairs, start=1):
@@ -656,6 +656,12 @@ def port_lease(slot_index):
     raise ValueError(f'every one of the {PORT_BLOCKS} worker port blocks on this host is in use')
 
 
+# Workers, and every check and tool they start, run below the coordinator's own priority: on a
+# host they saturate (load 23 on 24 CPUs) the integration check every finished task waits on
+# ran about 3x slower than on a quiet host, at the same priority as eight workers' test runs.
+WORKER_NICE = 10
+
+
 def launch(argv, worktree, data, slot_index, stdin_path):
     data.mkdir(parents=True, exist_ok=True, mode=0o700)
     temporary = str(worker_tmpdir(data, slot_index))
@@ -668,8 +674,13 @@ def launch(argv, worktree, data, slot_index, stdin_path):
     tools = data / 'bin'
     tools.mkdir(exist_ok=True, mode=0o700)
     wrapper = tools / 'autowork-run'
-    if not wrapper.exists():
-        wrapper.symlink_to(Path(__file__).resolve().with_name('autowork_run.py'))
+    target = Path(__file__).resolve().with_name('autowork_run.py')
+    # A paused attempt can outlive its release: the link then dangles (exists() follows it and
+    # says missing, and symlink_to raised EEXIST), or names an older one. Point it at this one.
+    if not (wrapper.is_symlink() and Path(os.readlink(wrapper)) == target):
+        if wrapper.is_symlink() or wrapper.exists():
+            wrapper.unlink()
+        wrapper.symlink_to(target)
     base, lease = port_lease(slot_index)
     env.update(TMPDIR=temporary, TMP=temporary, TEMP=temporary, AUTOWORK_CACHE=str(cache), AUTOWORK_SLOT=str(slot_index),
                AUTOWORK_PORT_BASE=str(base), PATH=str(tools) + os.pathsep + env.get('PATH', os.defpath),
@@ -679,7 +690,8 @@ def launch(argv, worktree, data, slot_index, stdin_path):
     try:
         with open(data / 'worker.log', 'ab') as log, open(stdin_path, 'rb') as stdin:
             process = subprocess.Popen(argv, cwd=worktree, env=env, stdin=stdin, stdout=log, pass_fds=(lease,),
-                                       stderr=subprocess.STDOUT, start_new_session=True)
+                                       stderr=subprocess.STDOUT, start_new_session=True,
+                                       preexec_fn=lambda: os.nice(WORKER_NICE))
     finally:
         os.close(lease)
     for _ in range(50):
@@ -973,22 +985,15 @@ def merge_backlog(common, current, *, workers, now=None, env=os.environ):
     if not threshold or len(queued) < threshold:
         return result
     since, paused = {}, False
-    try:
-        with (common / 'journal.jsonl').open() as stream:
-            for line in stream:
-                if '"slot_changed"' not in line and '"dispatch_observed"' not in line:
-                    continue
-                event = json.loads(line)
-                if event.get('event') == 'dispatch_observed':
-                    paused = bool((event.get('merge_backlog') or {}).get('paused'))
-                elif event.get('event') == 'slot_changed' and event.get('task_id') in queued:
-                    tid = event['task_id']
-                    if event.get('state') in ('reported', 'integrating'):
-                        since.setdefault(tid, event['timestamp'])
-                    else:
-                        since.pop(tid, None)
-    except FileNotFoundError:
-        pass
+    for event in state.journal.read(common)['events']:
+        if event.get('event') == 'dispatch_observed':
+            paused = bool((event.get('merge_backlog') or {}).get('paused'))
+        elif event.get('event') == 'slot_changed' and event.get('task_id') in queued:
+            tid = event['task_id']
+            if event.get('state') in ('reported', 'integrating'):
+                since.setdefault(tid, event['timestamp'])
+            else:
+                since.pop(tid, None)
     now = time.time() if now is None else now
     age = max(0, now - min(since.values())) if since else 0
     result.update(paused=paused or bool(since and age >= limits['MERGE_BACKLOG_AFTER']), oldest_seconds=age)
@@ -1094,7 +1099,7 @@ def dispatch_locked(args, repo, common, count, template, host):
                 waiting.append({'id': task['id'], 'reason': str(exc), 'blocked_by': []})
                 continue  # An unsafe leftover holds this task, not the rest of the queue.
             state.create_slot(repo, args.owner_pid, task['id'], worktree=str(worktree), branch=branch,
-                              baseline=base)
+                              baseline=base, host=os.environ.get('AUTOWORK_TELEMETRY_HOST') or host)
         slot = next(s for s in state.slots(common) if s['task_id'] == task['id'])
         attempt = slot['attempt'] + (1 if previous and not previous.get('paused') else 0)
         data = execution.safe_path(common / 'slot-data' / task['id'] / f'attempt-{attempt}')

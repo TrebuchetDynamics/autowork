@@ -22,7 +22,7 @@ import sys
 import tempfile
 import time
 
-from . import fleet_view, health, janitor, main_check, maintainer, pi_runtime, questions, release, task_commands, worker, workspaces
+from . import fleet_view, health, janitor, main_check, maintainer, pi_runtime, questions, release, task_commands, telemetry, worker, workspaces
 from .common import LOG, dirty, git, git_ok, lifecycle, open_for_writing, safe_name, summary_list
 
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
@@ -538,6 +538,7 @@ class Coordinator:
     # per runner. Only the runner's own engine commands start or change work; those drop it.
     STATUS_FRESH = 5.0
     snapshot = None  # (directory, monotonic time, engine status output)
+    maintainer_job = None  # a DOCS-MAINTAINER re-cut running beside the loop (start_maintainer)
 
     def status(self, directory=None):
         where = str(directory or self.integ or self.repo)
@@ -630,7 +631,7 @@ class Coordinator:
                     os.killpg(group, signal.SIGTERM)
                 except OSError:
                     pass
-            for proc in [self.child] + [job['proc'] for job in self.resolvers.values()]:
+            for proc in [self.child] + [job['proc'] for job in self.background_jobs()]:
                 if proc:
                     proc.terminate()
             return
@@ -639,11 +640,15 @@ class Coordinator:
                 '(Ctrl+C again to force)')
         # Workers are interrupted by the main loop after the engine marks them paused, so a
         # deliberate stop or restart neither spends a task's retry nor holds a second attempt.
-        for proc in [self.child] + [job['proc'] for job in self.resolvers.values()]:
+        for proc in [self.child] + [job['proc'] for job in self.background_jobs()]:
             try:
                 proc and proc.send_signal(signal.SIGINT)
             except OSError:
                 pass
+
+    def background_jobs(self):
+        """Pi jobs running beside the loop: merge resolutions and a DOCS-MAINTAINER re-cut."""
+        return [*self.resolvers.values(), *([self.maintainer_job] if self.maintainer_job else [])]
 
     def on_reload(self, *_):
         """SIGHUP (`autowork restart`, `systemctl reload`): re-execute on the current release and
@@ -960,12 +965,17 @@ class Coordinator:
             owned = [p for p in overlap if not planning(p)]
             if owned:
                 return 'uncommitted changes overlap the landing: ' + ', '.join(owned)
-            return self.land_around_edits(old, new)
+            reason = self.land_around_edits(old, new)
+            if not reason:
+                telemetry.observe(self.repo, self.base)
+            return reason
         held = open_for_writing([Path(self.repo) / p for p in changed if p])
         if held:
             return f'{os.path.relpath(sorted(held)[0], self.repo)} is open for writing'
         result = subprocess.run(['git', '-C', str(self.repo), 'merge', '--ff-only', new],
                                 capture_output=True, text=True)
+        if result.returncode == 0:
+            telemetry.observe(self.repo, self.base)
         return '' if result.returncode == 0 else (result.stdout + result.stderr).strip()
 
     def land_around_edits(self, old, new):
@@ -1194,6 +1204,7 @@ class Coordinator:
         if result.returncode == 0:
             self.seen.pop('push-note', None)
             LOG.say(f'Pushed {self.base} to {upstream}')
+            telemetry.observe(self.repo, self.base)
             return
         text = (result.stdout + result.stderr).strip()
         if retry and re.search(r'rejected|non-fast-forward|fetch first', text):
@@ -1479,6 +1490,7 @@ class Coordinator:
         return done
 
     def finish(self, code, text):
+        self.stop_maintainer()
         self.stop_integration()
         if self.integ:
             self.merge_main()
@@ -1563,6 +1575,7 @@ class Coordinator:
         """Integrate, verify and close every reported task, in the engine's priority order."""
         self.settled = False
         self.finish_resolvers()
+        self.finish_maintainer()
         snapshot = self.status()
         rows = self.tasks(snapshot)
         if self.set_aside_stale(rows):
@@ -2071,7 +2084,7 @@ class Coordinator:
         planning files alone and the task store still validates. Only unhandled trigger items enter
         the prompt; an unchanged unsuccessful repair needs an owner, not another run.
         True when its repair merged, or another ledger-proposal batch still waits."""
-        if self.stop or not self.integ:
+        if self.stop or not self.integ or self.maintainer_job:
             return False
         self.ledger_errors = self.validate_ledger() if ledger_errors is None else ledger_errors
         # Like MAIN repair, LEDGER repair may coexist with task workers/reported slots:
@@ -2116,15 +2129,88 @@ class Coordinator:
             return False
         names = [task for task, _, _ in found]
         LOG.say(f'{maintainer.ROLE}: repairing the task docs of {", ".join(names)}')
-        outcome, changed = 'no change', []
         try:
             base = git(scratch, 'rev-parse', 'HEAD')
             message = maintainer.prompt(found, self.repo, self.tasks_cli)
             if rolling:
                 message += f'\nFinished batch reports: {Path(self.cfg["git_common"]) / "autowork-execution/slot-data"}.'
-            ok, text = self.pi_job('maintainer', maintainer.ROLE, scratch,
-                                   message,
-                                   f'pi-autowork-maintainer-{datetime.now():%Y%m%d%H%M%S}', self.verify_timeout)
+        except BaseException:
+            self.drop_scratch(scratch)
+            raise
+        job = dict(found=found, names=names, scratch=scratch, base=base, before=before, reasons=reasons,
+                   rows=rows, trigger_key=trigger_key, rolling=rolling)
+        session = f'pi-autowork-maintainer-{datetime.now():%Y%m%d%H%M%S}'
+        if overlap:
+            # A re-cut runs beside the loop, as merge resolutions do: it held reviews, landings
+            # and dispatch for five minutes at a time while workers were busy.
+            self.start_maintainer(job, message, session)
+            return False
+        try:
+            ok, _ = self.pi_job('maintainer', maintainer.ROLE, scratch, message, session, self.verify_timeout)
+        except BaseException:
+            self.drop_scratch(scratch)
+            raise
+        return self.maintainer_result(job, ok)
+
+    def start_maintainer(self, job, message, session):
+        out = tempfile.NamedTemporaryFile(dir=self.state / 'runs', prefix='maintainer.', delete=False)
+        out.close()
+        env = self.job_environment(PI_AUTOWORK_SESSION=self.integ_branch or os.environ.get('PI_AUTOWORK_SESSION', ''))
+        with open(out.name, 'w') as stream:
+            job['proc'] = subprocess.Popen([sys.executable, str(Path(__file__).with_name('pi_runtime.py')), 'job',
+                                            str(self.state), 'maintainer', maintainer.ROLE, str(job['scratch']),
+                                            session, str(self.verify_timeout), message], stdout=stream, env=env)
+        job['out'] = out.name
+        self.maintainer_job = job
+
+    def finish_maintainer(self):
+        """Judge a re-cut that ended beside the loop, once the session may move: not under an
+        active review, a merge resolution or uncommitted files, as maintain() requires to start."""
+        job = self.maintainer_job
+        if not job or job['proc'].poll() is None:
+            return
+        if self.integ and (dirty(self.integ) or self.session_busy() or self.resolvers):
+            return  # its commit waits in the scratch checkout; the next pass merges it
+        self.maintainer_job = None
+        try:
+            result = json.loads(Path(job['out']).read_text()) if job['proc'].returncode == 0 else {}
+        except (OSError, ValueError):
+            result = {}
+        Path(job['out']).unlink(missing_ok=True)
+        for note in result.get('notes') or []:
+            LOG.say(note)
+        if self.maintainer_result(job, bool(result.get('ok'))):
+            self.settled = True
+
+    def stop_maintainer(self):
+        """End a re-cut still running when the runner exits; its scratch checkout goes with it."""
+        job, self.maintainer_job = self.maintainer_job, None
+        if not job:
+            return
+        if job['proc'].poll() is None:
+            job['proc'].terminate()
+            try:
+                job['proc'].wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                job['proc'].kill()
+        Path(job['out']).unlink(missing_ok=True)
+        self.drop_scratch(job['scratch'])
+
+    def maintainer_result(self, job, ok):
+        """Merge a finished maintainer commit that changed planning files alone and leaves the
+        store valid; record the outcome. True when its repair merged, or another ledger-proposal
+        batch still waits."""
+        found, names, scratch, base = job['found'], job['names'], job['scratch'], job['base']
+        before, reasons, rows, trigger_key, rolling = (job['before'], job['reasons'], job['rows'],
+                                                       job['trigger_key'], job['rolling'])
+        dispatch = dispatch_module(self.toolset)
+        queue = dispatch.task_queue
+
+        def entries(snapshot):
+            return maintainer.entries(snapshot, queue)
+
+        outcome, changed = 'no change', []
+        try:
             head = git(scratch, 'rev-parse', 'HEAD')
             paths = (git(scratch, 'diff', '--name-only', base, head) or '').split() if head and head != base else []
             diff = git(scratch, 'diff', base, head) or '' if paths else ''
@@ -2650,10 +2736,12 @@ class Coordinator:
         are adopted. Not while a review or a Pi job runs, nor once a review has ended but its
         answer is not read yet (TOOLSET-187-1d: a reload deferred behind a review re-executed the
         moment it ended and lost it): the cycle reads it, and a later cycle re-executes."""
-        landing = [] if self.integration or self.child or self.resolvers else self.batch_landing()
-        if self.integration or self.child or self.resolvers or landing:
+        busy = self.integration or self.child or self.resolvers or self.maintainer_job
+        landing = [] if busy else self.batch_landing()
+        if busy or landing:
             what = (f"the review of {self.integration['task']}" if self.integration else
                     f"the merge resolution of {', '.join(sorted(self.resolvers))}" if self.resolvers else
+                    f'the {maintainer.ROLE} re-cut' if self.maintainer_job else
                     'a Pi job' if self.child else '')
             what = f'{what} to end' if what else f"{', '.join(landing)} to land (passed in a batch)"
             if self.seen.get('reexec-pending') != what:
@@ -2782,6 +2870,7 @@ class Coordinator:
             self.seen['synced-at-start'] = True
             self.sync_upstream()  # publish a backlog left by a run that could not push
         self.follow_base()
+        telemetry.observe(self.integ or self.repo, getattr(self, 'base', None))
         if self.integ and not self.session_busy() and not dirty(self.integ):
             self.reopen_stale_closures()  # also a close an owner commit changed the contract of
         self.sweep_tmp()
@@ -2822,6 +2911,7 @@ class Coordinator:
         elif not self.draining or resumes:
             # Workers leave the full check to the gate the runner runs on the merged tree (TOOLSET-227-a8).
             os.environ['AUTOWORK_RUNNER_FULL_CHECK'] = main_check.full_check(self.integ) if self.integ else ''
+            os.environ.update(AUTOWORK_TELEMETRY_HOST='pi', AUTOWORK_TELEMETRY_MODEL=chosen)
             result = self.engine('--apply', '--parallel', str(self.workers), '--max-workers', '16',
                                  '--worker-command', self.worker_command, '--worker-timeout', self.task_timeout,
                                  '--min-free-mem-mb', self.min_free_mb,

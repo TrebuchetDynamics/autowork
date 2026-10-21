@@ -74,6 +74,15 @@ keyboard navigation and controls remain available. Use `autowork tui --mouse` to
 restore clickable rows/buttons instead; hold Shift while dragging if your terminal
 or tmux intercepts selection. The browser view retains mouse controls.
 
+The main-check line in runner status and the TUI reads the current check receipt,
+not just the runner's cached health snapshot. A missing process or a reused PID
+(with different process start ticks) reads `main check interrupted`, even if the
+runner stopped before recording a result. A live check past its execution budget
+reads `past timeout`; waiting for a check slot does not consume that budget. New
+slot receipts carry the command's configured timeout; older receipts fall back to
+3600 seconds. A check of an older revision reads `superseded by main at REV`.
+These are read-only status warnings, not a passing check, cancellation or restart.
+
 A task someone works on outside the runner carries a `Held by:` note
 (`autowork tasks hold TASK --by WHO [--until DATE]`); the runner never starts it and asks
 nothing about it. `autowork tasks release TASK` lifts the hold; a dated hold ends by itself.
