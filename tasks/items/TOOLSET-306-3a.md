@@ -7,7 +7,7 @@ status = "open"
 goal = "TASK-STORE"
 section = "Next"
 rank = 3000
-depends_on = []
+depends_on = ["TOOLSET-304-2c"]
 touches = ["pi-autowork/pi_autowork/task_commands.py", "pi-autowork/engine/", "pi-autowork/tests/"]
 resources = []
 kind = "implementation"
@@ -18,3 +18,5 @@ checks = ["python3 -m unittest discover -s pi-autowork/tests; python3 scripts/ch
 exclusions = []
 +++
 
+- Dependencies: TOOLSET-304-2c
+- Coordination: Run after TOOLSET-304-2c: both tasks edit pi-autowork/pi_autowork/task_commands.py and pi-autowork/tests/. TOOLSET-304-2c is running, so its contract stays unchanged. The wider-ID change requires new_id in that shared file; no independent implementation slice can start with disjoint Touches. Preserve this task’s scope, acceptance, checks and Next rank.
