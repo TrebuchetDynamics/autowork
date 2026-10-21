@@ -799,7 +799,7 @@ class FleetApp(App):
             text.append(waiting + '\n')
         if runner.questions:  # what the owner can answer, easiest first (BLOCKERS.md)
             count = len(runner.questions)
-            text.append(f"{count} question{'s' if count > 1 else ''} for you in BLOCKERS.md", style='bold yellow')
+            text.append(fleet_view.question_summary(runner), style='bold yellow')
             text.append('  (b answers them)\n' if self.agent and not self.view_only else '\n', style='dim')
             for q in runner.questions[:QUESTIONS_SHOWN]:
                 text.append(f'  {q.id}', style='bold')

@@ -460,6 +460,25 @@ def blocker_detail(cause, asked=False):
     return f'{text[:1].upper()}{text[1:]} · {resolver(asked)}'
 
 
+def question_summary(runner):
+    """'2 questions for you in BLOCKERS.md: 1 for the blocker above, 1 that blocks no task'. The
+    Blocker count is held tasks; questions also cover waiting tasks and the runner itself, and a
+    bare '2 questions' beside 'Blocker 1' read as a contradiction."""
+    count = len(runner.questions)
+    if not count:
+        return ''
+    held = {task for task, _ in runner.held}
+    kinds = [('for the blocker above', 'for the blockers above',
+              sum(q.id in held for q in runner.questions)),
+             ('on a waiting task', 'on waiting tasks',
+              sum(q.id not in held and q.unblocks > 0 for q in runner.questions)),
+             ('that blocks no task', 'that block no task',
+              sum(q.id not in held and q.unblocks <= 0 for q in runner.questions))]
+    parts = [f'{n} {one if n == 1 else many}' for one, many, n in kinds if n]
+    head = f"{count} question{'s' if count > 1 else ''} for you in BLOCKERS.md"
+    return head + (': ' + ', '.join(parts) if len(parts) > 1 or kinds[0][2] != count else '')
+
+
 def task_counts(runner):
     """(active, mergeable, waiting, blocker, total) for a runner."""
     heads = [status(lane)[0] for lane in runner.lanes]
