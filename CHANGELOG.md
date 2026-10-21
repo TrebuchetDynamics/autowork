@@ -7,6 +7,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `scripts/affected_tests.py [--base REV] [--run]`: the offline test modules a change can
+  affect, each with the chain that selected it (module-level imports followed transitively, a
+  test's own lazy imports, and repository files that code names in strings or that scripts
+  run); `--run` runs only those through `scripts/check.py`. A change to the check, CI or
+  packaging selects the whole suite. AGENTS.md tells workers and reviewers to use it instead
+  of whole test directories: a documentation change now selects one module and an engine
+  change about a tenth of the suite, where agents reran directories or the full check.
 - `skills/autowork/scripts/checkout_lock.py`, a Claude Code hook: one interactive session
   writes a checkout at a time (TOOLSET-290-12). The first session to edit a file in a
   canonical checkout holds it until its files are committed or reverted, or it ends;
