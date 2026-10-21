@@ -1221,9 +1221,14 @@ class ManagedRecoveryTests(unittest.TestCase):
         class Killed(BaseException): pass
         for point in ('source-stage', 'stage', 'backup', 'rename', 'install', 'skill', 'verify',
                       'ordinary', 'ordinary-skill', 'ordinary-source'):
-            with self.subTest(point=point):
+            with self.subTest(point=point), contextlib.ExitStack() as cleanup:
                 fixture = ManagedRecoveryTests()
+                cleanup.callback(fixture.doCleanups)
                 fixture.setUp()
+                # These disposable homes launch no consumers. Keep this interruption
+                # matrix independent of host /proc churn (including ESRCH mid-scan);
+                # separate admission tests exercise real live/unknown consumers.
+                fixture.enterContext(patch.object(fixture.mod, 'active_consumers', return_value=None))
                 independent = fixture.home / 'profiles/independent'
                 (independent / 'plugins').mkdir(parents=True)
                 fixture.git(independent, 'clone', str(fixture.remote), str(independent / 'plugins/autowork'))
@@ -1262,31 +1267,30 @@ class ManagedRecoveryTests(unittest.TestCase):
                     result = replace(path, target)
                     if point == 'ordinary-skill' and target == independent / 'skills/demo/SKILL.md': raise Killed()
                     return result
-                try:
-                    with patch.object(fixture.mod, 'native_call', native), patch.object(fixture.mod, 'git', git), \
-                         patch.object(fixture.mod, 'apply', apply), \
-                         patch.object(Path, 'write_bytes', write_backup), patch.object(Path, 'rename', rename_slot), \
-                         patch.object(Path, 'replace', replace_skill), self.assertRaises(Killed):
-                        fixture.run_update()
-                    saved = json.loads((fixture.home / 'maintenance/toolset-update/recovery.json').read_text())
-                    (fixture.remote / 'skills/demo/SKILL.md').write_text('later upstream release\n')
-                    fixture.git(fixture.remote, 'commit', '-am', 'upstream moved during interruption')
-                    if point == 'ordinary':
-                        foreign = independent / 'skills/demo/SKILL.md'
-                        foreign.write_text('foreign ordinary edit\n')
-                        code, held = fixture.run_update()
-                        self.assertEqual(code, 1, held)
-                        self.assertEqual(foreign.read_text(), 'foreign ordinary edit\n')
-                        foreign.write_text('new\none\ntwo\nthree\n')  # operator reconciles the disposable fixture
-                    code, result = fixture.run_update()
-                    self.assertEqual(code, 0, result)
-                    self.assertEqual(saved['backup'], result['recovery']['backup'])
-                    self.assertEqual(fixture.git(Path(saved['backup']) / 'default/plugin', 'rev-parse', 'HEAD'), fixture.before)
-                    self.assertEqual(fixture.git(fixture.repo, 'rev-parse', 'HEAD'), target)
-                    self.assertEqual((Path(saved['backup']) / 'default/file-0').read_text(), 'old\none\ntwo\nthree\n')
-                    self.assertEqual(fixture.git(independent / 'plugins/autowork', 'rev-parse', 'HEAD'), target)
-                    self.assertEqual((independent / 'skills/demo/SKILL.md').read_text(), 'new\none\nTWO\nthree\n')
-                finally: fixture.doCleanups()
+                with patch.object(fixture.mod, 'native_call', native), patch.object(fixture.mod, 'git', git), \
+                     patch.object(fixture.mod, 'apply', apply), \
+                     patch.object(Path, 'write_bytes', write_backup), patch.object(Path, 'rename', rename_slot), \
+                     patch.object(Path, 'replace', replace_skill), self.assertRaises(Killed):
+                    returned = fixture.run_update()
+                    self.fail(f'{point} interruption not reached: {returned!r}; native calls: {fixture.calls!r}')
+                saved = json.loads((fixture.home / 'maintenance/toolset-update/recovery.json').read_text())
+                (fixture.remote / 'skills/demo/SKILL.md').write_text('later upstream release\n')
+                fixture.git(fixture.remote, 'commit', '-am', 'upstream moved during interruption')
+                if point == 'ordinary':
+                    foreign = independent / 'skills/demo/SKILL.md'
+                    foreign.write_text('foreign ordinary edit\n')
+                    code, held = fixture.run_update()
+                    self.assertEqual(code, 1, held)
+                    self.assertEqual(foreign.read_text(), 'foreign ordinary edit\n')
+                    foreign.write_text('new\none\ntwo\nthree\n')  # operator reconciles the disposable fixture
+                code, result = fixture.run_update()
+                self.assertEqual(code, 0, result)
+                self.assertEqual(saved['backup'], result['recovery']['backup'])
+                self.assertEqual(fixture.git(Path(saved['backup']) / 'default/plugin', 'rev-parse', 'HEAD'), fixture.before)
+                self.assertEqual(fixture.git(fixture.repo, 'rev-parse', 'HEAD'), target)
+                self.assertEqual((Path(saved['backup']) / 'default/file-0').read_text(), 'old\none\ntwo\nthree\n')
+                self.assertEqual(fixture.git(independent / 'plugins/autowork', 'rev-parse', 'HEAD'), target)
+                self.assertEqual((independent / 'skills/demo/SKILL.md').read_text(), 'new\none\nTWO\nthree\n')
 
     def test_interrupted_slot_intent_does_not_move_new_source_edits(self):
         class Killed(BaseException): pass
