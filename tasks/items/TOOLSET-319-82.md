@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-319-82"
 title = "Conversion keeps the non-task content of TODO.md"
 short = "Keep TODO.md non-task content"
-status = "open"
+status = "superseded"
 goal = "TASK-STORE"
 section = "Next"
 rank = 15000
@@ -19,3 +19,4 @@ exclusions = ["No edits to any consumer repository."]
 +++
 
 - Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20)
+- Superseded by: TOOLSET-318-17; Merged into TOOLSET-318-17 before either task started: both change the converter, conversion tests and task-store reference. The successor retains both original scopes, every Acceptance item, the union of Touches and both Checks, and explicitly waits for the reported TOOLSET-307-5a candidate.
