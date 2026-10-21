@@ -128,6 +128,22 @@ midpoint between its new neighbours and, when no integer is left, spreads only t
 gapless neighbours that follows, never the whole section. A written file grants no
 authority beyond its typed fields, and a declared check still needs approval to run.
 
+## Converting a repository: `autowork migrate`
+
+`autowork migrate [repo] [--dry-run]` converts a TODO.md + goals.json repository once. It
+refuses, writing nothing, while a worker slot is occupied (running, held, reported,
+integrating or integrated), a coordinator or sequential lease is live, a task is
+`in_progress`, planning files are uncommitted, or `tasks/` already exists. It builds every
+record, reads them back through a throwaway commit and requires the same task set and the
+same selection order as the current queue before writing; then it removes TODO.md and
+goals.json (no stub), keeps TODO.archive.md, and makes one local commit. Ranks are 1000 x
+the recorded human order. Typed fields keep the engine's present meaning (dependencies as
+task IDs, resources as the tokens it enforces, owner-only work without a recorded live
+authorization as `ownership = "owner"`, no Touches as `["**"]`); every other label, and
+the original Ownership, Resources and Live authorization wording, is kept as a body note.
+Done and superseded tasks, and archived tasks that open work depends on, become closed
+records with no section or rank.
+
 ## Offline verification
 
 ```sh
