@@ -897,7 +897,11 @@ def verify_batch(state, session, script, tasks):
     _, parallel_integrate, _ = engine_modules()
     size = max(2, setting('PI_AUTOWORK_BATCH', 6))
     drop_dead_scratch(session, review_root())
-    base = git(session, 'rev-parse', 'HEAD')
+    # A merge train's next car (PI_AUTOWORK_BATCH_ON): built on the tip of the batch still being
+    # checked, so its verdicts hold once that batch lands as checked, and need only one candidate.
+    on = os.environ.get('PI_AUTOWORK_BATCH_ON') or ''
+    base = git(session, 'rev-parse', '--verify', '-q', on + '^{commit}') if on else git(session, 'rev-parse', 'HEAD')
+    fewest = 1 if on else 2
     # `aw-b-<pid>-*`, so drop_dead_scratch sweeps a killed batch's chain as it does a review's.
     root = Path(tempfile.mkdtemp(prefix=f'aw-b-{os.getpid()}-', dir=review_root()))
     chain = root / 'chain'
@@ -923,9 +927,14 @@ def verify_batch(state, session, script, tasks):
                 continue
             steps.append((task, git(chain, 'rev-parse', 'HEAD')))
         result['tasks'] = [t for t, _ in steps]
-        if len(steps) < 2:
-            print(json.dumps(dict(result, reason='fewer than two candidates merge together')))
+        if len(steps) < fewest:
+            print(json.dumps(dict(result, reason='fewer than two candidates merge together' if fewest == 2
+                                  else 'no candidate merges onto the batch ahead')))
             return 0
+        if os.environ.get('PI_AUTOWORK_BATCH_TIP'):
+            # Published before the long check, so the next car can start beside it.
+            Path(os.environ['PI_AUTOWORK_BATCH_TIP']).write_text(
+                json.dumps({'tip': steps[-1][1], 'tasks': result['tasks']}) + '\n')
         os.environ['TMPDIR'] = str(root)
         lease = review_port_lease()  # held until this process exits
         ok, reason = full_suite_gate(state, 'batch', str(chain), base)
