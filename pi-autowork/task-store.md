@@ -235,6 +235,61 @@ to one commit, and a close whose commit exists is a no-op. After every merge int
 session the runner reopens a done task whose receipt pins another contract hash than its
 merged record (one side closed it, the other changed its acceptance), before main moves.
 
+## Private lifecycle observations
+
+The engine extends `autowork-execution/journal.jsonl` in the Git common directory;
+there is no second event store. `slot_changed` records carry a `lifecycle` array,
+and history/model observations use the same journal with `event = "task_lifecycle"`.
+`parallel_state.lifecycle_events(common)` returns deduplicated envelopes and
+`skipped` counts (`duplicate`, `torn`). `parallel_status` exposes those counts as
+`journal_skipped` when nonzero; its existing interval metrics and the scorecard still use the
+original slot transitions.
+
+Each envelope has `event_id`, `timestamp` (epoch seconds), an opaque `repository`
+identifier, `task_id`, `attempt_id`, `host`, `model`, and `scope` (`task` or `attempt`).
+Unknown host/model information is `"unknown"`; events before an engine attempt use
+`attempt_id = "unassigned"`. No prompt, command, free-text reason, credential or
+absolute path is copied into an envelope. Legacy private diagnostic payloads remain
+compatible and can contain local paths. Neither envelopes nor runtime identity are
+added to committed task records or public closure receipts. The private validation
+receipt's `context` carries the attempt/repository/host/model correlation instead.
+
+The observed stages are `accepted`, `admitted`, `dispatched`, `held`, `resumed`,
+`reviewed`, `integrated`, `closed`, and `delivered`. Holds/resumes occur only when
+execution takes those paths; `reviewed` at successful integration means the required
+validation passed, not that a model review ran when disabled. A fresh attempt records
+`retry` and gets a new attempt ID; a paused attempt keeps its ID. Acceptance, closure
+and delivery have per-task IDs, so a retry or replay cannot count another completion.
+The acceptance timestamp/revision comes from the first reachable Git addition of
+the task record, not an uncommitted edit. The coordinator observes committed hand
+closures (`hand_closed`), contract edits during an attempt (`contract_edited`, even
+if later reverted), and done records reaching main (`delivered`), including local
+main when push is disabled. These are observations, not acceptance or authority gates.
+
+Other observations include `verification_failed`, `interrupted`, `restart`,
+`worker_adopted`, `replayed_close`, `blocker_answered` and `clear_held`. Actual Pi
+model runs record `model_selected`, `model_retry` (provider/crash recovery), and
+terminal `model_*` outcomes, correlated to the same task attempt; a fallback does
+not masquerade as another task attempt. These model observations contain only
+identifiers, role/outcome and provider retry counts, not run text or billing data.
+
+A writer makes one append write and flushes it, with no extra lock wait or retry.
+Telemetry I/O failure does not hold execution. Lifecycle facts saved with private
+slots can be replayed after an interrupted append. A failed coordinator-release
+append retains pending recovery facts in existing attempt metadata (`meta.json`),
+without holding execution or changing slot state. The coordinator also reconciles
+Git observations at startup/cycles and after landing. Git snapshots/history reads
+run outside the execution writer lock, with an immutable-commit cache and a bounded
+per-poll history budget; private slot cursors retain a frozen Git range and page
+offset across restarts, including edits/reverts on merged branches. Closed and
+retired attempts retain their history endpoint, excluding edits for later attempts. An
+in-process journal tail index avoids rescanning history on unchanged polls. Readers skip/count duplicate
+lines and incomplete JSON lines, including a torn final line; the next append starts
+a new line. Complete but structurally invalid records still fail validation. Offline
+fixtures cover ordering, retries, interruption/replay, adoption, manual closure,
+contract edits, fallback attribution and envelope privacy; they do not qualify a
+live model/provider or remote push.
+
 ## Offline verification
 
 ```sh

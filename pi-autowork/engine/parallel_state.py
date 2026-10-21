@@ -4,13 +4,16 @@ All mutations share the sequential writer lock. Process birth identity, never ag
 controls liveness. Slot records describe execution evidence, not TODO acceptance.
 """
 import hashlib
-import json
 import os
 from pathlib import Path
 import re
 import time
 
 import task_execution as execution
+import execution_journal as journal
+
+# Public readers of the existing journal, not a second telemetry store.
+lifecycle_events = journal.lifecycle_events
 
 
 TRANSITIONS = {
@@ -31,7 +34,7 @@ STATE_SCHEMA_READS = (1,)
 FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_path', 'paused', 'paused_claim', 'cause',
           'outside', 'requested', 'reviewed_by', 'check_failure_resumed', 'answered', 'merged_base',
           'merged_count', 'merged_authored_planning', 'conflict_files', 'closing', 'tip', 'waits_for', 'wait_since',
-          'landed_tasks', 'landed_revisions', 'hold_policy'}
+          'landed_tasks', 'landed_revisions', 'hold_policy', 'telemetry_end_revision'}
 # Hold causes no fresh attempt can fix: the worker itself reported what it needs
 # (scope_request: files outside Touches, listed in `requested`).
 # scope: a commit changed files outside Touches the runner could not widen; a fresh retry
@@ -100,14 +103,34 @@ def live_coordinator(common):
 
 
 def event(common, kind, **fields):
-    """Caller holds writer.lock; append a complete JSON line and durably flush it."""
-    path = execution.safe_path(common / 'journal.jsonl')
-    data = (json.dumps(dict(timestamp=time.time(), event=kind, **fields), allow_nan=False) + '\n').encode()
-    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, 'ab') as stream:
-        stream.write(data)
-        stream.flush()
-        os.fsync(stream.fileno())
+    """Caller holds writer.lock; telemetry never changes an execution decision."""
+    try:
+        if kind == 'slot_changed':
+            fields['lifecycle'] = fields['slot'].get('lifecycle', [])
+        elif kind in ('coordinator_claimed', 'coordinator_released'):
+            fields['lifecycle'] = fields['coordinator'].get('lifecycle', [])
+        elif kind in ('blocker_answered', 'replayed_close'):
+            slot = execution.read(slot_path(common, fields['task_id'])) or {'task_id': fields['task_id']}
+            facts = list(slot.get('lifecycle', []))
+            if kind == 'replayed_close':
+                replay = journal.fact(journal.context(common, slot), kind)
+                if not any(e['event_id'] == replay['event_id'] for e in facts):
+                    facts.append(replay)
+                    execution.save(slot_path(common, fields['task_id']), dict(slot, lifecycle=facts))
+            fields['lifecycle'] = facts
+        return journal.append(common, kind, fields)
+    except (OSError, ValueError):
+        return False
+
+
+def observe_history(repo, *, delivered_rev=None):
+    """Observe committed acceptance/hand closure/delivery; never edit the task store.
+
+    A busy writer or unreadable history simply defers observation to the next cycle.
+    Saved slot facts also repair a crash between the slot replace and journal append.
+    """
+    import lifecycle_history
+    lifecycle_history.observe(repo, delivered_rev)
 
 
 def claim(repo, owner_pid, *, profile='', max_workers=2):
@@ -130,6 +153,16 @@ def claim(repo, owner_pid, *, profile='', max_workers=2):
             return dict(current, outcome='CLAIMED')
         value = dict(owner=owner, workspace=workspace, profile=profile,
                      max_workers=max_workers, started_at=time.time())
+        facts = list((current or {}).get('lifecycle', []))
+        for slot in slots(common):
+            if slot['state'] not in ('closed', 'held'):
+                ctx = journal.context(common, slot)
+                recovered = [journal.fact(ctx, 'restart', key=str(value['started_at']))]
+                if worker_live(slot):
+                    recovered.append(journal.fact(ctx, 'worker_adopted', key=str(value['started_at'])))
+                facts.extend(recovered)
+        if facts:
+            value['lifecycle'] = facts
         execution.save(common / 'coordinator.json', value)
         event(common, 'coordinator_claimed', coordinator=value, previous=current)
         return dict(value, outcome='CLAIMED')
@@ -162,8 +195,25 @@ def release(repo, owner_pid):
     common = common_dir(repo)
     with execution.lock(common / 'writer.lock'):
         current = require_owner(common, owner_pid)
+        # Replay saved claim facts before removing their durable lease. A crash
+        # before/during this append leaves them available to the next claimant.
+        if not event(common, 'coordinator_released', coordinator=current):
+            # A journal-only outage must not hold release or discard recovery
+            # intent. Reuse existing attempt metadata, leaving slot bytes alone.
+            for slot in slots(common):
+                facts = [e for e in current.get('lifecycle', [])
+                         if e['task_id'] == slot['task_id']]
+                if not facts:
+                    continue
+                try:
+                    data = common / 'slot-data' / slot['task_id'] / f'attempt-{slot.get("data_attempt", slot["attempt"])}'
+                    meta = execution.read(data / 'meta.json') or {}
+                    known = {e['event_id'] for e in meta.get('lifecycle', [])}
+                    pending = [e for e in facts if e['event_id'] not in known]
+                    execution.save(data / 'meta.json', dict(meta, lifecycle=meta.get('lifecycle', []) + pending))
+                except (OSError, ValueError):
+                    pass
         (common / 'coordinator.json').unlink()
-        event(common, 'coordinator_released', coordinator=current)
     # Slots and workers survive the coordinator; a later owner adopts them.
     return {'outcome': 'RELEASED'}
 
@@ -348,7 +398,7 @@ def workspace(common, worktree, branch, baseline):
     return str(path)
 
 
-def write_slot(common, slot, previous=None):
+def write_slot(common, slot, previous=None, *, observations=()):
     # Keep the attempt's runtime separate from started_at (the per-resume timeout
     # clock). Paused/held time is not work, and resuming is not a new attempt.
     stamp = time.time()
@@ -361,6 +411,7 @@ def write_slot(common, slot, previous=None):
     if slot['state'] == 'held' and (not previous or previous['state'] != 'held'
                                    or previous.get('reason') != slot.get('reason')):
         slot = dict(slot, held_at=stamp, held_seconds=slot.get('runtime_seconds'))
+    slot = journal.slot_facts(common, slot, previous, observations)
     execution.save(slot_path(common, slot['task_id']), slot)
     event(common, 'slot_changed', task_id=slot['task_id'], state=slot['state'],
           previous_state=previous['state'] if previous else None, slot=slot)
@@ -406,7 +457,7 @@ def quick_hold(common, slot):
     return dict(fingerprint=fingerprint, reason=slot.get('reason') or '', attempts=recent)
 
 
-def create_slot(repo, owner_pid, task, *, worktree, branch, baseline, worker=None):
+def create_slot(repo, owner_pid, task, *, worktree, branch, baseline, worker=None, host=None, model=None):
     common = common_dir(repo)
     with execution.lock(common / 'writer.lock'):
         require_owner(common, owner_pid)
@@ -418,7 +469,9 @@ def create_slot(repo, owner_pid, task, *, worktree, branch, baseline, worker=Non
             execution.active_owner({'owner': worker})
         return write_slot(common, dict(task_id=task, worktree=root, branch=branch,
                                        baseline=baseline, worker=worker, state='dispatched',
-                                       attempt=1, started_at=time.time()))
+                                       attempt=1, started_at=time.time(),
+                                       host=journal.label(host or os.environ.get('AUTOWORK_TELEMETRY_HOST')),
+                                       model=journal.label(model or os.environ.get('AUTOWORK_TELEMETRY_MODEL'))))
 
 
 def change(common, old, target, updates):

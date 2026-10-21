@@ -2794,6 +2794,11 @@ sys.exit(1)
         self.close_committed()
         head = self.git('rev-parse', 'HEAD')
         again = self.close_committed()
+        self.close_committed()
+        state.observe_history(self.repo, delivered_rev='HEAD')
+        events = state.lifecycle_events(self.common)['events']
+        for kind in ('closed', 'delivered', 'replayed_close'):
+            self.assertEqual(sum(e['event'] == kind for e in events), 1, kind)
         self.assertEqual((again['outcome'], again['files']), ('CLOSED', []))
         self.assertEqual(self.git('rev-parse', 'HEAD'), head)
         self.assertEqual(self.git('status', '--porcelain'), '')

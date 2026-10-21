@@ -9,7 +9,6 @@ Read from each repository's engine journal and Git history, without a model call
 - start to merge: the median time from a task's first dispatch to its integration;
 - questions: distinct owner questions (`### Q-…`) added to BLOCKERS.md in the window.
 """
-import json
 from pathlib import Path
 import re
 import statistics
@@ -32,22 +31,14 @@ def common_dir(repo):
 
 def journal_events(common, since):
     """slot_changed events at or after `since` (epoch seconds), oldest first."""
-    path = common / JOURNAL
-    events = []
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'engine'))
+    import execution_journal
     try:
-        with open(path, errors='replace') as stream:
-            for line in stream:
-                if '"slot_changed"' not in line:
-                    continue
-                try:
-                    event = json.loads(line)
-                except ValueError:
-                    continue
-                if event.get('timestamp', 0) >= since:
-                    events.append(event)
-    except OSError:
+        events = execution_journal.read(common / 'autowork-execution', ordered=False)['events']
+    except (OSError, ValueError):
         return []
-    return sorted(events, key=lambda e: e['timestamp'])
+    return sorted((e for e in events if e['event'] == 'slot_changed' and e['timestamp'] >= since),
+                  key=lambda e: e['timestamp'])
 
 
 def git_text(repo, *argv):
