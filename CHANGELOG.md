@@ -12,16 +12,25 @@ claim of a tagged release, completed installation or live workflow qualification
   canonical checkout holds it until its files are committed or reverted, or it ends;
   another session's edit is denied with the holder and its files named, and continues in
   a worktree. `status|release` show and free it. Install steps: docs/worktree-placement.md.
-- `goals.py plan-lint REPO [--tasks ID,...] [--json] [--strict]` lints TODO.md task
-  contracts before dispatch with the runner's own parsers. Errors (exit 1): missing or
-  duplicate required fields, missing or unparseable Touches, coordinator files in
-  Touches, unknown or cyclic dependencies, and Checks commands naming a test file or
-  module that neither exists nor is created by the task's Touches. Warnings: Touches
-  overlapping another open task with no dependency path, hot files, directories,
-  serial paths, oversized tasks and Acceptance that names no test.
 
 ### Changed
 
+- **Task Store v2 (breaking).** A repository's tasks live in `tasks/`: one file per task
+  (`tasks/items/<ID>.md`) and per goal (`tasks/goals/<ID>.md`), TOML frontmatter plus
+  notes, and a receipt per verified close (`tasks/evidence/<ID>.toml`). Selection,
+  dispatch, integration, closure, the runner, the TUI, the docs maintainer and the
+  owner's questions read only this store at a pinned commit; priority is section, then
+  rank. `autowork tasks` (`list`, `show`, `why`, `validate`, `add`, `field`, `place`,
+  `move`, `hold`, `release`, `done`, `supersede`, `goal`) is the one way to edit it; the
+  top-level `autowork field|place|move|add-task` commands are gone. `autowork migrate`
+  converts a TODO.md + goals.json repository once; an unconverted repository selects
+  nothing and its service waits with that instruction. Integration judges task edits by
+  contract hash: an admitted attempt whose contract changed is set aside, a worker commit
+  that edits a task file is held, and the runner reopens a done task whose receipt pins
+  another contract after a merge. Claims are `Held by:` notes; there is no `in_progress`
+  and no idle-claim adoption. Docs Sync's goals.py, its ledger/TODO/archive modules,
+  plan lint, the planning merge drivers, the pending skill's TODO parser and the unused
+  TODO.md Touches-inference CLI are removed; skills and docs describe the store.
 - A failed batch sends its suspects to single reviews only when they are at most half of
   the checked candidates; otherwise it is halved. A CLI test imports nearly everything, so
   import-based suspects named five of six candidates, each waiting for its own review.
