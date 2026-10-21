@@ -54,6 +54,15 @@ name, a repository path or `.`. Nothing here calls a model.
 | `autowork migrate [target] [--dry-run] [--no-commit]` | Convert a TODO.md + goals.json repository to `tasks/` once, in one local commit (`--no-commit`: staged); an interrupted run resumes; it refuses while work is in flight |
 | `autowork scorecard [--days N] [--json] [target...]` | Per runner over the last N days (default 7): tasks closed (total, verified, manual and unverified-evidence), share of integrations held, median dispatch-to-merge time, new owner questions, measured spend and recorded owner minutes; JSON includes task/attempt usage and attribution; no model call |
 
+Before reusing an installed or running service, `autowork start` refuses if an
+explicitly supplied supported service setting differs from its saved env file
+(including a setting absent there).
+For example, `PI_AUTOWORK_PUSH=0 autowork start` cannot silently start a service saved
+with push enabled. The error names the conflicting settings and file and prints the
+`--install-service` command to apply them; run it with the requested environment.
+A refusal leaves the service and its pause marker unchanged. Matching settings keep
+start idempotent; the default remains push enabled.
+
 In the TUI each key is the first letter of its word, highlighted in the detail pane:
 `l` (or Enter) **L**og, `p` **P**lay/**P**ause (starts a stopped service, resumes a
 paused one, pauses a running one), `s` **S**top, `r` **R**estart, `m` **M**odel and
