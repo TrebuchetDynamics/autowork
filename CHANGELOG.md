@@ -319,6 +319,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- The TUI's question count says how it relates to the Blocker count: "2 questions for you
+  in BLOCKERS.md: 1 for the blocker above, 1 that blocks no task". The Blocker column counts
+  held tasks, while questions also cover waiting tasks and the runner itself, so a bare
+  "2 questions" beside "Blocker 1" read as a contradiction.
+- The drain clock of a task that must run alone keeps running while the task waits for any
+  reason; it restarted whenever the reason changed ("shares a file with an unlanded commit"
+  and back), so the task never drained the pool and lower-ranked work kept the slots.
 - Integration order inherits priority from dependents: a finished commit ranks as high as
   the highest-priority open task that depends on it, directly or through others. A commit
   ranked 36th of 77 waited a day behind higher-ranked commits while 15 tasks, five of them

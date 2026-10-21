@@ -417,6 +417,22 @@ class FleetViewTests(unittest.TestCase):
         (slots / 'T-0.json').write_text(json.dumps({'task_id': 'T-0', 'state': 'reported', 'attempt': 1}))
         self.assertEqual([lane.task for lane in fleet_view.lanes(runner)], ['T-1', 'T-0', 'T-2'])
 
+    def test_the_question_count_says_how_it_relates_to_the_blockers(self):
+        """Blocker 1 in the table and '2 questions for you' below read as a contradiction: one of
+        the two was a question about the runner that blocks no task."""
+        Q = fleet_view.Question
+        runner = fleet_view.Runner(name='a', held=[('T-8', 'conflict')],
+                                   questions=[Q('T-8', 'investigate', 1, 'merge limit'), Q('FULL-CHECK', 'input', 0, 'no gate')])
+        self.assertEqual(fleet_view.question_summary(runner),
+                         '2 questions for you in BLOCKERS.md: 1 for the blocker above, 1 that blocks no task')
+        self.assertEqual(fleet_view.task_counts(runner)[3], 1)  # the Blocker count is still held tasks
+        runner.questions = runner.questions[:1]
+        self.assertEqual(fleet_view.question_summary(runner), '1 question for you in BLOCKERS.md')  # nothing to explain
+        runner.questions = [Q('W-1', 'quick', 3, 'claim'), Q('W-2', 'quick', 1, 'claim'), Q('X', 'input', 0, 'setup')]
+        self.assertEqual(fleet_view.question_summary(runner),
+                         '3 questions for you in BLOCKERS.md: 2 on waiting tasks, 1 that blocks no task')
+        self.assertEqual(fleet_view.question_summary(fleet_view.Runner(name='b')), '')
+
     def test_a_review_that_died_is_not_verifying(self):
         """Three tasks read "verifying" for 13 to 25 hours after their reviews died: the runner log's
         last word is not a live review."""
