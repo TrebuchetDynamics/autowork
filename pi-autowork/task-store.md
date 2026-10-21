@@ -142,9 +142,10 @@ resources or serial work; the hold ends when the note is removed or its date pas
 in canonical key order and ends it with exactly one newline, including records without
 notes; `edit` changes only the header lines it names and keeps every other byte;
 `set_note` sets one `- Label: value` line in the body. Each refuses what it
-cannot reproduce (a value spread over several lines, a trailing comment, line breaks or
-control characters, unknown keys) instead of dropping it, and checks that the result reads
-back to exactly the intended values.
+cannot reproduce (an existing header value spread over several lines, a trailing comment,
+unsupported control characters, unknown keys) instead of dropping it, and checks that the
+result reads back to exactly the intended values. Newlines, carriage returns and tabs in
+header strings are escaped on one physical TOML line and read back unchanged.
 
 `autowork tasks` reads at HEAD (`list`, `show`, `why`, `validate`; `--worktree` on `list`,
 `show` and `validate` reads uncommitted edits through a throwaway commit that leaves the
@@ -199,6 +200,48 @@ New and placed tasks take the next multiple of 1000 in their section; `move` tak
 midpoint between its new neighbours and, when no integer is left, spreads only the run of
 gapless neighbours that follows, never the whole section. A written file grants no
 authority beyond its typed fields, and a declared check still needs approval to run.
+
+### Literal prose input: `--json`
+
+For prose containing quotes, backticks, `$` (including `$(...)` or `$VAR`) or newlines,
+use `--json FILE` or `--json -` on `add`, `field` and `goal`. Write the UTF-8 JSON file
+with a file-writing tool, not an interpolated shell string. The command reads one JSON
+object literally; it does not expand variables or execute its contents. Do not embed
+prose in shell arguments, `echo`, or an unquoted heredoc.
+
+Run these forms from the consumer repository:
+
+```sh
+autowork tasks add --json task.json
+autowork tasks field TASK-ID --json field.json
+autowork tasks goal GOAL-ID --json goal.json
+# The same object from stdin; only the filename appears in the shell command:
+autowork tasks add --json - < task.json
+```
+
+- **add:** keys match option names with hyphens replaced by underscores: `goal`,
+  `title`, `short` (required), `section`, `id`, `scope`, `kind`, `ownership`, `sources`,
+  `acceptance`, `checks`, `touches`, `depends_on`, `verified_depends_on`, `resources`,
+  `exclusions`. Repeatable options take JSON arrays of strings, not comma-separated
+  strings. Optional `notes` is the complete raw Markdown body, preserved byte for byte
+  as UTF-8, including newlines and surrounding whitespace. Explicit raw bodies bypass
+  canonical trailing-newline normalization; ordinary records keep it. Do not combine `notes` with
+  `sources`: put the Sources line inside `notes` instead so nothing rewrites the body.
+- **field:** `{"label": "scope", "value": "Keep $VAR and \n literally"}` sets a string.
+  A list field takes an array (`{"label": "acceptance", "value": ["criterion"]}`),
+  and `rank` takes an integer. `{"label": "notes", "value": "First line\nSecond line"}`
+  replaces the **entire** Markdown body literally: read it first and retain Sources,
+  holds and other existing notes. Other note labels keep their existing single-line
+  behavior; use `notes` for lossless multiline prose.
+- **goal:** `title`, `source`, `priority` (integer), `status`, `focus` (boolean),
+  `depends_on` (array of strings), `evidence`; the goal ID remains positional.
+
+File and stdin input have identical behavior. Unknown keys, wrong types, missing required
+values, malformed/unreadable JSON and mixing JSON with value flags or field label/value
+arguments are refused without writing. Repository selection and `--expect REV` remain
+outside the object; with `field --json`, run in the consumer repository. Existing flags
+and positional field values still work for simple input. All existing validation,
+locking, in-flight and authority checks apply; JSON is data, not permission to run a check.
 
 ## Converting a repository: `autowork migrate`
 
@@ -370,7 +413,9 @@ whole-set writes. Run it with
 The closure case in `engine/test_parallel_integrate.py` covers verified provenance,
 receipt-dependent selection and fleet display; `../tests/test_task_commands.py` covers
 manual closure across task kinds, CLI/fleet disclosure, verified dependencies and goal
-qualification. `tests/test_scorecard.py` covers the total/verified/manual closure split.
+qualification. Its JSON-input case runs the documented shell command forms against files
+and stdin, checks lossless scope/acceptance/body and goal-title readback, and asserts that
+backtick and command-substitution payloads never create their marker files. `tests/test_scorecard.py` covers the total/verified/manual closure split.
 `tests/test_task_migrate.py`, `tests/test_task_commands.py`, `tests/test_task_prepare.py`
 (the Docs Sync lifecycle: bootstrap, conversion, staging, interruption, refusal, audit,
 repair, concurrency and repeat runs on disposable repositories), the engine's dispatch and

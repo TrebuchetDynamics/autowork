@@ -386,6 +386,20 @@ repository. Read first, then write:
 | Retire for a successor | `autowork tasks supersede ID --by OTHER --reason TEXT` |
 | Check the result | `autowork tasks validate --worktree .` |
 
+**Use literal JSON for prose.** If a value contains quotes, backticks, `$`
+(including `$(...)` or `$VAR`) or newlines, write one UTF-8 JSON object with a
+file-writing tool and use `autowork tasks add --json task.json`,
+`autowork tasks field ID --json field.json`, or
+`autowork tasks goal ID --json goal.json` from the consumer repository.
+Use `--json - < task.json` for stdin; never interpolate prose into shell arguments,
+`echo` or an unquoted heredoc. JSON keys mirror option names with underscores;
+list options take arrays. Field input is `{"label": "scope", "value": "text"}`
+(or an array for `acceptance`). `notes` on add, or field label `notes`, preserves
+the complete multiline Markdown body; read and retain existing Sources/holds before
+replacing it. Do not mix JSON with value flags or label/value arguments.
+See [literal input](../../pi-autowork/task-store.md#literal-prose-input---json)
+for keys, types and examples. Existing validation and `--expect REV` still apply.
+
 A new goal needs `--title`, `--source` and `--priority`. `add` rejects an unknown
 goal and allocates the next ID (`autowork tasks new-id` shows it); it defaults to
 `kind = "implementation"`, `ownership = "worker"` and the bottom of its section, and
