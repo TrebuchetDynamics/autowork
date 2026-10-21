@@ -160,7 +160,8 @@ def archive_rejections(state, closures, *, entries, reasons):
 def overlap(row):
     """The dispatcher's wait for a file another task names (parallel_plan), or ''."""
     reason = ' '.join(str(row.get('reason') or '').split())
-    return reason if row.get('state') == 'waiting' and reason.startswith('shares ') else ''
+    shared = reason.startswith('shares ') or re.fullmatch(r'waits for \S+ \(shares hot file .+\)', reason)
+    return reason if row.get('state') == 'waiting' and shared else ''
 
 
 def overlaps(rows, limit=6):

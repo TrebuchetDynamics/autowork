@@ -18,8 +18,8 @@ class MaintainerTests(unittest.TestCase):
         """Tasks naming one file collided at merge all afternoon; the dispatcher now holds them,
         and with slots idle the maintainer may merge, split or supersede them before they run."""
         rows = [{'task': 'A', 'state': 'running'},
-                {'task': 'B', 'state': 'waiting', 'reason': 'shares x.py with A; starts after it lands'},
-                {'task': 'C', 'state': 'waiting', 'reason': 'shares y.py with B, which goes first'},
+                {'task': 'B', 'state': 'waiting', 'reason': 'waits for A (shares hot file x.py)'},  # current
+                {'task': 'C', 'state': 'waiting', 'reason': 'shares y.py with B, which goes first'},  # old journal
                 {'task': 'D', 'state': 'waiting', 'reason': 'all 8 worker slots busy'}]
         found = maintainer.overlaps(rows)
         self.assertEqual([(t, k) for t, k, _ in found], [('B', 'overlap'), ('C', 'overlap')])

@@ -218,19 +218,24 @@ SDKs and package caches remain in `AUTOWORK_CACHE`, independently of temp cleanu
 
 ## Admission: Touches and Resources
 
-`Touches:` schedules work, and a shared file holds it:
+`Touches:` schedules work, and a shared hot file holds it:
 
 - `Touches:` is a comma-separated list of repository-relative paths or globs the
   task is expected to change; `*` also matches across `/`, and a trailing `/` covers a
-  directory. A task that names a file (not a directory or glob) that running work or a
-  commit not landed yet also names waits until that task lands (a waiting task holds no
-  files; a free file goes to the higher-priority task first): started together, they conflict at merge, and each conflict costs a
-  resolver run and a second review. Directory and glob overlap only ranks a task after
-  independent ones (TOOLSET-161-17), and an idle claim holds nothing. A worker may change
+  directory. A literal file is **hot** when at least three unfinished tasks name it
+  explicitly, counting each task once across the whole queue, including tasks not yet
+  runnable. This is the task-count threshold shared with plan lint; lint's separate
+  file-length warning does not make a file serial. A task naming the same hot file as
+  running work or a commit awaiting integration waits with
+  `waits for <task> (shares hot file <path>)` until that task lands. Newly selected work
+  also reserves its hot files, so free slots cannot start two owners at once. A waiting
+  task or idle claim holds no files; a free hot file goes to the higher-priority task
+  first. Cold-file, directory and glob overlap only ranks work after independent tasks
+  (TOOLSET-161-17). A worker may change
   whatever else its task needs; the merge into the base, in priority order, settles the
   rest, and a real conflict goes to the merge resolver. A missing or invalid `Touches:`
   is no hint (the task ranks after hinted ones).
-- While worker slots idle and tasks wait on a shared file, the DOCS-MAINTAINER re-cuts
+- While worker slots idle and tasks wait on a shared hot file, the DOCS-MAINTAINER re-cuts
   those tasks before they run (`overlap` trigger): it may merge one into a task that has
   not started, split off the shared-file part as a dependent follow-up, supersede a
   duplicate or make the order explicit, without touching running tasks.
@@ -256,8 +261,9 @@ SDKs and package caches remain in `AUTOWORK_CACHE`, independently of temp cleanu
   dispatch so the pool drains for it, once it has waited that way for
   `PI_AUTOWORK_DRAIN_AFTER` seconds (default 1800, counted from the journal); until then
   independent work backfills and it reserves only what it declares. A serial task never drains.
-- Slots that are `reported`, `integrated`, `held` or `interrupted` block only their
-  dependents and shared resources until closed. A `held` or `interrupted` slot whose task is now done
+- Slots that are `reported`, `integrating`, `integrated` or `interrupted` retain their
+  shared-hot-file and resource reservations until closed, even after their worker ends;
+  exhausted held slots block only their dependents. A `held` or `interrupted` slot whose task is now done
   or superseded (in goals.json, or checked off in TODO.md or its archive) blocks
   nothing; its worktree and record stay for inspection. An `in_progress` task with no live slot is a claim:
   it is never dispatched and blocks its dependents and tasks whose `Resources:` overlap
@@ -284,10 +290,12 @@ write authority.
 ### Shared admission path and history
 
 Fresh/resumed dispatch (`admit`) and held retries (`retry_plan`) in
-[`parallel_dispatch.py`](../scripts/parallel_dispatch.py#L778-L801) both use
-[`parallel_plan.plan`](../scripts/parallel_plan.py#L253). They supply the same
+[`parallel_dispatch.py`](../scripts/parallel_dispatch.py#L1028) both use
+[`parallel_plan.plan`](../scripts/parallel_plan.py#L271). They supply the same
 tracked/nonignored-untracked protected-file inventory to the planner's directory
-classification; these are callers of one policy, not alternative admission rules.
+classification and the full unfinished task context (including dependency- and
+decision-held tasks) for hot-file counts; these are callers of one policy, not
+alternative admission rules. Only runnable contracts are dispatch candidates.
 The [retry lifecycle guard](../scripts/parallel_state.py#L348-L355) also calls
 `retry_plan`. [Integration](../scripts/parallel_integrate.py#L220-L234) checks the
 original dispatched contract against the protected inventory at the slot baseline,

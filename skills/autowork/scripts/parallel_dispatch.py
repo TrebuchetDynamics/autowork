@@ -892,6 +892,25 @@ def contracts(repo, requested=None, plan=None):
         return []  # Malformed queues still raise and report ACTION_REQUIRED.
 
 
+def task_context(repo):
+    """All unfinished TODO contracts for planning, including nonrunnable tasks.
+
+    Selection still uses contracts(); a decision or dependency must not hide a
+    third declaration of a hot file (or a running slot's declared files).
+    """
+    inputs = execution.selection_inputs(repo)
+    result = []
+    for tid, bodies in inputs['bodies'].items():
+        if len(bodies) != 1:
+            continue  # ambiguous declarations cannot supply a reliable hint
+        body, mark, _ = bodies[0]
+        fields = execution.contract_fields(body)
+        status = inputs['indexed'].get(tid, {}).get('status', fields.get('Status', 'open'))
+        if mark.lower() != 'x' and status != 'done':
+            result.append({'id': tid, 'fields': dict(fields, Status=status)})
+    return result
+
+
 def protected_files(repo, revision=None):
     """Inventory shared build/schema/CI files without interpreting names as globs."""
     args = ('ls-tree', '-rz', '--name-only', revision) if revision else (
@@ -905,7 +924,8 @@ def retry_plan(repo, current, requested=None, plan_path=None):
     held = {s['task_id'] for s in current if s['state'] == 'held' and s['attempt'] == 1
             and not state.exhausted(s) and not state.worker_live(s)}
     everything = contracts(repo)
-    by_id = {t['id']: t for t in everything}
+    context = task_context(repo)
+    by_id = {t['id']: t for t in context}
     tasks = contracts(repo, requested, plan_path) if (requested or plan_path) else everything
     contract = lambda s: by_id.get(s['task_id'], {'id': s['task_id'], 'fields': {}})
     occupying = [s for s in current if s['state'] in OCCUPYING and s['task_id'] not in held]
@@ -914,7 +934,7 @@ def retry_plan(repo, current, requested=None, plan_path=None):
     # holds reserve only dependencies, just as they do for ordinary dispatch.
     return parallel_plan.plan([t for t in tasks if t['id'] in held],
                               [contract(s) for s in occupying if s not in parked],
-                              all_tasks=everything, parked=[contract(s) for s in parked], adopted=held,
+                              all_tasks=context, parked=[contract(s) for s in parked], adopted=held,
                               protected_files=protected_files(repo))
 
 
@@ -1051,7 +1071,8 @@ def dispatch_locked(args, repo, common, count, template, host):
         current = state.recover_reports(common, current)
     sweep_retired_tmp(common, current)
     everything = contracts(repo)
-    by_id = {t['id']: t for t in everything}
+    context = task_context(repo)
+    by_id = {t['id']: t for t in context}
     candidates = contracts(repo, args.tasks, args.plan) if (args.tasks or args.plan) else everything
     closed = retired(repo, getattr(args, 'base_ref', None))
     candidates = [t for t in candidates if t['id'] not in closed]  # closed work never starts
@@ -1075,7 +1096,7 @@ def dispatch_locked(args, repo, common, count, template, host):
                and re.split(r'[;.\s]', t['fields'].get('Status', 'open'))[0] == 'in_progress']
     idle = parallel_claims.idle_claims(repo, claimed, getattr(args, 'adopt_idle_claims', 0)) if claimed else {}
     backlog = merge_backlog(common, occupying, workers=count)
-    planned = admit(candidates, running, restartable, occupying, everything=everything,
+    planned = admit(candidates, running, restartable, occupying, everything=context,
                     parked=[contract(s) for s in parked], adopted=set(idle), protected=protected_files(repo),
                     drain_after=drain_after(), waited=waiting_streaks(common),
                     finished={s['task_id'] for s in occupying if s['state'] in FINISHED and not state.worker_live(s)},
