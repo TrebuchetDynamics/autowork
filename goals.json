@@ -31,6 +31,7 @@
         "TOOLSET-123-de",
         "TOOLSET-143-62",
         "TOOLSET-172-92",
+        "TOOLSET-172-92-LIVE",
         "TOOLSET-215-91",
         "TOOLSET-217-2d"
       ],
@@ -862,7 +863,6 @@
       "TOOLSET-294-9d",
       "TOOLSET-293-25",
       "TOOLSET-286-32",
-      "TOOLSET-285-47",
       "TOOLSET-276-2c",
       "TOOLSET-276-a9",
       "TOOLSET-276-3f",
@@ -885,7 +885,6 @@
       "TOOLSET-225-75",
       "TOOLSET-202-9a",
       "TOOLSET-192-71",
-      "TOOLSET-172-92",
       "TOOLSET-178-47",
       "TOOLSET-131-ac",
       "TOOLSET-132-af",
@@ -919,7 +918,8 @@
       "TOOLSET-145-6d",
       "TOOLSET-215-91",
       "TOOLSET-146-bc-LIVE",
-      "TOOLSET-117-cb-LIVE"
+      "TOOLSET-117-cb-LIVE",
+      "TOOLSET-172-92-LIVE"
     ]
   },
   "tasks": [
@@ -1449,14 +1449,6 @@
       "title": "Deliver opt-in ledger conversion tools and offline qualification"
     },
     {
-      "depends_on": [],
-      "goal": "PORTABLE",
-      "id": "TOOLSET-172-92",
-      "section": "Next",
-      "status": "open",
-      "title": "Recover verified managed Hermes checkouts when updates cannot fast-forward"
-    },
-    {
       "depends_on": [
         "TOOLSET-129-c4",
         "TOOLSET-172-92"
@@ -1832,6 +1824,16 @@
       "section": "Needs decision",
       "status": "open",
       "title": "Live checks for TOOLSET-146-bc"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-172-92"
+      ],
+      "goal": "PORTABLE",
+      "id": "TOOLSET-172-92-LIVE",
+      "section": "Needs decision",
+      "status": "open",
+      "title": "Live checks for TOOLSET-172-92"
     },
     {
       "depends_on": [],
@@ -2811,6 +2813,14 @@
       "section": "Done",
       "status": "done",
       "title": "A worker paused by a runner restart shows as paused, not failed"
+    },
+    {
+      "depends_on": [],
+      "goal": "PORTABLE",
+      "id": "TOOLSET-172-92",
+      "section": "Done",
+      "status": "done",
+      "title": "Recover verified managed Hermes checkouts when updates cannot fast-forward"
     },
     {
       "depends_on": [],

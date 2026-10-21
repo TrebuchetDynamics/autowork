@@ -1175,24 +1175,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No change to test selection, sharding or timeouts.
 - Planner's call: Next: it only misleads people who run the full check in the background.
 
-### TOOLSET-172-92 — Recover verified managed Hermes checkouts when updates cannot fast-forward
-
-- [ ] TOOLSET-172-92 — Recover verified managed Hermes checkouts when updates cannot fast-forward
-- Short: Recover managed Hermes checkouts
-- Status: open
-- Goal: PORTABLE
-- Sources: Owner's full-suite failure report and selected automatic-safe-recovery policy; [managed checkout recovery](docs/project.md#managed-hermes-checkout-recovery); update_bundle.py prepare/git and scripts/install_menu.py command-result reporting.
-- Touches: update_bundle.py, scripts/install_menu.py, tests/test_update_bundle.py, tests/test_install_menu.py, docs/installation.md, docs/cross-host.md
-- Resources: install-transaction — source/profile transaction and installer reporting changes; integration already has one owner and lands one task at a time (TOOLSET-161-17), so this need not run alone. Changed from exclusive by the owner session on 2026-10-18: it had drained the pool for over 12 hours with 17 tasks waiting. Tests use disposable homes only.
-- Scope: Implement the cited automatic recovery for verified clean managed Hermes plugin checkouts whose ancestry check fails, using the existing updater's native admission, source binding, profile merge, backup, journal and read-back machinery. Distinguish negative ancestry from actual Git failure and incomplete history; retain the complete old checkout and native profile edits. Dirty, locally advanced, unknown/shared-active or unproven sources defer safely. Improve full-suite summaries to show the updater's structured cause/action, not a closing JSON brace, while keeping successful components and aggregate partial-failure behavior.
-- Acceptance: Disposable real-Git fixtures exercise equal/fast-forward and verified rewritten history, shallow ancestry, ahead/diverged local work, unrecognized/dirty/untracked sources, shared live consumers, profile customizations and scan denial. Recovery stages exact trusted main, preserves source/base and user data, verifies publication and reuses the same backups on resume; stale or interrupted writes cannot discard foreign edits or manufacture success. No reset/clean, forced merge/push, active-runtime restart, scanner bypass or unselected scope expansion. Mixed component results retain five successes plus an actionable Hermes error; malformed/non-JSON output has a useful bounded fallback. An unchanged retry is a no-op; preview/skip performs no network/recovery mutation.
-- Checks: Planned after implementation: `python3 -m unittest discover -s tests -p test_update_bundle.py`; `python3 -m unittest discover -s tests -p test_install_menu.py`; `python3 scripts/check.py`; `git diff --check`. Extend existing focused fixtures with failure-injection and preservation assertions; new recovery cases have not run.
-- Dependencies: None.
-- Ownership: Assigned Autowork worker and integration coordinator under normal independent review and canonical delivery gates; do not deploy from the implementation task.
-- Context: Existing missing-Pi bootstrap and live reinstall tasks retain their scope and dependencies; this is a distinct updater recovery gap, not a repeat of successful installations.
-- Exclusions: No live changes to the reported host or any Hermes profile, credentials, jobs, gateways, services, host plugins or remote branches. Actual installation/adoption needs its own authorized invocation. User-provided paths/logs are evidence, not local-target identity.
-- Next action: Add the exact non-ancestor/structured-summary regression and preservation fixture, then implement the supported classified recovery path.
-
 ### TOOLSET-178-47 — Keep TUI confirmations readable and stable through refresh and terminal resize
 
 - [ ] TOOLSET-178-47 — Keep TUI confirmations readable and stable through refresh and terminal resize
@@ -1771,6 +1753,14 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
   - Real provider retry/abort behavior, built-in tool/check replay policies, resource pressure, long-lived worker reuse, Pi extension reload survival, native upstream reconcile/interrupt paths and storage power-loss behavior remain unqualified.
   Checks: Live qualification by an authorized person; offline evidence does not count.
   Dependencies: TOOLSET-117-cb.
+  Status: open
+
+- [ ] TOOLSET-172-92-LIVE — Live checks for TOOLSET-172-92
+  Scope: Run the live checks the offline work for TOOLSET-172-92 left pending.
+  Acceptance: Each check passes on the real target:
+  - Native Hermes scanner/install-manager compatibility and live profile qualification require a separate authorized invocation. No actual Hermes profile, reported host, gateway, service, credentials or jobs were installed, adopted or restarted; offline registration fixtures do not establish model execution or Telegram delivery.
+  Checks: Live qualification by an authorized person; offline evidence does not count.
+  Dependencies: TOOLSET-172-92.
   Status: open
 
 ## Goal coverage
