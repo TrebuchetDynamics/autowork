@@ -1283,14 +1283,6 @@
       "title": "One install.sh for every component, chosen with checkboxes"
     },
     {
-      "depends_on": [],
-      "goal": "TEST-SUITE",
-      "id": "TOOLSET-125-e6",
-      "section": "Next",
-      "status": "open",
-      "title": "Run inherited execution regressions once"
-    },
-    {
       "depends_on": [
         "TOOLSET-124-97",
         "TOOLSET-135-16"
@@ -2669,6 +2661,14 @@
       "section": "Done",
       "status": "done",
       "title": "Audit this repository's suite against the test budget"
+    },
+    {
+      "depends_on": [],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-125-e6",
+      "section": "Done",
+      "status": "done",
+      "title": "Run inherited execution regressions once"
     },
     {
       "depends_on": [],

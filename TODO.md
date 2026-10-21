@@ -1238,21 +1238,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Ownership: Toolset coordinator under the owner's request (2026-10-17).
 - Exclusions: No edits to the runner log output or the TUI log view (ht2, 2026-10-17), nor to `update_toolset`/`release.py`; no force push; never delete uncommitted or unpushed work.
 
-### TOOLSET-125-e6 — Run inherited execution regressions once
-
-- [ ] TOOLSET-125-e6 — Run inherited execution regressions once
-- Short: Run inherited regressions once
-- Status: open
-- Goal: TEST-SUITE — Optimize test suites without losing defect detection.
-- Sources: [accepted thinning plan](docs/test-suite-audit.md#suite-thinning-plan-2026-10-16), [test budget](skills/shared/ENGINEERING-CYCLE.md#test-budget).
-- Touches: skills/autowork/scripts/test_task_execution.py, docs/test-suite-audit.md
-- Scope: Replace RecoveryTests inheriting a concrete test class with a fixture-only mixin or helper. DirectExecutionTests retains its 11 named cases and RecoveryTests retains its 25 unique cases. Do not rename or weaken original safety regressions; remove only the 11 duplicate inherited executions.
-- Acceptance: Collection changes from 11 + 36 = 47 executions to 36 unique executions; every removed child-class ID maps to its identical retained parent method; setup, action, assertions and branch protection remain equivalent; focused tests and normal gate pass. Record before/after focused timing without promising a suite speedup.
-- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_task_execution.py; python3 scripts/check.py; git diff --check
-- Dependencies: None.
-- Ownership: Toolset coordinator; one writer per affected workspace.
-- Exclusions: No live/model runs, new test framework/dependency, publication, hidden test skips, weakened safety cases or changes outside the named batch.
-
 ### TOOLSET-126-6b — Trim prose-only test assertions while retaining executable contracts
 
 - [ ] TOOLSET-126-6b — Trim prose-only test assertions while retaining executable contracts

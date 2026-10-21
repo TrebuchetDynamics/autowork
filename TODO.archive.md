@@ -5362,3 +5362,25 @@ Source section: Next
 - Context: Existing missing-Pi bootstrap and live reinstall tasks retain their scope and dependencies; this is a distinct updater recovery gap, not a repeat of successful installations.
 - Exclusions: No live changes to the reported host or any Hermes profile, credentials, jobs, gateways, services, host plugins or remote branches. Actual installation/adoption needs its own authorized invocation. User-provided paths/logs are evidence, not local-target identity.
 - Next action: Add the exact non-ancestor/structured-summary regression and preservation fixture, then implement the supported classified recovery path.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-125-e6"></a>
+
+### TOOLSET-125-e6 — Run inherited execution regressions once
+
+- [x] TOOLSET-125-e6 — Run inherited execution regressions once
+- Short: Run inherited regressions once
+- Status: done
+- Goal: TEST-SUITE — Optimize test suites without losing defect detection.
+- Sources: [accepted thinning plan](docs/test-suite-audit.md#suite-thinning-plan-2026-10-16), [test budget](skills/shared/ENGINEERING-CYCLE.md#test-budget).
+- Touches: skills/autowork/scripts/test_task_execution.py, docs/test-suite-audit.md
+- Scope: Replace RecoveryTests inheriting a concrete test class with a fixture-only mixin or helper. DirectExecutionTests retains its 11 named cases and RecoveryTests retains its 25 unique cases. Do not rename or weaken original safety regressions; remove only the 11 duplicate inherited executions.
+- Acceptance: Collection changes from 11 + 36 = 47 executions to 36 unique executions; every removed child-class ID maps to its identical retained parent method; setup, action, assertions and branch protection remain equivalent; focused tests and normal gate pass. Record before/after focused timing without promising a suite speedup.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_task_execution.py; python3 scripts/check.py; git diff --check
+- Dependencies: None.
+- Ownership: Toolset coordinator; one writer per affected workspace.
+- Exclusions: No live/model runs, new test framework/dependency, publication, hidden test skips, weakened safety cases or changes outside the named batch.
