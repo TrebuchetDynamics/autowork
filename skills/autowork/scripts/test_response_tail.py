@@ -1,6 +1,3 @@
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "tests/fixtures"))
 import tempfile
 import unittest
 from pathlib import Path
@@ -175,19 +172,6 @@ class ResponseTailTests(unittest.TestCase):
                     self.assertNotIn('private-tail', row['payload'])
                     self.assertIn('held', row['payload'])
                     self.assertEqual(path.read_bytes(), before)
-
-    def test_ready_status_keeps_full_preparation_in_private_receipt(self):
-        import legacy_owner_cycle as owner_cycle
-        result = {'outcome': 'QUEUED', 'selected_task': {'id': 'T1'},
-                  'dispatch_attempted': True, 'next_action': 'Observe original native card',
-                  'handoff': {'result': {'task_id': 'original', 'contract': 'large private input'}},
-                  'recovery': {'stages': ['private source history']}}
-        status = owner_cycle.compact(result, '/private/state')
-        self.assertEqual(status['native_card'], 'original')
-        self.assertEqual(status['completed_tasks'], [])
-        self.assertNotIn('recovery', status)
-        self.assertNotIn('handoff', status)
-        self.assertEqual(status['receipt'], '/private/state/unblock-latest.json')
 
     def test_json_projection_preserves_existing_context_and_opaque_masking(self):
         import json

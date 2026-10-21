@@ -14,37 +14,6 @@ spec.loader.exec_module(provisioning)
 
 
 class ProvisioningTests(unittest.TestCase):
-    def test_new_native_autowork_defaults_to_100_and_existing_owner_copy_is_preserved(self):
-        import json
-        import subprocess
-        import sys
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            profiles = [('default', root / 'home'), ('other', root / 'home/profiles/other')]
-            skills = [ROOT / 'skills' / name for name in ('autowork', 'docs-sync', 'shared')]
-            self.assertEqual(provisioning.install(ROOT / 'skills', profiles, skills=skills,
-                                                 report=lambda _: None), 0)
-            workspace = root / 'workspace'
-            workspace.mkdir()
-            contract = root / 'contract.txt'
-            contract.write_text(''.join(f'{key}: fixture {key}\n' for key in
-                ('Objective', 'Scope', 'Verification', 'Source', 'Project payoff', 'Current evidence',
-                 'Expected change', 'Acceptance', 'Stop conditions', 'Repo-docs pass')))
-            for profile, home in profiles:
-                script = home / 'skills/autowork/scripts/start_goal.py'
-                result = subprocess.run([sys.executable, str(script), '--profile', profile,
-                    '--workspace', str(workspace), '--title', 'Fixture', '--contract-file', str(contract),
-                    '--validate-only'], capture_output=True, text=True, timeout=30)
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(json.loads(result.stdout)['goal_max_turns'], 100)
-                self.assertIn('current agent session', (home / 'skills/autowork/SKILL.md').read_text())
-            owner = profiles[0][1] / 'skills/autowork/scripts/start_goal.py'
-            owner.write_text(owner.read_text().replace('BUDGET = 100', 'BUDGET = 50') + '\n# Owner customization\n')
-            original = owner.read_bytes()
-            self.assertEqual(provisioning.install(ROOT / 'skills', profiles, skills=skills,
-                                                 report=lambda _: None), 0)
-            self.assertEqual(owner.read_bytes(), original)
-
     def test_concurrent_complete_winner_is_preserved(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

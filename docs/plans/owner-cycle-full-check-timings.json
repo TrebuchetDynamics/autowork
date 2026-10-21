@@ -1,0 +1,602 @@
+{
+  "task": "TOOLSET-202-9a",
+  "baseline": "f9c49c20cb822442f9f85d767eff67e03081d67b",
+  "measurement": "Complete offline checker wall time measured with time.monotonic around the real subprocess; no queue or reruns included.",
+  "collector_sha256": "33d5d8ee86b10fd25978fbf65f7023a6ba2e180797abff91acc13531147a103d",
+  "raw_artifacts": "$TMPDIR/timings/{label}.{json,inputs.json,inventory,log}; original task TMPDIR recorded in worker report.",
+  "samples": [
+    {
+      "label": "before-1",
+      "source": {
+        "head": "f9c49c20cb822442f9f85d767eff67e03081d67b",
+        "index_tree": "ec0140fedbd541eda116bf778151fb018d15d970",
+        "file_count": 588,
+        "inputs_sha256": "4e5709d40be207caaf69a16809567df1d9b51294cc197cc5d18d018c6fdb1495"
+      },
+      "command": [
+        "python3",
+        "scripts/check.py",
+        "--jobs",
+        "4",
+        "--timeout",
+        "600"
+      ],
+      "jobs": 4,
+      "unit_timeout_seconds": 600,
+      "scratch_basename": "t-y8puliz9",
+      "python_version": "3.12.14",
+      "python_executable_sha256": "8f9781a98200d9ecda7e00464e4c64b1327abae788ae8e6979d5c859311410c7",
+      "platform": "Linux-7.0.0-31-generic-x86_64-with-glibc2.39",
+      "logical_cpus": 24,
+      "affinity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "started_utc": "2026-10-21T02:30:46.959709+00:00",
+      "finished_utc": "2026-10-21T02:39:40.075655+00:00",
+      "elapsed_seconds": 533.0617610639893,
+      "exit_code": 0,
+      "inputs_unchanged": true,
+      "inventory_sha256": "113b898d93bb88461de5f2fe4ee3ff6b7a80a8b3b8d08eda6d62d4f0e21ae224",
+      "inventory_summary": "Offline inventory: 148 modules in 5 directories; 8 excluded. No model/native qualification.",
+      "log_sha256": "923a5b8db31ee12bbb4758162ef31a04606f02a42e940e6f269d408690256a2f",
+      "process_units": 162,
+      "test_count": 2208,
+      "result": [
+        "Offline result: 5 test directories passed; 0 failed; 8 modules excluded."
+      ],
+      "resource_gate_skips": 0,
+      "unittest_skips": [
+        "OK (skipped=1)"
+      ],
+      "failures": [],
+      "cpu_seconds": 1228.440686,
+      "host_load": {
+        "samples": 268,
+        "period_seconds": 2,
+        "one_minute_min": 8.18017578125,
+        "one_minute_mean": 11.28425438724347,
+        "one_minute_max": 15.43994140625,
+        "cpu_busy_fraction": 0.4510231249527934
+      },
+      "raw_record_sha256": "4908b997fb406c5763b3faa1941da8f3ef45fa1ab1179e0655d55e64f40407e4",
+      "runtime_inputs": {
+        "file_count": 306,
+        "sha256": "047c9946d0d047e2ab06629e98d33f081bc512ba477f5011c7e86f5a9652ecae",
+        "excludes": "Hash map covers py/sh/mjs/json, excluding Markdown and docs/. Readback also compares the entire measured Git tree outside four explicit evidence-document paths."
+      }
+    },
+    {
+      "label": "after-1",
+      "source": {
+        "head": "f9c49c20cb822442f9f85d767eff67e03081d67b",
+        "index_tree": "127151e274bdc99b2c42f60b6018e5e1b36d0b78",
+        "file_count": 542,
+        "inputs_sha256": "326606d6111ee4f72ce095e877ac35350700bb5ff2acc05b8b97cb8d0e1f37c4"
+      },
+      "command": [
+        "python3",
+        "scripts/check.py",
+        "--jobs",
+        "4",
+        "--timeout",
+        "600"
+      ],
+      "jobs": 4,
+      "unit_timeout_seconds": 600,
+      "scratch_basename": "t-ran8romi",
+      "python_version": "3.12.14",
+      "python_executable_sha256": "8f9781a98200d9ecda7e00464e4c64b1327abae788ae8e6979d5c859311410c7",
+      "platform": "Linux-7.0.0-31-generic-x86_64-with-glibc2.39",
+      "logical_cpus": 24,
+      "affinity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "started_utc": "2026-10-21T02:39:49.575593+00:00",
+      "finished_utc": "2026-10-21T02:48:03.868615+00:00",
+      "elapsed_seconds": 494.24309635721147,
+      "exit_code": 0,
+      "inputs_unchanged": true,
+      "inventory_sha256": "46b6a826aa360c206c6530d27ad42ba036f9c9b32ea2d4eb706886a8a2f4c443",
+      "inventory_summary": "Offline inventory: 122 modules in 5 directories; 4 excluded. No model/native qualification.",
+      "log_sha256": "d3087f7c90a52f4b1e820c5fd1b15707e5256309be5020516fdf5f59cb6865e1",
+      "process_units": 136,
+      "test_count": 1860,
+      "result": [
+        "Offline result: 5 test directories passed; 0 failed; 4 modules excluded."
+      ],
+      "resource_gate_skips": 0,
+      "unittest_skips": [],
+      "failures": [],
+      "cpu_seconds": 1124.881015,
+      "host_load": {
+        "samples": 249,
+        "period_seconds": 2,
+        "one_minute_min": 8.0869140625,
+        "one_minute_mean": 10.584753074799197,
+        "one_minute_max": 12.3330078125,
+        "cpu_busy_fraction": 0.43312295475092
+      },
+      "raw_record_sha256": "b8bbb3deeb0e4ef0c455dcc2472d0a9f3de7b2cea06ad1bd60a52406473bcbd2",
+      "runtime_inputs": {
+        "file_count": 258,
+        "sha256": "a893ca1d482372084cbde82191e56dd0831dbc164587cccf18e057344b62aabe",
+        "excludes": "Hash map covers py/sh/mjs/json, excluding Markdown and docs/. Readback also compares the entire measured Git tree outside four explicit evidence-document paths."
+      }
+    },
+    {
+      "label": "before-2",
+      "source": {
+        "head": "f9c49c20cb822442f9f85d767eff67e03081d67b",
+        "index_tree": "ec0140fedbd541eda116bf778151fb018d15d970",
+        "file_count": 588,
+        "inputs_sha256": "4e5709d40be207caaf69a16809567df1d9b51294cc197cc5d18d018c6fdb1495"
+      },
+      "command": [
+        "python3",
+        "scripts/check.py",
+        "--jobs",
+        "4",
+        "--timeout",
+        "600"
+      ],
+      "jobs": 4,
+      "unit_timeout_seconds": 600,
+      "scratch_basename": "t-rkyoml2m",
+      "python_version": "3.12.14",
+      "python_executable_sha256": "8f9781a98200d9ecda7e00464e4c64b1327abae788ae8e6979d5c859311410c7",
+      "platform": "Linux-7.0.0-31-generic-x86_64-with-glibc2.39",
+      "logical_cpus": 24,
+      "affinity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "started_utc": "2026-10-21T02:48:19.644320+00:00",
+      "finished_utc": "2026-10-21T02:57:26.744439+00:00",
+      "elapsed_seconds": 547.0543006830849,
+      "exit_code": 0,
+      "inputs_unchanged": true,
+      "inventory_sha256": "113b898d93bb88461de5f2fe4ee3ff6b7a80a8b3b8d08eda6d62d4f0e21ae224",
+      "inventory_summary": "Offline inventory: 148 modules in 5 directories; 8 excluded. No model/native qualification.",
+      "log_sha256": "385b539f2d64beb5a80fd649bf88833f9d38f64e499aeffdb9f9127763171285",
+      "process_units": 162,
+      "test_count": 2208,
+      "result": [
+        "Offline result: 5 test directories passed; 0 failed; 8 modules excluded."
+      ],
+      "resource_gate_skips": 0,
+      "unittest_skips": [
+        "OK (skipped=1)"
+      ],
+      "failures": [],
+      "cpu_seconds": 1192.035147,
+      "host_load": {
+        "samples": 275,
+        "period_seconds": 2,
+        "one_minute_min": 7.79638671875,
+        "one_minute_mean": 12.941214488636364,
+        "one_minute_max": 20.49951171875,
+        "cpu_busy_fraction": 0.4429484264283827
+      },
+      "raw_record_sha256": "4756eddb664b4c89c572511281252051d53c0de99d5e16eaaeba0467d72bcbc1",
+      "runtime_inputs": {
+        "file_count": 306,
+        "sha256": "047c9946d0d047e2ab06629e98d33f081bc512ba477f5011c7e86f5a9652ecae",
+        "excludes": "Hash map covers py/sh/mjs/json, excluding Markdown and docs/. Readback also compares the entire measured Git tree outside four explicit evidence-document paths."
+      }
+    },
+    {
+      "label": "after-2",
+      "source": {
+        "head": "f9c49c20cb822442f9f85d767eff67e03081d67b",
+        "index_tree": "127151e274bdc99b2c42f60b6018e5e1b36d0b78",
+        "file_count": 542,
+        "inputs_sha256": "326606d6111ee4f72ce095e877ac35350700bb5ff2acc05b8b97cb8d0e1f37c4"
+      },
+      "command": [
+        "python3",
+        "scripts/check.py",
+        "--jobs",
+        "4",
+        "--timeout",
+        "600"
+      ],
+      "jobs": 4,
+      "unit_timeout_seconds": 600,
+      "scratch_basename": "t-v682rmnd",
+      "python_version": "3.12.14",
+      "python_executable_sha256": "8f9781a98200d9ecda7e00464e4c64b1327abae788ae8e6979d5c859311410c7",
+      "platform": "Linux-7.0.0-31-generic-x86_64-with-glibc2.39",
+      "logical_cpus": 24,
+      "affinity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "started_utc": "2026-10-21T02:57:31.504902+00:00",
+      "finished_utc": "2026-10-21T03:05:46.196959+00:00",
+      "elapsed_seconds": 494.63901884900406,
+      "exit_code": 0,
+      "inputs_unchanged": true,
+      "inventory_sha256": "46b6a826aa360c206c6530d27ad42ba036f9c9b32ea2d4eb706886a8a2f4c443",
+      "inventory_summary": "Offline inventory: 122 modules in 5 directories; 4 excluded. No model/native qualification.",
+      "log_sha256": "64ed113c9e5c68085f2ff9c35a64d9c52f0e6241f1fa139b5eeebd4186100fa4",
+      "process_units": 136,
+      "test_count": 1860,
+      "result": [
+        "Offline result: 5 test directories passed; 0 failed; 4 modules excluded."
+      ],
+      "resource_gate_skips": 0,
+      "unittest_skips": [],
+      "failures": [],
+      "cpu_seconds": 1068.8219569999999,
+      "host_load": {
+        "samples": 249,
+        "period_seconds": 2,
+        "one_minute_min": 8.6220703125,
+        "one_minute_mean": 10.652959494226907,
+        "one_minute_max": 12.24560546875,
+        "cpu_busy_fraction": 0.3588025752753812
+      },
+      "raw_record_sha256": "d2db79bea63f5614ed8f588e6755cb006448b20c22779e43ec2243f880118d34",
+      "runtime_inputs": {
+        "file_count": 258,
+        "sha256": "a893ca1d482372084cbde82191e56dd0831dbc164587cccf18e057344b62aabe",
+        "excludes": "Hash map covers py/sh/mjs/json, excluding Markdown and docs/. Readback also compares the entire measured Git tree outside four explicit evidence-document paths."
+      }
+    },
+    {
+      "label": "before-3",
+      "source": {
+        "head": "f9c49c20cb822442f9f85d767eff67e03081d67b",
+        "index_tree": "ec0140fedbd541eda116bf778151fb018d15d970",
+        "file_count": 588,
+        "inputs_sha256": "4e5709d40be207caaf69a16809567df1d9b51294cc197cc5d18d018c6fdb1495"
+      },
+      "command": [
+        "python3",
+        "scripts/check.py",
+        "--jobs",
+        "4",
+        "--timeout",
+        "600"
+      ],
+      "jobs": 4,
+      "unit_timeout_seconds": 600,
+      "scratch_basename": "t-kj6nkpii",
+      "python_version": "3.12.14",
+      "python_executable_sha256": "8f9781a98200d9ecda7e00464e4c64b1327abae788ae8e6979d5c859311410c7",
+      "platform": "Linux-7.0.0-31-generic-x86_64-with-glibc2.39",
+      "logical_cpus": 24,
+      "affinity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "started_utc": "2026-10-21T03:05:52.491095+00:00",
+      "finished_utc": "2026-10-21T03:13:58.279271+00:00",
+      "elapsed_seconds": 485.7363127921708,
+      "exit_code": 1,
+      "inputs_unchanged": true,
+      "inventory_sha256": "113b898d93bb88461de5f2fe4ee3ff6b7a80a8b3b8d08eda6d62d4f0e21ae224",
+      "inventory_summary": "Offline inventory: 148 modules in 5 directories; 8 excluded. No model/native qualification.",
+      "log_sha256": "1f8f67fcc800d28ffc0cbc55b3be60b7f2b991490ea46c3da8d4d7569c20519b",
+      "process_units": 162,
+      "test_count": 2208,
+      "result": [
+        "Offline result: 4 test directories passed; 1 failed; 8 modules excluded."
+      ],
+      "resource_gate_skips": 0,
+      "unittest_skips": [
+        "OK (skipped=1)"
+      ],
+      "failures": [
+        "FAIL: test_a_conflicting_owner_plan_is_landed_after_each_task (test_pi_autowork.EngineTests.test_a_conflicting_owner_plan_is_landed_after_each_task)"
+      ],
+      "cpu_seconds": 1083.776894,
+      "host_load": {
+        "samples": 244,
+        "period_seconds": 2,
+        "one_minute_min": 5.91357421875,
+        "one_minute_mean": 8.28487608862705,
+        "one_minute_max": 11.54931640625,
+        "cpu_busy_fraction": 0.28668288372954365
+      },
+      "raw_record_sha256": "17df619fa626c9d09662985b4d8096d9175cc125a3279dfb324ff79fe855444f",
+      "runtime_inputs": {
+        "file_count": 306,
+        "sha256": "047c9946d0d047e2ab06629e98d33f081bc512ba477f5011c7e86f5a9652ecae",
+        "excludes": "Hash map covers py/sh/mjs/json, excluding Markdown and docs/. Readback also compares the entire measured Git tree outside four explicit evidence-document paths."
+      }
+    },
+    {
+      "label": "after-3",
+      "source": {
+        "head": "f9c49c20cb822442f9f85d767eff67e03081d67b",
+        "index_tree": "127151e274bdc99b2c42f60b6018e5e1b36d0b78",
+        "file_count": 542,
+        "inputs_sha256": "326606d6111ee4f72ce095e877ac35350700bb5ff2acc05b8b97cb8d0e1f37c4"
+      },
+      "command": [
+        "python3",
+        "scripts/check.py",
+        "--jobs",
+        "4",
+        "--timeout",
+        "600"
+      ],
+      "jobs": 4,
+      "unit_timeout_seconds": 600,
+      "scratch_basename": "t-fnbzrmtc",
+      "python_version": "3.12.14",
+      "python_executable_sha256": "8f9781a98200d9ecda7e00464e4c64b1327abae788ae8e6979d5c859311410c7",
+      "platform": "Linux-7.0.0-31-generic-x86_64-with-glibc2.39",
+      "logical_cpus": 24,
+      "affinity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "started_utc": "2026-10-21T03:14:24.345886+00:00",
+      "finished_utc": "2026-10-21T03:23:15.106734+00:00",
+      "elapsed_seconds": 530.7088845837861,
+      "exit_code": 0,
+      "inputs_unchanged": true,
+      "inventory_sha256": "46b6a826aa360c206c6530d27ad42ba036f9c9b32ea2d4eb706886a8a2f4c443",
+      "inventory_summary": "Offline inventory: 122 modules in 5 directories; 4 excluded. No model/native qualification.",
+      "log_sha256": "cad0a4ca089ee7018847b90c717d956944ad58b5979b0372a6188b0f8bb3796d",
+      "process_units": 136,
+      "test_count": 1860,
+      "result": [
+        "Offline result: 5 test directories passed; 0 failed; 4 modules excluded."
+      ],
+      "resource_gate_skips": 0,
+      "unittest_skips": [],
+      "failures": [],
+      "cpu_seconds": 1187.7788209999999,
+      "host_load": {
+        "samples": 267,
+        "period_seconds": 2,
+        "one_minute_min": 6.4287109375,
+        "one_minute_mean": 12.955356097846442,
+        "one_minute_max": 24.81494140625,
+        "cpu_busy_fraction": 0.46959761549925483
+      },
+      "raw_record_sha256": "15f0846ace2ed8cfba057d8e67ade60cca4014a950538d525c1b8e5c4b8d8553",
+      "runtime_inputs": {
+        "file_count": 258,
+        "sha256": "a893ca1d482372084cbde82191e56dd0831dbc164587cccf18e057344b62aabe",
+        "excludes": "Hash map covers py/sh/mjs/json, excluding Markdown and docs/. Readback also compares the entire measured Git tree outside four explicit evidence-document paths."
+      }
+    },
+    {
+      "label": "before-4",
+      "source": {
+        "head": "f9c49c20cb822442f9f85d767eff67e03081d67b",
+        "index_tree": "ec0140fedbd541eda116bf778151fb018d15d970",
+        "file_count": 588,
+        "inputs_sha256": "4e5709d40be207caaf69a16809567df1d9b51294cc197cc5d18d018c6fdb1495"
+      },
+      "command": [
+        "python3",
+        "scripts/check.py",
+        "--jobs",
+        "4",
+        "--timeout",
+        "600"
+      ],
+      "jobs": 4,
+      "unit_timeout_seconds": 600,
+      "scratch_basename": "t-04x6pkmi",
+      "python_version": "3.12.14",
+      "python_executable_sha256": "8f9781a98200d9ecda7e00464e4c64b1327abae788ae8e6979d5c859311410c7",
+      "platform": "Linux-7.0.0-31-generic-x86_64-with-glibc2.39",
+      "logical_cpus": 24,
+      "affinity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "started_utc": "2026-10-21T03:24:22.069209+00:00",
+      "finished_utc": "2026-10-21T03:33:36.088057+00:00",
+      "elapsed_seconds": 553.9666698873043,
+      "exit_code": 1,
+      "inputs_unchanged": true,
+      "inventory_sha256": "113b898d93bb88461de5f2fe4ee3ff6b7a80a8b3b8d08eda6d62d4f0e21ae224",
+      "inventory_summary": "Offline inventory: 148 modules in 5 directories; 8 excluded. No model/native qualification.",
+      "log_sha256": "b86ccf10fb934d42622aa1f64096799def4cbfd9df2d94722248b0f6e265650e",
+      "process_units": 162,
+      "test_count": 2208,
+      "result": [
+        "Offline result: 4 test directories passed; 1 failed; 8 modules excluded."
+      ],
+      "resource_gate_skips": 0,
+      "unittest_skips": [
+        "OK (skipped=1)"
+      ],
+      "failures": [
+        "FAIL: test_a_conflicting_owner_plan_is_landed_after_each_task (test_pi_autowork.EngineTests.test_a_conflicting_owner_plan_is_landed_after_each_task)"
+      ],
+      "cpu_seconds": 1274.5529459999998,
+      "host_load": {
+        "samples": 278,
+        "period_seconds": 2,
+        "one_minute_min": 8.7431640625,
+        "one_minute_mean": 15.968043924235612,
+        "one_minute_max": 23.26611328125,
+        "cpu_busy_fraction": 0.510841637542091
+      },
+      "raw_record_sha256": "7b1cef402b5d3cab63dc08763d07f8195936282e26a42a769ddbbb93b8b34046",
+      "runtime_inputs": {
+        "file_count": 306,
+        "sha256": "047c9946d0d047e2ab06629e98d33f081bc512ba477f5011c7e86f5a9652ecae",
+        "excludes": "Hash map covers py/sh/mjs/json, excluding Markdown and docs/. Readback also compares the entire measured Git tree outside four explicit evidence-document paths."
+      }
+    }
+  ],
+  "comparison": {
+    "passing_baseline_samples": 2,
+    "passing_candidate_samples": 3,
+    "baseline_median_seconds": 540.0580308735371,
+    "candidate_median_seconds": 494.63901884900406,
+    "median_reduction_percent": 8.41002437294902,
+    "all_baseline_runs_median_seconds": 540.0580308735371,
+    "matched_load_samples": [
+      "before-2",
+      "after-3"
+    ],
+    "matched_load_reduction_percent": 2.9878964627257067
+  },
+  "unrelated_baseline_failures": {
+    "ids": [
+      "test_pi_autowork.EngineTests.test_a_conflicting_owner_plan_is_landed_after_each_task"
+    ],
+    "samples": [
+      "before-3",
+      "before-4"
+    ],
+    "isolated_rerun": "pass: 1 test, 45.736 seconds; source baseline unchanged. Failed full runs excluded from passing-gate median and retained above."
+  },
+  "limits": [
+    "Shared host, not exclusive scheduling; report load/CPU variation rather than claim identical instantaneous background activity.",
+    "Fixed jobs=4 timing, not an estimate of default dynamically selected concurrency.",
+    "Benchmark runs do not replace the coordinator merged-tree gate."
+  ]
+}

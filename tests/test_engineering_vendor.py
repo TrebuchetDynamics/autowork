@@ -12,7 +12,7 @@ ROOT=Path(__file__).resolve().parents[1]
 PACK=ROOT/'skills/engineering'
 
 class EngineeringVendorTests(unittest.TestCase):
-    def test_native_ready_helper_delivery_retains_local_dependency_closure(self):
+    def test_live_helper_delivery_retains_local_dependency_closure(self):
         spec = importlib.util.spec_from_file_location('ready_install_fixture', ROOT / 'install_skills.py')
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
@@ -20,8 +20,8 @@ class EngineeringVendorTests(unittest.TestCase):
             home = Path(td)
             selected = [ROOT / 'skills' / name for name in ('autowork', 'docs-sync', 'engineering')]
             self.assertEqual(module.install(ROOT / 'skills', [('fixture', home)], skills=selected, report=lambda _: None), 0)
-            for path in ('autowork/scripts/ready_preflight.py', 'autowork/scripts/owner_cycle.py',
-                         'autowork/scripts/start_goal.py', 'autowork/scripts/source_freshness.py',
+            for path in ('autowork/scripts/owner_cycle.py', 'autowork/scripts/task_execution.py',
+                         'autowork/scripts/parallel_dispatch.py', 'autowork/scripts/source_freshness.py',
                          'autowork/scripts/retry_selection.py', 'docs-sync/scripts/goals.py'):
                 self.assertEqual((home / 'skills' / path).read_bytes(), (ROOT / 'skills' / path).read_bytes())
             result = subprocess.run(['python3', str(home / 'skills/autowork/scripts/owner_cycle.py'), '--help'],

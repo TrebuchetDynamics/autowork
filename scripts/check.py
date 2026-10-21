@@ -17,14 +17,6 @@ TEST_DIRS = ('tests', 'skills/autowork/scripts', 'skills/docs-sync/scripts',
 EXCLUSIONS = {
     'skills/docs-sync/scripts/test_goal_gap_regression.py':
         ('model', 'runs Hermes chat and writes profile receipts at import'),
-    'skills/autowork/scripts/test_native_lifecycle_controls.py':
-        ('native', 'requires an installed Hermes interpreter and native CLI'),
-    'skills/autowork/scripts/test_native_handoff.py':
-        ('native', 'optional installed Hermes native handoff suite'),
-    'skills/autowork/scripts/test_native_containment_linux.py':
-        ('native', 'optional installed Linux containment backend'),
-    'skills/autowork/scripts/test_controller_bridge_linux.py':
-        ('native', 'optional installed Linux controller/backend composition'),
     'tests/integration_plugin.py':
         ('integration', 'requires the optional Hermes loader environment'),
     'tests/integration_autoresearch.py':

@@ -1,6 +1,7 @@
 > Historical native-card reference. Card-specific prerequisites and commands below
 > are retained for evidence only and are superseded by [current execution](owner-cycle.md).
 > They do not govern current Autowork selection, recovery, review or integration.
+> Deleted script paths resolve through the [removal commit](https://github.com/TrebuchetDynamics/autowork/commit/026e23baf4c226aac2c672e3d0e984a77996b9da); see the [removal record](../../../docs/plans/2026-10-20-owner-cycle-retirement.md).
 
 # Autowork — Skill maintenance and verification
 

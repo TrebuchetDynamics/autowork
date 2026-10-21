@@ -31,10 +31,11 @@ unattended completion; verification must distinguish dispatch, execution and del
 The accepted [TODO-first execution plan](#todo-first-execution-without-kanban)
 is implemented: Autowork executes from repository tasks without Kanban prerequisites,
 including historical-card gates. The direct execution path loads only the task
-index helpers; legacy orchestration modules still ship in `skills/autowork/scripts`
-as test fixtures and historical reference, and a few native admission and recovery
-helpers outside the direct path (`ready_preflight.py`, `publication.py`) still import
-`start_goal` from them.
+index helpers. Unreachable native owner-cycle orchestration and its dedicated
+fixtures have been removed; historical guidance remains evidence, not an alternate
+executor. Current-reference helpers (including acceptance receipts and backlog
+planning) and the profile collectors remain. See the source-bound
+[retirement inventory](plans/2026-10-20-owner-cycle-retirement.md).
 
 ## Current components
 
@@ -458,7 +459,7 @@ production runs and external message delivery are separate outcomes.
 
 At planning time, `skills/autowork/scripts/owner_cycle.py::run_locked` reconciled a retained
 native handoff before selection and could return `BLOCKED` without selecting a TODO
-task. `skills/autowork/scripts/reconcile.py` calls
+task. [`skills/autowork/scripts/reconcile.py` (historical source)](https://github.com/TrebuchetDynamics/autowork/blob/0d7c2bf16d4baf549b3f90033a31a9d0021280e8/skills/autowork/scripts/reconcile.py) calls
 `continuation_capability.assess(None)`, while
 `skills/autowork/references/historical-owner-cycle.md#original-card-continuation-capability`
 explicitly documents the missing binding. These are concrete native-integration

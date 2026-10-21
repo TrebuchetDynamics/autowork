@@ -208,16 +208,16 @@ no-agent qualification are described in the
 Model-driven recovery and useful-action timing remain the separate TOOLSET-003/013
 checks; no-agent execution is not a substitute.
 
-The following native-handoff coverage is historical/compatibility verification,
-not a startup requirement for the distributed TODO-first path. Legacy native
-Autowork handoffs snapshot their helper runtime and pin its manifest.
-Offline regressions execute startup, completion and goal entry points from that
-snapshot, change the original installation, and verify that changed bundled
-dependencies refuse execution. Reconciliation tests cover terminal runs behind
-`todo`/`ready` cards and repeated-blocker escalation. Registration drift tests keep
-admission closed while distinguishing matching, missing, mismatched, ambiguous and
-malformed current evidence. None of these checks releases an existing native claim
-or migrates historical cards, installed profiles or saved schedules.
+The unreachable native owner-cycle modules and their dedicated handoff,
+reconciliation, registration, containment and controller suites were retired in
+TOOLSET-202-9a. Their source and prior coverage remain in Git history; see the
+[retirement evidence](plans/2026-10-20-owner-cycle-retirement.md). Current execution,
+parallel integration, profile collection, source-bound receipts and their tests
+remain. Four native-only exclusions disappeared with their suites. Removal does
+not migrate historical cards, installed profiles or saved schedules, and no live
+qualification is claimed. The [retirement evidence](plans/2026-10-20-owner-cycle-retirement.md#measured-complete-check-timing)
+records actual paired complete-check wall times and load samples, separate from
+focused checks. The coordinator still owns the merged-tree full-suite gate.
 
 Backlog dependency validation parses each Dependencies field once and intersects
 its tokens with the known task/goal IDs. It preserves exact word/hyphen boundaries,

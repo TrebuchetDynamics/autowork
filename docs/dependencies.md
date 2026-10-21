@@ -87,9 +87,10 @@ writes upstream bytes unchanged: it reverts the two paraphrased defensive exampl
 (`browser-testing-with-devtools`, `source-driven-development`) and drops their
 `upstream_sha256` records. Re-apply both paraphrases and their hashes, then review
 the diff before committing; `test_engineering_vendor.py` does not catch their loss. Review newly introduced links and dependencies,
-run the full offline checks and the native registration test
-(`skills/autowork/scripts/test_registration_admission.py` with
-`HERMES_NATIVE_REGISTRATION_TEST=1`), then ship with the bundle.
+run the full offline checks, then ship with the bundle. The former native-card
+registration-admission suite was retired with its unreachable engine. Native plugin
+registration remains a separate optional `tests/integration_plugin.py` check; see
+[its environment and limits](testing.md#verify).
 `/autowork update` consumes that reviewed snapshot; it never fetches Addy latest.
 Existing profile-level Addy imports remain untouched as optional alternatives.
 

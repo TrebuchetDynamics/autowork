@@ -94,6 +94,18 @@ class FinishTaskTests(unittest.TestCase):
         self.assertEqual(self.foreign_snapshot(other), before)
         self.preserved()
 
+    def test_pinned_preparation_commit_refuses_foreign_preexisting_task_parent(self):
+        foreign = self.git('commit-tree', self.git('write-tree'), '-p', self.base, '-m', 'Foreign parent')
+        self.git('update-ref', 'refs/heads/agent/fixture/inputs', foreign)
+        self.index = (self.root / '.git/index').read_bytes()  # write-tree refreshes its cache
+        result = subprocess.run(['bash', str(Path(__file__).with_name('agent_commit.sh')),
+            str(self.root), 'fixture', 'inputs', 'Prepare pinned inputs', 'owned'],
+            env={**os.environ, 'AGENT_COMMIT_EXPECTED_BASE': self.base},
+            capture_output=True, text=True, timeout=30)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.git('rev-parse', 'refs/heads/agent/fixture/inputs'), foreign)
+        self.preserved()
+
     def test_acceptance_git_uses_requested_repository_and_its_real_index(self):
         other, env = self.routed_repository()
         before = self.foreign_snapshot(other)
@@ -276,14 +288,6 @@ class FinishTaskTests(unittest.TestCase):
         self.assertEqual(receipt['status'], 'commit_failed')
         self.assertEqual(self.git('branch', '--list', 'agent/*'), '')
         self.preserved()
-
-    def test_worker_definition_requires_commit_before_review(self):
-        import start_goal
-        body = start_goal.build_task_body('Fixture contract')
-        self.assertIn('owned changes are committed', start_goal.REVIEW_DOD)
-        self.assertIn('finish_task.py', body)
-        self.assertIn('commit_failed', body)
-        self.assertIn('Explicit no-commit instructions', body)
 
 
 if __name__ == '__main__':

@@ -1,6 +1,6 @@
 # Local fixture controller composition
 
-Use `scripts/controller_bridge.py` only for bounded local synthetic fixtures. It is not a native/provider transport capability or monetary bound. Keep `native_lifecycle.execution_gate` closed until separately qualified real charge bounds and actual native routing exist.
+Use [`scripts/controller_bridge.py` (archived source)](https://github.com/TrebuchetDynamics/autowork/commit/026e23baf4c226aac2c672e3d0e984a77996b9da) only for bounded local synthetic fixtures. It is not a native/provider transport capability or monetary bound. Keep `native_lifecycle.execution_gate` closed until separately qualified real charge bounds and actual native routing exist.
 
 - Expose only the validated Unix socket through containment's optional socket/before-release registration pair; never bind host runtime directories, ledger or secrets.
 - Bind authorization to kernel SO_PEERCRED, current PID starttime/UID and exact controller-observed service cgroup, rechecked after frame receipt. Never accept identity, tariffs, cap, scope or endpoints from request JSON. Host path/cgroup administration remains cooperative and trusted, not a malicious-same-UID defense.

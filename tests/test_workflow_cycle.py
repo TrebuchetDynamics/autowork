@@ -1,5 +1,4 @@
 """Offline real-ledger lifecycle; review receipts are simulated, no model/native runs."""
-import importlib.util
 import json
 from pathlib import Path
 import subprocess
@@ -9,14 +8,6 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 GOALS = ROOT / 'skills/docs-sync/scripts/goals.py'
-
-
-def worker_module():
-    spec = importlib.util.spec_from_file_location('cycle_start_goal',
-        ROOT / 'skills/autowork/scripts/start_goal.py')
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 class CycleGuidanceTests(unittest.TestCase):
@@ -58,13 +49,6 @@ class CycleGuidanceTests(unittest.TestCase):
                             'provenance', 'current ownership', 'checks and required review',
                             'non-overlapping', 'unknown usage is not zero'):
             self.assertIn(requirement, scheduled)
-        for options in ({}, {'ledger_mode': 'proposal', 'integration_owner': 'fixture-owner'}):
-            with self.subTest(options=options):
-                body = worker_module().build_task_body('Objective: fixture', **options)
-                for requirement in ('no new tasks', 'first check failure', 'user-space tooling',
-                                    'pending_approval', 'within this card', 'required review acceptance',
-                                    'unknown usage is not zero', 'exhaustion requires explicit additional allocation'):
-                    self.assertIn(requirement, body)
 
     def test_ready_native_and_portable_guidance_use_composition_not_duplicate_validation(self):
         native = (ROOT / 'skills/autowork/SKILL.md').read_text()
@@ -145,22 +129,6 @@ class CycleGuidanceTests(unittest.TestCase):
                      'autowork/references/whole-spec-execution.md'):
             self.assertIn('ENGINEERING-CYCLE.md', (ROOT / 'skills' / path).read_text())
 
-    def test_workers_receive_optional_methods_without_delegating_workflow_authority(self):
-        module = worker_module()
-        for kwargs in ({}, {'ledger_mode': 'proposal', 'integration_owner': 'fixture-owner'}):
-            body = module.build_task_body('Objective: fixture', **kwargs)
-            for phrase in ('Decide routine reversible choices',
-                           'Optional methods:', 'concrete method gap or explicit protocol request',
-                           'Autowork owns scope, authorization, task state and completion',
-                           'verified path/revision, decision/artifact and check/result'):
-                self.assertIn(phrase, body)
-            self.assertNotIn('Read the bundled engineering cycle', body)
-            self.assertNotIn('Questions (no reply = defaults apply)', body)
-            self.assertNotIn('Before solution design or implementation, load `ponytail`', body)
-            self.assertNotIn('Apply the cycle phase/domain matrix:', body)
-            self.assertIn('Mandatory completion gate:', body)
-            self.assertIn('required review acceptance', body)
-
     def test_supporting_guidance_does_not_reintroduce_phase_checklists(self):
         forbidden = {
             'shared/ENGINEERING-CYCLE.md': ['At intake and whenever the work changes phase',
@@ -186,21 +154,6 @@ class CycleGuidanceTests(unittest.TestCase):
                       'ci-cd-and-automation', 'observability-and-instrumentation',
                       'frontend-ui-engineering', 'context-engineering', 'code-simplification'):
             self.assertIn(skill, cycle)
-
-    def test_short_worker_body_omits_routing_and_gates_direct_closure_on_review(self):
-        module = worker_module()
-        body = module.build_task_body('Objective: fixture')
-        self.assertNotIn('ENGINEERING-CYCLE.md', body)
-        self.assertLess(len(body.split()), 1450)
-        self.assertLess(body.index('Ledger closure precondition:'),
-                        body.index('task <repo> <TASK> done'))
-        self.assertIn('required review acceptance', body)
-        self.assertIn('update scoped documentation', body)
-        proposal = module.build_task_body('Objective: fixture', ledger_mode='proposal',
-                                          integration_owner='fixture-owner')
-        self.assertIn('fixture-owner', proposal)
-        self.assertIn('required review acceptance', proposal)
-        self.assertNotIn('task <repo> <TASK> done', proposal)
 
 
 class LedgerCycleTests(unittest.TestCase):
