@@ -62,7 +62,7 @@ namespaced skills:
 /autowork:plan-with-me questions only: ask one question about this project
 /autowork:plan-with-me challenge this plan; read-only, no implementation
 /autowork:plan-for-me investigate the next useful improvement; save the plan
-/autowork:docs-sync update the docs and TODO.md
+/autowork:docs-sync update the docs and tasks
 /autowork:autowork complete the next ready task; commit locally, no push
 /autowork:autoresearch debug the failing test
 ```
@@ -99,7 +99,7 @@ Start a new Codex session in your project. Invoke the namespaced native skills:
 $autowork:plan-with-me questions only: ask one question about this project
 $autowork:plan-with-me challenge this plan; read-only, no implementation
 $autowork:plan-for-me investigate the next useful improvement; save the plan
-$autowork:docs-sync update the docs and TODO.md
+$autowork:docs-sync update the docs and tasks
 $autowork:autowork complete the next ready task; commit locally, no push
 $autowork:autoresearch debug the failing test
 ```
@@ -140,7 +140,7 @@ Local installs refer to this checkout; keep it in place. The extension registers
 /plan_with_me questions only: ask one question about this project
 /grill_me challenge this plan; questions only, no implementation
 /plan_for_me investigate the next useful improvement; save the plan
-/docs_sync update the docs and TODO.md
+/docs_sync update the docs and tasks
 /autowork complete the next ready task; commit locally, no push
 /autoresearch_debug diagnose the failing test
 ```
@@ -174,7 +174,8 @@ engine picks independent, dependency-ready tasks, runs each in its own Git workt
 integrates results one at a time and closes a task only after it is verified. The
 script supplies Pi workers, model choice and fallback, an independent review,
 budgets, a session branch merged into the main branch, locking and a service.
-`TODO.md` (and `goals.json` when present) stay the source of truth.
+The repository's `tasks/` store stays the source of truth (`autowork migrate` converts a
+TODO.md + goals.json repository once).
 
 Prerequisites: Pi with this package installed (above), Node 22, `git`, `jq`,
 `python3`, `flock` and `timeout`, Linux (the engine identifies workers through
@@ -238,7 +239,7 @@ repair task from the DOCS-MAINTAINER), how long `/tmp` scratch may sit unused be
 The default way to run pi-autowork is a **systemd user service** per repository,
 managed with the `autowork` command ([pi-autowork](../pi-autowork/README.md#the-autowork-command)).
 Bare `autowork` opens the live TUI, where `d` browses directories and starts a
-service for a repository that has `TODO.md` and `goals.json` on its main branch:
+service for a repository that has a `tasks/` store committed on its main branch:
 
 ```sh
 autowork start                 # from the repository: install (if needed) and start its service
@@ -324,24 +325,18 @@ release. A different verdict or new commit resets this limit (see
 [`reverify`](../pi-autowork/engine/parallel_integrate.py)); the same reviewer
 version never gets a second try.
 
-A held task is answered by editing its TODO.md entry (scope, Touches, acceptance,
-dependencies or a decision line): the runner notices the changed entry and runs the
-task fresh, keeping its earlier work on `-set-aside-N` branches. No command is needed.
+A held task is answered by editing its task record (`autowork tasks field` for scope,
+Touches, acceptance, dependencies or an `Owner decision:` note): the runner notices the
+changed contract and runs the task fresh, keeping its earlier work on `-set-aside-N`
+branches. No runner command is needed.
 
-Tasks other sessions marked `in_progress` are left alone until they are verifiably
-idle for `PI_AUTOWORK_CLAIM_IDLE` seconds (6 hours; `0` never adopts): no change to
-the task's entry, branches or worktrees and no live agent working there. An active session in
-the main checkout holds off only claims whose `Touches:` files it holds open (or
-claims without `Touches:`). The runner
-then takes the task over (never one a TODO.md note holds: kept open, on hold, not to be
-dispatched, or awaiting an authority or approval), logs `adopted an idle claim`, and its worker is pointed at
-any earlier work to reuse, which it never modifies.
-
-When TODO.md's order changed since goals.json recorded it, a runner records the new
-order in its session (`goals.py reorder` with the expected revision, committing only
-goals.json) and selects again; if that is refused it reports why and waits. In
-service mode an engine error never ends the runner: it is reported once, shown by
-`--fleet`, and checked again each interval.
+A task someone works on outside the runner carries a `Held by:` note
+(`autowork tasks hold TASK --by WHO [--until YYYY-MM-DD]`). The runner never starts it,
+asks nothing about it, and holds back tasks that depend on it or share its resources;
+`autowork tasks release TASK` or the date lifts the hold. Priority is each task's section
+and rank, so there is no order to record. In service mode an engine error never ends the
+runner: it is reported once, shown by `--fleet`, and checked again each interval. A
+repository without `tasks/` waits with `run autowork migrate <repo>` at zero tokens.
 
 A fresh task worktree has none of the main checkout's gitignored files. List any a
 task needs (comma-separated, repository-relative) in `PI_AUTOWORK_LINK_PATHS` in the
@@ -363,12 +358,13 @@ the service, `autowork run` and a terminal; variables already set in the environ
 win. Disabling a service (`systemctl --user disable --now pi-autowork@<name>`) keeps it.
 
 The runner follows the plan, not a clock: while it waits (queue empty, everything
-blocked, or a failure pause), a change to `TODO.md`, `goals.json`, `BLOCKERS.md`, the
-TODO archive or a new commit on the main branch ends the wait within seconds, once the
-change has been quiet for `PI_AUTOWORK_PLAN_SETTLE` seconds (default 3). The log says
-`TODO.md changed; checking now`, and the next cycle dispatches newly runnable tasks
-and re-queues answered held ones. `--interval` is only the longest wait. Watching is
-file status checks once a second; it calls no model.
+blocked, or a failure pause), an edit under `tasks/` (committed or not, including an
+in-place edit of one task file), a change to `BLOCKERS.md` or a new commit on the main
+branch ends the wait within seconds, once the change has been quiet for
+`PI_AUTOWORK_PLAN_SETTLE` seconds (default 3). The log says `... changed; checking now`,
+and the next cycle dispatches newly runnable tasks and re-queues answered held ones.
+`--interval` is only the longest wait. Watching is `git status` of `tasks/` and file
+checks once a second; it calls no model.
 
 Auto work commits and merges all work. Before each merge the runner commits anything
 left uncommitted in its own session worktree. In the main checkout, uncommitted changes
@@ -386,7 +382,7 @@ needs and exactly how to answer, easiest first; `/blockers` (also `/autowork blo
 treats these entries as evidence, reconciles routine planning issues and asks only
 for genuinely missing owner decisions or inputs. It preserves candidate work and
 existing integration authority instead of asking which session should own delivery.
-Resolving an entry means editing the task's TODO.md entry; the question leaves the block once its cause is gone. Writing the block costs no model call.
+Resolving an entry means editing the task's record (`autowork tasks field`, `place`, `hold`); the question leaves the block once its cause is gone. Writing the block costs no model call.
 
 `pi-autowork.sh --fleet` shows every runner on the machine in one line each: its
 service state, health (`working`, `blocked`, `stalled`, `paused`, `idle`, or `not
@@ -407,23 +403,17 @@ How it works:
 
 - **Tasks and workers.** Each cycle the engine plans the queue: a task runs beside
   others only when it declares `Touches:` paths that do not overlap theirs, shares no
-  `Resources:` and has its dependencies closed; anything else runs alone, and TODO.md
-  priority decides order. An empty queue costs no model call, and nothing asks
-  Autowork to invent work. A task another session marked `in_progress` is never
-  dispatched and holds back tasks that depend on it or declare overlapping `Touches:`,
-  but not unrelated ones. So that most tasks can run in parallel, the runner asks a
-  read-only Pi pass to plan the file scope of each runnable task that lacks
-  `Touches:` and records the paths it proposes in the session branch; the engine then
-  holds any change outside them. Scope means the files a task edits, so device- or
-  screenshot-verified work still gets paths. A task answered `NONE` (it edits no
-  repository file, or files across most of the repository; the log shows the reason)
-  runs alone and is asked again after 24 hours. A task without `Touches:` may
-  change any file except the coordinator's and other slots'. When tasks remain but none can start, the log says `No task
+  `Resources:` and has its dependencies closed; anything else runs alone, and section
+  then rank decide order. An empty queue costs no model call, and nothing asks
+  Autowork to invent work. A held task (`Held by:`) is never dispatched and holds back
+  tasks that depend on it or share its resources, but not unrelated ones. Touches
+  schedule work; they never hold a commit. A task without Touches (`["**"]`) may change
+  any file except the coordinator's and other slots'. When tasks remain but none can start, the log says `No task
   can start now` with the reasons; the runner keeps waiting, and `--once` or
   `--until-empty` exit 1 instead of 0. Each worker is `pi-autowork.sh --worker`: Pi with an
   explicit provider and model, `--no-approve`, the engine's one-task prompt and a
-  session per task attempt. Workers never pick tasks or edit `TODO.md`,
-  `TODO.archive.md`, `goals.json` or `CHANGELOG.md`; only the coordinator does.
+  session per task attempt. Workers never pick tasks or edit `tasks/` or `CHANGELOG.md`;
+  a worker commit that touches a task file is held, never merged.
 - **Doc-impact evidence.** Worker reports assess `doc_impact` as `not_needed`
   (reason), `updated` (paths/readback/checks), or `pending` (gap/resume action).
   The shared engine binds this to verified source, task and doc blobs and retains
@@ -436,14 +426,15 @@ How it works:
   merges each reported task into the session branch one at a time and runs
   `pi-autowork.sh --verify`: `PI_AUTOWORK_VALIDATE` if set, then a separate read-only
   Pi review that runs the task's checks against its acceptance; a reviewer that
-  changes any file fails. Only then is the task closed and its TODO update committed.
+  changes any file fails. Only then is the task closed: its record's `status = "done"`
+  and its receipt `tasks/evidence/<ID>.toml`, in one commit.
   A failed review, a conflict or a file outside `Touches:` holds the task; it keeps
   its worktree and gets one fresh retry, and a second failure stays held. If the
   retry of a scope hold makes no commit, the first commit is verified once more.
 - **Task states.** `--status` and the log show each task as `pending`, `running`,
   `implemented` (reported), `verifying`, `integrated`, `done` or `failed` (held,
   interrupted or released, with the reason), mapped from the engine's slot states;
-  the TODO.md and `goals.json` contracts do not change.
+  task records keep only `open`, `done` and `superseded`.
 - **Session, merged at the end.** The engine works on an integration branch
   `pi-autowork/<session>` in a worktree under the state directory. After each closed
   task (once nothing else is in flight), and when the queue drains or the runner
@@ -476,7 +467,7 @@ How it works:
   job also works on. With `--allow-hermes`, the two share the engine's repository
   lease: while Pi's coordinator holds it, Hermes Autowork's claim returns `BUSY`, and
   while Hermes holds a task the runner waits. They never own the same task or write
-  the ledger at once; ledger edits also go through `goals.py`'s repository lock. A
+  the task store at once. A
   Hermes job that commits or merges outside Autowork can still move `main`, which
   the end-of-session merge handles as above.
 - **Safety.** One runner per repository (a `flock` lock); a second one exits with
@@ -509,7 +500,8 @@ an engine refusal or a Hermes job), 130 stopped.
 
 ## Behavior and verification
 
-The adapters ask native questions, inspect files, maintain TODO.md, and execute
+The adapters ask native questions, inspect files, maintain the task store through
+`autowork tasks`, and execute
 through available host tools. Autowork coordinates a useful slice in the current
 session; it does not create timers or promise background workers after the session
 ends.
@@ -527,8 +519,8 @@ Opt-in [parallel workers](../skills/autowork/references/parallel-workers.md)
 
 Templates add no approval or sandbox bypass flags, and a missing worker CLI also
 falls back to sequential execution. These templates are checked against each CLI's
-`--help` and with fake workers offline; real model workers are not yet qualified. Existing goals.json is synchronized through bundled helpers when applicable.
-Python 3 is needed for those helpers; a questions-only interview needs no Python.
+`--help` and with fake workers offline; real model workers are not yet qualified.
+Python 3 is needed for `autowork`; a questions-only interview needs no Python.
 
 No package installs external integrations, modifies approval policies, copies
 credentials, or changes model/memory settings. Host permissions and repo instructions

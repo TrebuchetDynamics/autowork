@@ -171,21 +171,21 @@ menu capacity limit and does not remove the typed handlers. Existing command
 owners keep precedence.
 
 ```text
-/plan_for_me reduce cache latency; document findings and schedule TODO tasks; do not implement yet
+/plan_for_me reduce cache latency; document findings and schedule tasks; do not implement yet
 /autoresearch Goal: reduce parser time Scope: src/parser Metric: milliseconds Verify: python bench.py Iterations: 10
 ```
 
-TODO.md is the central work queue for plans, orders and progress. Autoresearch
-updates it by default and synchronizes goals.json; “do not implement” still saves
+The `tasks/` store is the central work queue for plans, orders and progress.
+Autoresearch updates it by default through `autowork tasks`; “do not implement” still saves
 the plan, while explicit read-only/chat-only/no-write/--dry-run writes nothing.
 Autowork reads those orders, executes ready tasks, and invokes bounded Autoresearch
 for unresolved research or decomposition questions. An empty queue starts with
 bounded inspection; an obvious repair needs no research pass. It retries selection in the
-same run. See [the work-center contract](../skills/shared/TODO-WORKCENTER.md).
+same run. See [the task-record rules](../skills/shared/TODO-WORKCENTER.md).
 
 The [Hermes adapter](../skills/autoresearch/SKILL.md) connects research to docs-sync:
 findings update existing documents, matching tasks are reused, and accepted gaps
-become full TODO.md bodies with goals.json priorities, dependencies and checks.
+become complete task records with their goal, rank, dependencies and checks.
 This schedules the backlog; it does not create a timer. Autowork can execute
 eligible tasks when implementation is authorized, preserving its ownership,
 verification and commit gates. Read-only and planning-only requests remain scoped.
@@ -211,7 +211,7 @@ The [adapter](../skills/engineering/SKILL.md) provides 25 pinned protocols and t
 shared references. Its router's `--protocol NAME` selects exactly one method;
 explicit phase commands remain available as optional bundles. Both modes verify
 selected protocol and shared reference hashes. It translates upstream plan/task
-paths into existing TODO.md/goals.json entries and preserves prior authorization,
+paths into existing task records and preserves prior authorization,
 explicit restrictions and actual review requirements. Its protocols are not extra
 workers or independently registered slash commands. See [provenance and updates](dependencies.md#refresh-the-pinned-engineering-pack).
 
@@ -225,14 +225,14 @@ on the same task while preserving accepted behavior and checks.
 
 Only a newly discovered consequential choice or missing decomposition invokes
 bounded Plan For Me, automatically and within existing authority. Save the decision
-in TODO.md/goals.json and resume execution in the same run. Known recovery steps,
+in the task store and resume execution in the same run. Known recovery steps,
 ordinary candidate changes and debugging stay in execution. Named task-family
 scope, no-commit restrictions and live ownership remain. A planning receipt is not
 proof that a worker ran or a task completed.
 
 ### Direct repository execution
 
-TODO.md is the work board; goals.json, when present, is its synchronized index.
+The `tasks/` store is the work board.
 `owner_cycle.py` selects and coordinates a bounded task for the current session.
 Its `EXECUTE` result is a contract to implement, not completed implementation or a
 worker launch. Use its [current interface](../skills/autowork/references/owner-cycle.md)
@@ -264,7 +264,7 @@ Parallel mode is opt-in (`/autowork --parallel 2`, or `owner_cycle.py REPO --app
 --parallel 2 --owner-pid PID`). The coordinator session starts headless host workers,
 one task each in its own worktree `<repo>/.worktrees/autowork-<TASK>` on branch
 `autowork/<TASK>`, for tasks whose `Touches:` and `Resources:` fields prove them
-independent; dependencies and TODO.md priority still apply. `--wait` blocks inside
+independent; dependencies and priority (section, then rank) still apply. `--wait` blocks inside
 the helper until a worker finishes. The coordinator reviews each worker's report,
 `--integrate TASK --timeout S --run CHECK...` merges and validates one branch at a
 time in a separate integration worktree and only fast-forwards the canonical checkout, and `--parallel-close`
@@ -330,9 +330,9 @@ on impact, scenarios and settled answers. Preserve that substance while removing
 the ambiguous bulk-answer shortcut and premature finish/skip behavior. There is no
 evidence that a fixed question quota would improve intent coverage.
 
-`ENGINEERING-CYCLE.md` already supports focused methods on demand. TODO contracts
-have no consistent recommendation convention; `task_execution._contracts` retains
-the full body and `parallel_dispatch.prompt` embeds it. Reuse this path instead of
+`ENGINEERING-CYCLE.md` already supports focused methods on demand. Task contracts
+have no consistent recommendation convention; the task record's notes travel with
+its contract and `parallel_dispatch.prompt` embeds it. Reuse this path instead of
 adding another skill registry or mandatory ledger schema. The task's source paths
 and accepted scope still govern execution.
 
@@ -348,7 +348,7 @@ that same coordinator; its execution authority remains valid outside the plannin
 substep. Do not dispatch a second worker or restart the workflow.
 
 Writable planning outputs are the existing plan/spec/requirements owners and
-TODO/goals metadata, plus bounded temporary research artifacts when allowed.
+task and goal records, plus bounded temporary research artifacts when allowed.
 Production code, executable skill instructions, tests, fixtures, CI, manifests and
 lockfiles remain implementation even when their extension is Markdown or JSON.
 Investigate with reads and safe checks; inspect verification commands for writes
@@ -572,7 +572,9 @@ remain internal compatibility fields, not additional skills or commands.
 
 ## Tasks query skill
 
-Status: Accepted
+Status: Accepted; since [Task Store v2](project.md#task-store-v2-2026-10-20) `/pending`
+answers from `autowork tasks list|show|why` and the history of `tasks/evidence/`, and
+the TODO.md query helper this plan describes is removed.
 
 Planning request (2026-10-16): add task queries to explain pending work casually in
 priority order, answer questions about a particular task, and find completed work
@@ -810,7 +812,8 @@ queue ordering and the separate stale-question/status and model-account plans.
 
 ## TUI all-task browser
 
-Status: Accepted
+Status: Accepted; since [Task Store v2](project.md#task-store-v2-2026-10-20) the Tasks
+window reads the store (`fleet_view.task_rows`), not the query helper named below.
 
 Owner request: add an all-task viewer to the Autowork TUI. Planner's defaults:
 `t` opens a full-screen, read-only task browser for the selected runner's repository;
@@ -880,8 +883,7 @@ planned, unrun; skipped pilot tooling is not a UI pass. This plan changes no run
 queue states, schedules, services, provider accounts or credentials.
 
 Sources: existing FleetApp screens/bindings in `pi-autowork/pi_autowork/tui.py`,
-`pi-autowork/tests/tui_pilot.py`, `pi-autowork/tests/test_fleet_view.py`, and
-[read-only query contract](../skills/pending/references/query-contract.md).
+`pi-autowork/tests/tui_pilot.py` and `pi-autowork/tests/test_fleet_view.py`.
 Rejected: displaying only lane slots omits most tasks; a second ledger/parser
 would drift from /pending and /done; eager history queries on fleet timers would
 block/overload the UI. No task editing or new slash-command alias is in scope.

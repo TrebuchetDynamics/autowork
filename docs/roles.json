@@ -30,7 +30,7 @@
         "plugins/defaults.json",
         "telegram_menu_policy.py",
         "scripts/check.py",
-        "skills/docs-sync/scripts/goals.py",
+        "pi-autowork/pi_autowork/task_commands.py",
         "skills/docs-sync/scripts/docs.py"
       ]
     },

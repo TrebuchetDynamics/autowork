@@ -87,12 +87,6 @@ characters without discarding replies or changing failure verdicts. Malformed
 stdout remains refused. These fixtures do not launch models or qualify native
 profile recovery, installed adoption or delivery.
 
-`python3 -m unittest discover -s tests -p test_pi_touches.py -v` exercises the
-Pi scope helper's public CLI with LF/CRLF target fields in mixed-newline documents,
-compact and blank-separated styles, Unicode and sibling tasks. Removing only the
-inserted `Touches:` bytes must recover the original TODO.md exactly (TOOLSET-111-b3).
-The helper's parsed-field readback remains required. This is offline preservation
-coverage, not live Pi/model or fleet qualification.
 
 Document-anchor CLI fixtures cover numeric-suffix collisions in both heading orders
 and chains of occupied suffixes (TOOLSET-109-f1). They check valid local links and
@@ -219,27 +213,16 @@ qualification is claimed. The [retirement evidence](plans/2026-10-20-owner-cycle
 records actual paired complete-check wall times and load samples, separate from
 focused checks. The coordinator still owns the merged-tree full-suite gate.
 
-Backlog dependency validation parses each Dependencies field once and intersects
-its tokens with the known task/goal IDs. It preserves exact word/hyphen boundaries,
-including Unicode adjacency and explicit None declarations. Legacy goal IDs with
-spaces or punctuation retain their original matching through precompiled patterns.
-The selection-cost regression bounds regex operations rather than relying on a wall-clock timeout;
-fresh source, contract, dependency, ordering and ownership checks still run.
+Selection reads every task and goal at one commit with a single `git cat-file --batch`;
+a 1000-task store reads and orders in about half a second (`test_task_select.py` prints the time and
+peak memory instead of asserting a wall clock).
 
-Local Python 3.12 measurement on October 13, 2026: a 600-task selection fell from
-10.080 seconds at `7df64e4` to 0.312 seconds (about 32× faster). A 100-task selection
-fell from 0.034 to 0.026 seconds. Each result is the median of three unprofiled
-`retry_selection.select` calls on a temporary Git fixture with open tasks, one
-accepted plan, no dependencies and a cleared regex cache before each call. Both
-versions selected the same first task. These measure the selection helper only,
-not model execution, native dispatch or total cron duration.
-
-Offline Autowork regressions cover missing-ledger recovery receipts, TODO/ledger
-dependency and completion mismatches, and goal/task dependency deadlocks. A `met`
-goal with unfinished tasks fails validation; `goals.py fmt` reopens it as `partial`
-when executed passing evidence exists, preserving that evidence. Plan-status
-recovery compares the complete heading subtree, including nested sections and
-fenced examples, while preserving unrelated sibling sections.
+Offline task-store regressions cover pinned reads and whole-store refusal
+(`pi-autowork/engine/test_task_store.py`), selection order and reasons
+(`test_task_select.py`), the `autowork tasks` writer (`tests/test_task_commands.py`),
+conversion (`tests/test_task_migrate.py`), admission and closure by contract hash
+(`test_parallel_dispatch.py`, `test_parallel_integrate.py`) and the runner's reopening of
+a close a merge left under another contract (`pi-autowork/tests/test_task_reopen.py`).
 
 `tests/integration_plugin.py` additionally checks the actual Hermes manifest
 reader, native install security scan, loader, bundled skill reader, Telegram menu, CLI queue, gateway routing,
@@ -352,66 +335,28 @@ proves the local contracts, not that a real gateway drained, reconnected, refres
 Telegram menus, delivered a message or executed a model. Inspect the actual update
 receipt and activation/transport evidence before making those live claims.
 
-## First-index initialization checks
-
-From `skills/docs-sync/scripts`, run:
+## Task store checks
 
 ```sh
-python3 -m unittest test_goals test_goal_concurrency test_handoff_reconciliation
-python3 goals.py init --help
+python3 scripts/check.py pi-autowork/engine/test_task_store.py pi-autowork/engine/test_task_select.py \
+  tests/test_task_commands.py tests/test_task_migrate.py tests/test_task_store_qualification.py
 ```
 
-Initialization fixtures use real disposable Git consumers. They exercise empty
-and TODO-only repositories, accepted-source and full-body binding, preserved
-continuations/history/focus/ownership, byte-stable repeats, conflicting/incompatible
-input refusal, unsafe paths, replacement failure rollback, concurrent locking,
-stale revisions and linked-worktree canonical targeting. Consumer checks bind the
-actual initialized repository, including a plan inside TODO; readiness is not a
-live lease, model execution or Telegram delivery. Execute the
-[documented initialization example](../skills/docs-sync/references/document-scaffold.md#first-task-index-initialization)
-against a disposable consumer and run `fmt`, `validate`, `render`, then
-`backlog-check` with its exact source and task IDs. `init` does not infer acceptance
-or automatically render/archive bodies.
-
-The safe root gate remains:
+The fixtures use real disposable Git repositories: a malformed or conflicting record
+refuses the whole store with its `path:line`, a write that would break the store is
+undone, conversion proves the store selects what the old queue selected, and the
+qualification fixture runs one task end to end (refused before migration, selected,
+run and closed with one receipt after). The safe root gate remains:
 
 ```sh
 uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py
 ```
 
-These offline helper checks do not qualify installed model behavior, native task
+These offline checks do not qualify installed model behavior, native task
 execution, publication or Telegram reporting. Keep those live gates separate.
-
-## Archive and ownership regression checks
-
-From `skills/docs-sync/scripts`, run:
-
-```sh
-python3 -m unittest test_todo_archive test_archive_policy test_render_safety
-```
-
-These fixtures exercise automatic/archive-only moves, whole-body preservation,
-custom archive paths, CRLF bytes, stale-write refusal and unchanged second passes.
-The source regression added in `586337f` keeps a sibling group heading in TODO
-when the preceding done task is archived; deeper evidence subsections remain with
-that task. This source contract does not prove an installed helper was refreshed.
-They preserve open bodies and ledger history and reject ambiguous completion
-metadata. The selected archive and the live TODO must both be inspected after
-rendering; a passing fixture does not prove a real task's acceptance or model
-follow-through. See the [archive contract](../skills/docs-sync/references/todo-archive.md).
-
-From `pi-autowork/engine`, run:
-
-```sh
-python3 -m unittest test_retry_selection
-```
-
-Ownership fixtures check partial claim updates, exact historical-workspace
-resolution, retained metadata and rejection of conflicting identities. They do
-not establish a live worker's availability or grant a new lease. At the repository
-root, `python3 -m unittest discover -s tests -p test_owner_cron.py` checks prompt
-generation, repair-mode opt-in and preserved job settings without scheduling or
-executing a live repair.
+At the repository root, `python3 -m unittest discover -s tests -p test_owner_cron.py`
+checks prompt generation, repair-mode opt-in and preserved job settings without
+scheduling or executing a live repair.
 
 ## Portable package checks
 
@@ -421,4 +366,4 @@ and packaged support files. CI uses Node 22 for those tests. See
 [cross-host installation and verification](cross-host.md) for tested client versions
 and disposable-home installation checks. Package discovery does not prove model
 execution or completion of an Autowork task; the outstanding qualification is
-tracked in [TODO.md](../TODO.md#toolset-003--qualify-automatic-planning-recovery-with-a-real-bounded-workflow).
+tracked as TOOLSET-003 in [the archive](../TODO.archive.md).

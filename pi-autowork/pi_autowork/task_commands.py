@@ -226,8 +226,15 @@ def cmd_goal(repo, gid, title=None, source=None, priority=None, status=None, foc
              evidence=None):
     """Add a goal, or change the given fields of an existing one. A met goal names its evidence
     (an executed, passing check), kept as the goal's `Evidence:` note; focus moves to this goal
-    from any other. Returns 'added' or 'changed'."""
-    store = worktree_store(repo)
+    from any other. The first goal of a repository starts its store. Returns 'added' or 'changed'."""
+    if any(p.is_file() for p in (Path(repo) / 'tasks').glob('*/*.md')):
+        store = worktree_store(repo)
+    else:  # no record yet: this goal starts tasks/ (Git keeps no empty folder)
+        if any((Path(repo) / name).exists() for name in ('TODO.md', 'goals.json')):
+            raise CommandError(f'{repo} keeps its tasks in TODO.md and goals.json: run `autowork migrate` instead')
+        store = TaskStore(rev='', tasks={}, goals={})
+        (Path(repo) / 'tasks' / 'goals').mkdir(parents=True, exist_ok=True)
+        (Path(repo) / 'tasks' / 'items').mkdir(exist_ok=True)
     if gid in store.tasks:
         raise CommandError(f'{gid} is a task, not a goal')
     changes = {k: v for k, v in dict(title=title, source=source, priority=priority, status=status, focus=focus,

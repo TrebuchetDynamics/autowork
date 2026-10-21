@@ -34,7 +34,7 @@ name, a repository path or `.`. Nothing here calls a model.
 | Command | What it does |
 |---|---|
 | `autowork` | The live TUI on a terminal (help otherwise) |
-| `autowork start [dir]` | Install (if needed) and start the repository's service; refuses a directory without `TODO.md`, `goals.json` and its main branch checked out, saying what is missing. Services run from the Pi package installed from `git:github.com/TrebuchetDynamics/autowork`; a service on another copy (a package under an older name) is moved onto it and restarted, and the others follow at their next restart |
+| `autowork start [dir]` | Install (if needed) and start the repository's service; refuses a directory without a committed `tasks/` store and its main branch checked out, saying what is missing (an unconverted repository: `autowork migrate`). Services run from the Pi package installed from `git:github.com/TrebuchetDynamics/autowork`; a service on another copy (a package under an older name) is moved onto it and restarted, and the others follow at their next restart |
 | `autowork stop [target]` | Stop the service; workers pause and resume on the same attempt |
 | `autowork restart [target] [--stop-workers]` | Reload the runner in place on its current release and settings; running workers keep running. `--stop-workers` restarts the service instead, pausing them |
 | `autowork pause` / `resume [target]` | Stop the service and keep it off, also after a reboot (disable), or start it again (enable); only a paused service is listed as `paused`, any other stopped one as `not running` |
@@ -46,10 +46,9 @@ name, a repository path or `.`. Nothing here calls a model.
 | `autowork run [dir]` | Run the runner in the foreground here, for debugging |
 | `autowork web [--port N] [--host H] [--view-only]` | The TUI in a browser at `http://127.0.0.1:8765` (this machine only); `--view-only` disables control keys |
 | `autowork blockers [dir]` | `/autowork blockers` in an agent (`AUTOWORK_AGENT`, else `claude`, else `pi`) |
-| `autowork field TASK LABEL VALUE [target]` | Set one field of a task's TODO.md entry, as an owner answer (`"Owner decision"`, `Status`, `"Held by"`, `"Blocker resolution"`) |
-| `autowork place TASK SECTION [target] [--decision TEXT]` | Move a task to Now, Next or Needs decision in TODO.md and goals.json, optionally recording why |
-| `autowork add-task --title T --short S --goal G [--section S] [--scope ...] [target]` | Add a task to TODO.md and goals.json at the top of its section |
-| `autowork move TASK up\|down [target]` | Move an open task among its TODO.md group's open tasks; the runner records the order as its priority |
+| `autowork tasks list\|validate\|new-id [target]`, `autowork tasks show\|why TASK [target]` | Read the `tasks/` store at HEAD (`validate --worktree`: uncommitted edits too) |
+| `autowork tasks add\|field\|place\|move\|hold\|release\|done\|supersede\|goal ... [target]` | Edit task and goal files in the working tree, never committing: an owner answer (`field TASK "Owner decision" TEXT`, `"Blocker resolution"`), a section (`place`, optionally `--decision`), the priority (`move TASK up\|down` changes its rank), a hold (`hold --by`, `release`), a close with evidence (`done`), a new task or goal. Each write validates the whole store |
+| `autowork migrate [target] [--dry-run]` | Convert a TODO.md + goals.json repository to `tasks/` once, in one local commit; it refuses while work is in flight |
 | `autowork scorecard [--days N] [--json] [target...]` | Per runner over the last N days (default 7): tasks closed, share of integrations held, median dispatch-to-merge time, new owner questions; no model call |
 
 In the TUI each key is the first letter of its word, highlighted in the detail pane:
@@ -58,29 +57,25 @@ paused one, pauses a running one), `s` **S**top, `r` **R**estart, `m` **M**odel 
 `f` **F**allback (from Pi's list, type to filter), `t` **T**asks, `u` **U**ninstall the
 service, `n` **N**ew: browse directories (from `~/git`, `AUTOWORK_BROWSE_ROOT`), see which
 repositories are ready or what they need, and `p` there plays one; `q` **Q**uit. The Tasks
-window lists every open task in TODO.md order with its `Short:` title, state and reason;
+window lists every open task in priority order (section, then rank) with its short title, state and reason;
 `1`–`5` (or Tab) show All, Working, Held, Waiting or Questions; on the selected task `u`/`d`
-move it **U**p or **D**own (TODO.md order is the priority), `s` to another **S**ection (Now,
+move it **U**p or **D**own (its rank is the priority), `s` to another **S**ection (Now,
 Next, Needs decision), `c` **C**lears its hold, `a` sets it **A**side, `b` answers the
 owner's **B**lockers in an agent, and `n` adds a **N**ew task from a form. Enter opens the
-task: its question and the runner's suggested answer, its whole TODO.md entry and its
-worker's last actions. Answer it there, written to the task's entry where the runner reads
-it: `w` **W**rite a dated `Owner decision:`, `d` **D**efer it to Needs decision with your
-reason, and for a claim `o` **O**pen it (`Status: open`) or `h` mark it **H**eld by you for a
-week; a repeated quick hold takes `r` **R**esolve with the producer or decision. Stop,
-restart, pause, uninstall, clear, set-aside, model changes and claim answers ask first.
+task: its question and the runner's suggested answer, its whole task record and its
+worker's last actions. Answer it there, written to the task's record where the runner reads
+it: `w` **W**rite a dated `Owner decision:` note, `d` **D**efer it to Needs decision with your
+reason; a repeated quick hold takes `r` **R**esolve with the producer or decision. Stop,
+restart, pause, uninstall, clear, set-aside and model changes ask first.
 Terminal text can be selected by dragging with the mouse, then copied with your
 terminal's copy shortcut (often Ctrl+Shift+C). Mouse capture is off by default;
 keyboard navigation and controls remain available. Use `autowork tui --mouse` to
 restore clickable rows/buttons instead; hold Shift while dragging if your terminal
 or tmux intercepts selection. The browser view retains mouse controls.
 
-Claim questions quote the TODO.md note that keeps a task `in_progress`; answer that
-note, or remove the hold and set `Status: open` when it is ready. Without a hold
-note, a claim still inside the configured idle window names the UTC hour when it
-becomes adoptable if it stays idle. A verified idle claim needs no owner question:
-its status root says `adopted when a worker slot frees`. Live activity or missing
-idle evidence is not a promise of adoption, and hold notes always take precedence.
+A task someone works on outside the runner carries a `Held by:` note
+(`autowork tasks hold TASK --by WHO [--until DATE]`); the runner never starts it and asks
+nothing about it. `autowork tasks release TASK` lifts the hold; a dated hold ends by itself.
 
 The TUI and web view run Textual 8.2.8 (and textual-serve 1.1.3) through `uv`.
 

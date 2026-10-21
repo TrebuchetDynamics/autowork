@@ -1,9 +1,10 @@
-# Read-only TaskStore (schema 1)
+# TaskStore (schema 1)
 
-`engine/task_store.py` implements the reader portion of the accepted
-[Task Store v2 design](../docs/project.md#task-store-v2-2026-10-20).
-It is not yet wired into engine consumers. The current runner still uses
-TODO.md/goals.json; this reader adds no writer, CLI or migration.
+`engine/task_store.py` is the one task store of the accepted
+[Task Store v2 design](../docs/project.md#task-store-v2-2026-10-20): selection, dispatch,
+integration, closure, the runner, the fleet view and `autowork tasks` all read `tasks/`
+through it, at a pinned commit. Nothing reads TODO.md or goals.json; only
+`autowork migrate` keeps a private reader of them, to convert a repository once.
 
 ## Snapshot API
 
@@ -101,7 +102,7 @@ source, status and focus, excluding title and notes.
 `task_select.order(store)` lists every selectable task: open, not a draft, in Now or
 Next, dependencies done, goal not met and goal dependencies met. It sorts by the focus
 goal, section, rank, goal priority, goal status (`unverified`, `partial`, `unmet`) and ID,
-the rule the TODO.md queue uses. `next(store)` is the first that is not a planning task.
+`next(store)` is the first that is not a planning task.
 `why(store, id)` returns stable reason codes: the blocking rule (`DONE`, `SUPERSEDED`,
 `NEEDS_DECISION`, `DRAFT`, `NO_GOAL`, `GOAL_MET`, `GOAL_DEPENDENCY_UNMET`,
 `DEPENDENCY_UNFINISHED`, `UNKNOWN_TASK`) or `POSITION` plus the sort-key rule
@@ -127,10 +128,13 @@ back to exactly the intended values.
 
 `autowork tasks` reads at HEAD (`list`, `show`, `why`, `validate`; `validate --worktree`
 checks uncommitted edits through a throwaway commit that leaves the index and refs alone)
-and edits the working tree (`add`, `field`, `place`, `move`, `supersede`, `new-id`); it
-never commits and never writes TODO.md or goals.json. A write refuses a file that changed
+and edits the working tree (`add`, `field`, `place`, `move`, `hold`, `release`, `done`,
+`supersede`, `goal`; `new-id` allocates an ID); it never commits. A write refuses a file that changed
 since it was read and is undone when the resulting store does not validate. `field` sets a
 typed header field, or any other label as a body note (`Held by`, `Owner decision`).
+`done --evidence` closes a task outside the engine (a planning task, or one whose acceptance
+the evidence shows met) and keeps the evidence as its note; `goal` adds a goal or changes its
+fields, needs `--evidence` for `--status met`, and moves focus from any other goal.
 New and placed tasks take the next multiple of 1000 in their section; `move` takes the
 midpoint between its new neighbours and, when no integer is left, spreads only the run of
 gapless neighbours that follows, never the whole section. A written file grants no
@@ -155,6 +159,25 @@ the original Ownership, Resources and Live authorization wording, is kept as a b
 Done and superseded tasks, and archived tasks that open work depends on, become closed
 records with no section or rank.
 
+## Integration and closure
+
+Integration classifies a `tasks/` change by records, not paths. Rank, title, short and
+notes are bookkeeping: a session that moved only by them keeps a running review. An
+attempt whose task changed a contract label since dispatch (scope, acceptance, checks,
+dependencies, resources, ownership, live, kind, exclusions, or a move to Needs decision)
+is held as `contract_changed` and set aside, so it runs fresh; a Touches-only change does
+not (Touches schedule work). A contract change during validation holds the candidate. A
+worker commit that edits any task file is held for scope and never offered again: a worker
+cannot grant itself or another task authority.
+
+The verified close writes `status = "done"` and `tasks/evidence/<ID>.toml` (candidate and
+integration commits, tree, contract hash, checks, result, review; secrets redacted and paths
+dropped) in one commit; a live follow-up becomes `<ID>-LIVE` in Needs decision. A replayed
+close completes missing files and refuses differing ones, so a crash between writes resumes
+to one commit, and a close whose commit exists is a no-op. After every merge into the
+session the runner reopens a done task whose receipt pins another contract hash than its
+merged record (one side closed it, the other changed its acceptance), before main moves.
+
 ## Offline verification
 
 ```sh
@@ -162,9 +185,11 @@ python3 -m unittest discover -s pi-autowork/engine -p test_task_store.py
 python3 scripts/check.py pi-autowork/engine/test_task_store.py
 ```
 
-The six public-seam tests use real temporary Git repositories. They cover pinned
+The public-seam tests use real temporary Git repositories. They cover pinned
 reads/immutability/replacement refs, pending edits/renames/index preservation,
 fingerprint boundaries, absent authority, corrupt-store refusal (including
 symlinked store directories and numeric conversion limits) and draft visibility.
-They do not prove migration, consumer integration, command execution or
+`tests/test_task_migrate.py`, `tests/test_task_commands.py`, the engine's dispatch and
+integration tests and `tests/test_task_store_qualification.py` cover conversion, the CLI,
+admission, closure and one runner journey on a fixture repository. None of them is
 live-service acceptance.

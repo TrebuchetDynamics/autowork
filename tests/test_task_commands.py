@@ -165,6 +165,15 @@ class TaskCommandTests(unittest.TestCase):
         self.assertEqual([g.id for g in store.goals.values() if g.focus], ['G-2'])  # at most one
         self.assertIn('is a task', self.tasks('goal', 'T-1', '--title', 'x', ok=False).stderr)
 
+    def test_the_first_goal_starts_a_new_store(self):
+        shutil.rmtree(self.repo / 'tasks')
+        self.commit()
+        self.assertEqual(self.tasks('goal', 'G-1', '--title', 'One', '--source', 'docs/plan.md#one',
+                                    '--priority', '1').stdout.strip(), 'added goal G-1')
+        first = self.add('First task')
+        self.assertEqual(json.loads(self.tasks('validate', '--worktree').stdout)['tasks'], 1)
+        self.assertEqual(self.show(first)['goal'], 'G-1')
+
     def test_an_unconverted_repository_is_refused(self):
         shutil.rmtree(self.repo / 'tasks')
         self.commit()
