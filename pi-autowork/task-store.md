@@ -80,7 +80,7 @@ check string is not permission to execute that command with coordinator rights.
 `record_revision` is the SHA-256 hex digest of the exact file bytes, including
 frontmatter formatting and free notes. Task `contract_hash` is SHA-256 of canonical
 UTF-8 JSON (sorted keys, compact separators) over scope, acceptance, checks,
-depends_on, touches, status, resources, kind, ownership, live and exclusions,
+depends_on, touches, resources, kind, ownership, live and exclusions,
 plus `section_group`: Now/Next becomes `"runnable"`; Needs decision stays distinct.
 Missing values hash as null, preserving missing versus explicit empty authority,
 except `kind`, `ownership` and `live`, which hash as their defaults (`unknown`,
@@ -88,8 +88,10 @@ except `kind`, `ownership` and `live`, which hash as their defaults (`unknown`,
 Array order is preserved. Exclusions are included because changing a prohibition
 changes the work contract.
 
-Rank, title, short, Now-versus-Next, goal assignment, and free Markdown notes are
-excluded from the task contract hash. Goal assignment and dependencies still
+Rank, title, short, status, Now-versus-Next, goal assignment, and free Markdown notes are
+excluded from the task contract hash. Status is a transition, not contract: closing a task
+(open to done) keeps the hash its verification pinned, and consumers check done and
+superseded explicitly. Goal assignment and dependencies still
 require consumer-side scheduling checks. Goal contract hashes cover priority,
 source, status and focus, excluding title and notes.
 

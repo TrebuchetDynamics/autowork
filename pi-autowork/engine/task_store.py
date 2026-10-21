@@ -103,8 +103,10 @@ _TASK_LISTS = ('depends_on', 'touches', 'resources', 'acceptance', 'checks', 'ex
 _TASK_STRINGS = ('id', 'title', 'short', 'status', 'goal', 'section', 'scope')
 _TASK_REQUIRED = (*_TASK_STRINGS, 'rank', *_TASK_LISTS, 'kind', 'ownership')
 _GOAL_REQUIRED = ('id', 'title', 'priority', 'source', 'status', 'focus')
+# Status is a transition, not contract: closing a task must keep the hash its verification
+# pinned. Consumers check done and superseded explicitly; Needs decision is section_group.
 _CONTRACT_FIELDS = ('scope', 'acceptance', 'checks', 'depends_on', 'touches',
-                    'status', 'resources', 'kind', 'ownership', 'live', 'exclusions')
+                    'resources', 'kind', 'ownership', 'live', 'exclusions')
 _ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]*\Z')
 _RESOURCE = re.compile(r'[A-Za-z0-9][A-Za-z0-9_./-]*\Z')
 
