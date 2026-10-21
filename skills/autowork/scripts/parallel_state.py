@@ -31,7 +31,7 @@ STATE_SCHEMA_READS = (1,)
 FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_path', 'paused', 'paused_claim', 'cause',
           'outside', 'requested', 'reviewed_by', 'check_failure_resumed', 'answered', 'merged_base',
           'merged_count', 'merged_authored_planning', 'conflict_files', 'closing', 'tip', 'waits_for', 'wait_since',
-          'landed_tasks', 'landed_revisions'}
+          'landed_tasks', 'landed_revisions', 'hold_policy'}
 # Hold causes no fresh attempt can fix: the worker itself reported what it needs
 # (scope_request: files outside Touches, listed in `requested`).
 # scope: a commit changed files outside Touches the runner could not widen; a fresh retry
@@ -40,7 +40,33 @@ FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_
 # reviews the same commit again with a longer limit (TOOLSET-196-fb).
 # 'no_change': the worker reported, cleanly, that nothing needed changing; a fresh attempt would only
 # say so again, so the docs maintainer closes or restates the task.
-NEEDS_PERSON = ('blocker', 'scope_request', 'scope', 'timeout', 'no_change', 'reviewed_twice')
+# Recovery policy, not permission to skip evidence or spend another attempt. A
+# reoffer requires repaired evidence and is once per cause; otherwise its ordinary
+# first-attempt retry (or owner hold for scope) still applies. Timeout recovery is
+# coordinator reverify, never a fresh worker; scope_request resumes the same attempt.
+HOLD_CAUSES = {
+    'scope': 'reoffer_once',
+    'overlap': 'reoffer_once',
+    'report': 'reoffer_once',
+    'validation': 'reoffer_once',
+    'stale_validation': 'reoffer_once',
+    'conflict': 'resolve_conflict',
+    'blocker': 'ask_owner',
+    'timeout': 'ask_owner',
+    'no_change': 'ask_owner',
+    'reviewed_twice': 'ask_owner',
+    'task_wait': 'wait_for_task',
+    'scope_request': 'rerun',
+    'runner_merged': 'rerun',
+    'contract_changed': 'rerun',
+    'moved': 'rerun',
+    'crash': 'rerun',
+    'empty': 'rerun',
+    'diverged': 'rerun',
+    'launch': 'rerun',
+}
+NEEDS_PERSON = tuple(cause for cause, action in HOLD_CAUSES.items()
+                     if action == 'ask_owner' or cause in ('scope', 'scope_request'))
 COORDINATOR_FILES = ('TODO.md', 'TODO.archive.md', 'goals.json', 'CHANGELOG.md')
 
 
@@ -170,8 +196,60 @@ def slots(common):
         if (not isinstance(value, dict) or value.get('task_id') != path.stem
                 or value.get('state') not in TRANSITIONS or value.get('attempt') not in (1, 2)):
             raise ValueError('malformed worker slot')
+        if value['state'] == 'held':
+            value = dict(value, cause=hold_cause(value))
         result.append(value)
     return result
+
+
+def hold_cause(slot):
+    """Old missing/unknown causes are crash holds, without rewriting runtime files."""
+    cause = slot.get('cause')
+    return cause if isinstance(cause, str) and cause in HOLD_CAUSES else 'crash'
+
+
+def legacy_hold(slot):
+    """Compatibility for pre-cause holds only; new recovery never parses display text.
+
+    Keep these historical signatures at the state boundary, not in retry_held's
+    dispatch policy. Unknown old causes still read as crash, including these records.
+    """
+    # Native holds use structured evidence. Only pre-table records may need the
+    # old signatures, even when an earlier release already recorded their cause.
+    if (slot.get('hold_policy') == 1 and isinstance(slot.get('cause'), str)
+            and slot['cause'] in HOLD_CAUSES):
+        return None
+    cause = hold_cause(slot)
+    reason = str(slot.get('reason') or '')
+    if cause == 'crash':
+        if reason.startswith('live or unknown external writer'):
+            return 'writer'
+        if reason == 'unexpected worker branch':
+            return 'branch'
+        if reason == 'missing, failed, stale or mismatched integration validation':
+            return 'stale_validation'
+        if reason.startswith('integration validation failed'):
+            return 'validation'
+    if ((cause == 'crash' and reason.startswith(SCOPE_HOLD))
+            or (cause == 'scope' and SCOPE_HOLD in reason)):
+        return 'scope'
+    return None
+
+
+def next_action(slot):
+    """Recovery policy for a held slot; execution still checks evidence and budgets.
+
+    Only pre-cause compatibility can override the table: an old non-verdict is
+    offered back to integration, rather than rerunning finished work as a crash.
+    A saved dependency wait also takes precedence over old cause labels.
+    """
+    if slot.get('state') != 'held':
+        return None
+    if slot.get('waits_for'):
+        return 'wait_for_task'
+    if legacy_hold(slot) in ('writer', 'branch', 'stale_validation'):
+        return 'reoffer_once'
+    return HOLD_CAUSES[hold_cause(slot)]
 
 
 def group_alive(pgid):
@@ -346,6 +424,11 @@ def create_slot(repo, owner_pid, task, *, worktree, branch, baseline, worker=Non
 def change(common, old, target, updates):
     if target not in TRANSITIONS[old['state']]:
         raise ValueError(f'illegal slot transition: {old["state"]} -> {target}')
+    # Refuse even when report-only recovery would later replace the supplied cause.
+    if target == 'held' and 'cause' in updates:
+        cause = updates['cause']
+        if not isinstance(cause, str) or cause not in HOLD_CAUSES:
+            raise ValueError(f'unknown hold cause: {cause!r}')
     extra = set(updates) - FIELDS
     retry = target == 'dispatched'
     if retry:
@@ -399,8 +482,14 @@ def change(common, old, target, updates):
         target = 'held'
         # A worker that stopped with nothing at all did not necessarily crash: say so.
         updates.setdefault('cause', 'empty' if str(updates.get('reason', '')).startswith(EMPTY) else 'crash')
+    if target == 'held':
+        cause = updates.setdefault('cause', 'crash')
+        if not isinstance(cause, str) or cause not in HOLD_CAUSES:
+            raise ValueError(f'unknown hold cause: {cause!r}')
     value.update(updates)
     value['state'] = target
+    if target == 'held':
+        value['hold_policy'] = 1
     return write_slot(common, value, old)
 
 

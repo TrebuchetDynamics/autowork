@@ -364,11 +364,23 @@ nothing parallel was claimed or started.
   Task waits described above resume without spending a retry; other inputs go through
   blocker triage, which leaves only a person's part as a question. Closing a
   retried task leaves the first attempt's worktree and branch for manual cleanup.
-- **Hold causes:** every held slot records a machine-readable `cause`: `scope` (with
-  `outside`, the undeclared protected files), `report`, `conflict`,
-  `validation`, `contract_changed`, `moved`, `blocker`, `task_wait` (with `waits_for`),
-  `crash` (died twice), `diverged` (the worker's HEAD does not descend from its baseline)
-  or `launch`. Integration's `HELD` result carries `cause` and `outside` too.
+- **Hold causes:** [`parallel_state.HOLD_CAUSES`](../scripts/parallel_state.py) owns
+  the supported machine-readable causes and their recovery policies:
+  `reoffer_once`, `resolve_conflict`, `ask_owner`, `rerun` or `wait_for_task`.
+  `next_action(slot)` selects the refill policy; evidence, liveness and attempt
+  limits still apply. Reoffers require repaired evidence before the same commit is
+  checked again; a report or validation failure can otherwise use its ordinary fresh
+  retry. Scope holds retain protected-file admission and answered-rescope checks;
+  timeouts wait for coordinator reverify, never a fresh worker.
+  A transition to `held` rejects an explicit unknown cause without changing the
+  slot or journal. An omitted new cause defaults to `crash`; old missing or unknown
+  causes read as `crash` without rewriting their files. Historical non-verdict holds
+  retain their compatibility recovery through the state helper, not refill's display
+  text parsing. `scope` carries `outside` (undeclared protected files), and `task_wait`
+  carries `waits_for`. Integration's `HELD` result carries its cause and details too.
+  Offline coverage: `test_hold_causes.py` exercises rejection, legacy reads and every
+  cause's refill action; `test_parallel_state_model.py` checks that held slots always
+  have a known cause during its random walk.
 - **Holds from before TOOLSET-161-17:** a commit held for `overlap`, or for `scope` on
   files that are not protected (including coordinator-owned files), is offered again once
   (`REOFFERED`) in priority order and integrates by merge; a worker held with

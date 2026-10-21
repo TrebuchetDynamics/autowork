@@ -74,6 +74,7 @@ class ReportedBlocker(Hold):
 
 
 def hold(common, slot, reason, **updates):
+    updates.setdefault('cause', 'stale_validation' if reason == STALE_VALIDATION else 'crash')
     slot = state.change(common, slot, 'held', dict(updates, reason=reason))
     return {'outcome': 'HELD', 'task': slot['task_id'], 'reason': reason,
             **{k: updates[k] for k in ('cause', 'outside', 'requested', 'waits_for') if k in updates}}
@@ -1264,7 +1265,7 @@ def reverifiable(slot, version):
     Timeouts are not verdicts: the coordinator may still retry them with a longer limit."""
     return (slot['state'] == 'held' and bool(slot.get('commit')) and not state.worker_live(slot)
             and (slot.get('cause') in ('validation', 'reviewed_twice', 'timeout')
-                 or (not slot.get('cause') and str(slot.get('reason', '')).startswith(VALIDATION_HOLD)))
+                 or state.legacy_hold(slot) == 'validation')
             and slot.get('reverified') != version and slot.get('reviewed_by') != version
             and (slot.get('cause') == 'timeout' or slot.get('reverify_verdict') != validation_verdict(slot)))
 
@@ -1472,7 +1473,7 @@ def retry_held(args):
             # No rescope, reoffer or fresh retry may bypass a repeated missing input.
             current = [s for s in current if not (hold := state.quick_hold(common, s))
                        or blocker_resolved(repo, common, s, hold)]
-            waits = [s for s in current if s['state'] == 'held' and s.get('waits_for')
+            waits = [s for s in current if state.next_action(s) == 'wait_for_task' and s.get('waits_for')
                      and not state.worker_live(s)]
             if waits:
                 base = getattr(args, 'base_ref', None)
@@ -1493,9 +1494,10 @@ def retry_held(args):
             # (flutter, 2026-10-16): that was no verdict, so offer such a commit again.
             # Earlier releases also held a paused-and-resumed -r2 retry as 'unexpected worker branch'
             # (sierra TASK-026); one whose branch is now the expected one is offered again too.
-            busy = next((s for s in current if s['state'] == 'held' and s.get('commit') and not state.worker_live(s)
-                         and (str(s.get('reason', '')).startswith(WRITER_HOLD)
-                              or (s.get('reason') == BRANCH_HOLD and s['branch'] == expected_branch(s)))), None)
+            busy = next((s for s in current if state.next_action(s) == 'reoffer_once'
+                         and s.get('commit') and not state.worker_live(s)
+                         and (state.legacy_hold(s) == 'writer'
+                              or (state.legacy_hold(s) == 'branch' and s['branch'] == expected_branch(s)))), None)
             if busy is not None:
                 value = {k: v for k, v in busy.items() if k not in ('reason', 'cause', 'checks', 'integration')}
                 value['state'] = 'reported'
@@ -1503,7 +1505,7 @@ def retry_held(args):
                 return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
             # A new Touches-only answer keeps the candidate even after an automatic rescope.
             # Other contract edits must reach the fresh-run path below, never this shortcut.
-            scoped = [s for s in current if s['state'] == 'held' and s.get('cause') == 'scope']
+            scoped = [s for s in current if state.next_action(s) == 'reoffer_once' and s.get('cause') == 'scope']
             if scoped:
                 contracts = {t['id']: t for t in dispatch.contracts(repo, args.tasks, args.plan)}
                 for candidate in scoped:
@@ -1542,13 +1544,14 @@ def retry_held(args):
             # TOOLSET-161-17: a commit held only for Touches (overlap with another slot, or files
             # outside its Touches that are not protected) integrates by merge now. Ledger-only
             # scope holds also return unchanged: their proposals are dropped, not reimplemented.
-            touches_held = [s for s in current if s['state'] == 'held' and s.get('commit') and not state.worker_live(s)
+            touches_held = [s for s in current if state.next_action(s) == 'reoffer_once'
+                            and s.get('commit') and not state.worker_live(s)
                             and s.get('cause') not in state.reoffered(s)
                             and (s.get('cause') == 'overlap'
                                  or (s.get('cause') == 'scope' and s.get('outside') and not any(
                                      plan.protected_path(p) for p in s.get('outside')))
-                                 or (s.get('cause') == 'scope' and 'changed files violate Touches'
-                                     in str(s.get('reason') or '') and not s.get('outside')))]
+                                 or (s.get('cause') == 'scope' and state.legacy_hold(s) == 'scope'
+                                     and not s.get('outside')))]
             if touches_held:
                 order = [t['id'] for t in dispatch.contracts(repo)]
                 touches_held.sort(key=lambda s: order.index(s['task_id']) if s['task_id'] in order else len(order))
@@ -1557,7 +1560,7 @@ def retry_held(args):
             # A commit an earlier release held by misreading its evidence is offered again once:
             # a report naming its commit by an abbreviated SHA, or a validation that passed but
             # left build daemons behind. Integration repeats every check.
-            misread = next((s for s in current if s['state'] == 'held' and s.get('commit')
+            misread = next((s for s in current if state.next_action(s) == 'reoffer_once' and s.get('commit')
                             and s.get('cause') not in state.reoffered(s) and not state.worker_live(s)
                             and ((s.get('cause') == 'report' and report_matches(repo, common, s))
                                  or (s.get('cause') == 'validation' and (s.get('checks') or {}).get('outcome')
@@ -1567,8 +1570,9 @@ def retry_held(args):
                 return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
             # Earlier releases held an interrupted review whose merge never landed when main had
             # moved meanwhile, as if it had landed without evidence: offered again once.
-            unlanded = next((s for s in current if s['state'] == 'held' and s.get('commit')
-                             and s.get('reason') == STALE_VALIDATION and not state.worker_live(s)
+            unlanded = next((s for s in current if state.next_action(s) == 'reoffer_once' and s.get('commit')
+                             and (s.get('cause') == 'stale_validation' or state.legacy_hold(s) == 'stale_validation')
+                             and not state.worker_live(s)
                              and 'stale_validation' not in state.reoffered(s)
                              and landed(repo, (s.get('integration') or {}).get('commit')) is False), None)
             if unlanded is not None:
@@ -1578,7 +1582,7 @@ def retry_held(args):
             # the same attempt, once its current Touches cover what it asked for.
             # A worker that stopped to ask for files outside Touches (an earlier release told it
             # to) resumes in its own worktree on the same attempt: it may change them now.
-            requests = [s for s in current if s['state'] == 'held' and s.get('cause') == 'scope_request'
+            requests = [s for s in current if state.next_action(s) == 'rerun' and s.get('cause') == 'scope_request'
                         and not state.worker_live(s)]
             if requests:
                 slot = state.resume_widened(common, requests[0])
@@ -1595,7 +1599,7 @@ def retry_held(args):
             # closed or removed by a person, so nothing is queued again.
             # A branch the runner itself merged past its recorded commit, beyond the adoptions
             # allowed: a fresh attempt, its kept tip named in the prompt (TOOLSET-280-4f).
-            merged_past = next((s for s in current if s['state'] == 'held' and s.get('cause') == 'runner_merged'
+            merged_past = next((s for s in current if state.next_action(s) == 'rerun' and s.get('cause') == 'runner_merged'
                                 and not state.worker_live(s)), None)
             if merged_past is not None:
                 state.event(common, 'runner_merged_requeued', task_id=merged_past['task_id'],
@@ -1624,9 +1628,8 @@ def retry_held(args):
             # A conflict with the session is not fixable by a fresh worker (it conflicts again):
             # the resolver merges the session into the commit, or the owner decides. Keeping it
             # out of this set lets the coordinator hold it briefly to group siblings for one check.
-            held = {s['task_id']: s for s in current if s['state'] == 'held' and s['attempt'] == 1
-                    and not state.exhausted(s) and not state.worker_live(s)
-                    and s.get('cause') != 'conflict'}
+            held = {s['task_id']: s for s in current if state.next_action(s) in ('rerun', 'reoffer_once')
+                    and s['attempt'] == 1 and not state.exhausted(s) and not state.worker_live(s)}
             if not held:
                 return {'outcome': 'IDLE'}
             # Attempt number is not a mutex: use ordinary parallel admission.

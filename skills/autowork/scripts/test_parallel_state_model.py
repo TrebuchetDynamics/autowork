@@ -64,7 +64,7 @@ def updates_for(key, task, paths):
         'report': {'cause': 'report', 'reason': 'report mismatch', 'commit': FAKE},
         'blocker': {'cause': 'blocker', 'reason': 'worker reported a blocker: input'},
         'validation': {'cause': 'validation', 'reason': 'validation failed', 'commit': FAKE},
-        'commit': {'commit': FAKE}, 'bogus': {'task_id': 'Z'},
+        'commit': {'commit': FAKE}, 'bogus': {'task_id': 'Z'}, 'unknown_cause': {'cause': 'typo'},
         'r2': {'worktree': r2, 'branch': f'autowork/{task}-r2', 'baseline': paths['base']},
         'r2_same': {'worktree': str(paths[task]), 'branch': f'autowork/{task}-r2', 'baseline': paths['base']},
         'r2_badbranch': {'worktree': r2, 'branch': f'autowork/{task}', 'baseline': paths['base']},
@@ -209,6 +209,10 @@ class Walk:
         if target in ('interrupted', 'released') and rec['attempt'] == 2 and not upd.get('paused', rec['paused']):
             target = 'held'
             upd.setdefault('cause', 'empty' if str(upd.get('reason', '')).startswith(state.EMPTY) else 'crash')
+        if target == 'held':
+            upd.setdefault('cause', 'crash')
+            if upd['cause'] not in state.HOLD_CAUSES:
+                return 'reject', None
         for key, value in upd.items():
             if key in ('worktree', 'branch', 'baseline'):
                 continue
@@ -332,6 +336,9 @@ class Walk:
         for task, slot in slots.items():
             rec = self.model[task]
             tc.assertEqual(self.view_disk(slot), self.view_model(rec), f'slot {task} diverged from the model')
+            # A held slot always has a known, recoverable cause.
+            if slot['state'] == 'held':
+                tc.assertIn(slot['cause'], state.HOLD_CAUSES)
             # 3. Attempts never decrease and never exceed 2.
             tc.assertGreaterEqual(slot['attempt'], self.attempts.get(task, 1))
             self.attempts[task] = slot['attempt']
@@ -600,7 +607,7 @@ class Walk:
                       else rng.choice(STATES) if pick < 0.96 else 'bogus')
             menus = {'running': ['live', 'live', 'none', 'reason'],
                      'held': ['scope', 'scope', 'scope_nocommit', 'overlap', 'report', 'blocker', 'validation',
-                              'none', 'reason'],
+                              'none', 'reason', 'unknown_cause'],
                      'interrupted': ['none', 'reason', 'empty', 'paused'],
                      'released': ['none', 'reason', 'empty', 'paused'],
                      'reported': ['commit', 'none', 'reason'],
