@@ -22,6 +22,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- The archiver ends a heading-paired task (`### ID` followed by its own checkbox) at the
+  next known task's checkbox. Among checkbox-only tasks it ran to the next heading, every
+  task it swallowed overlapped it, and none could be archived: their closes failed every
+  cycle.
 - A waiting task no longer holds the files it names against lower-priority tasks: waits
   chained on one old unlanded commit left every worker idle. A free file still goes to
   the higher-priority task first.

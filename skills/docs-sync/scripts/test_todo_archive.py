@@ -219,6 +219,23 @@ class TodoArchiveTests(unittest.TestCase):
                 self.assertEqual((self.todo.read_bytes(), self.archive.read_bytes()), stable)
                 self.archive.unlink()
 
+    def test_a_heading_paired_task_ends_at_the_next_checkbox_task(self):
+        """A heading-paired task among checkbox-only tasks ran to the next heading: every task
+        after it overlapped it, none was archived, and each close failed every cycle."""
+        data = dict(self.data, tasks=[*self.data['tasks'],
+                                      {'id': 'T3', 'goal': 'G', 'title': 'Later slice', 'status': 'done',
+                                       'section': 'Now'}])
+        data['goals'][0]['tasks'].append('T3')
+        self.ledger.write_text(json.dumps(data))
+        later = '- [x] T3: Later slice\n  Checks: fixture passed\n\n'
+        self.todo.write_text('# TODO\n\n## Now\n\n### T1 — Completed slice\n\n' + self.done + self.open + later)
+        result = json.loads(self.cli('archive').stdout)
+        self.assertEqual(sorted(result['moved']), ['T1', 'T3'])
+        live = self.todo.read_text()
+        self.assertIn('## Now\n\n' + self.open, live)
+        self.assertNotIn('T1', live)
+        self.assertNotIn('T3', live)
+
     def test_heading_checkbox_conflicts_remain_whole_and_live(self):
         for heading, body in (
                 ('T1', self.done.replace('[x]', '[ ]')),
