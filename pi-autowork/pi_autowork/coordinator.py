@@ -31,13 +31,21 @@ IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
 PLANNING_FILES = ('TODO.md', 'TODO.archive.md', 'todo.archive.md', 'goals.json', 'BLOCKERS.md')
 CONTRACT_CHANGED = 'task contract changed since integration; no close'
 MERGE_PROMPT = (
-    '/skill:git-commit-push This worktree is on branch {branch} with an unfinished merge of {base} that conflicts '
-    "in: {files}. Resolve every conflict keeping both sides' work: keep both task entries in TODO.md and "
-    'TODO.archive.md, keep every task record in goals.json and run python3 {goals} merge-finalize . and '
-    'python3 {goals} validate . if goals.json exists, then '
-    'run only the tests that cover the conflicted files, not the full check (the runner runs it on the merged '
+    'This worktree is on branch {branch} with an unfinished merge of {base} that conflicts '
+    "in: {files}. Resolve every conflict keeping both sides' work. {planning}"
+    'Run only the tests that cover the conflicted files, not the full check (the runner runs it on the merged '
     'result), and conclude the merge with a commit. Do not push, rebase, '
     'switch branches or touch {repo}. End with one line: PI_AUTOWORK_RESULT: completed|blocked, then one sentence.')
+
+
+def merge_prompt(*, branch, base, files, goals, repo):
+    """Only actual planning conflicts need ledger reconciliation, not source-only merges."""
+    planning = ('Keep both task entries in TODO.md and TODO.archive.md and every task record in goals.json. '
+                f'Run python3 {goals} merge-finalize . and python3 {goals} validate . if goals.json exists. '
+                if set(files) & {'TODO.md', 'TODO.archive.md', 'goals.json'} else
+                'For this merge, leave TODO.md, TODO.archive.md and goals.json unchanged. ')
+    return MERGE_PROMPT.format(branch=branch, base=base, files=' '.join(files) or '(unknown files)',
+                               planning=planning, repo=repo)
 
 
 def publishable(repo, paths):
@@ -874,14 +882,15 @@ class Coordinator:
             return True
         planning_note = self.commit_owner_changes()
         if not self.merge_planning(self.base):
-            files = ' '.join((git(self.integ, 'diff', '--name-only', '--diff-filter=U') or '').split()) or 'TODO.md goals.json'
+            conflicts = (git(self.integ, 'diff', '--name-only', '--diff-filter=U') or '').splitlines()
+            files = ' '.join(conflicts) or '(unknown files)'
             base_rev = git(self.repo, 'rev-parse', self.base)
             if not self.stop and self.resolved_for != base_rev:  # once per main revision, not per session
                 self.resolved_for = base_rev
                 LOG.say(f'{self.base} moved and conflicts with this session in: {files}; asking Pi to resolve the merge')
                 self.pi_job('merge', self.integ_branch.removeprefix('pi-autowork/'), self.integ,
-                            MERGE_PROMPT.format(branch=self.integ_branch, base=self.base, files=files,
-                                                goals=self.goals, repo=self.repo),
+                            merge_prompt(branch=self.integ_branch, base=self.base, files=conflicts,
+                                         goals=self.goals, repo=self.repo),
                             f'pi-autowork-merge-{datetime.now():%Y%m%d%H%M%S}', self.verify_timeout)
             marker = git(self.integ, 'rev-parse', '--path-format=absolute', '--git-path', 'MERGE_HEAD')
             if ((marker and Path(marker).exists())
@@ -2325,7 +2334,8 @@ class Coordinator:
         self.seen['resolved-' + task] = head
         if git_ok(root, 'merge', '-q', '--no-edit', head):
             return self.adopt_merge(task)
-        files = ' '.join((git(root, 'diff', '--name-only', '--diff-filter=U') or '').split())
+        conflicts = (git(root, 'diff', '--name-only', '--diff-filter=U') or '').splitlines()
+        files = ' '.join(conflicts)
         LOG.say(f'{task}: its commit conflicts with the session in: {files}; asking Pi to resolve the merge '
                 'in its worktree')
         branch = git(root, 'symbolic-ref', '--short', '-q', 'HEAD') or task
@@ -2336,8 +2346,8 @@ class Coordinator:
             proc = subprocess.Popen([sys.executable, str(Path(__file__).with_name('pi_runtime.py')), 'job',
                                      str(self.state), 'merge', task, str(root),
                                      f'pi-autowork-merge-{task}-{datetime.now():%Y%m%d%H%M%S}', str(self.verify_timeout),
-                                     MERGE_PROMPT.format(branch=branch, base=head[:12], files=files, goals=self.goals,
-                                                         repo=self.repo)], stdout=stream, env=env)
+                                     merge_prompt(branch=branch, base=head[:12], files=conflicts, goals=self.goals,
+                                                  repo=self.repo)], stdout=stream, env=env)
         self.resolvers[task] = {'proc': proc, 'out': out.name, 'root': root, 'head': head, 'commit': commit,
                                 'merged_count': adoption.get('merged_count')}
         self.note_resolvers()
