@@ -38,9 +38,9 @@
                                   convert a repository to the tasks/ store once (one local commit)
     autowork capabilities         this executable's release, commands, task verbs and prepare
                                   API as JSON (a skill checks it before writing anything)
-    autowork scorecard [--days N] [--json] [target...]
-                                  per runner: tasks closed, held share, start to merge, owner
-                                  questions over the last N days (default 7)
+    autowork scorecard [--days N] [--json | --csv] [--baseline FILE] [target...]
+                                  per-runner and overall evaluation, weekly metrics and changes
+                                  over 1..30 days (default 7); no model call
 
 A systemd user service (`pi-autowork@<repository name>`) is the default way to run a
 repository's runner. A target is a runner name (sierra), a repository path, or `.`.
@@ -378,11 +378,17 @@ def cmd_scorecard(args, paths):
         found = [resolve(target, paths) for target in args.target]
     else:
         found = [(r.repo, r.name) for r in runners(paths) if r.repo]
-    rows = {name: scorecard.measure(repo, args.days) for repo, name in found}
+    try:
+        baseline = scorecard.load_baseline(args.baseline) if args.baseline else None
+        result = scorecard.report(found, args.days, baseline=baseline)
+    except ValueError as exc:
+        raise Fail(str(exc)) from exc
     if args.json:
-        print(json.dumps({'days': args.days, 'runners': rows}, indent=2))
+        print(json.dumps(result, indent=2, allow_nan=False))
+    elif args.csv:
+        print(scorecard.csv_report(result), end='')
     else:
-        print('\n'.join(scorecard.table(rows, args.days)))
+        print('\n'.join(scorecard.report_table(result)))
     return 0
 
 
@@ -553,9 +559,12 @@ def parser():
     models.add_argument('search', nargs='?')
     update = sub.add_parser('update', help='update the installed suite in place (install.sh update)')
     update.add_argument('extra', nargs='*', help='extra install.sh flags (for example -q or --dry-run)')
-    card = sub.add_parser('scorecard', help='per runner: tasks closed, held share, start to merge, owner questions')
-    card.add_argument('--days', type=int, default=7)
-    card.add_argument('--json', action='store_true')
+    card = sub.add_parser('scorecard', help='per-runner and overall evaluation, weekly metrics and changes')
+    card.add_argument('--days', type=int, choices=range(1, 31), default=7, metavar='1..30')
+    formats = card.add_mutually_exclusive_group()
+    formats.add_argument('--json', action='store_true')
+    formats.add_argument('--csv', action='store_true')
+    card.add_argument('--baseline', metavar='FILE', help='JSON owner estimates: cost and minutes per verified task')
     card.add_argument('target', nargs='*', help='runner names or repository paths (default: every runner)')
     task_commands.add_parser(sub)
     task_migrate.add_parser(sub)

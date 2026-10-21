@@ -52,7 +52,7 @@ name, a repository path or `.`. Nothing here calls a model.
 | `autowork tasks add\|field\|place\|move\|hold\|release\|done\|supersede\|goal ... [target]` | Edit task and goal files in the working tree, never committing: an owner answer (`field TASK "Owner decision" TEXT`, `"Blocker resolution"`), a section (`place`, optionally `--decision`), the priority (`move TASK up\|down` changes its rank), a hold (`hold --by`, `release`), a manual close (`done ID --by WHO --reason TEXT [--evidence REF]`, not verification), a new task or goal. Each write validates the whole store |
 | `autowork tasks prepare [target] [--check\|--no-commit]` | What Docs Sync runs first: detect the store's state, convert or finish converting a TODO.md + goals.json repository, and report diagnostics with the command that repairs each, as JSON; `--check` writes nothing ([task store](task-store.md#preparing-a-repository-autowork-tasks-prepare)) |
 | `autowork migrate [target] [--dry-run] [--no-commit]` | Convert a TODO.md + goals.json repository to `tasks/` once, in one local commit (`--no-commit`: staged); an interrupted run resumes; it refuses while work is in flight |
-| `autowork scorecard [--days N] [--json] [target...]` | Per runner over the last N days (default 7): tasks closed (total, verified, manual and unverified-evidence), share of integrations held, median dispatch-to-merge time, new owner questions, measured spend and recorded owner minutes; JSON includes task/attempt usage and attribution; no model call |
+| `autowork scorecard [--days N] [--json \| --csv] [--baseline FILE] [target...]` | Per runner and overall over 1–30 days (default 7): labelled evaluation metrics, weekly breakdown and first-to-last-week changes; JSON retains closure, held-share, questions and task/attempt accounting details; no model call |
 
 Before reusing an installed or running service, `autowork start` refuses if an
 explicitly supplied supported service setting differs from its saved env file
@@ -127,8 +127,66 @@ The TUI and web view run Textual 8.2.8 (and textual-serve 1.1.3) through `uv`.
 ```sh
 autowork attention 15 --task CACHE-01 --note 'Reviewed behavior'
 autowork attention 5 /path/to/repository   # repository-level time
-autowork scorecard --days 7 --json .
+autowork scorecard --days 30 --json .
+autowork scorecard --days 30 --csv . > evaluation.csv
+autowork scorecard --days 30 --baseline /private/baseline.json .
 ```
+
+### Evaluation report
+
+Text, `--json` and `--csv` render the same evaluation metrics. JSON adds
+`runners.<name>.evaluation` and `overall`, while retaining the existing runner
+counters and `usage`. Each evaluation contains `summary`, `weeks`, `change`,
+`baseline` and `baseline_change`. Each metric has `value`, `unit` and `status`:
+`measured`, `estimate` or `missing`; missing JSON values are `null`, CSV values
+are empty, and text says `missing`. Metadata (names, window bounds and week
+numbers) is not a metric. CSV is long-form: one row per scope, runner, period
+and metric, with the same labels and values as JSON. Periods are `summary`,
+`week-1` onward, `change`, `baseline` and `baseline_change`.
+
+Weeks are consecutive seven-day intervals from the window's start, oldest first;
+the final week can be shorter (two days for a 30-day window). Boundaries are epoch
+seconds: start inclusive, end exclusive except the final end. Changes are absolute
+last-week minus first-week values, not relative percentages; percentage changes
+use percentage points. A single-week window compares that week with itself.
+Overall metrics pool task counts, duration samples and denominators across unique
+repositories; runner medians and percentages are never averaged. Repeated targets
+for one repository count once.
+
+| Metric | Definition and limits |
+| --- | --- |
+| `verified_tasks`, `verified_tasks_per_day` | Distinct currently closed tasks with valid coordinator receipts and a close transition in the window, divided by actual period days. A reopened/reclosed task counts once in its latest close's week. A lifecycle close observation dates that transition when available; otherwise its Git timestamp does. Conversion itself closes nothing. |
+| `manual_closed`, `owner_interventions` | Manual/legacy hand closes are separate, never verified. Each counts as one intervention even without telemetry. Other interventions are explicit `blocker_answered`, `contract_edited` and `hand_closed` facts, not retries or inferred Git authorship. |
+| `unattended_completion_percentage` | Percentage of verified completions with no recorded lifecycle intervention or positive task-attributed owner time before closure, including observations before the window. Requires accepted/dispatch/close telemetry for every counted task. Unattributed positive owner time overlapping a task's lifecycle, or invalid attention records, makes this unknown. Manual closes enter neither numerator nor denominator. |
+| `accepted_to_delivered_{median,p95}_minutes` | First acceptance to first delivery for each verified completion in the period; delivery is observed by the coordinator, not inferred from a candidate commit. |
+| `dispatch_to_integrated_{median,p95}_minutes` | First dispatch to first integration, including retry delays. Both duration metrics are missing if any verified completion lacks ordered endpoints. p95 uses nearest rank, with no extrapolation for small cohorts. |
+| `cost_per_verified_task_usd`, `owner_minutes_per_verified_task` | All window spend / recorded owner time divided by verified completions, including unattributed overhead and work not yet completed. Missing billing or missing attention for a verified task leaves the corresponding ratio missing. These are period ratios, not lifetime task bills; costs just before a week's boundary remain in that earlier week. |
+| `recovery_success_rate` | Fraction of observed restart/interruption episodes followed by `worker_adopted`/`resumed` for the same task and attempt by the report end. A success means execution recovered, not that the task subsequently passed. Episodes belong to their trigger's week; no episodes means missing. |
+| `regression_rate` | Fraction of the period's verified completion cohort with at least one explicit receipt-linked regression discovered during the selected window, observed through the report end. Multiple notes/reverts for one task count once. Older deliveries' discoveries remain visible in runner `regressions`, but do not inflate the completion cohort's rate. This is observed attribution, not proof that all regressions were found. |
+
+With no verified completion, all rates and per-task ratios are **missing**, not
+zero. Counts (including manual closes and interventions) remain measured. A
+measured unattended result means no *recorded* intervention, not proof of complete
+human-activity coverage. Recorded owner time is likewise not an inferred total.
+An undated torn attention record cannot be proved outside a task's lifecycle, so
+it conservatively leaves unattended results missing. Missing values propagate into
+changes; no guessed zero fills a gap.
+
+An optional private baseline file is a JSON object with finite nonnegative values:
+
+```json
+{"cost_per_verified_task_usd": 5, "owner_minutes_per_verified_task": 15}
+```
+
+`baseline.metrics` labels these owner-supplied values `estimate`, beside the
+unchanged measured summary metrics. `baseline_change` is measured summary minus
+baseline, also labelled `estimate` (or `missing` when measurement is unavailable).
+Without `--baseline`, every format says `no baseline` and comparison values are
+missing. Keep baseline files and exported reports private; they can reveal
+repository names and operating costs. No evaluation output proves a live 30-day
+run; [the evaluation plan](../docs/evaluation.md#30-day-evaluation) keeps that separate.
+
+### Accounting details
 
 The scorecard's JSON `usage` contains `tasks`, each with `attempts`, `roles`
 (worker, reviewer, coordinator), `host_models`, token totals, billing and
