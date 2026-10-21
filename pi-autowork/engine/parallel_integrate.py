@@ -169,6 +169,11 @@ def verify(repo, common, slot, contracts):
     return files, report
 
 
+def merging(root):
+    """Whether ``root`` has a merge in progress (MERGE_HEAD), which ``merge --abort`` needs."""
+    return Path(git(root, 'rev-parse', '--path-format=absolute', '--git-path', 'MERGE_HEAD')).is_file()
+
+
 def abort_abandoned_merge(common, slot):
     """Abort a conflict-free merge a resolver left uncommitted in the task worktree (TOOLSET-280-4f).
     verify runs only with no worker and no resolver in that worktree, so nobody is finishing it,
@@ -419,6 +424,8 @@ def merge_candidate(root, slot, baseline):
     try:
         git(root, 'merge', '--no-ff', '--no-edit', slot['commit'])
     except ValueError:
+        if not merging(root):
+            raise  # git refused before merging anything: its own error, not a failed abort
         conflicts = git(root, 'diff', '--name-only', '--diff-filter=U', '-z').rstrip('\0').split('\0')
         if not conflicts or set(conflicts) - owned(conflicts):
             git(root, 'merge', '--abort')
@@ -506,7 +513,8 @@ def remerge_planning(repo, root, merge, head, task=None):
     try:
         git(root, 'merge', '--no-ff', '--no-edit', head)
     except ValueError:
-        git(root, 'merge', '--abort')
+        if merging(root):
+            git(root, 'merge', '--abort')
         return None
     remerged = git(root, 'rev-parse', 'HEAD')
     brought = changed(repo, merge, remerged)
