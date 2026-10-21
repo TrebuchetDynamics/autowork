@@ -993,6 +993,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-255-55 — Bind task claims to runner-owned evidence without changing legacy acceptance
 
 - [ ] TOOLSET-255-55 — Bind task claims to runner-owned evidence without changing legacy acceptance
+- Scheduling: After TOOLSET-125-e6 lands, extend its fixture-only execution-test base; its reported 69cc960022a5438c28cfc83278c3c1d080cf1318 removes inherited duplicates, not claim evidence. Preserve all newer unique regressions. Keep this accepted adapter/dispatch/execution proof slice together: required-set capture and readoption immutability must be exercised through the existing execution fixtures, not only a detached adapter test. Do not edit the reported prerequisite or treat its report as integrated proof.
 - Short: Bind task claims to runner evidence
 - Status: open
 - Goal: PI-RUNNER
@@ -1002,7 +1003,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Scope: Add a small standard-library-only versioned claim-evidence adapter, not another receipt engine. At dispatch pin required IDs, full authored Acceptance and existing Checks/offline-live obligations beside contract.txt; bind policy/contract digest, task/current attempt/producing data_attempt and stage. Workers may add assertions through an optional report extension but cannot select required coverage. Independently bind existing producer evidence to worker versus merged candidate/tree and command/run identity; do not treat worker pass strings, checks=[] or the outer command receipt as proof of inner commands. Default shadow mode only; no active/reported contract enrollment. Prepare a coordinator-derived run-scoped transport interface usable by the current validation command; no source-provided command execution or network fetch.
 - Acceptance: Existing dispatch/execution fixtures cover legacy unchanged behavior, complete expected-set capture, empty/omitted/duplicate/invented IDs, wrong task/attempt/data_attempt/tree/command, absent/legacy evidence as unknown, and required-set immutability across readoption. Bounded descriptor-based reads reject duplicate JSON keys, traversal/absolute/URL references, symlink components, nonregular and oversized inputs; hash exactly captured bytes. Preserve original failures/skips/exceptions and producer references, not all-green reconstructions. Execution and semantic support axes remain separate, with no false execution claim from an absent record. Source and credential privacy, ownership/lease and cumulative accounting guards remain unchanged. New cases are planned, unrun.
 - Checks: Planned after implementation: python3 scripts/check.py skills/autowork/scripts/test_parallel_dispatch.py skills/autowork/scripts/test_task_execution.py; python3 scripts/check.py; git diff --check. Reuse compact existing fixtures; no live model calls are authorized by this planning handoff.
-- Dependencies: TOOLSET-254-80.
+- Dependencies: TOOLSET-125-e6, TOOLSET-254-80.
 - Ownership: Normal Toolset execution/integration owner; serialize overlapping engine/review changes, reconcile current source and retained 115-bf candidate, never repin or replace another live/reported attempt.
 - Exclusions: No second lifecycle/receipt database, retired check_receipt module, larger swarm, profile/runtime/service update, model calibration/spending, semantic auto-acceptance, Obsidian export, waived tests, retry reset, deployment, commit or publication from this plan.
 - Planner's call: Additive observation first, prospective deterministic enforcement only, source support not universal truth, and unknown not an automatic owner question. Existing 130-15 consumes the normalized observations; 118-68/228-0c retain capacity policy.
@@ -1047,16 +1048,17 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-248-60 — An idle runner with an empty queue rests: no new session until the plan or main changes
 
 - [ ] TOOLSET-248-60 — An idle runner with an empty queue rests: no new session until the plan or main changes
+- Scheduling: After TOOLSET-261-15 lands: its assigned coordinator.py scope and reported acd6176dea593dd8e0185c5a701fd8b4c3c9035e changes to tests/test_pi_autowork.py overlap this task. Resting, wake-up and reload proof all use the same coordinator cycle and runner fixture; keep this bounded behavior intact rather than merge it into the reported check-slot task. Retain the existing TOOLSET-201-5e partial-delivery refinement.
 - Short: An idle runner with nothing to do rests
 - Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: fleet monitoring (2026-10-18); [coordinator](pi-autowork/pi_autowork/coordinator.py) (`cycle` calls `ensure_session` and an engine `--apply` every cycle; on `IDLE` the cycle lands the session, releases the lease, calls `end_session` and logs `Queue empty; checking again in {interval}s`; `pause` wakes early only when `plan_signature` changes); TOOLSET-185-74 in [the archive](TODO.archive.md) (the earlier once-a-second version, caused by `packed-refs`).
-- Evidence (2026-10-18 21:34, one fleet runner with an empty queue): 342 `Session pi-autowork/<stamp> started from main` lines in six hours, one each minute, each followed by `Queue empty; checking again in 60s`. No plan or main change woke it in between, since no `changed; checking now` line appears. Each minute it created and removed a session branch and worktree and ran an engine dispatch for an empty queue. The other runners, all with queued work, logged none.
+- Goal: PI-RUNNER
+- Sources: fleet monitoring (2026-10-18); [coordinator](pi-autowork/pi_autowork/coordinator.py) (`cycle` calls `ensure_session` and an engine `--apply` every cycle; on `IDLE` the cycle lands the session, releases the lease, calls `end_session` and logs `Queue empty; checking again in {interval}s`; `pause` wakes early only when `plan_signature` changes); TOOLSET-185-74 in [the archive](TODO.archive.md) (the earlier once-a-second version, caused by `packed-refs`); [accepted continuous runner scope](docs/project.md#continuous-pi-runner-2026-10-15).
+- Evidence: (2026-10-18 21:34, one fleet runner with an empty queue) 342 `Session pi-autowork/<stamp> started from main` lines in six hours, one each minute, each followed by `Queue empty; checking again in 60s`. No plan or main change woke it in between, since no `changed; checking now` line appears. Each minute it created and removed a session branch and worktree and ran an engine dispatch for an empty queue. The other runners, all with queued work, logged none.
 - Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
 - Scope: (1) After a cycle that ended `IDLE` with the session landed and ended, the runner records the plan signature (`plan_signature`) of that moment. Later cycles skip `ensure_session` and dispatch, and pause, until the signature changes: a planning-file edit, a main commit or an owner answer. Health and status writes continue. (2) `Queue empty; checking again in …` is logged once when it begins resting, not every interval. (3) A toolset update or reload still applies while resting (TOOLSET-236-4d), and a stop still ends it.
 - Acceptance: In a runner fixture with an empty queue, ten intervals log one `Queue empty` line and start no second session, and run no engine `--apply` after the first; a TODO.md commit adding a task wakes it within the settle time and dispatches it; a SIGHUP while resting reloads.
-- Checks: python3 -m unittest tests/test_pi_autowork.py
-- Dependencies: None.
+- Checks: python3 scripts/check.py tests/test_pi_autowork.py
+- Dependencies: TOOLSET-261-15.
 - Ownership: Toolset coordinator.
 - Exclusions: No change to how a non-empty queue cycles.
 - Planner's call: top of Next: no work is lost, but the owner's rule is that an idle runner costs nothing, and today one rewrites refs and spawns an engine every minute and fills its log with two lines a minute.
@@ -1065,16 +1067,17 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-249-5b — A waiting line is logged when the reasons change, not each minute a drain counter moves
 
 - [ ] TOOLSET-249-5b — A waiting line is logged when the reasons change, not each minute a drain counter moves
+- Scheduling: After TOOLSET-261-15 lands: its assigned coordinator.py scope and reported acd6176dea593dd8e0185c5a701fd8b4c3c9035e runner-test changes overlap this task. Counter-insensitive deduplication and the 30-minute reminder share the WAITING branch and runner fixture; there is no separate file-only behavior slice. Keep the reported prerequisite unchanged; retain queue order and overlap admission among the later coordinator tasks.
 - Short: Log a waiting line when reasons change
 - Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: fleet monitoring (2026-10-18); [coordinator](pi-autowork/pi_autowork/coordinator.py) (the `WAITING` branch logs `Waiting: <summary>` when the summary differs from `last_waiting`); [admission](skills/autowork/scripts/parallel_plan.py) (`priority waits for <task> (draining, waited <n>m)`).
-- Evidence (2026-10-18 21:49): in six hours one fleet runner logged 171 `Waiting:` lines and this repository's runner 554. On the first, consecutive lines differed only in `waited 65m`, `66m`, `67m`... of a draining exclusive task, so the dedupe saw a new summary each minute. The runner log and the TUI log pane fill with copies of one state.
+- Goal: PI-RUNNER
+- Sources: fleet monitoring (2026-10-18); [coordinator](pi-autowork/pi_autowork/coordinator.py) (the `WAITING` branch logs `Waiting: <summary>` when the summary differs from `last_waiting`); [admission](skills/autowork/scripts/parallel_plan.py) (`priority waits for <task> (draining, waited <n>m)`); [accepted continuous runner scope](docs/project.md#continuous-pi-runner-2026-10-15).
+- Evidence: (2026-10-18 21:49) in six hours one fleet runner logged 171 `Waiting:` lines and this repository's runner 554. On the first, consecutive lines differed only in `waited 65m`, `66m`, `67m`... of a draining exclusive task, so the dedupe saw a new summary each minute. The runner log and the TUI log pane fill with copies of one state.
 - Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
 - Scope: (1) The dedupe compares the summary with elapsed counters removed (`waited <n>m`, `for <n> min`, `<n>s ago` and similar), so a line is logged when the set of tasks or reasons changes. (2) A draining wait is logged again at most every 30 minutes with its current length, so a long drain stays visible.
 - Acceptance: In a fixture whose dispatch answers the same waiting set with a growing `waited <n>m` for ten cycles, one `Waiting:` line is logged; a changed reason or task logs a new one; a drain longer than 30 minutes logs one reminder.
-- Checks: python3 -m unittest tests/test_pi_autowork.py
-- Dependencies: None.
+- Checks: python3 scripts/check.py tests/test_pi_autowork.py
+- Dependencies: TOOLSET-261-15.
 - Ownership: Toolset coordinator.
 - Exclusions: No change to admission or to the waiting reasons the engine gives.
 - Planner's call: Next: log noise only, but it buries the lines the owner and the monitor read.
@@ -1082,16 +1085,17 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-245-6a — A dispatch refused by the runner's own review lock tries again in seconds, not after a full pause
 
 - [ ] TOOLSET-245-6a — A dispatch refused by the runner's own review lock tries again in seconds, not after a full pause
+- Scheduling: After TOOLSET-261-15 lands: its assigned coordinator.py scope and reported acd6176dea593dd8e0185c5a701fd8b4c3c9035e runner-test changes overlap this task. Own-review retry, bounded-run survival and outside-lock fallback are one BUSY-path behavior with shared runner proof, not an independent test-only slice. Preserve the existing bounded BUSY wait from TOOLSET-288-cf; it is not proof of the own-review/no-log acceptance here.
 - Short: Retry a review-lock refusal in seconds
 - Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: fleet monitoring (2026-10-18); [coordinator](pi-autowork/pi_autowork/coordinator.py) (the `BUSY` outcome of `--apply`: `Repository busy (...); checking again in {interval}s` and `blocked_pause`, or `finish(4)` in `--once`/`--until-empty`); [engine](skills/autowork/scripts/task_execution.py) (`BlockingIOError` becomes `BUSY: Repository execution lock is held by a live operation.`); TOOLSET-238-11 in [the archive](TODO.archive.md) (an attempt to return to the loop as soon as a review was accepted exposed this race in fixtures and was dropped).
-- Evidence (2026-10-18): `Repository busy (Repository execution lock is held by a live operation.); checking again in 60s` at 17:03, 17:19 and 17:34 on this repository's runner and at 19:54 and 20:04 on another, each while that runner's own review was running and holding an engine lock for a moment (a receipt write or the landing). In a fixture the same race ended a `--until-empty` run with exit 4.
+- Goal: PI-RUNNER
+- Sources: fleet monitoring (2026-10-18); [coordinator](pi-autowork/pi_autowork/coordinator.py) (the `BUSY` outcome of `--apply`: `Repository busy (...); checking again in {interval}s` and `blocked_pause`, or `finish(4)` in `--once`/`--until-empty`); [engine](skills/autowork/scripts/task_execution.py) (`BlockingIOError` becomes `BUSY: Repository execution lock is held by a live operation.`); TOOLSET-238-11 in [the archive](TODO.archive.md) (an attempt to return to the loop as soon as a review was accepted exposed this race in fixtures and was dropped); [accepted continuous runner scope](docs/project.md#continuous-pi-runner-2026-10-15).
+- Evidence: (2026-10-18) `Repository busy (Repository execution lock is held by a live operation.); checking again in 60s` at 17:03, 17:19 and 17:34 on this repository's runner and at 19:54 and 20:04 on another, each while that runner's own review was running and holding an engine lock for a moment (a receipt write or the landing). In a fixture the same race ended a `--until-empty` run with exit 4.
 - Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
 - Scope: (1) When `--apply` answers BUSY with the engine's lock message while this runner's own review child runs (`session_busy()`), it is retried after 2 s, up to 5 times in the cycle, before any pause. (2) Only if it is still busy does the existing path apply, and never `finish(4)` in a bounded run while the runner's own review holds the lock: the cycle waits for the review instead. (3) The `Repository busy` line is logged only when the BUSY is not the runner's own.
 - Acceptance: In a fixture whose review holds the engine's writer lock for 3 s, a dispatch during it starts its task within that cycle, without a `Repository busy` line or a 60 s pause; a `--until-empty` run with a fast review beside a dispatch ends 0; a lock held by an outside process still logs and pauses as today.
-- Checks: python3 -m unittest tests/test_pi_autowork.py
-- Dependencies: None.
+- Checks: python3 scripts/check.py tests/test_pi_autowork.py
+- Dependencies: TOOLSET-261-15.
 - Ownership: Toolset coordinator.
 - Exclusions: No change to the engine's locks.
 - Planner's call: Next: about a minute lost each time, a few times an hour on a busy runner. The fixture failure shows it can also end a bounded run.
@@ -1139,16 +1143,17 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-225-75 — Status and the TUI never list a task closed on the base branch as waiting
 
 - [ ] TOOLSET-225-75 — Status and the TUI never list a task closed on the base branch as waiting
+- Scheduling: After TOOLSET-129-c4 and TOOLSET-261-15 land: reported 97485733484c8bd636f849cc5efd2d6182c6fa45 owns fleet_view.py/test_fleet_view.py, while 261-15 assigns coordinator.py and reports shared runner-test edits in acd6176dea593dd8e0185c5a701fd8b4c3c9035e. Neither report delivers base-ref pending-task filtering. A status-core split would still overlap reported TOOLSET-202-9a's assigned skills/autowork/scripts/ scope, so it creates no immediately disjoint lane; keep the bounded producer-to-display behavior and its legacy fallback proof together. Do not rewrite any reported prerequisite.
 - Short: Closed tasks never listed as waiting
 - Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: fleet monitoring (2026-10-18); TOOLSET-218-d0 in [the archive](TODO.archive.md) (`--base-ref` on dispatch and integration only); [status](skills/autowork/scripts/parallel_status.py) (`pending_tasks` reads only the session worktree's ledger); [fleet view](pi-autowork/pi_autowork/fleet_view.py).
-- Evidence (2026-10-18 13:37, this repository's runner, after the TOOLSET-218-d0 reload): the three tasks closed on main had their slots set aside, yet `autowork status` listed each as `pending  awaiting dispatch`, and the TUI's waiting count included them until the session lands.
-- Touches: skills/autowork/scripts/parallel_status.py, skills/autowork/scripts/test_parallel_status.py, skills/autowork/scripts/task_execution.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/fleet_view.py
+- Goal: PI-RUNNER
+- Sources: fleet monitoring (2026-10-18); TOOLSET-218-d0 in [the archive](TODO.archive.md) (`--base-ref` on dispatch and integration only); [status](skills/autowork/scripts/parallel_status.py) (`pending_tasks` reads only the session worktree's ledger); [fleet view](pi-autowork/pi_autowork/fleet_view.py); [accepted continuous runner scope](docs/project.md#continuous-pi-runner-2026-10-15).
+- Evidence: (2026-10-18 13:37, this repository's runner, after the TOOLSET-218-d0 reload) the three tasks closed on main had their slots set aside, yet `autowork status` listed each as `pending  awaiting dispatch`, and the TUI's waiting count included them until the session lands.
+- Touches: skills/autowork/scripts/parallel_status.py, skills/autowork/scripts/test_parallel_status.py, skills/autowork/scripts/task_execution.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/fleet_view.py, pi-autowork/tests/test_fleet_view.py, tests/test_pi_autowork.py
 - Scope: (1) `--parallel-status` takes `--base-ref` too, and the coordinator and fleet view pass the runner's base. (2) `pending_tasks` leaves out tasks that `parallel_dispatch.retired(repo, base)` reports. (3) The status command run by hand reads the base from the runner's session record when one exists.
 - Acceptance: In fixtures: a task open in the session ledger but checked off on the base branch is absent from `--parallel-status --base-ref <base>` pending output and from the fleet view's waiting count; without `--base-ref` and with no session record, the output is unchanged.
-- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_status.py; python3 -m unittest discover -s pi-autowork/tests -p test_fleet_view.py
-- Dependencies: None.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_status.py; python3 -m unittest discover -s pi-autowork/tests -p test_fleet_view.py; python3 scripts/check.py tests/test_pi_autowork.py
+- Dependencies: TOOLSET-129-c4, TOOLSET-261-15.
 - Ownership: Toolset coordinator.
 - Exclusions: No change to dispatch.
 - Planner's call: Next: the display is wrong only until the session lands, and nothing runs on it.
@@ -1173,16 +1178,17 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-192-71 — The offline check runs tests with SIGINT at its default, even when started in the background
 
 - [ ] TOOLSET-192-71 — The offline check runs tests with SIGINT at its default, even when started in the background
+- Scheduling: After TOOLSET-202-9a lands: reported 026e23baf4c226aac2c672e3d0e984a77996b9da changes both scripts/check.py and tests/test_check.py while retiring unreachable modules. Its report does not claim SIGINT-default child setup. Implement and prove that behavior on the surviving run_unit path and fixtures; do not recreate retired tests. The signal reset and its checker-subprocess regression share both files, so retain this small slice intact.
 - Short: Offline check keeps SIGINT default
 - Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: owner-session runs of `scripts/check.py` (2026-10-17); [offline check](scripts/check.py) (`run_unit`).
-- Evidence (2026-10-17): every full run started as a background job (`(python3 scripts/check.py > log &)`) failed `test_finish_task.FinishTaskTests.test_interrupted_acceptance_stops_child_writers` (`AssertionError: 0 == 0`) and `test_parallel_integrate.IntegrationTests.test_real_validation_interrupt_stops_child_before_recovery` (`'KeyboardInterrupt' not found in ''`); both passed when run in the foreground. A non-interactive shell starts background jobs with SIGINT ignored, every child inherits that, and both tests interrupt a child with SIGINT. The runner's own main check is not affected.
+- Goal: PI-RUNNER
+- Sources: owner-session runs of `scripts/check.py` (2026-10-17); [offline check](scripts/check.py) (`run_unit`); [accepted continuous runner scope](docs/project.md#continuous-pi-runner-2026-10-15).
+- Evidence: (2026-10-17) every full run started as a background job (`(python3 scripts/check.py > log &)`) failed `test_finish_task.FinishTaskTests.test_interrupted_acceptance_stops_child_writers` (`AssertionError: 0 == 0`) and `test_parallel_integrate.IntegrationTests.test_real_validation_interrupt_stops_child_before_recovery` (`'KeyboardInterrupt' not found in ''`); both passed when run in the foreground. A non-interactive shell starts background jobs with SIGINT ignored, every child inherits that, and both tests interrupt a child with SIGINT. The runner's own main check is not affected.
 - Touches: scripts/check.py, tests/test_check.py
 - Scope: `run_unit` starts each test process with SIGINT and SIGTERM at their default dispositions (a `preexec_fn` on POSIX, alongside `start_new_session`).
 - Acceptance: In `tests/test_check.py`, a check started with SIGINT ignored runs a fixture test that sends itself SIGINT and expects KeyboardInterrupt, and it passes.
 - Checks: python3 -m unittest discover -s tests -p test_check.py
-- Dependencies: None.
+- Dependencies: TOOLSET-202-9a.
 - Ownership: Toolset coordinator.
 - Exclusions: No change to test selection, sharding or timeouts.
 - Planner's call: Next: it only misleads people who run the full check in the background.

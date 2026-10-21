@@ -1507,7 +1507,9 @@
       "title": "Browse all recorded tasks in the Autowork TUI"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-202-9a"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-192-71",
       "section": "Next",
@@ -1523,7 +1525,10 @@
       "title": "Retire the owner-cycle engine modules no live entry point reaches"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-129-c4",
+        "TOOLSET-261-15"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-225-75",
       "section": "Next",
@@ -1553,7 +1558,9 @@
       "title": "Make the TUI a compact fleet overview with a focused runner workspace"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-261-15"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-245-6a",
       "section": "Next",
@@ -1561,7 +1568,9 @@
       "title": "A dispatch refused by the runner's own review lock tries again in seconds, not after a full pause"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-261-15"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-248-60",
       "section": "Next",
@@ -1569,7 +1578,9 @@
       "title": "An idle runner with an empty queue rests: no new session until the plan or main changes"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-261-15"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-249-5b",
       "section": "Next",
@@ -1578,6 +1589,7 @@
     },
     {
       "depends_on": [
+        "TOOLSET-125-e6",
         "TOOLSET-254-80"
       ],
       "goal": "PI-RUNNER",
