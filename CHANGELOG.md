@@ -49,12 +49,24 @@ claim of a tagged release, completed installation or live workflow qualification
   result, reruns, the base comparison and where it came from, the verdict) in
   `full-check/<task>.gate.jsonl`, and the TUI's task and worker views show them as `runner:`
   lines between the worker's last action and the review, where they were silent.
+- **A menu bar on top, and a laid-out runner pane.** Every TUI screen now shows its keys on
+  one line at the very top, under the title, like a GUI app's "File Edit View" menu: the
+  runner keys (Log, Pause, Stop, Restart, Model, Fallback, Tasks, New, Quit), the task list's
+  and a task's answer keys, and Back/Wrap/Play on the log, worker and browse screens, which
+  lost their bottom footers. The runner pane under the table lists its facts in labelled rows
+  (Tasks, Waiting, Blocker, Questions, Main, Maintainer, Repository, Model, Toolset) under the
+  verdict line, each question's need on its own line.
 - **Colored, one-line task activity in the TUI** (TOOLSET-343-9356fe48). A worker's action
   log, a task's last actions and the Doing column color each action by kind: edits cyan,
   tests yellow, reads and searches dim, commands blue, sub-agents magenta, and verdicts bold,
   green when they pass and red when they fail or block. Long commands are cut to one line with
   an ellipsis (`w` shows them whole in the worker log). Task states: working green, waiting
   yellow, held or failed red, Needs decision magenta, done dim; a Blocker lane is red.
+- **A failed small batch's candidates are checked side by side** (TOOLSET-342-0153a52b). A
+  failed batch of two or three integrated its candidates strictly one after another. While one
+  is reviewed alone, the next now starts beside it as an independent one-candidate car on the
+  same base; it keeps its verdict if that review is held, and is checked again if it passes and
+  lands first.
 - **A failed batch's halves are checked side by side** (TOOLSET-340-64b75d92). Halving a
   failed batch checked one half after the other, and a merge-train car stacked on a failing
   half was discarded with it; six clean candidates waited up to 2.5 h behind one bad one.

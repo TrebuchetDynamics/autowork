@@ -1184,6 +1184,49 @@ class BatchLandingTests(unittest.TestCase):
             runner.board_train(rows)
             self.assertEqual(started, [(['C', 'D'], 'abc123', False)])
 
+    def test_a_failed_batchs_next_candidate_is_checked_beside_one_reviewed_alone(self):
+        """TOOLSET-342-0153a52b: a failed batch of two or three integrated strictly one at a time."""
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator, rows = self.merge_train_runner(folder)
+            started = []
+            runner.start_batch = lambda tasks, on=None, revisions=None, independent=False: \
+                started.append((tasks, on, revisions, independent))
+            review = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
+            self.addCleanup(lambda: review.poll() is None and review.kill())
+            runner.integration = {'task': 'A', 'proc': review, 'base': 'base0'}
+            failed = runner.state / 'batch-failed.json'
+            failed.write_text(json.dumps(['A@a1', 'C@c1']))
+            runner.board_train(rows)
+            self.assertEqual(started, [(['C'], 'base0', ['C@c1'], True)])  # C, alone, on A's base
+            started.clear()
+            failed.write_text(json.dumps(['C@c1']))  # A is an ordinary review: nothing boards beside it
+            runner.board_train(rows)
+            self.assertEqual(started, [])
+            failed.write_text(json.dumps(['A@a1', 'C@c1']))
+            with patch.dict(os.environ, PI_AUTOWORK_INDEPENDENT_HALVES='0'):
+                runner.board_train(rows)
+            self.assertEqual(started, [])  # turned off
+            coordinator.worker.batch_record(runner.state, 'C').write_text('{}')
+            failed.write_text(json.dumps(['A@a1', 'C@c1', 'D@d1']))
+            runner.board_train(rows)
+            self.assertEqual(started, [(['D'], 'base0', ['D@d1'], True)])  # C already has a verdict
+
+    def test_a_car_beside_a_review_yields_only_when_the_review_lands(self):
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator, _ = self.merge_train_runner(folder)
+            stopped = []
+            runner.stop_train = lambda why='': stopped.append(why)
+            for outcome, stops in (('INTEGRATED', True), ('CLOSED', True), ('HELD', False), ('BUSY', False)):
+                with self.subTest(outcome=outcome):
+                    stopped.clear()
+                    runner.train = {'members': ['C'], 'independent': True}
+                    runner.settle_single({'outcome': outcome})
+                    self.assertEqual(bool(stopped), stops)
+            stopped.clear()
+            runner.train = {'members': ['C'], 'independent': False}  # an ordinary car is not this rule's
+            runner.settle_single({'outcome': 'INTEGRATED'})
+            self.assertEqual(stopped, [])
+
     def test_an_independent_half_survives_a_failing_half_and_yields_to_a_passing_one(self):
         with tempfile.TemporaryDirectory() as folder:
             runner, coordinator, _ = self.merge_train_runner(folder)
