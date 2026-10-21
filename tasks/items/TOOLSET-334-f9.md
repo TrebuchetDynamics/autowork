@@ -7,7 +7,7 @@ status = "open"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 27000
-depends_on = ["TOOLSET-333-34"]
+depends_on = ["TOOLSET-333-34", "TOOLSET-335-89", "TOOLSET-337-e0"]
 touches = ["pi-autowork/engine/parallel_integrate.py", "pi-autowork/pi_autowork/coordinator.py", "pi-autowork/pi_autowork/worker.py", "pi-autowork/engine/test_parallel_integrate.py", "tests/test_pi_autowork.py", "pi-autowork/tests/test_landing.py"]
 resources = []
 kind = "implementation"
@@ -18,3 +18,5 @@ checks = ["python3 scripts/check.py pi-autowork/engine/test_parallel_integrate.p
 exclusions = []
 +++
 - Coordination: TOOLSET-342-0153a52b covers one case of this: a failed batch of two or three checked side by side. Whichever lands second replaces the other's mechanism with its own, so failed-batch candidates are checked concurrently one way, not two.
+- Dependencies: TOOLSET-333-34, TOOLSET-335-89, TOOLSET-337-e0
+- Scheduling: Overlap repair: retain TOOLSET-333-34; wait for TOOLSET-335-89 (coordinator.py, parallel_integrate.py and their tests) and TOOLSET-337-e0 (tests/test_pi_autowork.py). Both prerequisite slots were running when inspected; neither record was edited. The accepted parallel-review/verified-tree/serial-landing contract in 5033935c and the coordination note in d07af414 remain unchanged. There is no independently acceptable slice with disjoint declared Touches: the landing and review guarantees require the shared engine/coordinator paths. Keep all existing Touches, Acceptance and Checks; this is scheduling only.
