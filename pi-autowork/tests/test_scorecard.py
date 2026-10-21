@@ -1,4 +1,7 @@
 """`autowork scorecard`: closes, held share, start to merge and owner questions per runner."""
+import contextlib
+import csv
+import io
 import json
 import os
 from pathlib import Path
@@ -10,7 +13,7 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pi_autowork import accounting, scorecard  # noqa: E402
+from pi_autowork import accounting, command, scorecard  # noqa: E402
 
 DAY = 86400
 GOAL = ('+++\nschema = 1\nid = "G"\ntitle = "g"\npriority = 1\nsource = "docs/plan.md#g"\n'
@@ -253,6 +256,169 @@ class ScorecardTests(unittest.TestCase):
         subprocess.run(['git', '-C', str(self.repo), 'config', 'color.ui', 'always'], check=True)
         rows = scorecard.measure(self.repo, 7, now=self.now)['regressions']
         self.assertEqual([(r['task'], r['source_task']) for r in rows], [('A', 'FIX')])
+
+    def evaluation_fixture(self):
+        """Two verified deliveries, one with two retries; one manual closure."""
+        self.commit_files(store(A='open', B='open', MANUAL='open'), age_days=31)
+        from task_store import TaskStore
+        snapshot = TaskStore.at(self.repo, 'HEAD')
+        facts, runs, attention = [], [], []
+        for task, age, hours, costs in (('A', 28, 1, [1, 2, 3]), ('B', 1, 3, [2])):
+            base = subprocess.check_output(['git', '-C', str(self.repo), 'rev-parse', 'HEAD'], text=True).strip()
+            candidate = self.commit_files({f'{task}.txt': 'work'}, age_days=age)
+            tree = subprocess.check_output(['git', '-C', str(self.repo), 'rev-parse', 'HEAD^{tree}'], text=True).strip()
+            env = dict(os.environ, GIT_AUTHOR_DATE=f'@{int(self.now - age * DAY)} +0000',
+                       GIT_COMMITTER_DATE=f'@{int(self.now - age * DAY)} +0000')
+            git = ['git', '-C', str(self.repo), '-c', 'user.name=t', '-c', 'user.email=t@example.invalid']
+            integration = subprocess.check_output([*git, 'commit-tree', tree, '-p', base,
+                                                   '-p', candidate, '-m', 'integrate'], env=env, text=True).strip()
+            subprocess.run([*git, 'update-ref', 'HEAD', integration, candidate], check=True)
+            self.commit_files({f'tasks/items/{task}.md': record(task, 'done').replace(
+                'status = "done"', 'status = "done"\nclosure = "coordinator_verified"\n'
+                f'closure_evidence = "tasks/evidence/{task}.toml"'), f'tasks/evidence/{task}.toml':
+                f'schema = 1\ntask = "{task}"\ncontract_hash = "{snapshot.tasks[task].contract_hash}"\n'
+                f'candidate = "{candidate}"\nintegration = "{integration}"\ntree = "{tree}"\n'
+                'result = "pass"\nreview = "passed"\n'}, age_days=age)
+            end = self.now - age * DAY
+            for kind, stamp in [('accepted', end - hours * 7200), ('dispatched', end - hours * 3600),
+                                ('integrated', end), ('closed', end), ('delivered', end)]:
+                facts.append(dict(event_id=f'{task}-{kind}', task_id=task, attempt_id='a1', event=kind, timestamp=stamp))
+            for i, cost in enumerate(costs):
+                runs.append(dict(run_id=f'{task}-{i}', task=task, attempt_id=f'a{i}', role='worker',
+                                 time=end - 60, cost_usd=cost, cost_source='provider_reported'))
+            attention.append(dict(event_id=task, task=task, time=end - 60, minutes=0 if task == 'A' else 8))
+        # A recovery episode is not an owner intervention. An unanswered restart is not success.
+        for identity, task, kind, age in [('restart-1', 'A', 'restart', 28.03), ('adopt', 'A', 'worker_adopted', 28.02),
+                                         ('restart-2', 'B', 'restart', 1.03), ('answer', 'B', 'blocker_answered', 1.1)]:
+            facts.append(dict(event_id=identity, task_id=task, attempt_id='a1', event=kind, timestamp=self.now - age * DAY))
+        self.commit_files({'tasks/items/MANUAL.md': record('MANUAL', 'done').replace(
+            'status = "done"', 'status = "done"\nclosure = "manual"\nclosure_actor = "owner"\n'
+            'closure_timestamp = "2026-10-21T00:00:00+00:00"\nclosure_reason = "hand closed"')}, age_days=1)
+        self.commit_files({'tasks/items/MANUAL.md': (self.repo / 'tasks/items/MANUAL.md').read_text() +
+                          f'- Regression of: A; commit {self.integration_for("A")}; severity low; found by check\n'},
+                          age_days=0.5)
+        journal = self.repo / '.git/autowork-execution/journal.jsonl'
+        journal.parent.mkdir(parents=True, exist_ok=True)
+        journal.write_text(json.dumps(dict(event='task_lifecycle', timestamp=self.now, lifecycle=[*facts, facts[0]])) + '\n')
+        state = accounting.state_dir(self.repo)
+        state.mkdir(parents=True)
+        (state / 'runs.jsonl').write_text(''.join(json.dumps(r) + '\n' for r in [*runs, runs[0]]))
+        (state / 'attention.jsonl').write_text(''.join(json.dumps(r) + '\n' for r in attention))
+
+    def integration_for(self, task):
+        import tomllib
+        return tomllib.loads((self.repo / f'tasks/evidence/{task}.toml').read_text())['integration']
+
+    def scorecard_command(self, *args):
+        output = io.StringIO()
+        with mock.patch.object(command, 'resolve', return_value=(str(self.repo), 'fixture')), \
+                mock.patch.object(scorecard.time, 'time', return_value=self.now), contextlib.redirect_stdout(output):
+            self.assertEqual(command.main(['scorecard', '--days', '30', *args, str(self.repo)]), 0)
+        return output.getvalue()
+
+    def test_evaluation_exports_share_labelled_weekly_metrics_and_pool_observations(self):
+        self.evaluation_fixture()
+        report = json.loads(self.scorecard_command('--json'))
+        evaluation = report['runners']['fixture']['evaluation']
+        expected = {'verified_tasks': 2, 'manual_closed': 1, 'owner_interventions': 2,
+                    'verified_tasks_per_day': 2 / 30, 'unattended_completion_percentage': 50,
+                    'accepted_to_delivered_median_minutes': 240, 'accepted_to_delivered_p95_minutes': 360,
+                    'dispatch_to_integrated_median_minutes': 120, 'dispatch_to_integrated_p95_minutes': 180,
+                    'cost_per_verified_task_usd': 4, 'owner_minutes_per_verified_task': 4,
+                    'recovery_success_rate': 0.5, 'regression_rate': 0.5}
+        self.assertEqual({k: v['value'] for k, v in evaluation['summary'].items()}, expected)
+        self.assertTrue(all(m['status'] == 'measured' for m in evaluation['summary'].values()))
+        self.assertEqual([w['metrics']['verified_tasks']['value'] for w in evaluation['weeks']], [1, 0, 0, 0, 1])
+        self.assertEqual(evaluation['change']['cost_per_verified_task_usd']['value'], -4)
+        self.assertEqual(evaluation['baseline']['description'], 'no baseline')
+        self.assertEqual(report['overall'], evaluation)
+        # The CSV is a lossless metric projection of JSON, including missing values and changes.
+        exported = list(csv.DictReader(io.StringIO(self.scorecard_command('--csv'))))
+        for scope, runner, card in [('runner', 'fixture', evaluation), ('overall', '', report['overall'])]:
+            periods = [('summary', card['summary']), ('change', card['change']),
+                       ('baseline', card['baseline']['metrics']), ('baseline_change', card['baseline_change'])]
+            periods += [(f'week-{w["week"]}', w['metrics']) for w in card['weeks']]
+            for period, metrics in periods:
+                for name, metric in metrics.items():
+                    matches = [r for r in exported if (r['scope'], r['runner'], r['period'], r['metric']) ==
+                               (scope, runner, period, name)]
+                    self.assertEqual(len(matches), 1)
+                    row = matches[0]
+                    self.assertEqual((row['status'], row['unit']), (metric['status'], metric['unit']))
+                    self.assertEqual(float(row['value']) if row['value'] else None, metric['value'])
+        text = self.scorecard_command()
+        self.assertIn('no baseline', text)
+        self.assertIn('week-5', text)
+        # A Git close exactly at the inclusive start belongs to the window.
+        boundary = scorecard.report([(self.repo, 'fixture')], 28, now=int(self.now))
+        self.assertEqual(boundary['overall']['summary']['verified_tasks']['value'], 2)
+
+    def test_empty_evaluation_rates_are_missing_and_manual_closure_is_an_intervention(self):
+        self.commit_files(store(A='open'), age_days=31)
+        self.commit_files(store(A='done'), age_days=2)  # legacy hand close, no telemetry
+        card = json.loads(self.scorecard_command('--json'))['overall']
+        self.assertEqual((card['summary']['verified_tasks']['value'], card['summary']['manual_closed']['value'],
+                          card['summary']['owner_interventions']['value']), (0, 1, 1))
+        for name in ('verified_tasks_per_day', 'unattended_completion_percentage', 'regression_rate',
+                     'recovery_success_rate', 'cost_per_verified_task_usd', 'owner_minutes_per_verified_task'):
+            self.assertEqual((card['summary'][name]['value'], card['summary'][name]['status']), (None, 'missing'))
+
+    def test_overall_pools_tasks_cost_and_duration_samples_not_runner_averages(self):
+        self.evaluation_fixture()
+        other = self.repo / 'second'
+        subprocess.run(['git', 'init', '-q', '-b', 'main', str(other)], check=True)
+        with mock.patch.object(self, 'repo', other):
+            self.evaluation_fixture()
+            self.commit_files({'tasks/items/B.md': record('B', 'open')}, age_days=0.25)
+        report = scorecard.report([(self.repo, 'first'), (other, 'second'), (self.repo, 'alias')], 30, now=self.now)
+        self.assertEqual(len(report['runners']), 2)  # aliases cannot double-count the same runner
+        metrics = report['overall']['summary']
+        self.assertEqual(metrics['verified_tasks']['value'], 3)
+        self.assertEqual(metrics['dispatch_to_integrated_median_minutes']['value'], 60)
+        self.assertEqual(metrics['cost_per_verified_task_usd']['value'], 16 / 3)
+        self.assertEqual(metrics['unattended_completion_percentage']['value'], 200 / 3)
+        self.assertEqual(metrics['regression_rate']['value'], 2 / 3)
+
+    def test_reopened_task_reclosed_in_window_is_counted_once_in_its_latest_week(self):
+        self.evaluation_fixture()
+        verified = (self.repo / 'tasks/items/A.md').read_text()
+        self.commit_files({'tasks/items/A.md': record('A', 'open')}, age_days=0.4)
+        self.commit_files({'tasks/items/A.md': verified}, age_days=0.2)
+        report = scorecard.report([(self.repo, 'fixture')], 7, now=self.now)
+        self.assertEqual(report['runners']['fixture']['verified_closed'], 2)
+        self.assertEqual(report['overall']['summary']['verified_tasks']['value'], 2)
+        report = scorecard.report([(self.repo, 'fixture')], 30, now=self.now)
+        self.assertEqual(report['overall']['summary']['verified_tasks']['value'], 2)
+        self.assertEqual([w['metrics']['verified_tasks']['value'] for w in report['overall']['weeks']], [0, 0, 0, 0, 2])
+
+    def test_recorded_owner_time_cannot_be_called_unattended(self):
+        self.evaluation_fixture()
+        path = accounting.state_dir(self.repo) / 'attention.jsonl'
+        rows = [json.loads(line) for line in path.read_text().splitlines()]
+        rows[0]['minutes'] = 5
+        path.write_text(''.join(json.dumps(r) + '\n' for r in rows))
+        metrics = scorecard.report([(self.repo, 'fixture')], 30, now=self.now)['overall']['summary']
+        self.assertEqual(metrics['unattended_completion_percentage']['value'], 0)
+
+    def test_baseline_is_an_estimate_beside_measured_cost_and_owner_minutes(self):
+        self.evaluation_fixture()
+        baseline = self.repo / 'baseline.json'
+        baseline.write_text(json.dumps({'cost_per_verified_task_usd': 10, 'owner_minutes_per_verified_task': 20}))
+        card = json.loads(self.scorecard_command('--json', '--baseline', str(baseline)))['overall']
+        self.assertEqual((card['summary']['cost_per_verified_task_usd']['value'],
+                          card['summary']['owner_minutes_per_verified_task']['value']), (4, 4))
+        self.assertEqual({k: (m['value'], m['status']) for k, m in card['baseline']['metrics'].items()},
+                         {'cost_per_verified_task_usd': (10, 'estimate'),
+                          'owner_minutes_per_verified_task': (20, 'estimate')})
+        self.assertEqual({k: (m['value'], m['status']) for k, m in card['baseline_change'].items()},
+                         {'cost_per_verified_task_usd': (-6, 'estimate'),
+                          'owner_minutes_per_verified_task': (-16, 'estimate')})
+        baseline.write_text('{"cost_per_verified_task_usd": -1}')
+        with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(command.main(['scorecard', '--baseline', str(baseline), str(self.repo)]), 1)
+        for days in ('0', '31'):
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                command.main(['scorecard', '--days', days])
 
     def test_the_table_lists_each_runner_and_the_totals(self):
         rows = {'alpha': {'closed': 3, 'integrations': 4, 'held_share': 0.25, 'start_to_merge_minutes': 40,

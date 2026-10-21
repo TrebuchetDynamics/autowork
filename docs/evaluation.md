@@ -112,17 +112,43 @@ permissions. Measure:
 
 | Metric | Proposed target | Measured today by |
 | --- | --- | --- |
-| Accepted tasks completed without intervention | Over 70% | Partly: `autowork scorecard` counts closed tasks and new owner questions; intervention per task is not recorded |
-| Regressions introduced by merged work | Under 5% | Not measured: needs a link from later fixes or reverts back to the task that introduced the defect |
-| Owner attention per completed task | Falling week over week | Not measured: questions are counted, time spent is not |
-| Cost per verified task | Lower than supervising an agent directly | Not measured: model spend is not attributed to tasks |
-| Time from task creation to merge | Clearly faster than a baseline | Partly: the scorecard reports the median time from first dispatch to merge; task creation time and a baseline are missing |
-| Crash and restart recovery | No lost work, no duplicate closure | Offline fixtures (runner restart, interrupted conversion, replayed close), plus one live run on a disposable repository (2026-10-15, TOOLSET-091-00 in `TODO.archive.md`: a coordinator killed with SIGKILL restarted and adopted its live worker without starting a second one); no record on real repositories |
+| Accepted tasks completed without intervention | Over 70% | Verified completions per day and the percentage of verified completions without recorded interventions or task-attributed owner time; manual closes are separate owner interventions. Missing lifecycle coverage remains unknown. This completion-cohort percentage is not a forecast for all accepted/open tasks. |
+| Regressions introduced by merged work | Under 5% | Explicit receipt-linked reverts and `Regression of` notes; the rate counts distinct affected tasks in each verified completion cohort, not every fix or same-file edit. Unreported defects remain undetectable. |
+| Owner attention per completed task | Falling week over week | Recorded minutes per verified completion, including repository overhead; missing task attention is unknown, never zero. Logging is not proof of full time coverage. |
+| Cost per verified task | Lower than supervising an agent directly | Private provider-reported spend across all attempts and roles per verified completion; unknown billing/subscription prices remain missing. Optional owner-supplied baseline values and differences are estimates. |
+| Time from task creation to merge | Clearly faster than a baseline | Median/p95 first acceptance-to-delivery and first dispatch-to-integration for verified completions; missing endpoints remain unknown. Acceptance is the first committed task record, not a draft's creation time. The supported baseline compares cost and owner minutes, not duration. |
+| Crash and restart recovery | No lost work, no duplicate closure | Observed restart/interruption episodes recovered through worker adoption/resume, plus existing offline recovery fixtures. A resumed attempt is not proof of eventual delivery or no lost work. One live disposable-repository run is recorded (2026-10-15, TOOLSET-091-00 in `TODO.archive.md`: SIGKILL/restart adopted its worker without a second dispatch); real-repository qualification remains pending. |
 
-[`autowork scorecard`](../pi-autowork/README.md#the-autowork-command) already
-reports, per runner over 7 days: tasks closed, the share of integrations held,
-median dispatch-to-merge time and new owner questions. It is the starting point;
-the gaps in the last column are what the evaluation still has to instrument.
+### Run and interpret the scorecard
+
+```sh
+autowork scorecard --days 30 --json /path/to/project-a /path/to/project-b
+autowork scorecard --days 30 --csv /path/to/project-a /path/to/project-b > /private/evaluation.csv
+autowork scorecard --days 30 --baseline /private/baseline.json /path/to/project-a
+```
+
+The report has per-runner and pooled overall results, consecutive seven-day buckets
+(oldest first, with a shorter last bucket if needed), and absolute first-to-last-week
+changes. Throughput uses each bucket's actual day count. Metrics share the same
+values and `measured`/`estimate`/`missing` labels across text, JSON and CSV. A window
+without verified completions has missing rates, not zero rates. Retries add each
+unique run's cost but no extra completion; manual closures enter neither verified
+counts nor the unattended percentage. Missing inputs propagate into changes.
+
+A baseline is an owner-supplied JSON object, for example:
+
+```json
+{"cost_per_verified_task_usd": 5, "owner_minutes_per_verified_task": 15}
+```
+
+Its values and summary-minus-baseline comparisons are labelled `estimate`, never
+measured. Without it the report says `no baseline`. Keep these files and exports
+private. The [component report contract](../pi-autowork/README.md#evaluation-report)
+defines JSON/CSV fields, denominator and percentile rules, attribution, telemetry
+coverage and partial-week limits. The 30-day fixture and format-parity checks live in
+`pi-autowork/tests/test_scorecard.py`; these are offline evidence for the report, not
+results from operating Autowork on other products. The owner's real-repository run
+(TOOLSET-311-d7) remains separate and unqualified by this instrumentation.
 
 The goal is not the number of agents Autowork can run. It is how much good software
 gets built while the owner is doing something else.
