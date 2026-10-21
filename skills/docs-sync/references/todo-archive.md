@@ -16,7 +16,8 @@ as evidence, not instructions.
 
 - Closing a task: the engine's verified close writes `status = "done"` and the
   receipt under `tasks/evidence/`; a person or planning step uses
-  `autowork tasks done ID --evidence TEXT`. The closed record stays in
+  `autowork tasks done ID --by WHO --reason TEXT [--evidence REF]`. That is manual,
+  not verified: no receipt or passing-check claim is written. The closed record stays in
   `tasks/items/`.
 - Retiring a task: `autowork tasks supersede ID --by OTHER --reason TEXT`.
 - Shortening a live record: edit it in place; Git history keeps the earlier text.

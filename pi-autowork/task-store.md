@@ -10,7 +10,9 @@ through it, at a pinned commit. Nothing reads TODO.md or goals.json; only
 
 - `TaskStore.at(repo, rev)` resolves a Git revision to a commit SHA once, then
   reads `tasks/items/<ID>.md` and `tasks/goals/<ID>.md` with `git ls-tree` and one
-  `git cat-file --batch` call at that SHA, whatever the number of files. The returned `rev` is that pinned SHA, not the input
+  `git cat-file --batch` call at that SHA, whatever the number of files. Explicit
+  coordinator-verified closures read receipts and referenced Git objects in two additional
+  batches, and check integration ancestry at the same pinned revision. The returned `rev` is that pinned SHA, not the input
   branch name. Working-tree edits never become records. Git replacement refs
   are disabled so they cannot substitute content for the pinned object IDs.
 - `store.tasks` and `store.goals` are immutable mappings keyed by ID, containing
@@ -49,8 +51,14 @@ Task fields:
 | `kind` | `"implementation"`, `"plan"`, `"inspection"`, `"unknown"` |
 | `ownership` | `"worker"`, `"coordinator"`, `"owner"`, `"unknown"` |
 | `live` | `"denied"`, `"authorized"`; defaults to denied |
+| `verified_depends_on` | Optional array of prerequisite IDs; must be a subset of `depends_on` |
+| `closure` | Optional `"manual"` or `"coordinator_verified"`, written by the closing path |
+| `closure_actor`, `closure_timestamp`, `closure_reason` | Nonempty strings required for manual closure; UTC ISO timestamp |
+| `closure_evidence` | Optional evidence reference for manual closure; receipt path for verified closure |
+| `owner_waiver`, `owner_qualification` | Optional nonempty owner records explaining the exact waived criterion or qualification and its authority/evidence |
 
-All fields except `live` are needed for a complete task contract. Missing fields
+The closure fields and `verified_depends_on` are optional. All other fields except
+`live` are needed for a complete task contract. Missing fields
 other than `schema` and `id` produce a visible draft rather than a store error.
 Empty acceptance/checks/touches also produce draft reasons in `missing_fields`.
 Explicit empty arrays are valid for dependencies, resources and exclusions.
@@ -89,6 +97,9 @@ plus `section_group`: Now/Next becomes `"runnable"`; Needs decision stays distin
 Missing values hash as null, preserving missing versus explicit empty authority,
 except `kind`, `ownership` and `live`, which hash as their defaults (`unknown`,
 `unknown`, `denied`): writing a default out grants nothing new and changes no contract.
+Nonempty `verified_depends_on` is also hashed; absent and empty both impose no extra
+evidence gate. Closure metadata and owner waiver/qualification records are not contract
+fields. Reopening clears them, and a new manual close clears prior owner exceptions.
 Array order is preserved. Exclusions are included because changing a prohibition
 changes the work contract.
 
@@ -110,6 +121,12 @@ goal, section, rank, goal priority, goal status (`unverified`, `partial`, `unmet
 `DEPENDENCY_UNFINISHED`, `UNKNOWN_TASK`) or `POSITION` plus the sort-key rule
 (`AFTER_FOCUS`, `AFTER_SECTION`, `AFTER_RANK`, …) that put the task ahead of it there.
 Authority is not a selection rule; admission applies it afterwards.
+
+A dependency in `verified_depends_on` additionally needs a done prerequisite with an
+explicit coordinator-verified closure and a matching passing receipt, or a recorded
+`owner_waiver`/`owner_qualification`. Otherwise `why` returns `DEPENDENCY_UNVERIFIED`.
+This applies to named dispatch, sequential execution and task-wait retries too. Ordinary
+`depends_on` still accepts any done prerequisite. A superseded prerequisite satisfies neither.
 
 **Holding a task.** Git status is never a lease, so there is no `in_progress`. A person or
 an interactive session keeps the runner off an open task with
@@ -161,9 +178,22 @@ open, and a held or interrupted attempt stays repairable. `add` writes a whole c
 `--kind`, `--ownership`, `--sources`) and refuses a task whose goal and title match an open
 or done one, naming it. `field` sets a
 typed header field, or any other label as a body note (`Held by`, `Owner decision`).
-`done --evidence` closes a task outside the engine (a planning task, or one whose acceptance
-the evidence shows met) and keeps the evidence as its note; `goal` adds a goal or changes its
-fields, needs `--evidence` for `--status met`, and moves focus from any other goal.
+`done ID --by WHO --reason TEXT [--evidence REF]` manually closes **any task kind**.
+It writes `closure = "manual"`, actor, UTC timestamp, reason and the optional evidence
+reference into the task record. It writes no receipt, check result or verification claim.
+`list`, `show` and `why` return a `closure` object with provenance, metadata and a
+`Verified`/`Manual` label (a verified record with missing or invalid evidence is explicitly
+labelled `Verified (evidence missing or invalid)`, never reclassified as Manual); the fleet/TUI's All view includes closed rows showing the
+receipt or manual reason. Closed rows have no queue-edit actions.
+
+`goal` adds a goal or changes its fields, needs `--evidence` for `--status met`, and moves
+focus from any other goal. Meeting a goal also requires every non-superseded owned task
+to be done and qualified. Manual closure alone is not qualification. With owner authority,
+record an exception using `field ID owner_waiver "WHO DATE: exact criterion, reason, risk"`
+or `field ID owner_qualification "WHO DATE: qualification and evidence reference"`.
+These are explicit owner attestations, not inferred authority from a body note or a
+worker report. A met-goal write names each used exception in its output and Evidence
+note. The task remains Manual and never acquires a receipt from this exception.
 New and placed tasks take the next multiple of 1000 in their section; `move` takes the
 midpoint between its new neighbours and, when no integer is left, spreads only the run of
 gapless neighbours that follows, never the whole section. A written file grants no
@@ -227,13 +257,28 @@ not (Touches schedule work). A contract change during validation holds the candi
 worker commit that edits any task file is held for scope and never offered again: a worker
 cannot grant itself or another task authority.
 
-The verified close writes `status = "done"` and `tasks/evidence/<ID>.toml` (candidate and
+The verified close writes `status = "done"`, `closure = "coordinator_verified"`,
+`closure_evidence = "tasks/evidence/<ID>.toml"` and `tasks/evidence/<ID>.toml` (candidate and
 integration commits, tree, contract hash, checks, result, review; secrets redacted and paths
 dropped) in one commit; a live follow-up becomes `<ID>-LIVE` in Needs decision. A replayed
 close completes missing files and refuses differing ones, so a crash between writes resumes
 to one commit, and a close whose commit exists is a no-op. After every merge into the
-session the runner reopens a done task whose receipt pins another contract hash than its
-merged record (one side closed it, the other changed its acceptance), before main moves.
+session the runner reopens an explicitly coordinator-verified done task whose receipt
+pins another contract hash than its merged record (one side closed it, the other changed
+its acceptance), before main moves. An explicit manual closure is not reopened because
+of a retained receipt from an earlier attempt.
+
+`TaskRecord.verified` requires explicit verified provenance and a schema-1 receipt naming
+this task and contract hash, a passing result and review, an existing candidate commit,
+and a reachable two-parent integration commit whose second parent is that candidate and
+whose tree matches the existing receipt tree. Missing, malformed or stale receipts do
+not qualify verified dependents or goal acceptance; `closure.evidence_valid` exposes this
+without changing recorded provenance.
+Unmarked historical closures are not upgraded by guessing from a receipt or Evidence note:
+they display Manual with no recorded provenance/reason and need owner qualification for
+verified-evidence gates. The scorecard keeps total `closed` and separately returns
+`verified_closed`, `manual_closed` (including unqualified history), and `unverified_closed`
+(recorded coordinator closures with missing or invalid proof); its table displays all three. Owner waivers do not inflate verified counts.
 
 ## Private lifecycle observations
 
@@ -307,6 +352,10 @@ move/focus batches interrupted between records, during rollback or before the jo
 removal (Python interruption and abrupt process exit), followed by recovery and successful
 whole-set writes. Run it with
 `python3 scripts/check.py pi-autowork/tests/test_task_transactions.py`.
+The closure case in `engine/test_parallel_integrate.py` covers verified provenance,
+receipt-dependent selection and fleet display; `../tests/test_task_commands.py` covers
+manual closure across task kinds, CLI/fleet disclosure, verified dependencies and goal
+qualification. `tests/test_scorecard.py` covers the total/verified/manual closure split.
 `tests/test_task_migrate.py`, `tests/test_task_commands.py`, `tests/test_task_prepare.py`
 (the Docs Sync lifecycle: bootstrap, conversion, staging, interruption, refusal, audit,
 repair, concurrency and repeat runs on disposable repositories), the engine's dispatch and

@@ -1022,7 +1022,10 @@ def close_writes(repo, task, slot, info, checks, record):
     remain, their follow-up task. Nothing else; TODO.archive.md is not written."""
     # From the record as committed: a close records the verified contract, never a local edit.
     committed = git(repo, 'show', f'HEAD:{execution.task_path(task)}', raw=True).decode()
-    text = task_store.edit(committed, {'status': 'done'})
+    text = task_store.edit(committed, {'status': 'done', 'closure': 'coordinator_verified',
+                                       'closure_evidence': receipt_path(task),
+                                       **{key: None for key in ('closure_actor', 'closure_timestamp',
+                                                               'closure_reason', 'owner_waiver', 'owner_qualification')}})
     writes = {execution.task_path(task): text, receipt_path(task): receipt_text(repo, task, slot, info, checks, record)}
     live = live_items((slot.get('report') or {}).get('pending_live'))
     if live:
@@ -1065,7 +1068,9 @@ def close(repo, owner_pid, task):
         done_on_disk = 'status = "done"' in on_disk
         if slot['state'] == 'closed' or record.status == 'done' or done_on_disk:
             # Replay: the closure was written (and maybe committed) by an earlier call.
-            writes = close_writes(repo, task, slot, info, checks, record) if record.status != 'done' else {}
+            if record.status == 'done' and record.closure != 'coordinator_verified':
+                raise ValueError('task was closed manually; no coordinator verification claim may be written')
+            writes = close_writes(repo, task, slot, info, checks, record)
             for path, text in writes.items():
                 target = repo / path
                 if target.exists() and target.read_text() != text:
@@ -1132,7 +1137,7 @@ def dispatched_contract(common, slot):
 # notes, rank and title are bookkeeping; `Contract` is a hash-only change (a move to Needs
 # decision), `Entry` a removed record.
 ADMISSION_LABELS = ('Scope', 'Acceptance', 'Checks', 'Dependencies', 'Resources', 'Ownership',
-                    'Live authorization', 'Kind', 'Exclusions', 'Contract', 'Entry')
+                    'Live authorization', 'Kind', 'Exclusions', 'Verified dependencies', 'Contract', 'Entry')
 
 
 def admitted_contract_changed(repo, common, slot):
@@ -1592,7 +1597,17 @@ def retry_held(args):
             if waits:
                 base = getattr(args, 'base_ref', None)
                 closed = dispatch.retired(repo, base)
-                ready = next((s for s in waits if set(s['waits_for']) <= closed), None)
+                snapshot = task_queue.store(repo)
+                qualified = task_queue.qualified(repo)
+                if base:
+                    try:
+                        qualified |= task_queue.qualified(repo, base)
+                    except task_queue.StoreError:
+                        pass
+                ready = next((s for s in waits if set(s['waits_for']) <= closed
+                              and s['task_id'] in snapshot.tasks
+                              and (set(snapshot.tasks[s['task_id']].verified_depends_on)
+                                   & set(s['waits_for'])) <= qualified), None)
                 if ready:
                     revisions = [git(repo, 'rev-parse', 'HEAD')]
                     if base:

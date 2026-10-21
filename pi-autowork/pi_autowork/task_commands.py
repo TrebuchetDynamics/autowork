@@ -11,6 +11,7 @@ its typed fields, and a declared check still needs the existing approval to run.
 """
 import argparse
 from contextlib import contextmanager
+from datetime import datetime, timezone
 import fcntl
 from functools import wraps
 import hashlib
@@ -37,7 +38,7 @@ OCCUPYING = ('dispatched', 'running', 'reported', 'integrating', 'integrated', '
 ACTIVE = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
 # The fields a task's contract hash covers, plus its goal: what an admitted attempt ran against.
 CONTRACT = ('scope', 'acceptance', 'checks', 'depends_on', 'touches', 'resources', 'kind', 'ownership',
-            'live', 'exclusions', 'goal')
+            'live', 'exclusions', 'goal', 'verified_depends_on')
 
 
 class CommandError(Exception):
@@ -400,7 +401,8 @@ def cmd_list(repo, rev='HEAD', worktree=False):
     for t in sorted(store.tasks.values(), key=lambda t: (t.status != 'open', t.section or '', t.rank or 0, t.id)):
         blocked = task_select.blocking(store, t)
         rows.append(dict(id=t.id, title=t.title, section=t.section, rank=t.rank, status=t.status, goal=t.goal,
-                         position=ready.get(t.id), blocked_by=blocked.code if blocked else None))
+                         position=ready.get(t.id), blocked_by=blocked.code if blocked else None,
+                         closure=t.closure_info))
     return rows
 
 
@@ -408,7 +410,8 @@ def cmd_show(repo, tid, rev='HEAD', worktree=False):
     store = _read(repo, rev, worktree)
     t = _task(store, tid)
     return dict(id=t.id, title=t.title, short=t.short, status=t.status, goal=t.goal, section=t.section,
-                rank=t.rank, depends_on=list(t.depends_on), touches=list(t.touches), resources=list(t.resources),
+                rank=t.rank, depends_on=list(t.depends_on), verified_depends_on=list(t.verified_depends_on),
+                closure=t.closure_info, touches=list(t.touches), resources=list(t.resources),
                 kind=t.kind.value, ownership=t.ownership.value, live=t.live.value, scope=t.scope,
                 acceptance=list(t.acceptance), checks=list(t.checks), exclusions=list(t.exclusions),
                 draft=t.draft, missing_fields=list(t.missing_fields), contract_hash=t.contract_hash,
@@ -419,7 +422,8 @@ def cmd_why(repo, tid, rev='HEAD'):
     store = TaskStore.at(repo, rev)
     first, reasons = task_select.why(store, tid)
     return dict(task=tid, eligible=bool(reasons) and reasons[0].code == 'POSITION', first=first,
-                reasons=[dict(code=r.code, detail=r.detail) for r in reasons])
+                reasons=[dict(code=r.code, detail=r.detail) for r in reasons],
+                closure=store.tasks[tid].closure_info if tid in store.tasks else None)
 
 
 def cmd_validate(repo, rev='HEAD', worktree=False):
@@ -440,7 +444,7 @@ def _same_title(title):
 @_serialized
 def cmd_add(repo, goal, title, short, section='Now', scope=None, acceptance=(), checks=(), touches=(),
             depends_on=(), task_id=None, prefix=None, resources=(), exclusions=(), kind='implementation',
-            ownership='worker', sources=None):
+            ownership='worker', sources=None, verified_depends_on=()):
     """One complete record in one write. A task of the same goal with the same title, open or
     done, is the same outcome: it is refused, naming that task, so a repeated pass adds nothing."""
     store = worktree_store(repo)
@@ -456,6 +460,8 @@ def cmd_add(repo, goal, title, short, section='Now', scope=None, acceptance=(), 
     fields = dict(schema=1, id=tid, title=title, short=short, status='open', goal=goal, section=section,
                   rank=bottom_rank(store, section), depends_on=list(depends_on), touches=list(touches),
                   resources=list(resources), kind=kind, ownership=ownership, exclusions=list(exclusions))
+    if verified_depends_on:
+        fields['verified_depends_on'] = list(verified_depends_on)
     if scope:
         fields['scope'] = scope
     if acceptance:
@@ -490,9 +496,20 @@ def cmd_goal(repo, gid, title=None, source=None, priority=None, status=None, foc
                if v is not None}
     if status == 'met' and not (evidence or '').strip():
         raise CommandError('a met goal needs --evidence naming the executed, passing check')
+    qualifications = []
+    if status == 'met':
+        owned = [t for t in store.tasks.values() if t.goal == gid and t.status != 'superseded']
+        unfinished = [t.id for t in owned if t.status != 'done']
+        unqualified = [t.id for t in owned if t.status == 'done' and not t.qualified]
+        if unfinished or unqualified:
+            raise CommandError('goal cannot be met: unfinished tasks ' + ', '.join(unfinished)
+                               + '; closed tasks need owner_waiver or owner_qualification: ' + ', '.join(unqualified))
+        qualifications = [f'{t.id}: {t.owner_waiver or t.owner_qualification}' for t in owned if not t.verified]
     for other in depends_on or ():
         if other not in store.goals:
             raise CommandError(f'unknown goal {other}')
+    if qualifications:
+        evidence += '; Owner waivers/qualifications: ' + '; '.join(qualifications)
     note = ('Evidence', ' '.join(evidence.split())) if evidence else None
     path = _path(repo, gid, goal=True)
     edits = []
@@ -519,12 +536,13 @@ def cmd_goal(repo, gid, title=None, source=None, priority=None, status=None, foc
     text = task_store.edit(before.decode(), changes, goal=True) if changes else before.decode()
     edits.append((path, before, task_store.set_note(text, *note) if note else text))
     _write_many(repo, edits)
-    return 'changed'
+    return 'changed' + ('; owner waivers/qualifications: ' + '; '.join(qualifications) if qualifications else '')
 
 
 TYPED = {'rank': int, 'depends_on': list, 'touches': list, 'resources': list, 'acceptance': list,
          'checks': list, 'exclusions': list, 'title': str, 'short': str, 'scope': str, 'goal': str,
-         'kind': str, 'ownership': str, 'live': str}
+         'kind': str, 'ownership': str, 'live': str, 'verified_depends_on': list,
+         'owner_waiver': str, 'owner_qualification': str}
 
 
 @_serialized
@@ -532,6 +550,8 @@ def cmd_field(repo, tid, key, value):
     """A typed header field (rank, touches, ...) or, for any other label, a note line such as
     `Held by` or `Owner decision` in the task's body."""
     _task(worktree_store(repo), tid)
+    if key.startswith('closure'):
+        raise CommandError('closure metadata is written only by done or the coordinator')
     if key in ('status', 'section', 'id', 'schema'):
         raise CommandError(f'use place or supersede to change {key}')
     if key in CONTRACT:
@@ -618,16 +638,19 @@ def cmd_release(repo, tid):
 
 
 @_serialized
-def cmd_done(repo, tid, evidence):
-    """Close a task without the engine's verified closure: a planning task, or one whose
-    acceptance the evidence shows already met. The evidence is kept as the task's note."""
+def cmd_done(repo, tid, by, reason, evidence=None):
+    """Manually close any task kind; never manufacture verification or a receipt."""
     t = _task(worktree_store(repo), tid)
     if t.status != 'open':
         raise CommandError(f'{tid} is {t.status}')
-    if not evidence.strip():
-        raise CommandError('done needs --evidence naming why the acceptance is met')
+    if not by.strip() or not reason.strip():
+        raise CommandError('done needs nonempty --by and --reason')
     _unheld(repo, tid)
-    _set(repo, tid, {'status': 'done'}, ('Evidence', ' '.join(evidence.split())))
+    _set(repo, tid, dict(status='done', closure='manual', closure_actor=' '.join(by.split()),
+                        closure_timestamp=datetime.now(timezone.utc).isoformat(),
+                        closure_reason=' '.join(reason.split()),
+                        closure_evidence=' '.join(evidence.split()) if evidence and evidence.strip() else None,
+                        owner_waiver=None, owner_qualification=None))
 
 
 @_serialized
@@ -639,7 +662,8 @@ def reopen(repo, tid, reason):
     if t.status != 'done':
         raise CommandError(f'{tid} is {t.status}')
     section = t.section or 'Now'
-    _set(repo, tid, {'status': 'open', 'section': section, 'rank': bottom_rank(store, section, without=tid)},
+    _set(repo, tid, {'status': 'open', 'section': section, 'rank': bottom_rank(store, section, without=tid),
+                     **{key: None for key in task_store._CLOSURE_FIELDS}},
          ('Reopened', ' '.join(reason.split())))
 
 
@@ -691,7 +715,7 @@ def add_parser(sub):
     p.add_argument('--kind', default='implementation', choices=('implementation', 'plan', 'inspection'))
     p.add_argument('--ownership', default='worker', choices=('worker', 'coordinator', 'owner'))
     p.add_argument('--sources', help='the accepted path#anchor it comes from, kept as its Sources note')
-    for flag in ('--acceptance', '--checks', '--touches', '--depends-on', '--resources', '--exclusions'):
+    for flag in ('--acceptance', '--checks', '--touches', '--depends-on', '--verified-depends-on', '--resources', '--exclusions'):
         p.add_argument(flag, action='append', default=[])
     p = verbs.add_parser('field')
     p.add_argument('task'); p.add_argument('label'); p.add_argument('value')
@@ -709,9 +733,11 @@ def add_parser(sub):
     p.add_argument('--until', help='YYYY-MM-DD; the hold ends after this day')
     p = verbs.add_parser('release', help='remove the hold so the runner may select the task')
     p.add_argument('task'); p.add_argument('repo', nargs='?', default='.')
-    p = verbs.add_parser('done', help='close an open task with the evidence that its acceptance is met')
+    p = verbs.add_parser('done', help='manually close any task kind; does not verify acceptance')
     p.add_argument('task'); p.add_argument('repo', nargs='?', default='.')
-    p.add_argument('--evidence', required=True)
+    p.add_argument('--by', required=True, help='actor responsible for the manual closure')
+    p.add_argument('--reason', required=True)
+    p.add_argument('--evidence', help='optional evidence reference, not a passing check claim')
     p = verbs.add_parser('supersede')
     p.add_argument('task'); p.add_argument('repo', nargs='?', default='.')
     p.add_argument('--by', action='append', required=True)
@@ -775,7 +801,7 @@ def _run(args, repo):
         out = 'added ' + cmd_add(repo, args.goal, args.title, args.short, args.section, args.scope,
                                  args.acceptance, args.checks, args.touches, args.depends_on, args.task_id,
                                  resources=args.resources, exclusions=args.exclusions, kind=args.kind,
-                                 ownership=args.ownership, sources=args.sources)
+                                 ownership=args.ownership, sources=args.sources, verified_depends_on=args.verified_depends_on)
     elif verb == 'field':
         cmd_field(repo, args.task, args.label, args.value)
         out = f'ok {args.task} {args.label}'
@@ -792,7 +818,7 @@ def _run(args, repo):
         cmd_release(repo, args.task)
         out = f'ok {args.task} released'
     elif verb == 'done':
-        cmd_done(repo, args.task, args.evidence)
+        cmd_done(repo, args.task, args.by, args.reason, args.evidence)
         out = f'ok {args.task} done'
     elif verb == 'supersede':
         cmd_supersede(repo, args.task, args.by, args.reason)

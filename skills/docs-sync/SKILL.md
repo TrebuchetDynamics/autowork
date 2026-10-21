@@ -341,7 +341,7 @@ repository. Read first, then write:
 | Set a typed field or note | `autowork tasks field ID LABEL VALUE` (for example `rank`, `touches`, `checks`, `kind`, `ownership`, `resources`, `exclusions`, `depends_on`, or a note label such as `Sources`) |
 | Change section | `autowork tasks place ID Now\|Next\|"Needs decision" [--decision TEXT]` |
 | Reorder | `autowork tasks move ID up\|down`, or `field ID rank N` |
-| Close without the engine | `autowork tasks done ID --evidence TEXT` |
+| Close manually (any task kind, not verified) | `autowork tasks done ID --by WHO --reason TEXT [--evidence REF]` |
 | Retire for a successor | `autowork tasks supersede ID --by OTHER --reason TEXT` |
 | Check the result | `autowork tasks validate --worktree .` |
 
@@ -365,8 +365,8 @@ leaves `tasks/` byte-identical on repeat.
 1. Collect stated requirements/acceptance, planned design/ADR work, test/operations
    gaps, README promises and real owner questions. Reuse IDs. Each goal binds to
    its accepted `source` heading, priority and goal dependencies.
-2. Goal status is met/partial/unmet/unverified. `met` needs every owned task done
-   and an executed, passing check: `autowork tasks goal ID --status met --evidence
+2. Goal status is met/partial/unmet/unverified. `met` needs every owned task done,
+   an owner waiver or qualification for each manual closure, and an executed, passing check: `autowork tasks goal ID --status met --evidence
    "<exact command or CI job>: pass"`. Unrun tests mean unverified. Harness checks
    prove code paths, not live acceptance. Do not leave an unmet goal without an
    open task.
@@ -455,18 +455,30 @@ live-operation authority.
 
 ### Closing and retiring tasks
 
-The engine's verified close writes `status = "done"` and its receipt in one commit;
-do not repeat it. A person or planning step that closes a task without the engine
-uses `autowork tasks done ID --evidence TEXT`, naming the executed check that meets
-acceptance. A done task whose receipt pins another contract than its merged record
-is reopened by the runner; reconcile the record, never edit the receipt.
+The engine's verified close writes `status = "done"`, `closure = "coordinator_verified"`
+and its receipt reference and receipt in one commit; do not repeat it. A person or
+planning step can close any task kind with `autowork tasks done ID --by WHO --reason
+TEXT [--evidence REF]`. This records `closure = "manual"`, actor, timestamp, reason
+and optional reference; it writes no receipt, check result or verification claim.
+
+Manual is not Verified, even when a report names passing checks. A manually closed
+owned task blocks `goal --status met` until the owner explicitly records
+`field ID owner_waiver "WHO DATE: exact criterion, reason, risk"` or
+`field ID owner_qualification "WHO DATE: qualification and evidence"`. Never invent
+that authority; a met-goal write names the recorded exception. A dependency in the
+consumer's `verified_depends_on` (a subset of `depends_on`, set through `field` or
+`add --verified-depends-on ID`) similarly waits for verification or an owner exception;
+ordinary dependencies are unaffected. CLI list/show/why and the fleet view disclose
+Verified with its receipt or Manual with its reason; scorecard counts stay separate.
+A coordinator-verified done task whose receipt pins another contract than its merged
+record is reopened by the runner; reconcile the record, never edit the receipt.
 
 When an accepted decision retires a task, use `autowork tasks supersede ID --by
 OTHER --reason TEXT`; the successor must exist. Superseded is not done: it does not
-satisfy dependencies or count toward a met goal. Owner-cancelled work without an
-accepted successor is never marked done; place it in Needs decision with an
-`Owner decision:` note recording the stop, and confirm with `autowork tasks why ID`
-that it is not selected.
+satisfy dependencies or count toward a met goal. For owner-cancelled work without an accepted successor, use the owner's explicit
+manual-close decision with its reason, or place it in Needs decision with an
+`Owner decision:` note recording the stop. Neither disposition is verified acceptance;
+confirm with `autowork tasks why ID` that it is not selected.
 
 ### Read-only pending-task reports
 
@@ -484,6 +496,8 @@ never silently count stopped work as authorized or claim its closeout was applie
 ### Owner-stopped closeout
 
 Read the current task and latest retained result before interpreting a close request.
+Honor an explicit manual-close decision with `done --by WHO --reason TEXT`; keep
+unmet goal acceptance unqualified unless an owner waiver/qualification is recorded.
 If acceptance is unmet and the intended disposition is unclear, ask once whether to
 stop without completion or retain the task for qualification; reuse an explicit stop
 answer without asking again. Do not run additional experiments to justify

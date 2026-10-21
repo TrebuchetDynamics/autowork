@@ -47,10 +47,10 @@ name, a repository path or `.`. Nothing here calls a model.
 | `autowork web [--port N] [--host H] [--view-only]` | The TUI in a browser at `http://127.0.0.1:8765` (this machine only); `--view-only` disables control keys |
 | `autowork blockers [dir]` | `/autowork blockers` in an agent (`AUTOWORK_AGENT`, else `claude`, else `pi`) |
 | `autowork tasks list\|validate\|new-id [target]`, `autowork tasks show\|why TASK [target]` | Read the `tasks/` store at HEAD (`validate --worktree`: uncommitted edits too) |
-| `autowork tasks add\|field\|place\|move\|hold\|release\|done\|supersede\|goal ... [target]` | Edit task and goal files in the working tree, never committing: an owner answer (`field TASK "Owner decision" TEXT`, `"Blocker resolution"`), a section (`place`, optionally `--decision`), the priority (`move TASK up\|down` changes its rank), a hold (`hold --by`, `release`), a close with evidence (`done`), a new task or goal. Each write validates the whole store |
+| `autowork tasks add\|field\|place\|move\|hold\|release\|done\|supersede\|goal ... [target]` | Edit task and goal files in the working tree, never committing: an owner answer (`field TASK "Owner decision" TEXT`, `"Blocker resolution"`), a section (`place`, optionally `--decision`), the priority (`move TASK up\|down` changes its rank), a hold (`hold --by`, `release`), a manual close (`done ID --by WHO --reason TEXT [--evidence REF]`, not verification), a new task or goal. Each write validates the whole store |
 | `autowork tasks prepare [target] [--check\|--no-commit]` | What Docs Sync runs first: detect the store's state, convert or finish converting a TODO.md + goals.json repository, and report diagnostics with the command that repairs each, as JSON; `--check` writes nothing ([task store](task-store.md#preparing-a-repository-autowork-tasks-prepare)) |
 | `autowork migrate [target] [--dry-run] [--no-commit]` | Convert a TODO.md + goals.json repository to `tasks/` once, in one local commit (`--no-commit`: staged); an interrupted run resumes; it refuses while work is in flight |
-| `autowork scorecard [--days N] [--json] [target...]` | Per runner over the last N days (default 7): tasks closed, share of integrations held, median dispatch-to-merge time, new owner questions; no model call |
+| `autowork scorecard [--days N] [--json] [target...]` | Per runner over the last N days (default 7): tasks closed (total, verified, manual and unverified-evidence), share of integrations held, median dispatch-to-merge time, new owner questions; no model call |
 
 In the TUI each key is the first letter of its word, highlighted in the detail pane:
 `l` (or Enter) **L**og, `p` **P**lay/**P**ause (starts a stopped service, resumes a
@@ -58,7 +58,9 @@ paused one, pauses a running one), `s` **S**top, `r` **R**estart, `m` **M**odel 
 `f` **F**allback (from Pi's list, type to filter), `t` **T**asks, `u` **U**ninstall the
 service, `n` **N**ew: browse directories (from `~/git`, `AUTOWORK_BROWSE_ROOT`), see which
 repositories are ready or what they need, and `p` there plays one; `q` **Q**uit. The Tasks
-window lists every open task in priority order (section, then rank) with its short title, state and reason;
+window lists open tasks in priority order (section, then rank) with their short title, state and reason,
+followed in All by closed tasks: **Verified** with the receipt, or **Manual** with the reason
+(a missing/invalid verified receipt is explicitly warned, never relabelled Manual);
 `1`–`5` (or Tab) show All, Working, Held, Waiting or Questions; on the selected task `u`/`d`
 move it **U**p or **D**own (its rank is the priority), `s` to another **S**ection (Now,
 Next, Needs decision), `c` **C**lears its hold, `a` sets it **A**side, `b` answers the
@@ -82,6 +84,12 @@ reads `past timeout`; waiting for a check slot does not consume that budget. New
 slot receipts carry the command's configured timeout; older receipts fall back to
 3600 seconds. A check of an older revision reads `superseded by main at REV`.
 These are read-only status warnings, not a passing check, cancellation or restart.
+
+Manual closure is available for implementation, plan and inspection tasks, but writes no
+receipt or passing-check claim. It alone qualifies neither a goal nor a prerequisite
+explicitly listed in `verified_depends_on`. An authorized owner can record
+`owner_waiver` or `owner_qualification` through `tasks field`; a met-goal write names
+these exceptions. See [closure provenance and owner qualification](task-store.md#writing-and-autowork-tasks).
 
 A task someone works on outside the runner carries a `Held by:` note
 (`autowork tasks hold TASK --by WHO [--until DATE]`); the runner never starts it and asks

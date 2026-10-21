@@ -100,9 +100,12 @@ history, never written. Explicit read-only runs write nothing.
    verify integration on the canonical `main` or `master`, then remove the task's
    worktree with `pi-autowork/engine/worktree_closeout.py CANONICAL --worktree PATH --apply`. Preserve active, dirty, unmerged and recovery-bearing
    worktrees; report integration/cleanup pending until the remaining steps succeed.
-5. Close the task only after verified acceptance: the engine's verified close writes
-   `status = "done"` plus its receipt in one commit; without the engine use
-   `autowork tasks done ID --evidence TEXT`. Do not close a whole feature from a partial slice. Report completed task, checks, commit,
+5. For verified acceptance, the engine's close writes `status = "done"`,
+   `closure = "coordinator_verified"` and its receipt in one commit. To close any task
+   kind manually, use `autowork tasks done ID --by WHO --reason TEXT [--evidence REF]`:
+   this records Manual, not Verified, and writes no receipt or passing-check claim.
+   A met goal or explicitly verified prerequisite needs verification or a recorded
+   owner waiver/qualification. Do not claim a whole feature verified from a partial slice. Report completed task, checks, commit,
    next task and exact remaining blocker. Default is one completed slice; continue
    across tasks when the user's mandate explicitly requests it.
 

@@ -32,8 +32,14 @@ task store, through `autowork tasks`: `goal ID --title --source path#anchor
 --priority N` for goals, `add --goal G --title T --short S` with `--scope`,
 `--acceptance`, `--checks`, `--touches` and `--depends-on` for tasks, `field ID
 LABEL VALUE` for other typed fields or notes (such as `Sources`), `place` and `move`
-for section and rank, `supersede --by OTHER --reason` to retire a task and `done
---evidence` to close one without the engine. Give each executable task its
+for section and rank, `supersede --by OTHER --reason` to retire a task and `done ID
+--by WHO --reason TEXT [--evidence REF]` to close any task kind manually. Manual
+closure records actor, timestamp and reason, never a receipt or verification claim.
+Meeting a goal or satisfying a `verified_depends_on` prerequisite needs coordinator
+verification or an explicit owner `owner_waiver`/`owner_qualification` record (set
+through `field`, naming authority, criterion and evidence); never invent one.
+Ordinary dependencies are unaffected. CLI/fleet views and scorecard counts keep
+Manual distinct from Verified. Give each executable task its
 `touches` (widen when unsure, or set `resources` to `exclusive` with a
 reason) so parallel Autowork can run tasks together. Keep Now/Next/Needs decision
 distinct; priority is section, then rank. Only typed fields (`ownership`,

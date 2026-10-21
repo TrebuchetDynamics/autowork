@@ -35,7 +35,8 @@ class ReopenTests(LandingFixture):
         """What a verified close commits: done, and a receipt pinning the contract it verified."""
         record = task_queue.store(self.integ).tasks['T']
         path = self.integ / 'tasks/items/T.md'
-        path.write_text(task_store.edit(path.read_text(), {'status': 'done'}))
+        path.write_text(task_store.edit(path.read_text(), {'status': 'done', 'closure': 'coordinator_verified',
+                                                          'closure_evidence': 'tasks/evidence/T.toml'}))
         receipt = self.integ / 'tasks/evidence/T.toml'
         receipt.parent.mkdir(parents=True, exist_ok=True)
         receipt.write_text(f'schema = 1\ntask = "T"\ncontract_hash = "{record.contract_hash}"\nresult = "pass"\n')
@@ -67,10 +68,13 @@ class ReopenTests(LandingFixture):
         self.assertTrue(self.runner.merge_main(), self.runner.merge_pending)
         self.assertEqual(task_queue.store(self.repo, 'main').tasks['T'].status, 'done')
 
-    def test_a_close_without_a_receipt_is_not_reopened(self):
-        path = self.integ / 'tasks/items/T.md'  # a person's close: its evidence note, no receipt
-        path.write_text(task_store.set_note(task_store.edit(path.read_text(), {'status': 'done'}),
-                                            'Evidence', 'checked by hand'))
+    def test_a_manual_close_is_not_reopened_by_an_old_receipt(self):
+        self.close_on_session()  # a receipt from an earlier verified attempt remains
+        path = self.integ / 'tasks/items/T.md'
+        path.write_text(task_store.edit(path.read_text(), {'closure': 'manual', 'closure_actor': 'owner',
+                                                          'closure_timestamp': '2026-10-21T00:00:00+00:00',
+                                                          'closure_reason': 'Closed by hand',
+                                                          'closure_evidence': None}))
         self.git(self.integ, 'commit', '-qam', 'close by hand')
         self.edit_on_main({'acceptance': ['changed']})
         self.assertTrue(self.runner.merge_main(), self.runner.merge_pending)
