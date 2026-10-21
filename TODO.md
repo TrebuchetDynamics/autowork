@@ -714,6 +714,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-294-9d — Expose every unresolved Needs decision task in blocker counts and intake
 
 - [ ] TOOLSET-294-9d — Expose every unresolved Needs decision task in blocker counts and intake
+- Scheduling: Wait for TOOLSET-129-c4 to land before editing fleet_view.py, tui.py or their shared fixtures. Its reported e8f00706778cd8d40915a4fc9e125b8657b22f3f owns the source-aged one-action display, not complete Needs decision inventory coverage. Keep the normalized inventory and summary/publication/details/intake agreement together: a guide/intake-only split cannot establish that composed acceptance and still names shared test/UI scopes. Reconcile the delivered display interfaces without duplicating them; preserve the prerequisite contract and every acceptance item. A reported candidate is not integration evidence.
 - Planning boundary: Owner requirement recorded; implementation and rollout not performed by this planning pass.
 - Next action: Reproduce an independent Needs decision task absent from the existing question inventory in an offline fixture, then add complete normalized coverage and composed counter/intake tests.
 - Exclusions: No live runner/profile/job change, model call on refresh, automatic resumption, fleet queue rewrite, publication, invented owner decision or removal of accepted deferrals.
@@ -727,7 +728,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Scope: Build a complete normalized owner-action inventory from current TODO/index and runtime evidence, including standalone zero-dependent Needs decision tasks. Reconcile genuine unanswered questions, answered pending consumption, deferrals, cancellations, agent repairs and ordinary waits. Share identity/freshness semantics across counts, generated questions, CLI/TUI details and /blockers. Preserve a single suggested action without truncating the complete list; expose affected-task counts separately from distinct shared decisions. Support idle/paused/stopped read-only discovery without dispatch.
 - Acceptance: Offline composed fixtures cover twenty independent decisions without worker holds, twenty tasks sharing one genuine decision, zero dependents, mixed deferred/cancelled/answered/agent-repair cases, stale generations and supported task storage. Every unresolved decision and affected ID is reachable; summary/publication/details/intake agree. Answering one leaves the others accessible. Prior answers, exclusions and stop/skip behavior survive. No model or control action on discovery; no live service, job or profile changes.
 - Checks: Planned after implementation: focused existing question/health/fleet-view and task-reader regressions plus composed /blockers intake coverage; python3 scripts/check.py; git diff --check. Record actual selectors/results; no feature qualification in this planning pass.
-- Dependencies: None.
+- Dependencies: TOOLSET-129-c4.
 
 ### TOOLSET-293-25 — Split goals.py once its private copies and the runner's parse cache allow it
 

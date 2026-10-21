@@ -1729,7 +1729,9 @@
       "title": "Split goals.py once its private copies and the runner's parse cache allow it"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-129-c4"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-294-9d",
       "section": "Next",
