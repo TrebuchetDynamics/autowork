@@ -209,11 +209,22 @@
     },
     {
       "depends_on": [],
-      "evidence": [],
+      "evidence": [
+        {
+          "anchor": "toolset-029",
+          "archive": "TODO.archive.md",
+          "coverage_current": true,
+          "kind": "executed",
+          "ref": "TOOLSET-029 owner-selected current-five qualification, 2026-10-20: loaded Docs Sync goals.py validate; next --json before and after bootstrap-order --dry-run; five ALREADY_BOOTSTRAPPED results, unchanged eligible lists, queue bytes and saved job/pause markers. Exact input-bound outputs retained in fleet-priority-requalification-20261020/qualification.json; no historical nine-target or product qualification claim.",
+          "result": "pass",
+          "summary": "Executed check: pass",
+          "task": "TOOLSET-029"
+        }
+      ],
       "id": "PRIORITY",
       "priority": 25,
       "source": "docs/project.md#todo-owned-task-priority",
-      "status": "unmet",
+      "status": "met",
       "tasks": [
         "TOOLSET-028",
         "TOOLSET-029"
@@ -1220,16 +1231,6 @@
     },
     {
       "depends_on": [
-        "TOOLSET-028"
-      ],
-      "goal": "PRIORITY",
-      "id": "TOOLSET-029",
-      "section": "Next",
-      "status": "open",
-      "title": "Migrate fleet repositories to recorded TODO.md priority order"
-    },
-    {
-      "depends_on": [
         "TOOLSET-172-92"
       ],
       "goal": "PI-RUNNER",
@@ -1944,6 +1945,16 @@
       "section": "Done",
       "status": "done",
       "title": "Enforce TODO.md priority order offline with drift guard, reconciliation and bootstrap"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-028"
+      ],
+      "goal": "PRIORITY",
+      "id": "TOOLSET-029",
+      "section": "Done",
+      "status": "done",
+      "title": "Migrate fleet repositories to recorded TODO.md priority order"
     },
     {
       "depends_on": [],

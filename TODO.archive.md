@@ -5633,3 +5633,53 @@ Source section: Next
 - Ownership: Toolset coordinator.
 - Exclusions: No new hold causes and no change to when a slot is held.
 - Planner's call: after 271-d6 and 272-1c, which both change hold recovery in the same functions; this then folds their rules into the table.
+
+
+## Original fleet rollout before owner-selected requalification — 2026-10-20
+
+The owner selected qualification of the current five registered repositories instead. The unchecked original contract and historical partial rollout below remain history, not a claim that all nine original targets were qualified.
+
+### TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
+
+- [ ] TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
+- Short: Migrate fleet repos to TODO.md order
+- Status: open.
+- Historical migration receipt: partial (2026-10-14): 6 of 9 migrated and committed locally with unchanged eligible order: this repository and five fleet repositories (four of them after a separate checkpoint commit of their pending queue edits). Not migrated: one repository with a staged 9-file docs batch that includes the queue files, one with a live in-progress claim and active session, and one with no commits. All matching jobs were already paused and stay paused.
+- Goal: PRIORITY — Make TODO.md order the enforced human priority.
+- Sources: [accepted priority plan](docs/project.md#todo-owned-task-priority), [accepted rollout](docs/project.md#rollout), [bootstrap contract](docs/project.md#reconciliation-and-bootstrap).
+- Scope: For each fleet repository with goals.json: dry-run bootstrap and report the full before/after order (including one repository's deeper difference), preserve stopped/paused jobs, lock and verify unchanged inputs, migrate, validate, compare the next pick before and after, and commit locally per repository within the existing migration authority. The later stop-all instruction supersedes automatic resumption.
+- Acceptance: Every repository has a synchronized `priority_order`; first eligible picks are unchanged; matching repositories get no TODO.md rewrite; a failed repository stays paused; a later manual reorder changes selection after reconciliation.
+- Checks: Per-repository dry-run receipts, `goals.py validate` and `goals.py next --json` before and after, and job readback confirming stopped/paused state is unchanged.
+- Dependencies: TOOLSET-028.
+- Ownership: Toolset coordinator under separate live authorization.
+- Exclusions: No push, no unrelated job changes and no job resumption while the owner's stop-all instruction remains in force.
+- Next action: Recheck the remaining repositories' current staged/unstaged changes, actual writers, initial commit and recorded priority state. Re-run the dry-run with a fresh revision for any now-eligible repository; preserve current pauses and genuinely overlapping work. Prior receipt conditions are not permanent holds.
+
+
+Historical scope preserved; current-five qualification is recorded separately.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-029"></a>
+
+### TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
+
+- [x] TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
+- Current evidence: Current-five requalification executed on 2026-10-20: all five ledgers validate; all five bootstrap previews report ALREADY_BOOTSTRAPPED; before/after eligible lists and first picks match; queue bytes and saved job/pause markers remained unchanged during each check. No migration or queue repair was needed. Exact per-target inputs, helper identity, commands and outputs are retained in the private qualification receipt. This is not product qualification or the historical nine-target rollout.
+- Payoff: Make TODO.md order the enforced human priority.
+- Owner decision: 2026-10-20: Requalify the current five registered repositories; repair queue order locally if needed, without job changes or push. This replaces the remaining historical nine-target rollout scope, without claiming the old nine-target qualification.
+- Short: Migrate fleet repos to TODO.md order
+- Status: done
+- Historical migration receipt: partial (2026-10-14): 6 of 9 migrated and committed locally with unchanged eligible order: this repository and five fleet repositories (four of them after a separate checkpoint commit of their pending queue edits). Not migrated: one repository with a staged 9-file docs batch that includes the queue files, one with a live in-progress claim and active session, and one with no commits. All matching jobs were already paused and stay paused.
+- Goal: PRIORITY
+- Sources: [accepted priority plan](docs/project.md#todo-owned-task-priority), [accepted rollout](docs/project.md#rollout), [bootstrap contract](docs/project.md#reconciliation-and-bootstrap).
+- Scope: Requalify the current five registered fleet repositories against existing versioned priority records. Validate each ledger, compare selection before and after a write-free bootstrap preview, preserve queue bytes and runner settings when no repair is required; use only supported local order repair when needed. No job changes, resumption or push.
+- Acceptance: Every repository has a synchronized `priority_order`; first eligible picks are unchanged; matching repositories get no TODO.md rewrite; a failed repository stays paused; a later manual reorder changes selection after reconciliation.
+- Checks: Per-repository dry-run receipts, `goals.py validate` and `goals.py next --json` before and after, and job readback confirming stopped/paused state is unchanged.
+- Dependencies: TOOLSET-028.
+- Ownership: Toolset coordinator under separate live authorization.
+- Exclusions: No push, no unrelated job changes and no job resumption while the owner's stop-all instruction remains in force.
+- Next action: None for the owner-selected current-five scope. Preserve the original nine-target contract and partial migration history; no further fleet mutation or job operation follows from this result.
