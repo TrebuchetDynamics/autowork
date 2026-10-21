@@ -9,7 +9,7 @@ Use when reconciling journals, inspecting prior sessions, or recovering a failed
 
 ## JSON is typed, not interchangeable
 
-Before iterating a journal or CLI result, inspect its top-level type and keys with a bounded `terminal` or `execute_code` call. A state object, an object containing `entries`, a record list and JSONL are different formats. Use `.get` only on mappings and `.append` only on an explicitly observed list. Do not normalize or rewrite an unknown format to make a comprehension work; preserve the original and report the schema discrepancy. Re-read current state before a targeted update and preserve unrelated fields/live ownership. Never hand-edit goals.json: use goals.py.
+Before iterating a journal or CLI result, inspect its top-level type and keys with a bounded `terminal` or `execute_code` call. A state object, an object containing `entries`, a record list and JSONL are different formats. Use `.get` only on mappings and `.append` only on an explicitly observed list. Do not normalize or rewrite an unknown format to make a comprehension work; preserve the original and report the schema discrepancy. Re-read current state before a targeted update and preserve unrelated fields/live ownership. Never hand-edit `tasks/`: use `autowork tasks`.
 
 For a previous goal handoff, prefer the shipped read-only helper:
 

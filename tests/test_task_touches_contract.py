@@ -1,4 +1,4 @@
-"""Instruction contract: task-writing skills require Touches:, not model or cron behavior."""
+"""Instruction contract: task-writing skills require touches, not model or cron behavior."""
 from pathlib import Path
 import unittest
 
@@ -15,7 +15,7 @@ class TaskTouchesContractTests(unittest.TestCase):
     def test_every_task_writer_asks_for_touches(self):
         for path in WRITERS:
             with self.subTest(path=path):
-                self.assertIn('Touches:', (ROOT / path).read_text())
+                self.assertIn('touches', (ROOT / path).read_text())
 
     def test_shared_rule_requires_touches_or_an_explicit_exclusive(self):
         text = (ROOT / 'skills/shared/TODO-WORKCENTER.md').read_text()

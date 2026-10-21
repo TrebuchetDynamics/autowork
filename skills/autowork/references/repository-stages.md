@@ -21,7 +21,7 @@ purpose and a useful bounded outcome are already clear.
 | Observed state | Work to do now |
 | --- | --- |
 | Empty/scaffold repo with known purpose | Inspect tooling, define the smallest working vertical slice and its acceptance, scaffold and implement it. |
-| Code exists, no useful task list | Inspect actual gaps and record a bounded task directly; use Autoresearch only for unresolved planning questions. Reconcile canonical TODO.md and any existing goals.json through scoped docs-sync. |
+| Code exists, no useful task list | Inspect actual gaps and record a bounded task directly; use Autoresearch only for unresolved planning questions. Add it to `tasks/` with `autowork tasks add` and validate the store. |
 | Ready tasks exist | Read their complete bodies and select accepted, dependency-ready work; skip replanning. |
 | Tests/build fail | Reproduce the failure, diagnose and fix with regression coverage; ordinary engineering failures are work. |
 | Task combines offline work and live qualification | Separate their acceptance; finish useful offline implementation/tests while preserving the live gate. |
@@ -70,7 +70,7 @@ not stop disjoint authorized work. Never create busywork or empty commits.
 ## Report actual results
 
 State: COMPLETED, IN_PROGRESS, BLOCKED or NO_CHANGE, supported by evidence.
-Task: actual TODO ID/title (or the newly established task). Changed: concrete result.
+Task: actual task ID/title (or the newly established task). Changed: concrete result.
 Checks: executed results and material omissions. Delivery: owned commit SHA and
 push state, or none. Next: task ID/title and eligibility, or exact blocker/owner.
 A queued worker is IN_PROGRESS with execution unverified, not a completed task.

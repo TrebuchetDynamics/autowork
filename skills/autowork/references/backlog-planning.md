@@ -8,7 +8,7 @@ The user need not send `/plan_for_me` or approve in-scope planning again. Reconc
 actual live writers, then execute the saved next action. If new evidence requires
 a material decision, run one bounded planning pass in this occurrence and resume.
 A ready task needs no planning ceremony.
-Apply [TODO work center](../../shared/TODO-WORKCENTER.md). A `planning.action`
+Apply [task rules](../../shared/TODO-WORKCENTER.md). A `planning.action`
 receipt directs the agent; it does not execute the skill or prove progress.
 
 ## Preparation stalls
@@ -24,8 +24,9 @@ Never import forbidden/foreign edits or remove a genuine dependency to force adm
 
 For a named task family, keep planning and execution within that family and its
 necessary authorized prerequisites. Broader maintenance needs broader authority.
-Save decisions, task bodies, dependency order and exact blockers in canonical
-TODO.md/goals.json through Docs Sync, then retry selection and handoff immediately.
+Save decisions, tasks, dependency order and exact blockers in `tasks/` with
+`autowork tasks add|field|place|goal`, run `autowork tasks validate --worktree .`,
+commit, then retry selection and handoff immediately.
 Continue under the original execution request; do not end with “plan ready—run
 Autowork?” or ask the user to invoke the planner. If no route exists, identify the
 single precise missing input or restriction to change and what it would enable.
@@ -40,7 +41,8 @@ Repeated unchanged inputs resume the saved plan's next action, not another plan.
   is required. Reconcile a saved failure receipt before retrying the same inputs.
 - `reconcile_owner`: retain the live writer and its work; do not launch a competing planner.
 - `integrate_existing_inputs`: resolve the existing documentation proposal with
-  the current authorized coordinator, or use docs-sync Bootstrap if no backlog exists.
+  the current authorized coordinator; with no `tasks/` store, run `autowork migrate`
+  once (an existing TODO.md) or plan first tasks through docs-sync.
   Do not create a second proposal while canonical adoption is the missing step.
 - `repair_execution_inputs` / `recover_first`: repair the named prerequisite using
   existing authority; research cannot grant permission or repair routing.
@@ -57,7 +59,7 @@ Do not duplicate its unchanged plan or evade a shared integration conflict.
 ## One bounded pass
 
 1. If there is a triggering owner-cycle JSON, save its immutable history receipt.
-   Otherwise record the current repository revision, TODO/goals state and planning
+   Otherwise record the current repository revision, task/goal state and planning
    reason in a new or reused research receipt at the authorized research location;
    do not fabricate a cycle or task ID.
    Then load `autowork:plan-for-me` with
@@ -81,8 +83,9 @@ Do not duplicate its unchanged plan or evade a shared integration conflict.
    Keep live gates on their own task. Do not remove real dependencies or duplicate
    already implemented work to increase task counts.
 4. Load docs-sync narrow Maintain with these findings. Reuse tasks before adding
-   them; write full bodies in canonical TODO.md and reconcile goals.json under the
-   current authorized coordinator. Reconcile user TODO orders before rendering.
+   them; add complete tasks and goals with `autowork tasks add` / `autowork tasks goal`
+   under the current authorized coordinator, run `autowork tasks validate --worktree .`
+   and commit. An owner's section and rank edits stand; place new tasks around them.
    Respect Graphify requirements, actual live writers and source-bound revision
    guards. Do not require external owner acknowledgement for ordinary local work.
    If a real concurrent writer prevents integration, preserve its work and record
@@ -91,7 +94,7 @@ Do not duplicate its unchanged plan or evade a shared integration conflict.
 5. Validate and retry the canonical consumer in this same occurrence. If ready,
    continue current-session implementation under the original implementation authority.
    Otherwise name the exact missing input and its owner. Report planning as
-   planning, not a completed TODO task or product implementation.
+   planning, not a completed task or product implementation.
 6. When an actual cycle snapshot exists, record the completed pass against it:
    For a receipt-free entry, retain the research receipt and saved task IDs instead
    of invoking the cycle recorder with invented inputs.
@@ -110,7 +113,7 @@ changed bound consumer inputs permit a new pass, unchanged inputs reuse this one
 
 ## Final occurrence report
 
-Task completed: actual TODO ID/title or none. Checks: executed command/results.
+Task completed: actual task ID/title or none. Checks: executed command/results.
 Commit: attributable SHA or none; publication separately. Next: selected task
 ID/title or exact blocker/owner. Include a short planning outcome only when a pass
 changed the backlog or found a new blocker. Never substitute the planner or

@@ -35,9 +35,9 @@ focused question. Do not guess another profile, cwd or chat destination.
 Extract cadence, task filter versus broad repository development, delivery target,
 and existing commit/push/live-operation limits from the full saved job, not a list
 preview. Compare them with the latest explicit owner decisions and replace superseded
-clauses rather than appending a contradictory grant. Bind selection to current
-TODO/ledger order; a hardcoded milestone must not override a later reprioritization,
-and a reorder alone changes neither cadence nor active work. Reuse existing settings
+clauses rather than appending a contradictory grant. Bind selection to the current
+`tasks/` order (section, then rank); a hardcoded milestone must not override a later
+reprioritization, and a rank change alone changes neither cadence nor active work. Reuse existing settings
 unless the user changes them. For an authorized multi-profile refresh, first classify
 each existing job (development, research/documents, delivery, read-only audit) and
 adapt its instruction to that role; preserve each job's publication authority,
@@ -120,7 +120,7 @@ Use autowork:autowork in REPOSITORY under PROFILE.
 Scope: REPOSITORY_DEVELOPMENT_OR_EXACT_TASK_FILTER.
 Delivery authority and exclusions: EXPLICIT_LIMITS.
 Resume saved continuation and inspect actual process/workspace activity first.
-TODO.md and existing goals.json own the queue; execute in the current agent session.
+tasks/ owns the queue (edit it only through autowork tasks); execute in the current agent session.
 No Kanban lookup, historical card or native continuation/review transition is required.
 For managed profile coordination, supply --profile CURRENT_PROFILE and
 --state-dir VERIFIED_PROFILE_HOME/autowork to owner_cycle.py with the actual owner PID.

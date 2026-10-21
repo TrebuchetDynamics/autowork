@@ -6,18 +6,18 @@ disable-model-invocation: true
 
 # Explicit whole-spec execution mode
 
-Use `/autowork` with an explicit whole-spec request and accepted spec/tracker pointers. This mode, not the default one-slice picker, owns the dependency frontier through completion within the user's bounded mandate. Do not create a second scheduler, goals ledger or review chain: keep one executor and existing live ownership. A default invocation or accepted design cannot select this mode.
+Use `/autowork` with an explicit whole-spec request and accepted spec/tracker pointers. This mode, not the default one-slice picker, owns the dependency frontier through completion within the user's bounded mandate. Do not create a second scheduler, task store or review chain: keep one executor and existing live ownership. A default invocation or accepted design cannot select this mode.
 
 Execute accepted tasks under the ownership and review rules below. For a concrete
 method gap or explicit protocol request, select one verified technique through
 [engineering](../../engineering/SKILL.md); consult
 [the engineering cycle](../../shared/ENGINEERING-CYCLE.md) only if routing is unclear.
-Use default `worker` ledger mode; this agent handles canonical integration and
+Use default `worker` ownership; this agent handles canonical integration and
 closure after checks and required review. Proposal/external-owner roles are opt-in.
 
 ## Active execution policy (overrides historical upstream steps below)
 
-Resolve scope, actual process/workspace ownership, actual worktrees and accepted ticket/dependency edges first. Preserve existing IDs and use canonical `docs-sync/scripts/goals.py` for ledger mutations, never hand-edit goals.json. Refuse cycles/missing dependency IDs; retain completed and claimed tickets. Establish the integration owner/branch and its pinned source, prerequisites and checks before dispatch. Execute in the current session using owner_cycle.py coordination, source-bound contracts and explicit host limits; optional disjoint delegation remains owned by its parent. No card, board or native continuation/review transition is required. This reference adds no new helper flags or automated runtime guarantee.
+Resolve scope, actual process/workspace ownership, actual worktrees and accepted ticket/dependency edges first. Preserve existing IDs and make every task or goal change through `autowork tasks`, never by hand-editing `tasks/`. Refuse cycles/missing dependency IDs; retain completed and claimed tickets. Establish the integration owner/branch and its pinned source, prerequisites and checks before dispatch. Execute in the current session using owner_cycle.py coordination, source-bound contracts and explicit host limits; optional disjoint delegation remains owned by its parent. No card, board or native continuation/review transition is required. This reference adds no new helper flags or automated runtime guarantee.
 
 The frontier contains only dependency-satisfied, unclaimed tickets in the accepted spec. Completion/startup/merge are distinct states: independently read the exact commits, executed checks and required review acceptance before satisfying an edge. Recompute the frontier after each integration; do not dispatch unrelated backlog or overlap a live writer. Use actual owned worktrees with unique branches; conversation isolation is not checkout isolation. Respect the repository's candidate manifest and exact-source controls.
 
@@ -65,7 +65,7 @@ Communication to and from subagents should be sparse. Communicate primarily thro
 These adaptations govern autowork's explicit whole-spec mode only; other workflows retain their own scope.
 
 - Explicit invocation only: `disable-model-invocation: true` expresses upstream intent, not a verified Hermes enforcement guarantee. Use this workflow only when the user requests whole-spec implementation. Importing the skill is not authorization to run it.
-- Read the accepted spec, ticket IDs, blocking edges, repository instructions and current ownership first. Use the existing authorized tracker (including local Markdown/goals.json); do not require the uninstalled `/setup-matt-pocock-skills` command. Ask for a missing tracker/spec pointer while continuing independent discovery; do not invent tickets or requirements. Detect cycles and missing dependencies before dispatch. Document the frontier and rejection reasons.
+- Read the accepted spec, ticket IDs, blocking edges, repository instructions and current ownership first. Use the existing authorized tracker (including the repository's `tasks/` store); do not require the uninstalled `/setup-matt-pocock-skills` command. Ask for a missing tracker/spec pointer while continuing independent discovery; do not invent tickets or requirements. Detect cycles and missing dependencies before dispatch. Document the frontier and rejection reasons.
 - `delegate_task` isolates conversation, not the Git checkout. Create an actual `git worktree` and a unique owned branch per implementer through `terminal`, based on the integration branch's recorded commit. Pass its absolute working directory and small context pointers to the child. Bound concurrency to the available runtime capacity and disjoint source/test resources. Without real worktree isolation, use a truthful sequential fallback rather than claiming parallel isolation.
 - Never reset an existing branch or discard dirty work to match the integration tip. If a new empty worktree has the wrong base, recreate only that owned empty worktree or inspect and integrate the changes safely. Preserve foreign files, the user's index and all useful running workers.
 - Resolve the TDD identity/path via the shared engineering cycle for each ticket. Require executed failing-then-passing checks, a concrete user-facing result, changed-file accounting and an exact commit receipt from the child's worktree. Verify that commit and its checks before integrating; a child summary is not proof.

@@ -11,10 +11,12 @@ metadata:
 
 # Autowork
 
-Execute a bounded useful slice in the current agent session. TODO.md owns task IDs,
-intent, scope, acceptance, dependencies and visible progress; goals.json, when
-present, is its synchronized index. A TODO-only repository needs no Hermes setup
-or extra public tracking file. No Kanban lookup, card, board, assignee, native
+Execute a bounded useful slice in the current agent session. `tasks/` is the one
+task store: `tasks/items/<ID>.md` owns each task's intent, scope, acceptance,
+dependencies, section, rank and status; `tasks/goals/<ID>.md` owns goals; and
+`tasks/evidence/<ID>.toml` holds the receipt of a verified close. Every edit goes
+through `autowork tasks`. A repository needs no Hermes setup or extra public
+tracking file. No Kanban lookup, card, board, assignee, native
 continuation API or native review transition is a prerequisite, including recovery
 of old work. Historical cards are not leases. Preserve their evidence without
 querying, importing, releasing, resetting or deleting them.
@@ -39,15 +41,18 @@ review step. Keep Hermes Agent unchanged.
    Disable change-only fingerprint monitors. CONTINUE selection after closeout when
    caller limits permit. A completed slice is not itself a stop condition under continuation authority;
    default and explicit caller stops still apply.
-2. **Use runnable backlog first; otherwise run the docs-sync fallback.** Read
-   TODO.md Now/Next and accepted milestone priorities. With an existing index use
-   `goals.py next <repo> --json` and `goals.py focus <repo> --json` from Docs Sync;
-   reconcile inconsistent source evidence without inventing acceptance or ownership.
-   Do not run a docs-sync prepass for a usable backlog task. Named --tasks/--plan
-   scope stays exact. A task Autowork records or repairs includes `Touches:` from the
-   inspected seam ([TODO rules](../shared/TODO-WORKCENTER.md)), so parallel workers can
-   run it beside others. Do not create a second board or require goals.json for a
-   TODO-only contributor.
+2. **Use runnable backlog first; otherwise run the docs-sync fallback.** Selection
+   reads `tasks/` at the base commit: section (Now before Next), then rank, gated by
+   goal focus, priority and dependencies. `autowork tasks list` shows the order and
+   `autowork tasks why ID` explains a pick or a skip. A record missing contract fields
+   is a visible draft, never selected. Reconcile inconsistent source evidence
+   without inventing acceptance or ownership.
+   Do not run a docs-sync prepass for a usable backlog task.
+   Named --tasks/--plan scope stays exact. A task Autowork records or
+   repairs carries `touches` from the inspected seam
+   ([task rules](../shared/TODO-WORKCENTER.md)), so parallel workers can run it beside
+   others. Do not create a second board. A repository without `tasks/` selects nothing;
+   the runner says to run `autowork migrate` once.
 3. **Prepare only missing inputs, then implement.** Derive a short contract from
    the task's objective, scope/exclusions, acceptance/checks, dependencies and sources.
    Keep source/candidate identity, actual owner/session, explicit limits and known
@@ -71,11 +76,9 @@ review step. Keep Hermes Agent unchanged.
    separate calls or a conditional branch that refuses an invalid owner; printing
    an invalid role before an unconditional mutation is not a guard.
    `EXECUTE` returns a contract for this session to implement; it is not proof of
-   implementation or a background launch. `PRIORITY_DRIFT` means a human changed
-   TODO.md order since it was recorded: run `goals.py reorder <repo> --expected-revision
-   <revision>` (scheduled runs do this automatically), then select again; never
-   execute the stale order. If reorder refuses, report its conflict. An `UNMIGRATED`
-   priority flag is reported as-is; selection does not migrate the repository. See [the exact interface](references/owner-cycle.md)
+   implementation or a background launch. Moving a task is editing its rank
+   (`autowork tasks move ID up|down` or `autowork tasks field ID rank N`); there is
+   no separate recorded order. See [the exact interface](references/owner-cycle.md)
    for claims, bounded argv execution, release and source-bound receipts.
 4. **Implement and verify.** Repair routine non-privileged environment failures,
    iterate on failing tests, and retain failure evidence. Required acceptance tests,
@@ -89,7 +92,7 @@ review step. Keep Hermes Agent unchanged.
    with the gap and resume action. Follow the shared [scoped documentation closeout](../shared/ENGINEERING-CYCLE.md#one-canonical-backlog-one-executor-one-closure-owner):
    resolve bundled Docs Sync in this host and run Maintain only for a concrete delta.
    Workers update in-scope component docs and report shared-doc gaps for the
-   coordinator/DOCS-MAINTAINER; archive rendering is not a docs pass. Preserve
+   coordinator/DOCS-MAINTAINER. Preserve
    implementation and pending evidence on interruption; never replay implementation
    or launch work after a stop/pause/budget limit to finish docs.
    Commit attributable verified paths locally unless forbidden.
@@ -103,11 +106,11 @@ review step. Keep Hermes Agent unchanged.
    Every `--apply` task claim also removes earlier integrated, clean, unused
    worktrees and reports the rest under `worktree_cleanup`. Preserve active, dirty,
    unmerged or recovery-bearing worktrees; report integration/cleanup pending.
-   Reconcile TODO and any existing goals.json only after verified acceptance, then
-   archive completed bodies to `TODO.archive.md` (or the established archive) with
-   `goals.py archive <repo>` (without an index use `--verified-tasks ID1,ID2`).
-   Follow the [archive contract](../docs-sync/references/todo-archive.md). Preserve
-   history; read-only runs do not write.
+   Close a task only after verified acceptance: the engine's verified close writes
+   `status = "done"` plus the receipt in `tasks/evidence/<ID>.toml` in one commit, and
+   replay is a no-op. A close without the engine uses `autowork tasks done ID
+   --evidence TEXT`. An existing `TODO.archive.md` is frozen history, never written.
+   Read-only runs do not write.
 
 ## Ownership, limits and continuation
 
@@ -116,16 +119,18 @@ isolation; one writer per workspace. Before adopting idle work, inspect actual
 process liveness, workspace changes, source/candidate provenance and check receipts.
 Advisory locks cannot exclude manual writers who ignore them or coordinate different
 hosts; an enabled same-repository cron run may also be writing. Preserve useful
-candidates; do not kill workers or delete worktrees to migrate. `in_progress`, an
-open session or a bare PID is not live ownership: verify the executor's identity and
-recent activity, and recover an abandoned claim through the supported adoption flow,
-keeping its work and any explicit pause. Before requeueing, check the executor can
-work where the task's files live. Never end a turn on a bare claim: leave `Status:
-open` with its Next action, a `Held by: <who>; until <date>` line, or the explicit
-pause, so no claim outlives the session that made it. A live writer does
-not freeze priority: apply an owner's reorder to the next selection through Docs
-Sync, without interrupting current work or faking a dependency, and report it only
-after `goals.py next` agrees.
+candidates; do not kill workers or delete worktrees. A claim is a `Held by:` note
+(`autowork tasks hold ID --by WHO [--until YYYY-MM-DD]`, lifted by `autowork tasks
+release ID`); a held task is never selected. An open session or a bare PID is not
+live ownership: verify the executor's identity and recent activity before releasing
+an abandoned claim, keeping its work and any explicit pause. Only typed fields
+(`live`, `resources`, `ownership`) grant authority; a note never does. Workers never
+edit `tasks/`: a worker commit that does is held and never merged. Before requeueing, check the executor can work where the task's
+files live. Never end a turn on a bare claim: leave the task open with its Next
+action, a current `Held by:` note, or the explicit pause, so no claim outlives the
+session that made it. A live writer does not freeze priority: an owner's rank or
+section edit applies to the next selection without interrupting current work or
+faking a dependency; report it only after `autowork tasks list` agrees.
 
 Work in the canonical checkout by default; for live sessions, `BUSY`/`isolate`, integration
 and execution leases follow [canonical checkout and leases](references/owner-cycle.md#canonical-checkout-sessions-and-leases).
@@ -153,7 +158,7 @@ new tool, session or credential.
 
 Run discovery only when no usable task remains. Under broad repository authority,
 [repository maintenance](references/repository-maintenance.md) inspects a bounded
-seam, records a justified TODO task and executes it in the same occurrence.
+seam, records a justified task with `autowork tasks add` and executes it in the same occurrence.
 Named-only jobs cannot widen scope. Empty queues, green tests or unchanged HEAD
 are not proof of exhaustion; record `work_search` evidence and rejected candidates.
 This policy is not a runtime guarantee of progress. No fabricated busywork.
@@ -162,7 +167,7 @@ This policy is not a runtime guarantee of progress. No fabricated busywork.
 
 Only when the caller asks for it, run `owner_cycle.py REPO --apply
 --parallel [N] --owner-pid PID`: it starts headless workers, one task each in
-its own worktree. `Touches:` only orders tasks, never holding one; `Resources:` and
+its own worktree. `touches` only orders tasks, never holding one; `resources` and
 dependencies keep tasks apart.
 Loop `--wait --timeout S`, review each `report.json`, `--integrate TASK
 --timeout S --run CHECK...` (`--run` last), `--parallel-close TASK`, commit the

@@ -16,7 +16,7 @@ operation and dependent work, not independently authorized non-overlapping work;
 fallback still consumes the saved batch allowance and never expands worker scope.
 
 Start with `autowork:autowork` for repository-stage preparation, then use the
-current session and actual repository state. Missing task files alone are bootstrap work; an
+current session and actual repository state. A missing `tasks/` store alone is setup work (`autowork migrate`, or planning); an
 unintegrated owner proposal still requires reconciliation.
 
 Autonomous coordination is the default. The running agent handles local planning,
@@ -43,14 +43,14 @@ can use direct evidence. Persist the result against the triggering input fingerp
 Planning findings must reach canonical docs-sync reconciliation before selection.
 If the bound task stays held, run [repository maintenance](repository-maintenance.md)
 under broad repository authorization: inspect a distinct component, record justified
-TODO tasks and execute an eligible slice now. Do not confuse a cached task-specific
+tasks with `autowork tasks add` and execute an eligible slice now. Do not confuse a cached task-specific
 planning receipt with completed repository-wide discovery.
 
 When no runnable task remains and no live worker owns the affected work, load `autowork:docs-sync`
 for narrow task/document reconciliation grounded in existing accepted intent; use
 Bootstrap only for applicable missing documentation. Then
-rerun selection in the same occurrence. Respect concurrent docs ownership and ledger
-revision guards. Unchanged inputs stay byte-identical; never invent tasks, approval,
+rerun selection in the same occurrence. Respect concurrent docs ownership and the task
+store's changed-since-read refusals. Unchanged inputs stay byte-identical; never invent tasks, approval,
 empty commits or repetitive broad scans to fill a tick. A live worker or ownership
 conflict is reconciled, not replaced by a competing docs writer.
 
@@ -83,7 +83,7 @@ Respect separately recorded pause/resume decisions.
 
 Before selecting new work, reconcile an already approved candidate: identify its
 exact commit, remaining task scope and current canonical ancestry; perform authorized
-integration and ledger closure when its checks/review cover that scope. Approval alone
+integration and verified close (status plus receipt) when its checks/review cover that scope. Approval alone
 does not close a larger task. Do not repeatedly inspect the same approved commit while
 its actionable closeout is untouched. Preserve paused schedules; an interactive or
 previously launched worker can still be running while its cron is paused.
@@ -102,7 +102,7 @@ emitting the same audit; do not invent busywork when no supported action remains
 
 On each occurrence account for accepted_goal -> eligible_task -> implementation ->
 passing_checks -> required review/local commit -> authorized_publication separately.
-Bind evidence to the actual TODO task/session, source and check receipt; changed HEAD,
+Bind evidence to the actual task/session, source and check receipt; changed HEAD,
 scheduler success, task creation and documentation churn are not proof of product
 progress. A live worker is observed through its actual process identity, not replaced.
 

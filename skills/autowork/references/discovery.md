@@ -1,6 +1,6 @@
 # Autowork — Discovery, ranking and selection
 
-Load only when no usable milestone backlog task remains after scoped repair and TODO fallback. A usable task skips this reference even without goals.json or a docs cron. The Operating priorities in SKILL.md override anything here.
+Load only when no usable milestone backlog task remains in `tasks/` after scoped repair. A usable task skips this reference even without goals or a docs cron. The Operating priorities in SKILL.md override anything here.
 
 For broad repository requests, [repository maintenance](repository-maintenance.md)
 extends discovery beyond a blocked milestone into disjoint documentation, UI/UX,
@@ -16,13 +16,13 @@ Do not repeat a docs pass merely because a picker tick arrived. First resolve th
 repository instructions and explicit task boundaries, and check live ownership.
 These safety checks do not replace the documentation pass. Load the active
 profile's `docs-sync` skill for the needed reconciliation. Consult the STE-inspired
-reference only for substantive writing guidance, not a link or ID repair. Merely mentioning the command, finding TODO.md, or
+reference only for substantive writing guidance, not a link or ID repair. Merely mentioning the command, finding `tasks/`, or
 printing `/docs_sync` is not execution. Do not spawn a separate picker, invoke a
 recursive autowork, or enqueue another worker for this prerequisite.
 
 Use Maintain by default. Use bounded Bootstrap only for missing, applicable docs
 with current supporting evidence. This autowork request authorizes small,
-evidence-backed documentation and TODO reconciliation in the prepass; it does
+evidence-backed documentation and task-store reconciliation (through `autowork tasks`) in the prepass; it does
 not authorize implementation, generated-contract edits, upstream changes,
 repository-agent-instruction changes, broad stylistic rewrites or new product
 requirements. Fix an ordinary supported doc mismatch now instead of deferring it
@@ -31,14 +31,14 @@ accepted decisions, existing task IDs, uncommitted work and authoritative tracke
 links. Do not create every default document, empty scaffolds or filler tasks.
 
 When any live worker/cron owns the affected workspace or instructions require
-read-only work, perform an Audit pass only. Do not write shared TODO/docs or
+read-only work, perform an Audit pass only. Do not write shared tasks/docs or
 claim ownership. Reconcile the live task instead of launching another. A terminal
 blocked task still blocks only its slice and dependencies; its exclusions and
 owned files remain binding. Missing docs-sync is a prerequisite blocker: disclose
 it rather than silently pretending the pass ran or installing another profile's
 skills. The default manager's Hermes configuration directory is not a product
 repo: record `not_applicable_manager` with the actual boundary, do not bootstrap
-README/TODO there, and retain supported skill-maintenance capability checks.
+README or `tasks/` there, and retain supported skill-maintenance capability checks.
 
 Keep the pass cheap and useful. Inspect the nearest accepted milestone, its
 README/plan/spec/runbook or API owner, the current queue and implicated source,
@@ -52,12 +52,12 @@ inventory, build, browser run, broad suite, date bump or rewrite every hour.
 
 Record a profile-local `repo_docs_pass` receipt in the autowork journal: mode,
 workspace, checked paths/symbols and scoped source fingerprints, actual changes
-and checks, findings/unknowns, ownership, TODO/tracker handoff and next eligible
+and checks, findings/unknowns, ownership, task/tracker handoff and next eligible
 candidates. Read back edited docs and check their affected links/contracts. A
 no-change pass is valid when supported by inspection, not an excuse to invent
 work. Then compare meaningful docs, bug, delivery, refactor and architecture
 candidates using the remaining policy. Documentation is not automatically the
-winning goal, and a TODO entry is not execution permission. Do not select a doc
+winning goal, and a task record is not execution permission. Do not select a doc
 repair that the prepass already completed.
 
 Retain the actual docs-pass mode and evidence in the existing task receipt when
@@ -69,23 +69,23 @@ claiming a worker started. Honor the saved reporting policy; every-occurrence jo
 ## Discover the real work source
 
 1. Resolve the active workspace and any explicit user source or objective. An explicit source wins; never override it with a different backlog. Preserve current thread decisions, ownership, approved plans, and unfinished work. The default profile's Hermes configuration directory is not an implicit coding project.
-2. Inspect repository instructions, git status, README/context, and current task/goal ledgers before choosing. Missing BACKLOG.md or TODO.md is not a stop condition. Run the bundled read-only helper with `terminal`: `python <this-skill-directory>/scripts/discover_sources.py <absolute-workspace>`. Use its paths as leads, not authoritative task status. Pass repeatable `--exclude <root-relative-directory>` for established upstream/reference-only boundaries; exclude the reference/upstream directories the profile's SOUL names (e.g. vendored upstream checkouts) from goal-source discovery. They may still be read deliberately as parity references, never treated as editable project backlogs.
-3. Search in this order: current thread's accepted objective and referenced plan; live project tracker/goal/ownership ledger explicitly used by the repository; root BACKLOG/TODO/TASKS/ROADMAP/PLAN/GOALS and CONTEXT/STATUS/README pointers; component-level backlog/roadmap; current linked docs/plans, docs/product, docs/quality, and equivalent project directories. Follow the selected current documents' links and acceptance evidence. Read only the small relevant set; do not recursively ingest the whole repository.
-4. Prefer explicit Now/Next, in-progress, unblocked, unresolved, failed-gate, and acceptance criteria sections over historical dates or unchecked boxes. Treat completed/archived/superseded plans as historical until live evidence proves otherwise. Verify named paths, implementation, tests, and known receipts. A stale unchecked box is not a new task. A recently modified document is not proof of priority. TODO.md and its repository documents remain authoritative; historical boards require no lookup or migration.
+2. Inspect repository instructions, git status, README/context, and the current `tasks/` store before choosing. A missing `tasks/` store or BACKLOG.md is not a stop condition. Run the bundled read-only helper with `terminal`: `python <this-skill-directory>/scripts/discover_sources.py <absolute-workspace>`. Use its paths as leads, not authoritative task status. Pass repeatable `--exclude <root-relative-directory>` for established upstream/reference-only boundaries; exclude the reference/upstream directories the profile's SOUL names (e.g. vendored upstream checkouts) from goal-source discovery. They may still be read deliberately as parity references, never treated as editable project backlogs.
+3. Search in this order: current thread's accepted objective and referenced plan; the repository's `tasks/` store and any live project tracker it explicitly uses; root BACKLOG/ROADMAP/PLAN/GOALS and CONTEXT/STATUS/README pointers; component-level backlog/roadmap; current linked docs/plans, docs/product, docs/quality, and equivalent project directories. Follow the selected current documents' links and acceptance evidence. Read only the small relevant set; do not recursively ingest the whole repository.
+4. Prefer explicit Now/Next, in-progress, unblocked, unresolved, failed-gate, and acceptance criteria sections over historical dates or unchecked boxes. Treat completed/archived/superseded plans as historical until live evidence proves otherwise. Verify named paths, implementation, tests, and known receipts. A stale unchecked box is not a new task. A recently modified document is not proof of priority. `tasks/` and its repository documents remain authoritative; historical boards require no lookup or migration.
 5. If no usable project queue exists, select a concrete defect or missing validation already evidenced by current logs, tests, the user's request, or documented requirements. A bounded investigation or regression reproduction is useful work if its output and success signal are clear. Do not invent features, manufacture failures, expand product scope, or perform broad speculative cleanup. If no evidence-backed candidate remains, report the sources checked and the exact missing decision/source instead of a bare filename complaint.
 
 ### Consume the docs-sync handoff
 
-When `docs-sync` maintains a root `TODO.md`, use its evidence-backed `Now` and
-`Next` items as candidates, not automatic execution permission. Prefer tasks
-linked (`Goal: <id>`) to partial or unmet milestone goals in its `Goal coverage`
-table. When you finish a slice, update that goal's row and its task status, so the
-next run sees the goal move. Follow each item's
+Use the store's evidence-backed `Now` and `Next` tasks as candidates, not automatic
+execution permission. Prefer tasks whose `goal` is a partial or unmet goal in
+`tasks/goals/`. When you finish a slice, close the task and update the goal's status
+(`autowork tasks goal ID --status ...`; a met goal needs `--evidence` naming an
+executed, passing check), so the next run sees the goal move. Follow each item's
 source, scope, project payoff, acceptance check, dependencies, and ownership; verify
 these against current repository state before selecting. Skip `Done`, proposed or
 unapproved work, and `Blocked / Needs decision` items until their actual gate is
 resolved. Preserve task IDs and authoritative tracker links rather than copying the
-queue into a competing ledger. A standalone bare `/docs_sync` (or the profile's
+queue into a competing board. A standalone bare `/docs_sync` (or the profile's
 `docs-sync` cron job) maintains docs and this handoff. `/autowork` runs the bounded
 docs-sync pass above only when Operating priority 2 calls for missing/stale backlog
 repair without an enabled docs job, then selects one remaining eligible slice under its existing
