@@ -2179,7 +2179,10 @@ class Coordinator:
         # A batch (or the merge train) is checking main plus its candidates right now: it covers
         # main's code and lands as main, so main's own check waits for it rather than running a
         # second full suite beside it, up to twice MAIN_CHECK_WAIT since the last main check.
-        if self.batch_running() and time.time() - float(record.get('finished') or 0) < 2 * self.MAIN_CHECK_WAIT:
+        # A running or aborted check's record keeps the last finish as last_finished: without it a
+        # restart read 'never checked' and ran main's suite beside the batch anyway.
+        last = record.get('finished') or record.get('last_finished') or 0
+        if self.batch_running() and time.time() - float(last) < 2 * self.MAIN_CHECK_WAIT:
             return
         # It waits for room at most MAIN_CHECK_WAIT: with eight workers and batches a review or a
         # loaded host was nearly always there, and main went unchecked for hours while it was red.
@@ -2217,7 +2220,8 @@ class Coordinator:
                                           start_time=main_check.start_time(child.pid), started=time.time(), path=path,
                                           tmp=tmp, slot_status=str(progress), green=record.get('green'), failures=record.get('failures'),
                                           red_since=record.get('red_since'), gated=record.get('gated'),
-                                          crashed=record.get('crashed'), flaky_history=record.get('flaky_history') or {}))
+                                          crashed=record.get('crashed'), flaky_history=record.get('flaky_history') or {},
+                                          last_finished=record.get('finished') or record.get('last_finished')))
         LOG.say(f'Checking main at {rev[:7]} in the background: {cmd}')
 
     def batch_running(self):
@@ -2261,7 +2265,8 @@ class Coordinator:
         child = {k: record[k] for k in ('pid', 'start_time') if k in record}
         if code is None:  # the runner stopped under it: check this revision again
             main_check.write(self.state, dict(state='aborted', rev='', green=green, failures=record.get('failures'),
-                                              red_since=record.get('red_since'), flaky_history=history, **child))
+                                              red_since=record.get('red_since'), flaky_history=history,
+                                              last_finished=record.get('last_finished'), **child))
             return
         try:
             log_text = (self.state / 'main-check.log').read_text(errors='replace')
