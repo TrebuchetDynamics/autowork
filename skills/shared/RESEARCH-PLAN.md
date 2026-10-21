@@ -27,7 +27,7 @@ Classify each proposed write by **artifact role**, not filename or extension:
 
 | Role | During writable planning |
 | --- | --- |
-| Existing plan/spec/requirements owners; complete TODO bodies and existing goals index | Save in-scope evidence, decisions, questions and ordered tasks through narrow Docs Sync. Preserve IDs, history, active contracts and unrelated batches. |
+| Existing plan/spec/requirements owners; task and goal records in `tasks/` | Save in-scope evidence and decisions in their document owners, and questions and ordered tasks through `autowork tasks`. Preserve IDs, history, active contracts and unrelated batches. |
 | Temporary research notes/results | Only bounded, allowed scratch; never implementation disguised as a spike. No scratch in no-write mode. |
 | Production code, tests, fixtures, executable instructions (including Markdown `SKILL.md`), CI, manifests and lockfiles | Implementation: describe future changes in tasks; do not write them during planning. |
 
@@ -43,12 +43,12 @@ hide them with reset/clean or overwrite unrelated work.
 
 1. Inventory **every requested outcome**, existing task ID and unresolved choice.
    Group shared decisions/evidence once. A clear one-line task still gets a complete
-   saved body; “no interview” means no unnecessary questions, not “implement now”.
-2. Save one coherent batch with complete task bodies: scope/exclusions, decisions,
-   sources/evidence, observable acceptance, exact checks, bounded `Touches:` and
-   actual shared `Resources:` where needed. Use the
+   saved record; “no interview” means no unnecessary questions, not “implement now”.
+2. Save one coherent batch with complete task records: scope/exclusions, decisions,
+   sources/evidence, observable acceptance, exact checks, bounded `touches` and
+   actual shared `resources` where needed. Use the
    [handoff](PLAN-HANDOFF.md#one-planning-pass-one-handoff). Do not stop when the
-   first task becomes clear or substitute a roadmap/count for requested bodies.
+   first task becomes clear or substitute a roadmap/count for requested records.
 3. Order by real prerequisites. Keep independent ready lanes; overlapping writes
    constrain scheduling but do not by themselves create product dependencies.
    Re-cut ownership where useful, or report overlap honestly rather than promise
@@ -81,13 +81,14 @@ hide them with reset/clean or overwrite unrelated work.
    Inspect commands before running them; a Verify 'dry-run' can still mutate files.
    Explicit no-write/dry-run requests allow only nonmutating checks.
 4. Replace upstream Phase 7's config-only finish and generic 'Run now?' question
-   with persistence through Docs Sync: save the supported decision, alternatives
-   rejected and why, evidence, remaining uncertainty, and actionable TODO task
-   bodies/dependencies. Synchronize goals.json where this repository uses it.
+   with persistence: save the supported decision, alternatives rejected and why,
+   evidence and remaining uncertainty in their document owners, and actionable
+   task records and dependencies through `autowork tasks`
+   ([work center](TODO-WORKCENTER.md)).
    Reuse existing document owners and task IDs; do not create an experiment config
    or handoff.json as a substitute for the repository plan and work queue.
-5. Read back affected documents and task bodies and run applicable consistency
-   checks. Report actual saved paths/IDs, checks and next action. If persistence
+5. Read back affected documents and task records and run applicable consistency
+   checks, including `autowork tasks validate --worktree .`. Report actual saved paths/IDs, checks and next action. If persistence
    fails, report what remains unsaved; a chat answer is not a saved plan. Unchanged
    conclusions may reuse existing durable evidence, citing its location. New
    material reasoning must be saved even if implementation scope stays unchanged.
@@ -148,7 +149,7 @@ its discovery pass. Read the pinned plan protocol, then adapt its phases here.
   user says finish/stop (including confirmation questions). A skipped choice stays
   open; a delegated choice becomes a planner call. Preserve corrections and reuse
   accepted decisions on resume. Keep remaining questions only on affected work.
-  Save answers, evidence, decisions and TODO tasks in one coherent affected batch; meaningful
+  Save answers, evidence, decisions and task records in one coherent affected batch; meaningful
   interim answers may be saved for continuity. Do not require another interview or
   a complete documentation pass per answer. Questions-only/read-only/no-write and
   dry-run stay nonmutating; return the refined brief in chat instead.

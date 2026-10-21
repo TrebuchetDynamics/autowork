@@ -17,7 +17,8 @@ for allowed writes and the full requested batch. Then read the
 [planning craft](../shared/PLANNING-CRAFT.md), the pinned
 [plan protocol](../autoresearch/upstream/plan.md) and the
 [interactive planning adaptations](../shared/RESEARCH-PLAN.md#interactive-planning-plan-with-me).
-Use Docs Sync to reconcile findings and answers into existing documentation. Follow
+Use Docs Sync to reconcile findings and answers into existing documentation, and
+`autowork tasks` to save tasks and goals ([work center](../shared/TODO-WORKCENTER.md)). Follow
 the [shared contract](../shared/COMMON-CONTRACT.md) and
 [plan handoff](../shared/PLAN-HANDOFF.md). For cancelled tasks, blockers, pending-task
 lists, validation performance, simpler test cleanup, companion frontends, onboarding
@@ -144,11 +145,11 @@ it pending; do not fabricate replies or poll.
 report. Inspect read-only, then answer in this order:
 
 1. The verdict in one line (ready, or not ready and why in a few words).
-2. The gaps that stand between now and ready, each as a task: saved through Docs
-   Sync with acceptance, checks and `Touches:` like any other, or, when it already
+2. The gaps that stand between now and ready, each as a task: saved with `autowork
+   tasks add` with acceptance, checks and `touches` like any other, or, when it already
    exists, named by its task ID with what changed. Tasks the runner can do now go to
    Now or Next; a gap that needs the owner (live authorization, a product choice, an
-   outside input) goes to `Needs decision` with the one question it needs.
+   outside input) goes to `Needs decision` with the one `Question:` note it needs.
 3. What was not checked, in one line.
 
 A list of findings or a "smallest path" without task IDs is not a finished answer.
@@ -164,10 +165,10 @@ an entire plan Accepted from one local answer. For a resumed interview, read sav
 answers and ask only what remains unresolved. Apply the
 [single-pass handoff](../shared/PLAN-HANDOFF.md#one-planning-pass-one-handoff);
 save meaningful answers during the interview, then batch final documentation and
-ledger checks once. Respect read-only scope and preserve concurrent edits, task IDs
+task-store checks once. Respect read-only scope and preserve concurrent edits, task IDs
 and active leases. Keep a question scoped to the tasks it affects; an unanswered
-optional feature must not hold independent accepted tasks. Do not restart Docs Sync
-after each response.
+optional feature must not hold independent accepted tasks. Do not validate and
+commit after each response.
 
 When no material intent/acceptance uncertainty remains, or the user asks to
 finish/stop, end questioning and give a concise readback:
@@ -181,43 +182,45 @@ If a draft needs acceptance, present the concrete draft and bind the reply to th
 scope. Approval covers what they saw: accepting a pitch or sequence does not approve
 an unseen mockup or added requirements.
 
-In writable mode, run a narrow docs-sync Maintain pass for the affected owners,
-applying its canonical ledger and concurrency rules. Default invocation already
-requests this persistence, so do not ask again whether to save. Accepted intent
-becomes bounded Now/Next tasks with dependencies, acceptance, verification and
-`Touches:` (plus `Resources:` where needed) per the
-[TODO work center](../shared/TODO-WORKCENTER.md). Cut and write them by the
+In writable mode, run a narrow docs-sync Maintain pass for the affected document
+owners. Default invocation already requests this persistence, so do not ask again
+whether to save. Accepted intent becomes bounded Now/Next tasks, saved with
+`autowork tasks add` (and their goal with `autowork tasks goal`), with dependencies,
+acceptance, verification and `touches` (plus `resources` where needed) per the
+[work center](../shared/TODO-WORKCENTER.md). Cut and write them by the
 [planning craft](../shared/PLANNING-CRAFT.md#size-each-task): small tasks with
 disjoint write sets, acceptance that names a failing test, and a pre-mortem whose
 guards land in the owning tasks.
 For future work whose content depends on implementation evidence, follow
 [rolling planning](../shared/TODO-WORKCENTER.md#rolling-planning): save only the
 first batch whose content is known now, at most 8 new tasks total including one
-closing `Kind: plan` task under the same Goal. Give it `Plan round: 1 of 10` by
-default and dependencies on every building task in the batch. Its Scope names the
-goal and what the next round must find out from the finished batch's evidence.
+closing planning task (`kind = "plan"`, set with `autowork tasks field ID kind plan`)
+under the same goal. Note `Plan round: 1 of 10` by default (`autowork tasks field
+ID "Plan round" "1 of 10"`) and give it dependencies on every building task in the
+batch. Its scope names the goal and what the next round must find out from the
+finished batch's evidence.
 When continuing an existing chain, advance N in `Plan round: N of M` without
 resetting its limit; apply the shared stopping rules. A small or single-batch plan
 adds no planning task and keeps the existing saving flow.
 
 Unanswered product choices remain outside executable work. Run the
 [builder check](../shared/PLANNING-CRAFT.md#builder-check-before-handoff) on the
-saved tasks and fold its answers in. Lint them with `goals.py plan-lint <repo>
---tasks ID,ID,...`: fix every error and report each warning with your call on it
-([plan handoff](../shared/PLAN-HANDOFF.md)). Validate changed docs and ledger, then
-run the actual consumer backlog-check when handing off accepted tasks. Put the accepted-plan
-anchor in each affected task's Sources, not only its Next action; repair supported
-missing bindings and rerun the same gate. Report the ready first task separately
-from a dependent successor: `backlog_reconciled_not_eligible` for a combined slice
-can be normal dependency ordering, not a blocker.
+saved tasks and fold its answers in. Validate changed docs and run `autowork tasks
+validate --worktree .`: fix every error and every draft you did not mean
+([plan handoff](../shared/PLAN-HANDOFF.md)), then commit the batch once. Put the
+accepted-plan anchor in each affected task's `Sources:` note and its goal's
+`source`. After the commit, `autowork tasks why ID` shows whether each task can run.
+Report the ready first task separately from a dependent successor: a successor
+waiting on its dependency is normal ordering, not a blocker.
 
 Finish with changed document paths, decisions captured, the planner's calls, open
-questions and the actual readiness result when a consumer check was applicable and
-executed; otherwise state that readiness was not assessed. Questions-only/read-only
+questions and the actual readiness result when `autowork tasks why` ran; otherwise
+state that readiness was not assessed. Questions-only/read-only
 mode finishes with a conversational summary, no Maintain pass and no writes.
 For a rolling plan, the final report says the chain will continue on its own under
 an already running, authorized Autowork runner, gives its round limit (10 by default),
-and explains how to stop it: move the planning task to `Needs decision`. Saving the
+and explains how to stop it: move the planning task to `Needs decision`
+(`autowork tasks place ID "Needs decision"`). Saving the
 chain does not start a runner or grant execution authority.
 Docs-only scope leaves the full requested batch undispatched. A later explicit
 instruction to implement enters the execution workflow. An Autowork-owned planning
