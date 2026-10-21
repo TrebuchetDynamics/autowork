@@ -410,6 +410,59 @@ class MainCheckTests(unittest.TestCase):
                         runner.check_main()
                         self.assertEqual(bool(started), starts)
 
+    def test_a_batch_that_passed_on_mains_tree_stands_in_for_the_main_check(self):
+        """TOOLSET-336-3c: the runner ran a full main check beside every batch check of main plus
+        its candidates, two full suites at once on a loaded host."""
+        from pi_autowork.coordinator import Coordinator
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, PI_AUTOWORK_MAIN_CHECK='true'):
+            runner = Coordinator.__new__(Coordinator)
+            runner.state, runner.repo, runner.base, runner.stop = Path(tmp), tmp, 'main', False
+            runner.tasks = lambda: []
+            started = []
+            runner.scratch_checkout = lambda *args: started.append(args) and None
+            receipts = Path(tmp) / 'full-check'
+            receipts.mkdir()
+            git = lambda repo, *args: 'tree1' if args[-1].endswith('^{tree}') else 'new'
+            for receipt, reused in ((dict(ok=True, tree='tree1', command='true', task='batch'), True),
+                                    (dict(ok=False, tree='tree1', command='true', task='batch'), False),
+                                    (dict(ok=True, tree='tree1', command='python3 other.py', task='batch'), False),
+                                    (dict(ok=True, tree='tree2', command='true', task='batch'), False)):
+                with self.subTest(receipt=receipt):
+                    started.clear()
+                    (receipts / 'tree-tree1.json').write_text(json.dumps(receipt))
+                    main_check.write(runner.state, {'state': 'green', 'rev': 'old', 'green': 'old', 'finished': 0})
+                    with patch('pi_autowork.coordinator.git', side_effect=git), \
+                            patch('os.getloadavg', return_value=(0, 0, 0)):
+                        runner.check_main()
+                    record = main_check.read(runner.state)
+                    self.assertEqual(bool(started), not reused)
+                    if reused:
+                        self.assertEqual((record['state'], record['rev'], record['green'], record['from_receipt']),
+                                         ('green', 'new', 'new', 'batch'))
+
+    def test_main_waits_for_a_running_batch_instead_of_checking_beside_it(self):
+        from pi_autowork.coordinator import Coordinator
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, PI_AUTOWORK_MAIN_CHECK='true'):
+            runner = Coordinator.__new__(Coordinator)
+            runner.state, runner.repo, runner.base, runner.stop = Path(tmp), tmp, 'main', False
+            runner.tasks = lambda: []
+            started = []
+            runner.scratch_checkout = lambda *args: started.append(args) and None
+            with patch('pi_autowork.coordinator.git', return_value='new'), \
+                    patch('os.getloadavg', return_value=(0, 0, 0)):
+                for job, train, ago, starts in (({'task': Coordinator.BATCH}, None, 600, False),
+                                                (None, {'task': Coordinator.BATCH}, 600, False),
+                                                ({'task': 'A'}, None, 600, True),
+                                                ({'task': Coordinator.BATCH}, None, 3 * Coordinator.MAIN_CHECK_WAIT, True)):
+                    with self.subTest(job=job, train=train, ago=ago):
+                        started.clear()
+                        runner.integration, runner.train = job, train
+                        main_check.write(runner.state, {'state': 'green', 'rev': 'old', 'finished': time.time() - ago})
+                        runner.check_main()
+                        self.assertEqual(bool(started), starts)
+
     def test_a_green_result_carries_over_planning_only_commits_and_not_code(self):
         """The runner's questions commits moved main 8 times in a day: each took a host check
         slot from a waiting review to check the same code."""
