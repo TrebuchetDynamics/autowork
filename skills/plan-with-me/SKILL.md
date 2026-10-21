@@ -56,9 +56,10 @@ before asking. Distinguish implemented behavior from intended behavior. Facts ar
 yours to find; never ask the user for something the repository can answer, or reopen
 settled answers without new contradictory evidence.
 
-Then size the work ([planning craft](../shared/PLANNING-CRAFT.md#know-what-you-know)).
-A clear task needs no interview: say so, save the task and stop. Otherwise the first
-response is three things, in this order:
+Then size the work and track its [consequential uncertainty](../shared/PLANNING-CRAFT.md#consequential-uncertainty).
+A fully specified request needs no interview: briefly explain that no material
+product choices remain, save the complete requested batch and stop planning.
+Otherwise the first response is two things, in this order:
 
 1. A short playback: what they want and why, in their words; what already exists
    that it builds on; and the draft shape, the tasks you would save, one line each
@@ -70,12 +71,11 @@ response is three things, in this order:
    thin, make it an open question that gets them describing a real moment ("What
    happened the last time you wished this existed?"). A choice between options gives
    your recommendation first, with its trade-off.
-3. Last, one line: they can skip the rest ("say *plan it for me* and I'll decide").
-   If they take it, continue as Plan For Me in this conversation with the evidence
-   already gathered; say any significant how-it-gets-made choice in one line.
 
-Do not open with the skip line or with process talk, and do not return only an
-interview plan, a process explanation or a list of topics.
+Do not habitually offer to skip before making a useful inquiry, or return only
+process talk or a list of topics. If the user explicitly switches to Plan For Me,
+continue in this conversation with the evidence and accepted decisions already
+gathered; record significant delegated choices as the planner's calls.
 
 For a concrete method gap or explicit protocol request, select one technique through
 [engineering](../engineering/SKILL.md); consult
@@ -101,13 +101,19 @@ think?", propose something concrete. Give a brief reason a question matters when
 is not obvious. Allow a free-form answer; never force an invented choice or present
 a recommendation as a known fact.
 
-Work in rounds. A round is either one open question, or the current frontier of
-ready decisions: those whose prerequisites are settled and that each have a clear
-recommendation. Number them, give your recommendation for each, and word each so
-"yes" accepts it ("Keep the CSV export as is? ➡️ yes: nobody asked to change it").
-A plain "yes" accepts every recommendation in the round. A question that depends on
-another still open belongs to a later round. Keep rounds to the few decisions that
-matter now; do not dump the whole territory. Wait for the reply before the next round.
+Work in rounds using the [uncertainty loop](../shared/PLANNING-CRAFT.md#consequential-uncertainty).
+Ask the highest-impact ready question, then wait for the reply. If presenting a few
+independent ready decisions together, number them and make each choice and its
+trade-off explicit. Bind each answer to its named choice: a bare "yes" accepts only
+one unambiguous proposal, never several separate recommendations. Clarify ambiguous
+scope without accepting affected choices or reopening choices already settled.
+A question whose prerequisites are still open belongs to a later round.
+
+After every answer, update only the uncertainty it actually resolves, investigate
+any changed repository facts, and ask the next consequential question. One answered
+question is not a finish condition; continue until relevant intent and concrete
+acceptance are actionable. Across a bulk batch, ask a shared constraint once and
+apply its answer to all affected tasks; keep unrelated ready work independent.
 
 Choose what to ask by its effect on the plan, not a fixed questionnaire. Cover the
 ground in [planning craft](../shared/PLANNING-CRAFT.md#cover-the-ground-not-a-script)
@@ -118,10 +124,11 @@ concrete user situation or acceptable outcome. When an answer contradicts accept
 intent or the code, explain the conflict and ask which direction governs; preserve
 history rather than silently replacing it.
 
-Play back as you go. As soon as one part is understood well enough to describe (what
-it's for and who it serves, or how one piece behaves), describe it back in a short
-paragraph, marking your guesses as guesses, and ask what is wrong or missing. Then
-move to the next part. Do not repeat the whole interview after each reply.
+Play back only new material understanding in a short paragraph, marking guesses
+as guesses. Ask what is wrong or missing when that playback adds material inference;
+otherwise use the next consequential question rather than a ritual confirmation.
+Corrections supersede the affected proposal and carry through saved decisions and
+tasks; preserve the earlier context as history, not competing active scope.
 
 `You decide` delegates that choice: recommend and record a compatible decision
 inside the stated constraints as the planner's call. It does not grant unrelated
@@ -162,11 +169,14 @@ and active leases. Keep a question scoped to the tasks it affects; an unanswered
 optional feature must not hold independent accepted tasks. Do not restart Docs Sync
 after each response.
 
-When the frontier is empty, or the user asks to finish, give a concise readback:
+When no material intent/acceptance uncertainty remains, or the user asks to
+finish/stop, end questioning and give a concise readback:
 outcome, users, success, scope/non-goals/anti-goals, constraints, their decisions,
-the planner's calls and remaining open questions. Ask for confirmation only if the
-synthesis introduces a material inference or unresolved conflict. Clear contextual
-approval counts; do not demand a magic word or re-approve answers already given.
+the planner's calls and remaining open questions. When the user has not asked to
+stop/finish, ask for confirmation only if the synthesis introduces a material
+inference or unresolved conflict. On stop/finish, leave such issues open without
+another question. Clear contextual approval counts; do not demand a magic word or
+re-approve answers already given.
 If a draft needs acceptance, present the concrete draft and bind the reply to that
 scope. Approval covers what they saw: accepting a pitch or sequence does not approve
 an unseen mockup or added requirements.
@@ -215,7 +225,7 @@ substep returns the batch to its same coordinator without another permission
 question; preserve its review and owned-commit requirements.
 
 Example: for "interview me about onboarding", inspect the current setup docs, play
-back what they cover, ask them to walk you through the last time someone got stuck
-setting up, and close with the skip line. Use the answer to establish an observable onboarding outcome before
+back what they cover and ask them to walk you through the last time someone got
+stuck setting up. Use the answer to establish an observable onboarding outcome before
 discussing installer details. Save it in the existing product/setup owner, not a
 competing interview spec.

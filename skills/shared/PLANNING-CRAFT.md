@@ -25,7 +25,9 @@ batch. Do not finish the invocation after planning just the first project.
 ## Facts are yours, decisions are theirs
 
 Look up anything the repository, tools or primary sources can answer: never ask the
-user for a fact. When a fact is slow to find, keep planning the branches that do not
+user for a fact. Inspect the relevant owner before asserting current behavior or
+absence; absence from one inspected file is not absence from the repository.
+When a fact is slow to find, keep planning the branches that do not
 depend on it. Put only preferences, intent and consequential trade-offs to the user.
 
 Cross-check what the user says against the code. When they disagree, surface it:
@@ -46,6 +48,49 @@ Anchor questions in specifics: "Walk me through the last time this broke", "If i
 could only do one of these well, which?", "What would make you wince if I got it
 wrong?" A guess they can correct ("I'm guessing this is because X keeps biting you?")
 often beats a question.
+
+## Consequential uncertainty
+
+Keep a compact working map in the existing brief or conversation, not a new
+mandatory artifact. Consider users/outcome, a concrete success/failure example,
+scope/non-goals, constraints, hard-to-reverse trade-offs and relevant edge cases.
+For each open point, identify the decision, acceptance or task a different answer
+would change. If it changes none, it is not an interview question. Distinguish
+repository facts, explicit user choices, delegated planner calls and assumptions.
+Reuse accepted answers on resume; only contradictory new evidence reopens them.
+
+Use this loop, not a question quota:
+
+1. Investigate facts and settle routine engineering details within authority.
+   Across a bulk batch, group a shared uncertainty once and note affected tasks.
+2. Ask the highest-impact unresolved user decision whose prerequisites are settled.
+   State its concrete context and consequence. Thin intent calls for a real example
+   ("What happened last time this got in your way?"), not an arbitrary menu. When
+   evidence narrows a real trade-off, offer two or three realistic alternatives,
+   your recommendation and what it gives up; allow a free-form answer.
+3. Bind the reply only to what it resolves. A bare "yes" accepts a single
+   unambiguous proposal, not several recommendations. For multiple choices, use
+   explicit choice-scoped answers; if scope is ambiguous, leave affected choices
+   open and clarify. Preserve all other settled decisions and user corrections.
+4. Play back new material understanding, update the map and affected acceptance,
+   then ask the next consequential question. For example, deciding capitalization
+   does not settle whether blank input is rejected: ask that next if it still
+   changes the requested behavior. Do not finish merely because one answer arrived
+   or the current round ran out; check the relevant map, including acceptance.
+
+| Observed state | Next action |
+| --- | --- |
+| Intent and acceptance actionable; no material open issue | Save the whole requested plan, no filler or routine-authority questions. |
+| User says "you decide" | Resolve that choice within constraints as a planner call; continue the loop. |
+| User says "skip" | Leave that choice open, continue independent decisions/work. |
+| User says "stop/finish" | End all questioning; save resolved progress and scoped open issues, no invented answers. |
+| User explicitly switches to Plan For Me | Reuse evidence and accepted decisions; choose within delegated scope, no interview restart. |
+
+Silence is not acceptance. No habitual opening skip pitch or closing blanket
+approval substitutes for consequential inquiry. In read-only mode, every saving
+step above becomes a chat summary, with no writes. In writable mode preserve
+resolved decisions for continuity and apply the single-pass handoff, without code
+edits or a full Docs Sync pass per reply. Open issues hold only affected tasks.
 
 ## Think wide, then say your calls
 
@@ -187,10 +232,13 @@ lists task IDs only; each `Consumes:` matches its producer's `Produces:`. Map ev
 requested outcome to a complete saved task or a scoped unresolved choice; future
 roadmap ideas do not replace the requested batch.
 
-Bring the "theirs" pile in one message, most important first. That is the only
-question round the check produces. Until answered, keep just the affected tasks
-pending; independent tasks stay ready. Skip the check for a clear task, a
-questions-only run or a dry run.
+Bring only the unanswered consequential "theirs" pile to the user, most important
+first, with each question's effect on the work. Reuse the uncertainty loop and
+choice-scoped answers; do not turn builder findings into a blanket approval or
+repeat settled questions. If an answer exposes a new material issue, resolve it
+before declaring the affected task ready. Keep just affected tasks pending;
+independent tasks stay ready. Skip the check for a clear task, a questions-only
+run or a dry run.
 
 ## Approval covers what you showed
 
