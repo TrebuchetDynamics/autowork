@@ -42,6 +42,9 @@ class InstallSkillsTests(unittest.TestCase):
                               env=self.env, text=True, capture_output=True)
 
     def test_installs_complete_skills_in_all_live_profiles(self):
+        cache = self.skill / 'obsolete/scripts/__pycache__'
+        cache.mkdir(parents=True)
+        (cache / 'old.pyc').write_bytes(b'cached')
         result = self.run_installer()
         self.assertEqual(result.returncode, 0, result.stderr)
         for home in (self.home, self.home / 'profiles/coder'):
@@ -49,6 +52,7 @@ class InstallSkillsTests(unittest.TestCase):
             self.assertEqual((target / 'SKILL.md').read_bytes(), (self.skill / 'SKILL.md').read_bytes())
             self.assertTrue(os.access(target / 'scripts/run.sh', os.X_OK))
             self.assertFalse((target / '__pycache__').exists())
+            self.assertFalse((target / 'obsolete').exists())
         for name in ('ghost', 'deleted'):
             self.assertFalse((self.home / 'profiles' / name / 'skills').exists())
 
