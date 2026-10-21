@@ -41,6 +41,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- **A menu bar on top, and a laid-out runner pane.** Every TUI screen now shows its keys on
+  one line at the very top, under the title, like a GUI app's "File Edit View" menu: the
+  runner keys (Log, Pause, Stop, Restart, Model, Fallback, Tasks, New, Quit), the task list's
+  and a task's answer keys, and Back/Wrap/Play on the log, worker and browse screens, which
+  lost their bottom footers. The runner pane under the table lists its facts in labelled rows
+  (Tasks, Waiting, Blocker, Questions, Main, Maintainer, Repository, Model, Toolset) under the
+  verdict line, each question's need on its own line.
 - **Colored, one-line task activity in the TUI** (TOOLSET-343-9356fe48). A worker's action
   log, a task's last actions and the Doing column color each action by kind: edits cyan,
   tests yellow, reads and searches dim, commands blue, sub-agents magenta, and verdicts bold,

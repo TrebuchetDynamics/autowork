@@ -88,17 +88,21 @@ async def main():
             detail = str(app.query_one('#detail').render())
             # TOOLSET-166-b4: the verdict first, then why tasks wait, grouped.
             assert detail.lstrip().startswith('india  Waiting — 19 wait for TASK-036 (overlapping files)'), detail
-            assert 'on you' not in detail and 'model gpt-6.1-sol' in detail, detail
-            assert '23 waiting: 19 wait for TASK-036 (overlapping files) · 4 on dependencies' in detail, detail
+            assert 'on you' not in detail and 'Model      gpt-6.1-sol' in detail, detail
+            assert 'Waiting    23: 19 wait for TASK-036 (overlapping files) · 4 on dependencies' in detail, detail
             runners = app.query_one('#runners')
             # TOOLSET-289-71 (test_runner_columns): the owner's four headlines.
             assert [str(c.label) for c in runners.columns.values()] == ['Runner', 'State', 'Active', 'Mergeable',
                                                                         'Waiting', 'Blocker', 'Total', 'Needs', 'Now']
             assert [str(c) for c in runners.get_row_at(0)[2:7]] == ['0', '0', '23', '1', '24']
             assert '19 wait for TASK-036 (overlapping' in str(runners.get_row_at(0)[7]), runners.get_row_at(0)  # cut to fit
-            assert '24 open: 0 active · 0 mergeable · 23 waiting · 1 blocker' in detail, detail
-            # The keys, each word's first letter highlighted in it; one key per action.
-            hints = app.query_one('#detail').render()
+            assert 'Tasks      24 open · 0 active · 0 mergeable · 23 waiting · 1 blocker' in detail, detail
+            # The keys, in the menu bar at the top (a GUI app's "File Edit View"), each word's first
+            # letter highlighted in it; one key per action. The detail pane holds no keys.
+            assert 'Quit' not in detail, detail
+            menubar = app.query_one('#menubar')
+            assert menubar.region.y < app.query_one('#runners').region.y, 'the menu bar is above the runners'
+            hints = menubar.render()
             assert str(hints).rstrip().endswith('Log  Pause  Stop  Restart  Model  Fallback  Tasks  New  Quit'), str(hints)
             marked = {str(hints)[span.start:span.end] for span in hints.spans if 'underline' in str(span.style)}
             assert marked == set('LPSRMFTNQ'), marked
@@ -154,7 +158,7 @@ async def main():
             await pilot.press('3')                      # the Held view
             await pilot.pause()
             assert [str(tasks.get_row_at(i)[1]) for i in range(tasks.row_count)] == ['T-9'], tasks.row_count
-            keys = str(app.screen.query_one('#task-detail').render())
+            keys = str(app.screen.query_one('#menubar').render())
             assert keys.rstrip().endswith('enter Open  Up  Down  Section  Clear  Aside  New  esc Back'), keys
             await pilot.press('u')                      # re-sort: an autowork move
             await pilot.pause()
@@ -252,7 +256,7 @@ async def main():
         before = len(calls)
         async with viewer.run_test(size=(140, 40)) as pilot:
             await pilot.pause()
-            assert 'view only' in str(viewer.query_one('#detail').render())
+            assert 'view only' in str(viewer.query_one('#menubar').render())
             for key in ('s', 'p', 'm', 'f', 'r', 'u', 'n'):
                 await pilot.press(key)
                 await pilot.pause()

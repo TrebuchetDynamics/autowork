@@ -24,7 +24,7 @@ from textual.app import App, ComposeResult  # noqa: E402
 from textual.binding import Binding  # noqa: E402
 from textual.containers import Horizontal, Vertical, VerticalScroll  # noqa: E402
 from textual.screen import ModalScreen, Screen  # noqa: E402
-from textual.widgets import (Button, DataTable, DirectoryTree, Footer, Header, Input, Label, OptionList,  # noqa: E402
+from textual.widgets import (Button, DataTable, DirectoryTree, Header, Input, Label, OptionList,  # noqa: E402
                              RichLog, Select, Static)
 
 REFRESH = 3.0
@@ -56,6 +56,25 @@ def hotkeys(text, keys):
             text.append(label[:at])
             text.append(label[at], style='bold underline cyan')
             text.append(label[at + 1:])
+
+
+class MenuBar(Static):
+    """A screen's keys on one line at the very top, under the title, as a GUI app's menu bar
+    ("File Edit View"), each word's key letter highlighted; every screen has one."""
+    DEFAULT_CSS = 'MenuBar { dock: top; height: 1; background: $boost; padding: 0 1; }'
+
+    def show(self, keys, prefix=''):
+        text = Text(no_wrap=True, overflow='ellipsis')
+        if prefix:
+            text.append(prefix + '  ', style='dim')
+        hotkeys(text, keys)
+        self.update(text)
+
+
+def detail_row(text, label, value, style=''):
+    """One 'Label      value' line of a detail pane: the label dim in a fixed column."""
+    text.append(f' {label:<11}', style='dim')
+    text.append(value + '\n', style=style)
 
 
 def tilde(path):
@@ -250,11 +269,12 @@ class LogScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header()
+        yield MenuBar(id='menubar')
         yield RichLog(id='full-log', wrap=True, highlight=False, markup=False)
-        yield Footer()
 
     def on_mount(self):
         self.title = f'{self.runner.name}: log'
+        self.query_one('#menubar', MenuBar).show([('esc', 'Back')])
         self.refresh_log()
         self.set_interval(LOG_REFRESH, self.refresh_log)
 
@@ -295,8 +315,8 @@ class WorkerScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header()
+        yield MenuBar(id='menubar')
         yield RichLog(id='worker-actions', wrap=True, highlight=False, markup=False)
-        yield Footer()
 
     def action_toggle_wrap(self):
         self.wrap = not self.wrap
@@ -310,6 +330,7 @@ class WorkerScreen(Screen):
 
     def on_mount(self):
         self.title = f'{self.runner.name}: {self.task_id}'
+        self.query_one('#menubar', MenuBar).show([('w', 'Wrap'), ('esc', 'Back')])
         self.refresh_actions()
         self.set_interval(LOG_REFRESH, self.refresh_actions)
 
@@ -357,6 +378,7 @@ class TasksScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header()
+        yield MenuBar(id='menubar')
         yield Static(id='task-views')
         yield DataTable(id='tasks', cursor_type='row', zebra_stripes=True)
         yield Static(id='task-detail')
@@ -420,7 +442,7 @@ class TasksScreen(Screen):
         keys = [(a.key, a.label) for a in self.actions(row)]
         if not self.app.view_only:
             keys.append(('n', 'New'))
-        hotkeys(text, ([('enter', 'Open')] if row else []) + keys + [('esc', 'Back')])
+        self.query_one('#menubar', MenuBar).show(([('enter', 'Open')] if row else []) + keys + [('esc', 'Back')])
         self.query_one('#task-detail', Static).update(text)
 
     def on_data_table_row_selected(self, event):
@@ -489,6 +511,7 @@ class TaskScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header()
+        yield MenuBar(id='menubar')
         with VerticalScroll(id='task-scroll'):
             yield Static(id='task-body')
         yield Static(id='task-answers')
@@ -541,12 +564,14 @@ class TaskScreen(Screen):
                 text.append_text(action_text(line, max(20, self.size.width - 15)))
                 text.append('\n')
         self.query_one('#task-body', Static).update(text)
-        keys = Text()
-        for answer in self.answers():
-            hotkeys(keys, [(answer.key, answer.label)])
-            keys.append(f'  {answer.explain}\n', style='dim')
-        hotkeys(keys, ([] if self.app.view_only else [('s', 'Section')]) + [('esc', 'Back')])
-        self.query_one('#task-answers', Static).update(keys)
+        answers = self.answers()
+        self.query_one('#menubar', MenuBar).show([(a.key, a.label) for a in answers]
+                                                 + ([] if self.app.view_only else [('s', 'Section')]) + [('esc', 'Back')])
+        explained = Text()  # what each answer does, under the task; the keys are in the menu bar
+        for answer in answers:
+            explained.append(f' {answer.label:<11}', style='bold')
+            explained.append(f'{answer.explain}\n', style='dim')
+        self.query_one('#task-answers', Static).update(explained)
 
     def action_answer(self, key):
         answer = next((a for a in self.answers() if a.key == key), None)
@@ -605,13 +630,14 @@ class BrowseScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header()
+        yield MenuBar(id='menubar')
         with Horizontal():
             yield RepoTree(self.root, id='tree')
             yield Static('Move to a repository; ready ones have a committed tasks/ store.', id='info')
-        yield Footer()
 
     def on_mount(self):
         self.title = f'start a runner: {self.root}'
+        self.query_one('#menubar', MenuBar).show([('p', 'Play'), ('esc', 'Back')])
 
     def on_tree_node_highlighted(self, event):
         node = event.node
@@ -695,6 +721,7 @@ class FleetApp(App):
     # -- layout -----------------------------------------------------------------
     def compose(self) -> ComposeResult:
         yield Header()
+        yield MenuBar(id='menubar')
         yield DataTable(id='runners', cursor_type='row', zebra_stripes=True)
         yield Static(id='detail')
         yield DataTable(id='lanes', cursor_type='row', zebra_stripes=True)
@@ -816,55 +843,54 @@ class FleetApp(App):
     def show_detail(self):
         detail = self.query_one('#detail', Static)
         runner = self.current()
+        menubar = self.query_one('#menubar', MenuBar)
         if runner is None:
             detail.update('No pi-autowork runners yet. Press n for a new one: choose a repository and play its service.')
             self.query_one('#lanes', DataTable).display = False
+            menubar.show([] if self.view_only else [('n', 'New'), ('q', 'Quit')])
             return
+        # The keys go in the menu bar at the top, like a GUI app's menu; the pane holds the facts.
+        if self.view_only:
+            menubar.show([('l', 'Log'), ('q', 'Quit')], prefix='view only')
+        else:
+            menubar.show([(a.key, a.label) for a in self.available(runner)] + [('n', 'New'), ('q', 'Quit')])
         text = Text()
         # First the answer to "is it stuck, and why": one sentence, wrapped, never cut.
         sentence, style = fleet_view.verdict(runner)
         text.append(f'{runner.name}  ', style='bold')
         text.append(sentence + '\n', style=style)
         active, mergeable, waiting, blocker, total = fleet_view.task_counts(runner)
-        text.append(f'{total} open: ', style='bold')
-        text.append(f'{active} active · {mergeable} mergeable · {waiting} waiting · {blocker} blocker\n')
+        detail_row(text, 'Tasks', f'{total} open · {active} active · {mergeable} mergeable · {waiting} waiting · {blocker} blocker')
         waiting = fleet_view.waiting_line(runner)
         if waiting:
-            text.append(f'{runner.waiting} waiting: ', style='dim')
-            text.append(waiting + '\n')
-        if runner.questions:  # what the owner can answer, easiest first (BLOCKERS.md)
-            count = len(runner.questions)
-            text.append(fleet_view.question_summary(runner), style='bold yellow')
-            text.append('  (b answers them)\n' if self.agent and not self.view_only else '\n', style='dim')
-            for q in runner.questions[:QUESTIONS_SHOWN]:
-                text.append(f'  {q.id}', style='bold')
-                text.append(f'  {q.effort}, unblocks {q.unblocks}: ', style='dim')
-                text.append(q.needs + '\n')
-            if count > QUESTIONS_SHOWN:
-                text.append(f'  +{count - QUESTIONS_SHOWN} more\n', style='dim')
-        checked = fleet_view.main_check.line(runner.main_check)
-        if checked:
-            text.append(checked + '\n', style='bold red' if checked.startswith('main red') else 'dim')
-        repair = fleet_view.maintainer_line(runner)
-        if repair:
-            text.append(repair + '\n', style='cyan')
+            detail_row(text, 'Waiting', f'{runner.waiting}: {waiting}')
         if runner.held:
             asked = {q.id for q in runner.questions}
-            text.append('blocker: ', style='bold yellow')
-            text.append(', '.join(f'{t} {fleet_view.blocker_detail(c, t in asked)}' if c not in fleet_view.WAIT_CAUSES
-                                  else f'{t} waits: {fleet_view.CAUSES[c]}' for t, c in runner.held) + '\n')
-        # Short: the full model IDs are in the m and M pickers. One line on 80 columns.
-        details = [tilde(runner.repo) or '(repository unknown)']
+            detail_row(text, 'Blocker', ', '.join(f'{t} {fleet_view.blocker_detail(c, t in asked)}' if c not in fleet_view.WAIT_CAUSES
+                                          else f'{t} waits: {fleet_view.CAUSES[c]}' for t, c in runner.held), 'bold red')
+        if runner.questions:  # what the owner can answer, easiest first (BLOCKERS.md)
+            count = len(runner.questions)
+            detail_row(text, 'Questions', fleet_view.question_summary(runner)
+                + ('  (b answers them)' if self.agent and not self.view_only else ''), 'bold yellow')
+            for q in runner.questions[:QUESTIONS_SHOWN]:
+                text.append(' ' * 12)
+                text.append(q.id, style='bold')
+                text.append(f'  {q.effort}, unblocks {q.unblocks}\n', style='dim')
+                text.append(' ' * 14 + q.needs + '\n')
+            if count > QUESTIONS_SHOWN:
+                text.append(' ' * 12 + f'+{count - QUESTIONS_SHOWN} more\n', style='dim')
+        checked = fleet_view.main_check.line(runner.main_check)
+        if checked:
+            detail_row(text, 'Main', checked, 'bold red' if checked.startswith('main red') else '')
+        repair = fleet_view.maintainer_line(runner)
+        if repair:
+            detail_row(text, 'Maintainer', repair, 'cyan')
+        # Short: the full model IDs are in the m and f pickers.
+        detail_row(text, 'Repository', tilde(runner.repo) or '(unknown)', 'dim')
         if runner.model:
-            details.append(f'model {runner.model.rsplit("/", 1)[-1]}, fallback {runner.fallback.rsplit("/", 1)[-1]}')
-        text.append('  '.join(details) + '\n', style='dim')
+            detail_row(text, 'Model', f'{runner.model.rsplit("/", 1)[-1]} · fallback {runner.fallback.rsplit("/", 1)[-1]}', 'dim')
         if runner.toolset:  # a development checkout instead of the Pi package: say so
-            text.append(f'toolset {runner.toolset} (PI_AUTOWORK_TOOLSET, not the Pi package)\n', style='yellow')
-        if self.view_only:
-            text.append('view only  ', style='dim')
-            hotkeys(text, [('l', 'Log'), ('q', 'Quit')])
-        else:
-            hotkeys(text, [(a.key, a.label) for a in self.available(runner)] + [('n', 'New'), ('q', 'Quit')])
+            detail_row(text, 'Toolset', f'{runner.toolset} (PI_AUTOWORK_TOOLSET, not the Pi package)', 'yellow')
         if text.plain != getattr(self, '_detail', None):
             self._detail = text.plain
             detail.update(text)
