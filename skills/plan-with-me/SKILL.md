@@ -12,7 +12,9 @@ metadata:
 
 The interactive counterpart to Plan For Me: research the repository, find out what
 the user actually wants and why through focused questions, and save the plan and
-tasks. Read the [planning craft](../shared/PLANNING-CRAFT.md), the pinned
+tasks. First read the [planning artifact and authority contract](../shared/RESEARCH-PLAN.md)
+for allowed writes and the full requested batch. Then read the
+[planning craft](../shared/PLANNING-CRAFT.md), the pinned
 [plan protocol](../autoresearch/upstream/plan.md) and the
 [interactive planning adaptations](../shared/RESEARCH-PLAN.md#interactive-planning-plan-with-me).
 Use Docs Sync to reconcile findings and answers into existing documentation. Follow
@@ -30,7 +32,9 @@ answered decisions and maintaining affected docs. Only `questions only`,
 `read-only`, `no changes` or `dry run` means no file changes; an audit or an "is it
 ready?" question is planning like any other and ends with tasks
 ([audits and readiness](#audits-and-readiness-questions)). It does not authorize code
-changes or start autowork. Honor any separate implementation authority already given.
+changes or start autowork. Standalone planning narrows this occurrence despite
+earlier unrelated implementation permission; an Autowork-owned planning substep
+returns to that same coordinator without execution inside the substep.
 
 The public skill ID is `plan-with-me`, and the source directory is
 `skills/plan-with-me/`. The public command means ask the user and plan together.
@@ -176,7 +180,7 @@ becomes bounded Now/Next tasks with dependencies, acceptance, verification and
 [planning craft](../shared/PLANNING-CRAFT.md#size-each-task): small tasks with
 disjoint write sets, acceptance that names a failing test, and a pre-mortem whose
 guards land in the owning tasks.
-For accepted work too large for one batch, follow
+For future work whose content depends on implementation evidence, follow
 [rolling planning](../shared/TODO-WORKCENTER.md#rolling-planning): save only the
 first batch whose content is known now, at most 8 new tasks total including one
 closing `Kind: plan` task under the same Goal. Give it `Plan round: 1 of 10` by
@@ -205,9 +209,10 @@ For a rolling plan, the final report says the chain will continue on its own und
 an already running, authorized Autowork runner, gives its round limit (10 by default),
 and explains how to stop it: move the planning task to `Needs decision`. Saving the
 chain does not start a runner or grant execution authority.
-Docs-only scope leaves ready tasks undispatched. Existing implementation authority
-permits the established autowork handoff without another permission question;
-preserve review and owned-commit requirements.
+Docs-only scope leaves the full requested batch undispatched. A later explicit
+instruction to implement enters the execution workflow. An Autowork-owned planning
+substep returns the batch to its same coordinator without another permission
+question; preserve its review and owned-commit requirements.
 
 Example: for "interview me about onboarding", inspect the current setup docs, play
 back what they cover, ask them to walk you through the last time someone got stuck

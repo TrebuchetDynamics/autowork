@@ -1,5 +1,9 @@
 # Accepted plan handoff
 
+First load the [planning artifact and authority contract](RESEARCH-PLAN.md#planning-artifact-and-authority-contract).
+It owns write classification, no-write scopes, standalone versus coordinator-owned
+planning and the full requested batch. This handoff does not widen that authority.
+
 Keep ideas and unanswered decisions in their existing documentation owner until
 accepted. An accepted plan section names its status (`Status: Accepted`), scope,
 acceptance and sources. Preserve existing task/goal IDs and completed history.
@@ -73,11 +77,13 @@ the next stage. Repeat only checks invalidated by changed inputs, failed evidenc
 or repository-required fresh checks. A cached readiness result is not execution evidence: Autowork still checks current
 source, actual process/workspace ownership and candidate before implementation. Report stale receipts honestly rather than repinning them.
 
-Standalone planning remains planning-only. When Autowork invoked planning under
-existing implementation authority, return the resolved decision and ready task to
-that same coordinator in the same occurrence. Do not ask “implement now?”, start
-a second planning cycle, or spawn a competing worker. Genuine product decisions
-or external authority remain explicit; choose routine reversible details yourself.
+Standalone planning stops after the requested batch even if earlier unrelated work
+had implementation permission. A later explicit instruction to implement starts the
+execution workflow. When Autowork invoked this planning substep, return the resolved
+decision and batch to that same coordinator in the same occurrence; do not execute
+inside the substep, ask “implement now?”, restart planning or spawn a competing
+worker. Genuine product decisions or external authority remain explicit; choose
+routine reversible planning details yourself.
 
 Resolve `goals.py` from the sibling docs-sync skill as described in the
 [shared contract](COMMON-CONTRACT.md). Use its supported mutations and validate
@@ -106,7 +112,7 @@ primary focus unless the user reprioritizes it, but an explicitly authorized nam
 slice may execute within that scope after current dependency, source and ownership
 checks. No start_goal admission, fallback file or Kanban card is required.
 
-The current session executes the selected contract, retaining task IDs, scope,
+Under execution authority, the current coordinator executes the selected contract, retaining task IDs, scope,
 sources, expected change, acceptance, verification and stop conditions. Mark
 in_progress when actual authorized implementation begins, not from mere selection.
 Optional delegated workers return source-bound results to the integration owner;
@@ -118,3 +124,14 @@ remaining milestone gaps. Do not mark unverified work complete.
 A TODO-only repository can execute its complete accepted task without generating
 an index or passing an index-only consumer. When goals.json exists, preserve its
 validated synchronization, dependencies and concurrency/revision guards.
+
+## Scoped Skills convention
+
+An optional `Skills:` line stays in the existing full task body, not a new required
+field, registry or migration. Follow the
+[scoped recommendation convention](https://github.com/TrebuchetDynamics/autowork/blob/main/docs/workflows.md#recommendations-autowork-can-use--toolset-137-cd)
+when recommending a method: resolvable source, phase/purpose, expected artifact or
+check and fallback; distinguish recommendations from actual requirements. A skill
+adds no write, execution, installation or publication authority. Preserve this
+line with the rest of the body for the later execution handoff; resolving and
+applying recommendations belongs to that scoped workflow.

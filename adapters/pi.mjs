@@ -38,8 +38,16 @@ export default function register(pi) {
         if (routed) args = rest.join(' ');
         const file = new URL(`${target}/SKILL.md`, skillsRoot);
         const body = await readFile(file, 'utf8');
+        const planning = ['plan-for-me', 'plan-with-me'].includes(target)
+          || (target === 'autoresearch' && (protocol === 'plan' || (!protocol && first === 'plan')));
+        const contract = new URL('../skills/shared/RESEARCH-PLAN.md', import.meta.url);
+        const boundary = planning
+          ? `Planning contract. Source: ${fileURLToPath(contract)}\n`
+            + `Resolve its references from that directory.\n\n${await readFile(contract, 'utf8')}\n\n`
+          : '';
         const message = `Use this portable Autowork workflow. Source: ${fileURLToPath(file)}\n`
-          + `Resolve its relative references from that directory.\n\n${body}\n\n`
+          + boundary
+          + `Resolve the workflow references from ${fileURLToPath(new URL('./', file))}.\n\n${body}\n\n`
           + (protocol ? `Selected subcommand: ${protocol}\n\n` : '')
           + (mode ? `Selected mode: ${mode}\n\n` : '')
           + `User request (preserve scope and restrictions):\n${args}`;
