@@ -18,4 +18,4 @@ checks = ["python3 scripts/check.py tests/test_update_bundle.py"]
 exclusions = []
 +++
 
-- Also seen: CI on 15b8d15d failed ScopedUpdateTests.test_killed_after_slot_move_resumes_original_backup in the same class and passed on the next commit; fix it with the same approach, under the same acceptance
+- Also seen: CI on 15b8d15d: test_killed_after_slot_move_resumes_original_backup; CI on 5a8932d9: test_done_historical_card_does_not_veto_deployment; a local full check: test_claim_from_prior_boot_does_not_veto_install. All in ScopedUpdateTests and all passed on rerun: fix the class's shared timing cause under the same acceptance
