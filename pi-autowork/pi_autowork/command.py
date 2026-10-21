@@ -18,7 +18,9 @@
     autowork remove [target]      stop and remove the service; state and worktrees stay
     autowork run [dir]            run the runner here, in the foreground (debugging)
     autowork web [--port N] [--host H] [--view-only]
-    autowork blockers [dir]       answer what blocks the queue (/blockers in an agent)
+    autowork blockers [dir]       answer what blocks the queue (times the owner session)
+    autowork attention MINUTES [--task ID] [--note TEXT] [target]
+                                  record other owner time in private runner state
     autowork update [flags]       update the installed suite in place (install.sh update)
     autowork clear-held [target] [TASK...]
                                   return held commits to integration as technical recovery
@@ -53,9 +55,10 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pi_autowork import fleet_view, scorecard, service, task_commands, task_migrate  # noqa: E402
+from pi_autowork import accounting, fleet_view, scorecard, service, task_commands, task_migrate  # noqa: E402
 
 COMPONENT = Path(__file__).resolve().parents[1]
 TOOLSET = COMPONENT.parent
@@ -173,8 +176,16 @@ def cmd_start(args, paths):
         raise Fail(f'{ready.repo or ready.path} is not ready for Autowork ({ready.mark}):\n' + '\n'.join(problems))
     name = fleet_view.instance(ready.repo)
     unit = f'pi-autowork@{name}.service'
-    fleet_view.paused_marker(paths['env_dir'], name).unlink(missing_ok=True)  # starting ends a pause
     state = service_state(paths, name)
+    if state in ('active', 'installed'):
+        env_file = Path(paths['env_dir']) / f'{name}.env'
+        saved = fleet_view.read_env(env_file)
+        conflicts = [key for key in service.SETTING_NAMES
+                     if key in os.environ and saved.get(key) != os.environ[key]]
+        if conflicts:
+            raise Fail(f'requested service settings conflict with {env_file}: {", ".join(conflicts)}. '
+                       f'Apply them with: bash {script(paths)} --install-service --repo {ready.repo}')
+    fleet_view.paused_marker(paths['env_dir'], name).unlink(missing_ok=True)  # starting ends a pause
     # Services run from the Pi package installed from PI_SOURCE. A unit that runs another
     # copy (a package installed under an older name) is moved onto it:
     # reinstalling rewrites the shared unit and restarts this service, whose workers pause
@@ -427,6 +438,16 @@ def cmd_capabilities(args, paths):
     return 0
 
 
+def cmd_attention(args, paths):
+    repo, name = resolve(args.target, paths)
+    try:
+        accounting.attention(repo, args.minutes, task=args.task, note=args.note, root=paths['state_root'])
+    except (OSError, ValueError) as exc:
+        raise Fail(str(exc)) from exc
+    print(f'{name}: recorded {args.minutes:g} owner minutes' + (f' for {args.task}' if args.task else ''))
+    return 0
+
+
 def cmd_blockers(args, paths):
     repo, _ = resolve(args.target, paths)
     agent = fleet_view.blockers_agent()
@@ -434,8 +455,15 @@ def cmd_blockers(args, paths):
         raise Fail('no agent for /blockers: install claude or pi, or set AUTOWORK_AGENT')
     # In the repository: started from the TUI or the home directory, Claude Code asked whether
     # to trust the whole home directory, and the session was not the repository's.
-    os.chdir(repo)
-    os.execvp(agent[0], [*agent, fleet_view.blockers_prompt(agent, repo)])
+    started = time.monotonic()
+    try:
+        return subprocess.run([*agent, fleet_view.blockers_prompt(agent, repo)], cwd=repo).returncode
+    finally:
+        try:
+            accounting.attention(repo, (time.monotonic() - started) / 60,
+                                 category='blockers', root=paths['state_root'])
+        except (OSError, ValueError) as exc:
+            print(f'autowork: could not record blocker-session time: {exc}', file=sys.stderr)
 
 
 def cmd_clear_held(args, paths):
@@ -490,6 +518,11 @@ def parser():
                             ('blockers', 'answer what blocks the queue')):
         item = sub.add_parser(name, help=help_text)
         item.add_argument('target', nargs='?', help='runner name, repository path or . (default: .)')
+    attention = sub.add_parser('attention', help='record owner minutes in private runner state')
+    attention.add_argument('minutes', type=float)
+    attention.add_argument('target', nargs='?', help='runner name, repository path or . (default: .)')
+    attention.add_argument('--task', help='task ID (otherwise runner-level attention)')
+    attention.add_argument('--note', help='private note, never committed')
     clear = sub.add_parser('clear-held', help='return held commits to integration (technical recovery, no decision)')
     clear.add_argument('target', nargs='?', help='runner name, repository path or . (default: .)')
     clear.add_argument('tasks', nargs='*', help='task IDs to clear (default: every held task)')
@@ -537,7 +570,7 @@ COMMANDS = {'ls': cmd_ls, 'status': cmd_status, 'logs': cmd_logs, 'start': cmd_s
             'pause': cmd_pause, 'resume': lambda a, p: cmd_pause(a, p, resume=True),
             'model': cmd_model, 'models': cmd_models, 'scorecard': cmd_scorecard,
             'clear-held': cmd_clear_held, 'update': cmd_update, 'tasks': cmd_tasks,
-            'capabilities': cmd_capabilities,
+            'capabilities': cmd_capabilities, 'attention': cmd_attention,
             'migrate': lambda a, p: task_migrate.run(a, resolve(a.repo, p)[0])}
 
 

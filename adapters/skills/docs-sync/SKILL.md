@@ -30,7 +30,12 @@ which writes nothing; without commit authority: `--no-commit`) and act on its
 repository's runner drains and converts it; report pending, not done),
 `MIGRATION_BLOCKED` (report the named refusal), `INVALID_STORE` or
 `ACTIVATION_PENDING` (the running runner's release cannot read `tasks/`; the owner
-restarts it). Its `state` is `none` for a new repository (bootstrap goals
+restarts it). When the owner's request says `force` (`/docs_sync force`), run
+`autowork tasks prepare --force .` instead (needs `prepare_api` 3): it converts now,
+stopping the service, live workers and other lease holders, setting every attempt aside
+with its work kept, and committing the owner's planning edits; report what it stopped
+and set aside. Force never discards work or data; report a `MIGRATION_BLOCKED` it still
+returns rather than deleting anything. Its `state` is `none` for a new repository (bootstrap goals
 from its `accepted` headings only, else report the missing intent and create no
 queue), and its `diagnostics` name defects with the `autowork tasks` command that
 repairs each: repair only from accepted evidence, never grant ownership, `live` or
@@ -41,8 +46,14 @@ task store, through `autowork tasks`: `goal ID --title --source path#anchor
 --priority N` for goals, `add --goal G --title T --short S` with `--scope`,
 `--acceptance`, `--checks`, `--touches` and `--depends-on` for tasks, `field ID
 LABEL VALUE` for other typed fields or notes (such as `Sources`), `place` and `move`
-for section and rank, `supersede --by OTHER --reason` to retire a task and `done
---evidence` to close one without the engine. Give each executable task its
+for section and rank, `supersede --by OTHER --reason` to retire a task and `done ID
+--by WHO --reason TEXT [--evidence REF]` to close any task kind manually. Manual
+closure records actor, timestamp and reason, never a receipt or verification claim.
+Meeting a goal or satisfying a `verified_depends_on` prerequisite needs coordinator
+verification or an explicit owner `owner_waiver`/`owner_qualification` record (set
+through `field`, naming authority, criterion and evidence); never invent one.
+Ordinary dependencies are unaffected. CLI/fleet views and scorecard counts keep
+Manual distinct from Verified. Give each executable task its
 `touches` (widen when unsure, or set `resources` to `exclusive` with a
 reason) so parallel Autowork can run tasks together. Keep Now/Next/Needs decision
 distinct; priority is section, then rank. Only typed fields (`ownership`,

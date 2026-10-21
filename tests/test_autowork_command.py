@@ -52,7 +52,7 @@ echo "script $*" >> "$FAKE_LOG"
 if [[ $1 == --install-service ]]; then
   repo=$3; name=$(basename "$repo")
   mkdir -p "$PI_AUTOWORK_ENV_DIR"
-  echo "PI_AUTOWORK_REPO=$repo" > "$PI_AUTOWORK_ENV_DIR/$name.env"
+  printf 'PI_AUTOWORK_REPO=%s\nPI_AUTOWORK_STATE_DIR=%s\n' "$repo" "$PI_AUTOWORK_STATE_DIR" > "$PI_AUTOWORK_ENV_DIR/$name.env"
   touch "$FAKE_UNITS/pi-autowork@$name.service.enabled" "$FAKE_UNITS/pi-autowork@$name.service.active"
   echo "Installed and started pi-autowork@$name.service"
 fi
@@ -123,6 +123,38 @@ class AutoworkCommandTests(unittest.TestCase):
         self.assertFalse((self.env_dir / 'india.paused').exists())  # starting ends the pause
         self.assertIn('Started pi-autowork@india.service', restarted.stdout)
         self.assertIn('systemctl --user enable --now pi-autowork@india.service', self.calls())  # survives a reboot
+
+    def test_start_refuses_conflicting_service_settings_without_starting(self):
+        self.assertEqual(self.aw('start', str(self.repo)).returncode, 0)
+        settings = self.env_dir / 'india.env'
+        saved = settings.read_text() + ('PI_AUTOWORK_PUSH=1\nPI_AUTOWORK_TASK_TIMEOUT=600\n'
+                                       'PI_AUTOWORK_WORKERS=2\nPI_AUTOWORK_NO_FALLBACK=1\n'
+                                       'PI_AUTOWORK_ALLOW_HERMES=1\n')
+        settings.write_text(saved)
+        for active in (False, True):
+            marker = self.units / 'pi-autowork@india.service.active'
+            marker.touch() if active else marker.unlink(missing_ok=True)
+            for key, value in (('PI_AUTOWORK_PUSH', '0'), ('PI_AUTOWORK_TASK_TIMEOUT', '900'),
+                               ('PI_AUTOWORK_WORKERS', '8'), ('PI_AUTOWORK_NO_FALLBACK', '0'),
+                               ('PI_AUTOWORK_ALLOW_HERMES', '0'), ('PI_AUTOWORK_REVIEW', '0')):
+                with self.subTest(active=active, setting=key):
+                    paused = self.env_dir / 'india.paused'
+                    paused.write_text('paused\n')
+                    self.log.write_text('')
+                    self.env[key] = value
+                    result = self.aw('start', str(self.repo))
+                    del self.env[key]
+                    self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn(key, result.stderr)
+                    self.assertIn(str(settings), result.stderr)
+                    self.assertIn('--install-service', result.stderr)
+                    self.assertEqual(settings.read_text(), saved)
+                    self.assertTrue(paused.exists())
+                    self.assertEqual(marker.exists(), active)
+                    self.assertFalse(any(c.startswith('script') or 'enable' in c or 'restart' in c
+                                         for c in self.calls()))
+        self.env['PI_AUTOWORK_PUSH'] = '1'  # a matching request remains idempotent
+        self.assertEqual(self.aw('start', str(self.repo)).returncode, 0)
 
     def test_start_reinstalls_a_service_whose_unit_script_is_gone(self):
         self.aw('start', str(self.repo))

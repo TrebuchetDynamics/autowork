@@ -66,11 +66,44 @@ def save(path, value):
             os.unlink(temporary)
 
 
+# How long a caller that names no wait retries a lock before BlockingIOError. writer.lock
+# and dispatch.lock guard short sections (state files; one dispatch, landing or set-aside
+# pass), so a brief wait turns a collision with the runner's own background job into a
+# short delay instead of a failed cycle. integration.lock is held through whole reviews:
+# its callers expect an immediate answer and handle it.
+LOCK_WAIT = {'writer.lock': 30.0, 'dispatch.lock': 30.0}
+
+
+class LockBusy(BlockingIOError):
+    """A lock still held after the wait: ``lock`` (its file name) and ``holder`` (the PID
+    that recorded itself on taking it, or None)."""
+
+    def __init__(self, name, holder):
+        super().__init__(f'{name} is held' + (f' by PID {holder}' if holder else ''))
+        self.lock, self.holder = name, holder
+
+
+def holder(fd):
+    try:
+        text = os.pread(fd, 32, 0).decode().strip()
+        return int(text) if text.isdigit() else None
+    except (OSError, ValueError):
+        return None
+
+
 @contextmanager
-def lock(path, wait=0):
-    """Exclusive, non-blocking: BlockingIOError when held, after retrying for ``wait`` seconds."""
+def lock(path, wait=None):
+    """Exclusive, non-blocking: LockBusy (a BlockingIOError) when held, after retrying for
+    ``wait`` seconds (default: LOCK_WAIT by file name, else 0). The holder records its PID
+    in the file, so a refusal names who holds it."""
     path = safe_path(path)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if wait is None:
+        wait = LOCK_WAIT.get(path.name, 0.0)
+        try:  # AUTOWORK_LOCK_WAIT caps these defaults (0: answer at once, as before them)
+            wait = min(wait, float(os.environ['AUTOWORK_LOCK_WAIT']))
+        except (KeyError, ValueError):
+            pass
     fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     try:
         end = time.monotonic() + wait
@@ -80,9 +113,20 @@ def lock(path, wait=0):
                 break
             except BlockingIOError:
                 if time.monotonic() >= end:
-                    raise
+                    raise LockBusy(path.name, holder(fd)) from None
                 time.sleep(0.2)
-        yield fd
+        try:
+            os.ftruncate(fd, 0)
+            os.pwrite(fd, f'{os.getpid()}\n'.encode(), 0)
+        except OSError:
+            pass  # the record only names the holder; the flock is the lock
+        try:
+            yield fd
+        finally:
+            try:
+                os.ftruncate(fd, 0)  # released: no stale holder is named
+            except OSError:
+                pass
     finally:
         os.close(fd)
 
@@ -639,7 +683,7 @@ def execute(args):
     common_git = Path(git(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir'))
     common = safe_path(common_git / 'autowork-execution')
     state = safe_path(Path(args.state_dir).expanduser()) if args.state_dir else common
-    with lock(state / 'goal-handoff.lock'), lock(common / 'writer.lock') as fd:
+    with lock(state / 'goal-handoff.lock'), lock(common / 'writer.lock', wait=0) as fd:  # held through --run: refuse at once
         # Lazy import keeps the sequential CLI unchanged when no parallel lease exists.
         if (common / 'coordinator.json').exists():
             from parallel_state import live_coordinator
@@ -770,8 +814,9 @@ def parallel_main(args):
             if args.worker_timeout <= 0 or args.min_free_mem_mb < 0:
                 raise ValueError('--worker-timeout must be positive and --min-free-mem-mb not negative')
             result = parallel_integrate.dispatch_with_retries(args)
-    except BlockingIOError:
-        result = {'outcome': 'BUSY', 'reason': 'Repository execution lock is held by a live operation.'}
+    except BlockingIOError as exc:
+        result = {'outcome': 'BUSY', 'reason': 'Repository execution lock is held by a live operation.',
+                  'lock': getattr(exc, 'lock', None), 'holder': getattr(exc, 'holder', None)}
     except subprocess.TimeoutExpired as exc:
         result = host_busy(exc)
     except (ValueError, OSError, subprocess.SubprocessError, SystemExit) as exc:

@@ -25,6 +25,13 @@ claim of a tagged release, completed installation or live workflow qualification
   worktree, branch and uncommitted files kept, releases their claims (the tasks convert
   open and dispatch fresh), converts under its own coordinator lease, and plans from
   `tasks/`. A live worker is never stopped, a live lease never broken and no task closed.
+- **`/docs_sync force`** runs `autowork tasks prepare --force` (prepare API 3): the owner's
+  override converts a legacy repository now instead of deferring. It stops the
+  repository's service, ends live workers and any other lease holder, sets every attempt
+  aside with its worktree, branch and uncommitted files kept (repeated holds too),
+  releases the claims, commits the owner's TODO.md/goals.json edits, converts, and starts
+  the service again. It still never discards work or data: content a conversion cannot
+  account for, or an invalid queue, answers MIGRATION_BLOCKED.
 - `autowork capabilities`: the executable's release, commands, `tasks` verbs and prepare
   API as JSON. Docs Sync checks it first and reports `TOOLCHAIN_MISMATCH` (with `autowork
   update` as the fix) instead of falling back to TODO.md when the installed CLI is older
@@ -34,6 +41,29 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- **Shared test modules no longer serialize work** (TOOLSET-341-eb82856d). A path named by
+  three unfinished contracts became a hot file, and tasks sharing it waited for each other;
+  nearly every engine task adds tests to `tests/test_pi_autowork.py`, so five tasks waited on
+  one for that file while seven of eight workers sat idle. Test modules (under `tests/`, or
+  `test_*.py` / `*_test.py`) now only rank, like directories; production files keep the
+  hot-file rule.
+- **One full check of main, not two** (TOOLSET-336-3c). The runner started a background
+  full check of main beside every batch check of main plus its candidates, two full suites
+  at once on an already loaded host. Main's check now waits while a batch or the merge
+  train runs (up to twice MAIN_CHECK_WAIT since its last check), and when a passing full
+  check of the same command already ran on exactly main's tree (its `full-check/tree-*.json`
+  receipt), main is recorded green from it instead of running the suite again.
+- **No more "Repository busy" pauses on the runner's own work** (TOOLSET-333-34). The
+  dispatch pass took `writer.lock` and `dispatch.lock` without waiting, so whenever the
+  runner's own background review, landing or a status read held one for its few seconds,
+  the whole cycle failed and the runner paused a full interval with a blocker. Those two
+  short-held locks are now waited for (30 s) by default; `integration.lock`, held through
+  whole reviews, still answers at once, and the sequential run that holds `writer.lock`
+  through its command still refuses at once. A lock records its holder's PID, so a BUSY
+  answer names the lock and holder: the runner retries its own job's lock within seconds,
+  silently, and names the job once only after 10 minutes
+  (`PI_AUTOWORK_OWN_LOCK_BOUND`); another process's lock is reported as before.
+
 - **Budgets removed (breaking).** Autowork enforces no token, cost or time budget:
   `PI_AUTOWORK_MAX_COST` and `PI_AUTOWORK_COST_WINDOW`, the runner's budget drain and
   status line, the engine's `--budget-seconds` command allowance (`LIMIT_REQUIRED`,
@@ -42,6 +72,11 @@ claim of a tagged release, completed installation or live workflow qualification
   still declares a budget is not held for it. Cost and tokens are still recorded per
   run in `runs.jsonl`, for measurement only; timeouts, runtime, cycle and failure
   limits and the owner's authority over spending money are unchanged.
+- **Finished work lands first.** The merge backlog that pauses fresh dispatch now defaults
+  to half the worker count, at least 2 (4 for 8 workers), instead of twice it: at 16 it never
+  paused, and seven finished commits waited up to 1h39m while new workers took the CPU their
+  checks needed. The pause still needs the oldest to have waited `PI_AUTOWORK_MERGE_BACKLOG_AFTER`
+  (20 minutes) and lifts once the count drops below the threshold.
 - **Merge train.** While a batch runs its full check, candidates that finish meanwhile board
   the next car: a batch built on the running batch's chain tip (published before its check)
   and checked beside it, needing only one candidate. Its verdicts hold for the trees the
@@ -1481,7 +1516,7 @@ claim of a tagged release, completed installation or live workflow qualification
 - Hermes skill discovery publishes Plan With Me, Plan For Me and Docs Sync;
   previous command spellings remain compatibility aliases (`bcb72c5`).
 - Grill Me becomes a challenge mode in the Hermes plugin catalog; portable
-  catalog alignment remains tracked in [TODO.md](TODO.md) (`bcb72c5`).
+  catalog alignment remains tracked in the task queue (then TODO.md) (`bcb72c5`).
 - Autowork routes stalled preparation to bounded planning, persists findings and
   retries execution within existing authority (`bcb72c5`). This is a workflow
   contract and tested helper behavior, not proof of live task completion.

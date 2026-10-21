@@ -483,7 +483,7 @@ class Fixture(unittest.TestCase):
     def stop_workers(self):  # failures must not leave fake workers writing after cleanup
         slots = Path(self.git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')) / 'autowork-execution/slots'
         for path in slots.glob('*.json') if slots.exists() else []:
-            pid = json.loads(path.read_text()).get('worker', {}).get('pid')
+            pid = (json.loads(path.read_text()).get('worker') or {}).get('pid')  # a slot may record None
             if pid:
                 try:
                     os.killpg(pid, signal.SIGKILL)
@@ -1581,16 +1581,23 @@ class EngineTests(Fixture):
             self.assertEqual(holder.stdout.readline().strip(), 'held')
             return holder
 
+        # The runner's own bound is what this checks: the engine's short-lock wait is off.
+        env = {**self.env, 'AUTOWORK_LOCK_WAIT': '0'}
         first = hold(60)
-        result = self.run_runner('--until-empty', env={**self.env, 'PI_AUTOWORK_BUSY_WAIT': '2'})
+        result = self.run_runner('--until-empty', env={**env, 'PI_AUTOWORK_BUSY_WAIT': '2'})
         self.assertEqual(result.returncode, 4, result.stdout + result.stderr)  # past the bound: busy, as before
         self.assertIn('Repository busy', result.stdout + result.stderr)
         first.kill()
         first.wait()
         hold(4)
-        result = self.run_runner('--until-empty', env={**self.env, 'PI_AUTOWORK_BUSY_WAIT': '60'})
+        result = self.run_runner('--until-empty', env={**env, 'PI_AUTOWORK_BUSY_WAIT': '60'})
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('waiting for it to finish', result.stdout)
+        # With the default short-lock wait, the same brief hold is absorbed: no busy at all.
+        hold(4)
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn('Repository busy', result.stdout + result.stderr)
         self.assertTrue(self.done('A', 'B', 'C'))
 
     def test_a_reload_keeps_the_runner_and_its_worker_and_applies_new_settings(self):
@@ -2285,6 +2292,45 @@ class EngineTests(Fixture):
         self.assertTrue(self.done('A', 'B', 'C'))
         self.assertEqual(self.git(self.repo, 'status', '--porcelain'), '')  # nothing linked is committed
 
+    @unittest.expectedFailure
+    def test_issue_2_reused_yarn_worker_tools_do_not_mutate_the_canonical_install(self):
+        """Issue 2 part 2: automatic tool discovery works, but reuse is not mutation-isolated.
+
+        https://github.com/TrebuchetDynamics/autowork/issues/2
+        Synthetic executables check provisioning/resolution, not real Jest/TypeScript qualification.
+        """
+        from unittest.mock import patch
+        sys.path.insert(0, str(ROOT / 'pi-autowork'))
+        from pi_autowork import worker
+        (self.repo / '.gitignore').write_text('node_modules/\n')
+        (self.repo / 'package.json').write_text('{"private": true}\n')
+        (self.repo / 'yarn.lock').write_text('# yarn lockfile v1\n')
+        self.git(self.repo, 'add', '.gitignore', 'package.json', 'yarn.lock')
+        self.git(self.repo, 'commit', '-qm', 'matching Yarn inputs')
+        modules = self.repo / 'node_modules'
+        (modules / '.bin').mkdir(parents=True)
+        for name in ('jest', 'tsc'):
+            tool = modules / name / 'bin' / name
+            tool.parent.mkdir(parents=True)
+            tool.write_text(f'#!/bin/sh\nprintf "fixture-{name}-1.0\\n"\n')
+            tool.chmod(0o755)
+            (modules / '.bin' / name).symlink_to(f'../{name}/bin/{name}')
+        tree = self.repo / '.worktrees' / 'issue-2-worker'
+        self.git(self.repo, 'worktree', 'add', '-q', '--detach', str(tree))
+        with patch.dict(os.environ, PI_AUTOWORK_REPO=str(self.repo), PI_AUTOWORK_LINK_PATHS=''):
+            worker.link_ignored(str(tree))
+        for name in ('jest', 'tsc'):
+            result = subprocess.run([f'node_modules/.bin/{name}', '--version'], cwd=tree,
+                                    capture_output=True, text=True)
+            self.assertEqual((result.returncode, result.stdout), (0, f'fixture-{name}-1.0\n'))
+        self.assertEqual(self.git(tree, 'status', '--porcelain'), '')
+        original = (modules / 'jest/bin/jest').read_text()
+        # An in-place write, not an atomic replacement: a hardlink modifies main's install too.
+        with (tree / 'node_modules/jest/bin/jest').open('w') as stream:
+            stream.write('worker-local tool update\n')
+        self.assertEqual((modules / 'jest/bin/jest').read_text(), original,
+                         'worker dependency writes must not mutate the canonical install')
+
     def test_a_commit_outside_touches_integrates_without_widening(self):
         """TOOLSET-161-17: Touches never hold a commit; it lands as it is, with no new attempt."""
         self.plan({'worker:A': ['extra', 'extra']})
@@ -2492,6 +2538,38 @@ class EngineTests(Fixture):
         self.assertNotIn('Questions for the owner', again.stdout)
         self.assertEqual(len(self.runs()), runs)
         self.assertEqual(self.git(self.repo, 'log', '--format=%s').count('questions for the owner'), 1)
+
+    @unittest.expectedFailure
+    def test_issue_2_blocker_panel_distinguishes_saved_and_consumed_answers(self):
+        """Issue 2 part 4 remains: the panel repeats a question without its answer-consumption state.
+
+        https://github.com/TrebuchetDynamics/autowork/issues/2
+        """
+        sys.path.insert(0, str(ROOT / 'pi-autowork'))
+        from pi_autowork import fleet_view, questions
+        snapshot = {'tasks': [{'task': 'A', 'state': 'held', 'attempt': 1, 'cause': 'blocker',
+                               'reason': 'worker reported a blocker: needs a device'}],
+                    'roots': [{'id': 'A', 'kind': 'held', 'blocks': 1}]}
+        text = questions.update(None, questions.build(snapshot, self.repo))
+        (self.repo / 'BLOCKERS.md').write_text(text)
+        self.git(self.repo, 'add', 'BLOCKERS.md')
+        self.git(self.repo, 'commit', '-qm', 'question awaiting an answer')
+        tree = self.repo / '.worktrees' / 'issue-2-session'
+        self.git(self.repo, 'worktree', 'add', '-q', '-b', 'pi-autowork/issue-2', str(tree))
+        self.state.mkdir()
+        (self.state / 'session.json').write_text(json.dumps({'path': str(tree)}))
+        self.edit_task('A', note=('Owner decision', '2026-10-18: use the offline device fixture.'))
+        self.git(self.repo, 'commit', '-qm', 'owner answers on main')
+        saved = fleet_view.read_questions(str(self.repo), str(self.state))
+        self.git(tree, 'merge', '-q', '--ff-only', 'main')
+        # The answer has reached the session, but its held snapshot has not been settled yet.
+        (tree / 'BLOCKERS.md').write_text(questions.update(text, questions.build(snapshot, tree)))
+        consumed = fleet_view.read_questions(str(self.repo), str(self.state))
+        self.assertEqual([q.id for q in saved], ['A'])
+        self.assertEqual([q.id for q in consumed], ['A'])
+        visible = {state: state in ' '.join(str(value) for value in vars(found[0]).values())
+                   for found, state in ((saved, 'saved, not yet consumed'), (consumed, 'consumed, still held'))}
+        self.assertEqual(visible, {'saved, not yet consumed': True, 'consumed, still held': True})
 
     def test_a_continuous_runner_waiting_on_the_owner_merges_its_questions_into_main(self):
         """Questions reached main only when the queue emptied, which a runner waiting on the

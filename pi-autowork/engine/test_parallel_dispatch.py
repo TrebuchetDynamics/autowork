@@ -245,6 +245,7 @@ class DispatchTests(unittest.TestCase):
                     self.assertEqual(stat.read_text().rsplit(')', 1)[1].split()[0], 'Z')
 
     def test_slot_waiting_is_not_a_stuck_command_but_running_still_is(self):
+        import autowork_run
         sys.path.insert(0, str(SCRIPTS.parents[1] / 'pi-autowork'))
         from pi_autowork import pi_runtime
         checks = self.root / 'checks'
@@ -270,16 +271,27 @@ class DispatchTests(unittest.TestCase):
             self.addCleanup(pi.wait)
             self.addCleanup(lambda: os.killpg(pi.pid, 9) if pi.poll() is None else None)
             self.assertIn(b'waiting for a worker check slot', pi.stdout.readline())
-            time.sleep(.6)
+            row, = autowork_run.records(records)
+            row.update(waiting_since=100.0, updated=100.0, admitted=None)
             stopping = {}
-            self.assertEqual(pi_runtime.stop_stuck_commands(os.getpid(), .4, stopping), [])
+
+            def stop_at(now):
+                # Keep real ancestry, queue-interval accounting and signals, but make
+                # command age and slot timestamps independent of process startup/load.
+                # Freeze only during classification, not the fixture's readiness waits.
+                with patch.object(pi_runtime, '_age', return_value=now - 100.0), \
+                        patch.object(autowork_run.time, 'monotonic', return_value=now), \
+                        patch.object(autowork_run, 'records', return_value=[row]):
+                    return pi_runtime.stop_stuck_commands(os.getpid(), .4, stopping, now=now)
+
+            self.assertEqual(stop_at(160.0), [])  # 60 seconds queued, no execution
             self.assertIsNone(pi.poll())
             self.assertFalse(started.exists())
             fcntl.flock(lease, fcntl.LOCK_UN)
             self.await_file(started)
-            self.assertEqual(pi_runtime.stop_stuck_commands(os.getpid(), .4, stopping), [])
-            time.sleep(.6)
-            self.assertTrue(pi_runtime.stop_stuck_commands(os.getpid(), .4, stopping))
+            row.update(admitted=160.0, updated=160.0, wait_seconds=60.0)
+            self.assertEqual(stop_at(160.0), [])  # admission does not consume the budget
+            self.assertTrue(stop_at(161.0))  # one second running exceeds the .4-second limit
             pi.wait(timeout=5)
 
     def test_a_resumed_attempt_relaunches_after_its_release_was_pruned(self):
@@ -586,7 +598,7 @@ class DispatchTests(unittest.TestCase):
             execution.select(self.repo, 'PLAN', None)
     def test_merge_backlog_pauses_only_fresh_dispatch_until_it_drains(self):
         """Finished commits take precedence, without stopping interrupted work."""
-        # An unset or invalid count defaults to two per worker: 4 for these 2 workers.
+        # An unset or invalid count defaults to half the pool, at least 2: 2 for these 2 workers.
         # As in the answered-question fixture, integration's subreaper is process-wide.
         import ctypes
         libc, subreaper = ctypes.CDLL(None), ctypes.c_int()
@@ -595,7 +607,7 @@ class DispatchTests(unittest.TestCase):
         for number, (count, age, setting, after, paused) in enumerate(
                 [(3, 1260, '3', '1200', True), (2, 1260, '3', '1200', False),
                  (3, 300, '3', '1200', False), (3, 1260, '0', '1200', False),
-                 (3, 300, '3', '60', True), (3, 1260, '-1', '1200', False), (3, 1260, '', '1200', False),
+                 (3, 300, '3', '60', True), (2, 1260, '-1', '1200', True), (2, 1260, '', '1200', True),
                  (3, 300, '3', '-1', False)]):
             with self.subTest(count=count, age=age, setting=setting):
                 self.repo = self.root / f'backlog-{number}'
@@ -637,7 +649,7 @@ class DispatchTests(unittest.TestCase):
                         self.assertEqual([s['task'] for s in result['dispatched']],
                                          ['OLD'] if paused else ['OLD', 'F'])
                         if paused:
-                            reason = 'wait for 3 finished commits to merge'
+                            reason = f'wait for {count} finished commits to merge'
                             self.assertEqual(result['waiting'], [{'id': 'F', 'reason': reason, 'blocked_by': []}])
                             _, again = self.apply('--tasks', 'OLD,F')
                             self.assertEqual(again['dispatched'], [])
@@ -654,6 +666,19 @@ class DispatchTests(unittest.TestCase):
                             self.assertFalse(status['merge_backlog']['paused'])
                     finally:
                         self.stop_workers()
+
+    def test_finished_work_lands_before_more_starts(self):
+        """Seven finished commits waited up to 1h39m while an 8-worker runner kept starting
+        workers: two per worker (16) never paused it. Half the pool, at least 2, does."""
+        now = time.time()
+        for workers, waiting, paused in ((8, 3, False), (8, 4, True), (8, 7, True), (2, 2, True), (1, 1, False)):
+            with self.subTest(workers=workers, waiting=waiting):
+                current = [{'task_id': f'T{i}', 'state': 'reported', 'commit': f'c{i}'} for i in range(waiting)]
+                events = [{'event': 'slot_changed', 'task_id': f'T{i}', 'state': 'reported', 'timestamp': now - 1500}
+                          for i in range(waiting)]
+                with patch.object(state.journal, 'read', return_value={'events': events}):
+                    self.assertEqual(dispatch.merge_backlog(self.common, current, workers=workers, now=now, env={})['paused'],
+                                     paused)
 
     def test_a_closed_writer_window_no_longer_explains_the_merge_backlog(self):
         """A reason kept on an integrating slot was replayed for hours after the session left,
@@ -878,6 +903,17 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
             self.assertNotIn('A', [d['task'] for d in result['dispatched']], result)
             self.wait_until_idle()
         self.assertNotIn('A', [e.get('task') for e in self.events()])
+
+    def test_a_closed_slot_whose_record_is_still_open_waits_alone(self):
+        """A refused close commit left a merged task open: every pass raised 'slot already exists'."""
+        self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 0.1}, 'B': {'files': {'b.txt': 'b'}, 'sleep': 0.1}})
+        execution.save(state.slot_path(self.common, 'A'),
+                       dict(task_id='A', worktree=str(self.root / 'gone'), branch='autowork/A', baseline='0' * 40,
+                            worker=None, state='closed', attempt=1, started_at=time.time()))
+        _, result = self.apply()
+        self.assertNotIn('A', [d['task'] for d in result['dispatched']], result)
+        self.assertIn('B', [d['task'] for d in result['dispatched']], result)
+        self.assertIn('record is not closed yet', next(w['reason'] for w in result['waiting'] if w['id'] == 'A'))
 
     def test_unconverted_repo_names_migrate(self):
         bare = self.root / 'unconverted'

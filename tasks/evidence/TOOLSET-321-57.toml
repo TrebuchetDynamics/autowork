@@ -1,0 +1,9 @@
+schema = 1
+task = "TOOLSET-321-57"
+candidate = "ca4a0a65721fa3d18f213d57359932737aa54d5f"
+integration = "718b0ec009f8ad2a3f579ee6428e086e20dbfedb"
+tree = "be9389b5116b05028ebf0224ad5106f516b0f026"
+contract_hash = "4b4f135e22cebc441ce72c17350450b00f1b2e9b222b61c31def62869f6cb37c"
+checks = ["<path>", "<path>", "--verify", "<path>", "TOOLSET-321-57"]
+result = "pass"
+review = "passed"
