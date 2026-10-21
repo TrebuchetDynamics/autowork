@@ -710,24 +710,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Checks: Planned after implementation: focused existing question/health/fleet-view and task-reader regressions plus composed /blockers intake coverage; python3 scripts/check.py; git diff --check. Record actual selectors/results; no feature qualification in this planning pass.
 - Dependencies: TOOLSET-129-c4.
 
-### TOOLSET-293-25 — Split goals.py once its private copies and the runner's parse cache allow it
-
-- [ ] TOOLSET-293-25 — Split goals.py once its private copies and the runner's parse cache allow it
-- Short: Split goals.py after its loaders change
-- Status: open
-- Goal: DOCS-COMPLETENESS
-- Payoff: Make core-document completeness and drift machine-checkable.
-- Sources: [goals](skills/docs-sync/scripts/goals.py) (1,939 lines; `TRANSACTION`, `coordination`, `atomic_write`; `redact` calls `render_text`/`render`; `backlog_receipt` calls `queue`); [task execution](skills/autowork/scripts/task_execution.py) (`goals_module()` loads a private copy and wraps its `task_bodies` in an `lru_cache` so `queue()` reuses one parse); private loads as `retry_goals`, `todo_goals`, `pass_goals`; [owner unblock](skills/autowork/scripts/owner_unblock.py) (mixes a private copy with the plain `goals` module in one process).
-- Evidence: a pure-move split attempted on 2026-10-20 stopped before editing: (1) the backlog and redaction code calls render and queue code, so three modules cycle; (2) moving `queue`/`priority_status` out of goals.py silently drops the runner's `task_bodies` cache, because it is patched on the private copy's namespace; (3) moving the stale-write guard into a shared module makes one private copy's `coordination()` arm stale-write checks for another copy's writes, a new failure. 11 fixes in 14 days.
-- Touches: skills/docs-sync/scripts/goals.py, skills/docs-sync/scripts/goals_ledger.py, skills/docs-sync/scripts/goals_todo.py, skills/docs-sync/scripts/goals_queue.py, skills/docs-sync/scripts/goals_backlog.py, skills/autowork/scripts/task_execution.py
-- Scope: (1) First make the loaders independent of goals.py's internal layout: the runner's parse cache wraps the `task_bodies` that `queue` calls wherever it lives, and per-copy write state either becomes per-call (passed in) or the private copies are replaced by one shared module; say which, with the reason. (2) Then split by concern into ledger, TODO.md text (with render), queue/priority and backlog modules, goals.py keeping redaction, the two error checks and the CLI; each module at most 750 lines; functions move verbatim. (3) Callers keep `import goals`; goals.py imports, in one commented block, only the moved names callers use as `goals.<name>`.
-- Acceptance: Given two private copies of goals.py in one process, a write through one copy after the other's `coordination()` behaves as before (`skills/docs-sync/scripts/test_goal_concurrency.py::test_private_copies_keep_separate_stale_write_guards`); a selection parses TODO.md once per cycle (`skills/autowork/scripts/test_task_execution.py::test_one_selection_parses_todo_once`); no module exceeds 750 lines and every former top-level name is defined once.
-- Checks: cd skills/docs-sync/scripts && python3 -m unittest discover -p 'test_*.py'; python3 -m unittest discover -s skills/autowork/scripts -p 'test_task_execution*.py'; python3 scripts/check.py
-- Dependencies: None.
-- Ownership: Toolset coordinator.
-- Exclusions: No CLI or file-format change.
-- Planner's call: write the two acceptance tests against today's goals.py first, so step (1) is proven behaviour-neutral before anything moves; task_execution.py has open tasks, so the shared-file rule holds this until they land.
-
 ### TOOLSET-286-32 — Harden conflicting-owner-plan journey against fixture races
 
 - [ ] TOOLSET-286-32 — Harden conflicting-owner-plan journey against fixture races

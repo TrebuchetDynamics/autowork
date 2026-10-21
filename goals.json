@@ -1670,14 +1670,6 @@
       "title": "Harden conflicting-owner-plan journey against fixture races"
     },
     {
-      "depends_on": [],
-      "goal": "DOCS-COMPLETENESS",
-      "id": "TOOLSET-293-25",
-      "section": "Next",
-      "status": "open",
-      "title": "Split goals.py once its private copies and the runner's parse cache allow it"
-    },
-    {
       "depends_on": [
         "TOOLSET-129-c4"
       ],
@@ -3518,6 +3510,14 @@
       "section": "Done",
       "status": "done",
       "title": "One interactive session writes the main checkout at a time"
+    },
+    {
+      "depends_on": [],
+      "goal": "DOCS-COMPLETENESS",
+      "id": "TOOLSET-293-25",
+      "section": "Done",
+      "status": "done",
+      "title": "Split goals.py once its private copies and the runner's parse cache allow it"
     },
     {
       "depends_on": [
