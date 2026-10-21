@@ -1063,6 +1063,53 @@ class BatchLandingTests(unittest.TestCase):
                     now[0] += 61
                     self.assertTrue(runner.overlap_idles())
 
+    def test_the_overlap_re_cut_runs_beside_the_loop(self):
+        """Its Pi job held reviews, landings and dispatch for five minutes at a time while workers
+        were busy; it now runs beside the loop and merges once the session may move."""
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator = self.runner(folder, {})
+            runner.integ, runner.stop, runner.settled = folder, False, False
+            out = Path(folder) / 'maintainer.out'
+            out.write_text(json.dumps({'ok': True, 'notes': []}))
+            proc = subprocess.Popen([sys.executable, '-c', 'pass'])
+            proc.wait()
+            runner.maintainer_job = {'proc': proc, 'out': str(out), 'scratch': folder}
+            judged = []
+            runner.maintainer_result = lambda job, ok: judged.append(ok) or True
+            busy = [True]
+            runner.session_busy = lambda: busy[0]
+            with patch.object(coordinator, 'dirty', return_value=False):
+                self.assertFalse(runner.maintain(overlap=True))  # one maintainer at a time
+                runner.finish_maintainer()
+                self.assertEqual(judged, [])  # a review runs: its merge waits, the job is kept
+                self.assertIsNotNone(runner.maintainer_job)
+                said = []
+                with patch.object(coordinator.LOG, 'say', side_effect=said.append), \
+                        patch.object(coordinator.os, 'execv', side_effect=AssertionError('re-executed')):
+                    runner.reexec('Toolset updated to abc; restarting on it')
+                self.assertEqual(said, ['Reload pending: waiting for the DOCS-MAINTAINER re-cut to end'])
+                busy[0] = False
+                runner.finish_maintainer()
+            self.assertEqual(judged, [True])
+            self.assertIsNone(runner.maintainer_job)
+            self.assertTrue(runner.settled)
+            self.assertFalse(out.exists())
+
+    def test_an_exit_stops_a_running_re_cut_and_drops_its_checkout(self):
+        with tempfile.TemporaryDirectory() as folder:
+            runner, _ = self.runner(folder, {})
+            proc = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
+            self.addCleanup(lambda: proc.poll() is None and proc.kill())
+            out = Path(folder) / 'maintainer.out'
+            out.write_text('')
+            dropped = []
+            runner.drop_scratch = dropped.append
+            runner.maintainer_job = {'proc': proc, 'out': str(out), 'scratch': '/scratch'}
+            runner.stop_maintainer()
+            self.assertIsNotNone(proc.poll())
+            self.assertEqual(dropped, ['/scratch'])
+            self.assertIsNone(runner.maintainer_job)
+
     def test_a_due_reload_starts_no_merge_resolver(self):
         """Each new resolver kept the reload pending, and a due reload starts no batch: commits
         were resolved again and again for hours while none landed."""
