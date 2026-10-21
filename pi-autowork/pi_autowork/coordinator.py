@@ -82,8 +82,9 @@ def process_name(pid):
 def merge_prompt(*, branch, base, files, tasks, repo):
     """Only actual task-store conflicts need reconciliation, not source-only merges."""
     planning = ('In each conflicted task file under tasks/, keep both sides\' changes; where both changed the '
-                'same field, keep the base\'s value; keep a status of done or superseded (the runner reopens a '
-                'close whose contract the merge changed). '
+                'same field, keep the base\'s value. Status, Evidence notes, closure metadata and each contract '
+                'field must equal a value from one of the two pre-merge parents; never close, reopen or invent '
+                'a record during resolution. Ordinary notes may combine (the runner reopens a close whose contract the merge changed). '
                 f'Then run {tasks} validate --worktree . and fix what it reports. '
                 if any(f.startswith('tasks/') for f in files) else
                 'For this merge, leave the task files under tasks/ unchanged. ')
@@ -1030,6 +1031,17 @@ class Coordinator:
         LOG.say(f'Reopened {names}: closed against another contract than the merged record states')
         return True
 
+    def reject_record_merge(self, root, before, other, *, history=False):
+        """Reject a resolver or automatic merge before bookkeeping or adoption can hide it."""
+        queue = dispatch_module(self.toolset).task_queue
+        check = queue.merge_history_error if history else queue.merge_record_error
+        self.merge_error = check(root, before, other)
+        if not self.merge_error:
+            return False
+        git(root, 'reset', '-q', '--merge', before, check=True)
+        LOG.say(f'Held the merge: {self.merge_error}; pre-merge state restored')
+        return True
+
     def merge_planning(self, ref):
         """Merge ``ref`` into the session; task files merge per file like any other text, and a
         conflicting one is left for the Pi resolver. A close the merge left under another contract
@@ -1038,10 +1050,13 @@ class Coordinator:
         if git_ok(self.integ, 'merge-base', '--is-ancestor', ref, 'HEAD'):
             return True
         before = git(self.integ, 'rev-parse', 'HEAD')
-        result = subprocess.run(['git', '-C', str(self.integ), 'merge', '-q', '--no-ff', '--no-edit', ref],
+        other = git(self.integ, 'rev-parse', ref)
+        result = subprocess.run(['git', '-C', str(self.integ), 'merge', '-q', '--no-ff', '--no-edit', other],
                                 capture_output=True, text=True)
         if result.returncode:
             self.merge_error = (result.stdout + result.stderr).strip() or f'git merge exited with status {result.returncode}'
+            return False
+        if self.reject_record_merge(self.integ, before, other):
             return False
         if self.reopen_stale_closures():
             return True
@@ -1106,7 +1121,9 @@ class Coordinator:
         if ahead == 0 and git_ok(self.integ, 'merge-base', '--is-ancestor', self.base, 'HEAD'):
             return True
         planning_note = self.commit_owner_changes()
-        if not self.merge_planning(self.base):
+        before = git(self.integ, 'rev-parse', 'HEAD')
+        base_rev = git(self.repo, 'rev-parse', self.base)
+        if not self.merge_planning(base_rev):
             conflicts = (git(self.integ, 'diff', '--name-only', '--diff-filter=U') or '').splitlines()
             if not conflicts:
                 self.merge_pending = f'could not merge {self.base} into {self.integ_branch}: {self.merge_error}'
@@ -1114,7 +1131,6 @@ class Coordinator:
                 LOG.say(f'Merge pending: {self.merge_pending}. The branch and its worktree ({self.integ}) are kept.')
                 return False
             files = ' '.join(conflicts)
-            base_rev = git(self.repo, 'rev-parse', self.base)
             if not self.stop and self.resolved_for != base_rev:  # once per main revision, not per session
                 self.resolved_for = base_rev
                 LOG.say(f'{self.base} moved and conflicts with this session in: {files}; asking Pi to resolve the merge')
@@ -1129,6 +1145,9 @@ class Coordinator:
                 git(self.integ, 'merge', '--abort')
                 self.merge_pending = f'{self.integ_branch} conflicts with {self.base} in: {files}'
                 LOG.say(f'Merge pending: {self.merge_pending}. The branch and its worktree ({self.integ}) are kept.')
+                return False
+            if self.reject_record_merge(self.integ, before, base_rev):
+                self.merge_pending = self.merge_error
                 return False
             if not self.reopen_stale_closures():  # the resolver's merge, checked as merge_planning checks its own
                 self.merge_pending = f'{self.integ_branch} leaves a task done under a changed contract'
@@ -2831,12 +2850,18 @@ class Coordinator:
                 if job['merged_count']:
                     self.seen['unresolved-' + task] = job['commit']
                 continue
+            if self.reject_record_merge(root, job['commit'], head, history=True):
+                continue
             # The session often moves while Pi resolves (its own questions commit): merge that
             # too, or the engine refuses the resolution and the next pass merges it anyway.
             now = git(self.integ, 'rev-parse', 'HEAD')
-            if now and now != head and not git_ok(root, 'merge', '-q', '--no-edit', now):
-                git(root, 'merge', '--abort')
-                continue  # the next pass resolves the resolution against the new session
+            before = git(root, 'rev-parse', 'HEAD')
+            if now and now != head:
+                if not git_ok(root, 'merge', '-q', '--no-edit', now):
+                    git(root, 'merge', '--abort')
+                    continue  # the next pass resolves the resolution against the new session
+                if self.reject_record_merge(root, before, now):
+                    continue
             self.settled = self.adopt_merge(task) or self.settled
         self.note_resolvers()
 

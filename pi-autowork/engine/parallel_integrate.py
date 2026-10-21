@@ -220,6 +220,11 @@ def adopt_runner_merged(repo, common, slot, tip):
         base = git(repo, 'merge-base', 'HEAD', tip)
     except ValueError:
         return False
+    reason = task_queue.merge_history_error(repo, slot['commit'], base, tip)
+    if reason:
+        git(root, 'reset', '-q', '--merge', slot['commit'])
+        state.event(common, 'merge_records_rejected', task_id=slot['task_id'], reason=reason)
+        raise Hold('conflict', reason)
     data = dispatch.data_dir(common, slot)
     report = execution.read(data / 'report.json')
     if not isinstance(report, dict) or report.get('task') != slot['task_id']:
@@ -448,6 +453,10 @@ def merge_candidate(root, slot, baseline):
         if existing:
             git(root, 'restore', '--source=' + baseline, '--staged', '--worktree', '--', *existing)
         git(root, 'commit', '--no-edit', '--allow-empty')
+    reason = task_queue.merge_record_error(root, baseline, slot['commit'])
+    if reason:
+        git(root, 'reset', '-q', '--merge', baseline)
+        raise Hold('conflict', reason)
     actual = sorted(owned(changed(root, baseline, 'HEAD')))
     paths = sorted(set(proposed) | set(actual) | set(redirected))
     if not paths:
@@ -518,7 +527,10 @@ def remerge_planning(repo, root, merge, head, task=None):
         return None
     remerged = git(root, 'rev-parse', 'HEAD')
     brought = changed(repo, merge, remerged)
-    if brought and not planning_only(brought, repo, merge, remerged, task):
+    reason = task_queue.merge_record_error(root, merge, head, remerged)
+    if reason:
+        state.event(state.common_dir(repo), 'merge_records_rejected', task_id=task, reason=reason)
+    if reason or (brought and not planning_only(brought, repo, merge, remerged, task)):
         git(root, 'checkout', '-q', '--detach', merge)
         return None
     return remerged
@@ -1476,6 +1488,11 @@ def merged(repo, owner_pid, task):
                 or git(root, 'status', '--porcelain', '--untracked-files=no')
                 or not ancestor(repo, slot['commit'], head) or not ancestor(repo, base, head)):
             raise ValueError('the task worktree must be clean on its branch with both its commit and canonical HEAD merged')
+        reason = task_queue.merge_history_error(root, slot['commit'], base, head)
+        if reason:
+            git(root, 'reset', '-q', '--merge', slot['commit'])
+            state.event(common, 'merge_records_rejected', task_id=task, reason=reason)
+            raise ValueError(reason)
         data = dispatch.data_dir(common, slot)
         report = execution.read(data / 'report.json')
         if not isinstance(report, dict) or report.get('task') != task:

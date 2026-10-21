@@ -202,6 +202,13 @@ message, not as an unknown-file conflict. Only actual unmerged paths trigger the
 Pi conflict resolver. Overlapping uncommitted bookkeeping can still prevent the
 merge; its contents and session worktree are kept for retry.
 
+If a merge invents a task/goal status, Evidence or closure value, or synthesizes a
+contract field absent from both parents, the runner rejects it before landing or
+adoption. The diagnostic names the record and field; the pre-merge head is restored
+and main stays unchanged. Resolve by selecting parent values, combining only ordinary
+notes; record intentional task transitions separately. See the
+[merge and closure rules](task-store.md#integration-and-closure).
+
 ## Isolated runtime comparison
 
 The [TOOLSET-117-cb spike](spikes/runtime-comparison/README.md) compares the current

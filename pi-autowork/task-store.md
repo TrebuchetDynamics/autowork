@@ -257,6 +257,15 @@ not (Touches schedule work). A contract change during validation holds the candi
 worker commit that edits any task file is held for scope and never offered again: a worker
 cannot grant itself or another task authority.
 
+Session merges, worker merge adoption and planning remerges reject invented task or
+goal values. Each status, Evidence note, closure/qualification field and contract
+field must equal a value from a merge parent; ordinary notes may combine. Evidence
+receipts must come intact from a parent. Adoption checks each step of a worker's
+merge history, not just its endpoints. Rejection names the record and field and
+restores the pre-merge head without moving main or accepting the worker report.
+An intact parent record may replace a broken record, so ledger repairs still land.
+This guard runs before the separate stale-closure reopening described below.
+
 The verified close writes `status = "done"`, `closure = "coordinator_verified"`,
 `closure_evidence = "tasks/evidence/<ID>.toml"` and `tasks/evidence/<ID>.toml` (candidate and
 integration commits, tree, contract hash, checks, result, review; secrets redacted and paths
