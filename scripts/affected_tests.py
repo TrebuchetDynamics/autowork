@@ -1,0 +1,204 @@
+#!/usr/bin/env python3
+"""Which offline test modules a change can affect, and why; `--run` runs only those.
+
+    python3 scripts/affected_tests.py [--base REV] [--run] [--json] [-k PATTERN]
+
+The change is everything between BASE (default: where HEAD left origin/main, else main) and the
+working tree, untracked files included. A test module is selected when it changed itself, or
+when it reaches a changed file through what it imports (``import parallel_integrate``,
+``from pi_autowork import coordinator``) or the repository files it names (a script it runs, a
+document it reads), followed transitively. Each selection prints the chain that selected it.
+A change to the check itself, CI or packaging selects the whole suite, as does `--full`.
+
+Workers and reviewers ran whole test directories, or the full check, for a change that two
+modules could reach; this runs those two.
+"""
+import argparse
+import ast
+from collections import deque
+import importlib.util
+import json
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+TEXT = ('.py', '.sh', '.md', '.json', '.toml', '.yml', '.yaml', '.js', '.mjs', '.txt', '.cfg')
+# What every test depends on without naming it: the whole suite.
+FULL = ('scripts/check.py', 'scripts/affected_tests.py', 'requirements-test.txt', 'package.json', '.github/')
+MENTION = re.compile(r'[A-Za-z0-9_./-]*[A-Za-z0-9_-]\.(?:py|sh|md|json|toml|ya?ml|js|mjs)\b')
+
+
+def git(*args):
+    result = subprocess.run(['git', '-C', str(ROOT), *args], capture_output=True, text=True)
+    return result.stdout if result.returncode == 0 else None
+
+
+def default_base():
+    for ref in ('origin/main', 'main'):
+        if (base := git('merge-base', 'HEAD', ref)):
+            return base.strip()
+    return 'HEAD'
+
+
+def changed_files(base):
+    tracked = (git('diff', '--name-only', base) or '').split('\n')
+    untracked = (git('ls-files', '--others', '--exclude-standard') or '').split('\n')
+    return sorted({p for p in tracked + untracked if p})
+
+
+def check_module():
+    spec = importlib.util.spec_from_file_location('offline_check', ROOT / 'scripts' / 'check.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def repository_files():
+    listed = (git('ls-files') or '').split('\n') + (git('ls-files', '--others', '--exclude-standard') or '').split('\n')
+    # Extensionless scripts too (tmux/tx): tests name them by path.
+    return sorted({p for p in listed if p and (p.endswith(TEXT) or '.' not in Path(p).name) and (ROOT / p).is_file()})
+
+
+def python_references(source):
+    """(module names a Python source imports, the text of its string literals). Import names are
+    last components, as the repository's sys.path setups resolve them by file stem. Paths count
+    only in string literals, not comments or docstrings: a comment naming pi-autowork.sh made a
+    state module depend on the whole runner."""
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        return set(), set(), source
+    top, lazy, strings = set(), set(), []
+    docstrings = {id(node.body[0].value) for node in ast.walk(tree)
+                  if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                  and node.body and isinstance(node.body[0], ast.Expr)
+                  and isinstance(node.body[0].value, ast.Constant)}
+    module_level = {id(node) for node in tree.body}
+    for node in ast.walk(tree):
+        names = None
+        if isinstance(node, ast.Import):
+            names = {alias.name.split('.')[-1] for alias in node.names}
+        elif isinstance(node, ast.ImportFrom):
+            # `from pi_autowork import coordinator` names the module in the alias.
+            names = {alias.name for alias in node.names} | ({node.module.split('.')[-1]} if node.module else set())
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docstrings:
+            strings.append(node.value)
+        if names:
+            (top if id(node) in module_level else lazy).update(names)
+    return top, lazy, '\n'.join(strings)
+
+
+CODE = ('.py', '.sh', '.js', '.mjs')
+
+
+def dependency_graph(files, tests=()):
+    """{file: {files it imports or names}}. Only code depends on anything: a document or data
+    file is read, it does not run what it mentions (CHANGELOG.md and TODO.archive.md name
+    hundreds of files, and through them every change reached 107 of 120 test modules). A test
+    module is a dependency only when imported, never because a file names it (check.py's shards)."""
+    tests = set(tests)
+    stems, basenames = {}, {}
+    for path in files:
+        name = Path(path).name
+        basenames.setdefault(name, set()).add(path)
+        if path.endswith('.py'):
+            stems.setdefault(Path(path).stem, set()).add(path)
+    known = set(files)
+    extensionless = {p for p in files if '/' in p and '.' not in Path(p).name}
+    graph = {}
+    for path in files:
+        # A file whose change already selects the whole suite needs no dependencies of its own:
+        # check.py names every excluded module, and through them tests that run it reached a
+        # skill's SKILL.md.
+        if not (path.endswith(CODE) or path in extensionless) or path.startswith(FULL):
+            continue
+        try:
+            text = (ROOT / path).read_text(errors='replace')
+        except OSError:
+            continue
+        deps = set()
+        if path.endswith('.py'):
+            # An import inside a function is a dependency of the module that makes it, not of
+            # everything above it: task_prepare imports fleet_view for one path, and through the
+            # shared store fixture that tied 60 engine tests to the fleet view.
+            top, lazy, text = python_references(text)
+            for name in top | (lazy if path in tests else set()):
+                deps |= stems.get(name, set())
+        for token in set(MENTION.findall(text)):
+            token = token.lstrip('./')
+            if token in known:
+                named = {token}
+            else:  # a partial path matches its tail; a bare name only when one file has it
+                candidates = basenames.get(Path(token).name, set())
+                named = ({p for p in candidates if p.endswith('/' + token)} if '/' in token
+                         else candidates if len(candidates) == 1 else set())
+            deps |= named - tests
+        deps |= {p for p in extensionless if p in text}
+        deps.discard(path)
+        graph[path] = deps
+    return graph
+
+
+def select(changed, base='HEAD'):
+    """(tests, reasons, full): the test modules to run, why each, and whether the whole suite."""
+    checker = check_module()
+    tests = {p.relative_to(ROOT).as_posix() for p in checker.discover_tests(ROOT)}
+    if not changed:
+        return [], {}, False
+    full = [p for p in changed if p.startswith(FULL)]
+    if full:
+        return sorted(tests), {t: f'{full[0]} changed: the whole suite' for t in tests}, True
+    files = repository_files()
+    graph = dependency_graph(sorted(set(files) | set(changed)), tests)
+    reverse = {}
+    for path, deps in graph.items():
+        for dep in deps:
+            reverse.setdefault(dep, set()).add(path)
+    reason, queue = {}, deque()
+    for path in changed:
+        reason[path] = [path]
+        queue.append(path)
+    while queue:
+        path = queue.popleft()
+        for user in sorted(reverse.get(path, ())):
+            if user not in reason:
+                reason[user] = reason[path] + [user]
+                queue.append(user)
+    chosen = sorted(t for t in tests if t in reason)
+    return chosen, {t: ' <- '.join(reversed(reason[t])) if len(reason[t]) > 1 else 'changed' for t in chosen}, False
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
+    parser.add_argument('--base', help='revision the change starts from (default: merge-base with origin/main)')
+    parser.add_argument('--run', action='store_true', help='run the selected modules with scripts/check.py')
+    parser.add_argument('--json', action='store_true', help='print the selection as JSON')
+    parser.add_argument('--full', action='store_true', help='select the whole suite')
+    parser.add_argument('-k', dest='pattern', help='passed to scripts/check.py with --run')
+    args = parser.parse_args(argv)
+    base = args.base or default_base()
+    changed = changed_files(base)
+    if args.full:
+        changed = ['scripts/check.py']
+    tests, reasons, full = select(changed, base)
+    if args.json:
+        print(json.dumps({'base': base, 'changed': changed, 'full': full, 'tests': tests, 'reasons': reasons}, indent=2))
+    else:
+        print(f'{len(changed)} changed file(s) since {base[:12]}; '
+              + (f'the whole suite ({len(tests)} modules)' if full else f'{len(tests)} test module(s) affected'))
+        if not full:
+            for test in tests:
+                print(f'  {test}  ({reasons[test]})')
+        if not tests:
+            print('  no test module reaches these changes')
+    if not args.run or not tests:
+        return 0
+    command = [sys.executable, str(ROOT / 'scripts' / 'check.py'), *([] if full else tests),
+               *(['-k', args.pattern] if args.pattern else [])]
+    return subprocess.run(command, cwd=ROOT).returncode
+
+
+if __name__ == '__main__':
+    sys.exit(main())
