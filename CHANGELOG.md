@@ -22,6 +22,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- The DOCS-MAINTAINER re-cuts tasks waiting on a shared file at most once per
+  `PI_AUTOWORK_OVERLAP_EVERY` seconds (1800). Its Pi job holds the runner loop, and
+  back-to-back re-cuts of six tasks each stopped reviews, landing and dispatch.
 - The archiver ends a heading-paired task (`### ID` followed by its own checkbox) at the
   next known task's checkbox. Among checkbox-only tasks it ran to the next heading, every
   task it swallowed overlapped it, and none could be archived: their closes failed every

@@ -2011,10 +2011,18 @@ class Coordinator:
 
     def overlap_idles(self):
         """Worker slots idle while a task waits for another one's file: the queue, not the pool,
-        is what limits the runner, so the DOCS-MAINTAINER re-cuts those tasks."""
+        is what limits the runner, so the DOCS-MAINTAINER re-cuts those tasks. At most once per
+        PI_AUTOWORK_OVERLAP_EVERY seconds (1800): its Pi job holds the loop, and back-to-back
+        re-cuts of six tasks each left no review, landing or dispatch running for half an hour."""
+        every = float(os.environ.get('PI_AUTOWORK_OVERLAP_EVERY') or 1800)
+        if time.monotonic() - self.seen.get('overlap-at', -every) < every:
+            return False
         rows = self.tasks()
         busy = sum(1 for r in rows if r.get('state') in ('dispatched', 'running'))
-        return busy < int(self.workers) and any(maintainer.overlap(r) for r in rows)
+        if busy < int(self.workers) and any(maintainer.overlap(r) for r in rows):
+            self.seen['overlap-at'] = time.monotonic()
+            return True
+        return False
 
     def maintain(self, main_only=False, ledger_errors=None, ledger_edits_only=False, overlap=False):
         """DOCS-MAINTAINER (TOOLSET-164-f1): when nothing runs and tasks are held for a planning
