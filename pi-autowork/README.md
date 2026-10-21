@@ -15,7 +15,7 @@ repository, under `${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key
 | `pi_autowork/worker.py` | The engine-launched `--worker` and `--verify` modes |
 | `pi_autowork/service.py` | `--install-service` / `--remove-service` for `pi-autowork@<repository>.service` |
 | `pi_autowork/common.py` | Logging, Git helpers and task lifecycle words |
-| `pi_autowork/pi_runtime.py` | Runs one Pi job: model choice and fallback, bounded retries, timeouts, budget, redacted `runs.jsonl` records (the production CLI path; the TOOLSET-117-cb boundary is an isolated comparison spike, not wired into this runner) |
+| `pi_autowork/pi_runtime.py` | Runs one Pi job: model choice and fallback, bounded retries, timeouts, redacted `runs.jsonl` records of each run's tokens and cost (the production CLI path; the TOOLSET-117-cb boundary is an isolated comparison spike, not wired into this runner) |
 | `pi_autowork/health.py` | Per-runner `status.json`, one stall announcement per episode with its root blockers, and the `--fleet` view |
 | `pi_autowork/workspaces.py` | Mirrors `PI_AUTOWORK_LINK_PATHS` gitignored dependencies into task and review worktrees (real directories, hard-linked files) |
 | `pi_autowork/fleet_view.py` | Every runner on the machine (tmux sessions, `pi-autowork@` services, `status.json` health), its worker lanes (engine slots in flight, the runner's latest phase line, the Pi transcript's last action), its blockers grouped by kind, recent logs, and the exact existing command behind each action; standard library only |

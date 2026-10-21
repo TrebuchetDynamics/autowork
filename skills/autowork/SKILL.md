@@ -55,8 +55,8 @@ review step. Keep Hermes Agent unchanged.
    the runner says to run `autowork migrate` once.
 3. **Prepare only missing inputs, then implement.** Derive a short contract from
    the task's objective, scope/exclusions, acceptance/checks, dependencies and sources.
-   Keep source/candidate identity, actual owner/session, explicit limits and known
-   consumed budget in private evidence. One coherent delivery batch may include
+   Keep source/candidate identity, actual owner/session and explicit limits in
+   private evidence. One coherent delivery batch may include
    connected code, tests and docs; do not split it merely by file.
    The engine is not part of this skill: it ships with pi-autowork, in
    `<toolset>/pi-autowork/engine/`, where `<toolset>` is the installed Autowork toolset
@@ -94,7 +94,7 @@ review step. Keep Hermes Agent unchanged.
    Workers update in-scope component docs and report shared-doc gaps for the
    coordinator/DOCS-MAINTAINER. Preserve
    implementation and pending evidence on interruption; never replay implementation
-   or launch work after a stop/pause/budget limit to finish docs.
+   or launch work after a stop or pause to finish docs.
    Commit attributable verified paths locally unless forbidden.
    Use ordinary Git, repository review and integration policy. Inspect fresh target
    state and serialize canonical writes; preserve unrelated dirty work. Never push,
@@ -138,11 +138,11 @@ and execution leases follow [canonical checkout and leases](references/owner-cyc
 Caller scope and saved stop/batch limits control continuation. Default: one useful
 slice including recovery and closeout. Explicit stops win. Apply
 [mode precedence](references/iteration-and-decisions.md#mode-precedence).
-Honor explicit task/caller allocations and the host's real controls; unknown usage
-is not zero. A cron tick never renews an exhausted allocation. Do not invent a
-universal lifetime-task budget. Missing enforcement holds only an operation requiring
-that explicit cap; independently authorized inspection, checks and local integration
-remain separate. A prompt or receipt cannot enforce spending.
+Autowork has no token, cost or time budgets: model usage and cost are measured
+(`runs.jsonl`), never a reason to stop, and timeouts only bound single runs. A task
+that still declares a budget, allowance or ceiling is not held for it: record its
+usage as evidence and keep working to its acceptance. Spending money (paid services,
+purchases) remains an authority only the owner grants.
 
 A held or blocked task goes to [Plan For Me](../plan-for-me/SKILL.md) in the same
 run, before reporting, and Plan For Me must **fix or skip** it. Fix: choose a

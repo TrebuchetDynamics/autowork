@@ -40,7 +40,7 @@ Options:
   --once               Run at most one task, then exit
   --until-empty        Exit when no runnable task remains
   --dry-run            Show what would run; change nothing
-  --status             Show the session, budget and each task's state; change nothing
+  --status             Show the session and each task's state; change nothing
   --fleet              One line per pi-autowork runner on this machine: service, health
                        (working, blocked, stalled, paused, not running) and root blockers
   --set-aside TASK     Ask this repository's runner to retire TASK's stuck slot (held with
@@ -90,8 +90,6 @@ Environment (optional):
   PI_AUTOWORK_COOLDOWN      seconds on the fallback before trying the primary again (default 1800)
   PI_AUTOWORK_BACKOFF       first retry delay in seconds, doubling to 600 (default 30)
   PI_AUTOWORK_MAX_RUNTIME   stop starting tasks after this many seconds (default 0, unlimited)
-  PI_AUTOWORK_MAX_COST      USD limit on reported cost within the budget window (default 0, unlimited)
-  PI_AUTOWORK_COST_WINDOW   budget window in hours, counted across restarts (default 24)
   PI_AUTOWORK_MIN_FREE_MB   memory one more worker needs; twice it must be available (default 3000)
   PI_AUTOWORK_TMP_STALE     remove /tmp scratch untouched this many seconds (default 7200, 0 off)
   PI_AUTOWORK_STATE_DIR     state root (default ${XDG_STATE_HOME:-~/.local/state}/pi-autowork)
@@ -434,8 +432,6 @@ def summarize(repo, base, toolset, rev, skill_args, opts, settings, state):
     print(f'Primary:    {settings.primary} ({ready(settings.primary)})')
     print(f'Fallback:   {settings.fallback} ({ready(settings.fallback)})' if settings.fallback_enabled
           else 'Fallback:   disabled')
-    if settings.max_cost != '0':
-        print(f'Budget:     ${pi_runtime.spent(settings)} of ${settings.max_cost} in the last {settings.window_text} h')
     print(f'Mode:       {opts["mode"]}; state in {state}; new worktrees in {repo}/.worktrees', flush=True)
 
 

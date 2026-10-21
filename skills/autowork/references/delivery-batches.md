@@ -17,11 +17,10 @@ retained behavior and its coverage explicit.
 
 A batch is neither a file-count quota nor an unlimited rewrite. Split for a real
 boundary: unresolved prerequisite, live writer conflict, different authority/live
-environment, independent failure domain, or demonstrated worker-budget limit.
+environment, or independent failure domain.
 Record the concrete reason in the existing contract's Scope/Stop conditions; no
-new approval form or mandatory planning artifact. Honor explicit task/caller allocations and real host limits. Do not
-reset budgets, bypass actual writer exclusion, or widen an active worker's contract
-silently. Inspect actual process/workspace activity before changing delegated scope.
+new approval form or mandatory planning artifact. Do not
+bypass actual writer exclusion, or widen an active worker's contract silently. Inspect actual process/workspace activity before changing delegated scope.
 
 Within the admitted batch, the worker completes all named consumers, associated
 fixes, focused tests and docs before the one required review handoff. A first
@@ -61,7 +60,7 @@ Do not add overlapping test counts or equate receipt validation with product tes
 
 Reconcile newly approved work and finish authorized local integration before
 starting another audit. Recompute remaining parent acceptance and prepare the next
-coherent batch in the same occurrence when the slot is free and budget permits.
+coherent batch in the same occurrence when the slot is free.
 Do not wait for the next cron tick merely to make a routine decision.
 When reporting active work or pending review, inspect actual process/workspace and review evidence
 immediately before returning the waiting report. Reuse it if already taken at this
@@ -69,8 +68,8 @@ final boundary; elapsed drafting time alone can make the initial readback stale.
 verify exact review approval, reuse still-valid check receipts, integrate and publish
 under existing authority, then select the next batch. This is one final readback,
 not a polling loop, fresh history scan or test rerun. If still active, report it and
-return. If the occurrence budget expires, save the exact closeout step and reason;
-do not silently treat it as completed or replenish worker budgets.
+return. If the occurrence ends first, save the exact closeout step and reason;
+do not silently treat it as completed.
 The picker
 may return after verified asynchronous handoff; do not busy-poll or invent a
 background continuation. Reuse existing terminal notifications/continuations;
@@ -110,7 +109,7 @@ bound. Old receipts may require one fresh execution; never rewrite their hashes.
 
 At two unchanged observations, change the supported repair approach or pursue
 independent authorized work; no blind retry, overlapping writer, claim fabrication
-or upstream Hermes Agent edits. Never reset explicit allocations to continue.
+or upstream Hermes Agent edits.
 
 A pending integration remains actionable even when report evidence is unchanged.
 Perform the missing verification/integration step, or record the exact failed

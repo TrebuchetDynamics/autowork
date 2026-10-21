@@ -21,6 +21,14 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- **Budgets removed (breaking).** Autowork enforces no token, cost or time budget:
+  `PI_AUTOWORK_MAX_COST` and `PI_AUTOWORK_COST_WINDOW`, the runner's budget drain and
+  status line, the engine's `--budget-seconds` command allowance (`LIMIT_REQUIRED`,
+  `budget-<task>.json`) and the skills' allocation rules (no reset, unknown usage is
+  not zero, extra allocation on exhaustion) are gone, with no fallback. A task that
+  still declares a budget is not held for it. Cost and tokens are still recorded per
+  run in `runs.jsonl`, for measurement only; timeouts, runtime, cycle and failure
+  limits and the owner's authority over spending money are unchanged.
 - `autowork migrate` is one recoverable transaction: the converted commit is recorded as
   `refs/autowork/migration` before any file changes, staged, then landed by
   compare-and-swap; an interrupted run resumes or refuses, and `--no-commit` stages it.

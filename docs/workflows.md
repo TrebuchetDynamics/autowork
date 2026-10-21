@@ -6,7 +6,7 @@
 including holds with no dependents and no question. It repairs routine local
 causes within the accepted task and verifies the resulting state, rather than
 merely saving another continuation note. Retained code, candidate identity,
-attempt budgets and required tests/review remain authoritative.
+attempt counts and required tests/review remain authoritative.
 
 Recovery uses the existing execution owner and supported task workflow. Live or
 unknown ownership remains protected; no competing repair session, slot clearing,

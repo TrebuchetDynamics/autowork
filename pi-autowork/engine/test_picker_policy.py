@@ -24,7 +24,7 @@ class PickerPolicyTests(unittest.TestCase):
 
     def test_preserves_authority_and_no_busywork(self):
         text=full_text()
-        for phrase in ['No exhaustive scan, broad suite, fabricated task','financial/live/scope gates stay','not product acceptance','exactly `[SILENT]`','unknown usage is not zero','push, deploy, publish, spend money, place trades','actual process identity','Never push']:
+        for phrase in ['No exhaustive scan, broad suite, fabricated task','financial/live/scope gates stay','not product acceptance','exactly `[SILENT]`','no token, cost or time budgets','push, deploy, publish, spend money, place trades','actual process identity','Never push']:
             self.assertIn(phrase,text)
 
     def test_usable_backlog_takes_short_path_and_worker_owns_whole_outcome(self):

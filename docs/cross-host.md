@@ -228,8 +228,7 @@ subsequent release preparation. Do not edit release directories. `--dry-run` and
 Environment variables tune the rest (`--help` lists them): the models, worker and
 review timeouts (90 and 30 minutes), `PI_AUTOWORK_VALIDATE` (a command that must pass
 on every integrated task before the review), `PI_AUTOWORK_REVIEW=0` (skip the Pi
-review), retries, the failure limit, the fallback cooldown, total runtime,
-`PI_AUTOWORK_MAX_COST` with `PI_AUTOWORK_COST_WINDOW` (hours, default 24), the
+review), retries, the failure limit, the fallback cooldown, total runtime, the
 memory one more worker needs (`PI_AUTOWORK_MIN_FREE_MB`, default 3000; twice it must be
 available), the repository's full offline check to run on main after each landing
 (`PI_AUTOWORK_MAIN_CHECK`, for example `python3 scripts/check.py`; a red result gets one
@@ -459,10 +458,10 @@ How it works:
   when Pi exits 0), never because a test failed. The fallback resumes the same Pi
   session, so partial work is reconciled rather than redone. All workers share the
   cooldown.
-- **Budget.** `runs.jsonl` records every Pi run (workers, reviews and merges, from
-  every process). `PI_AUTOWORK_MAX_COST` limits the reported cost within the last
-  `PI_AUTOWORK_COST_WINDOW` hours, so a restart does not reset it; at the limit no new
-  worker or Pi run starts and running workers finish.
+- **Cost.** `runs.jsonl` records every Pi run (workers, reviews and merges, from
+  every process) with its tokens and reported cost. Cost is measured, never enforced:
+  there is no spending limit, and the runner stops only on the runtime, cycle and
+  failure limits above.
 - **Hermes.** By default the runner refuses a repository that a Hermes Autowork cron
   job also works on. With `--allow-hermes`, the two share the engine's repository
   lease: while Pi's coordinator holds it, Hermes Autowork's claim returns `BUSY`, and

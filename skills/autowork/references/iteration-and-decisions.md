@@ -29,7 +29,7 @@ These operating priorities apply to every Autowork run.
    consequential choices through the coordinator's bounded planning pass.
 5. **Retry and backoff across runs.** Use no automatic failure retry after an
    unknown launch; reconcile actual process/workspace evidence first. Preserve
-   consumed usage and never reset an exhausted allocation. Two unchanged holds
+   recorded usage as evidence. Two unchanged holds
    require a different supported repair, independent authorized work or one exact
    external input. A failed task holds only its actual dependencies and resources.
    Finish pending required review, commit and local integration before selecting
@@ -39,8 +39,7 @@ These operating priorities apply to every Autowork run.
    first turn as 1–3 observable checks under `Interpreted acceptance:` and proceeds.
    Ask an owner question (priority 9) only when the possible readings lead to
    materially different product outcomes; continue only independent authorized work
-   until that input arrives. Honor explicit task/caller limits and real host
-   enforcement. Stop at acceptance; unused allocation is not work to spend.
+   until that input arrives. Honor explicit task/caller scope. Stop at acceptance.
 7. **Done means scoped done.** Finish after checks pass and owned changes are committed; never rerun an unchanged
    passing gate merely to refresh status metadata. NOT_CHECKED is not qualification.
    For checks likely to exceed the terminal window, use the host's tracked
@@ -88,13 +87,9 @@ Default interactive execution completes one slice, including authorized recovery
 and closeout. An explicit one-task limit stops new selection after that task;
 standing authority cannot override the caller's narrower stop. Explicit continuation or whole-spec scope
 permits further eligible batches only within its accepted bounds.
-Recurrence authorizes the saved occurrence, not wider scope or extra budgets.
-Reconcile consumed history first; unknown usage is not zero, and
-exhaustion requires explicit additional allocation, never a new occurrence or session.
-Count usage in the controller's actual unit (API calls, tool calls and tool-calling
-iterations differ) and record spent and unspent amounts; early stop does not consume
-the whole grant. Reopening a closed remainder reuses its actual remaining amount
-and scope, not a fresh default.
+Recurrence authorizes the saved occurrence, not wider scope. Reconcile consumed
+history first. Autowork has no token, cost or time budgets: usage is measured, never
+a reason to stop or a grant to spend.
 
 ## Close verified completion
 

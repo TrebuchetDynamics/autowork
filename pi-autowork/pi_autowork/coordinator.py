@@ -2286,7 +2286,7 @@ class Coordinator:
     def resume_report(self, row):
         """Reportless commits belong to their worker, including legacy conflict holds.
 
-        Prepare recovery through the engine even when --once/budget draining skips
+        Prepare recovery through the engine even when --once/--max-cycles draining skips
         refill; the usual paused-attempt admission then launches only this attempt.
         """
         _, _, state = worker.engine_modules()
@@ -2794,10 +2794,6 @@ class Coordinator:
             if self.max_runtime and time.monotonic() - self.started >= self.max_runtime:
                 self.draining = True
                 LOG.say('Reached PI_AUTOWORK_MAX_RUNTIME; finishing running tasks')
-            if pi_runtime.over_budget(self.runtime):
-                self.draining = True
-                LOG.say(f'Budget reached (${pi_runtime.spent(self.runtime)} of ${self.runtime.max_cost} in '
-                        f'{self.runtime.window_text} h); finishing running tasks')
             if self.failures >= self.max_failures:
                 if self.mode == 'continuous':
                     # A service that exits on its own is a silent stop; pause new work instead.
@@ -2840,7 +2836,7 @@ class Coordinator:
             if outcome != 'ACTION_REQUIRED':
                 self.ledger_errors = []  # an owner repair must also retire its question
         else:
-            # --once/budget draining starts no new task, but a broken ledger also
+            # --once/--max-cycles draining starts no new task, but a broken ledger also
             # prevents the already dispatched tasks from integrating or closing.
             self.ledger_errors = self.validate_ledger()
             outcome = 'ACTION_REQUIRED' if self.ledger_errors else 'DRAINING'
@@ -2964,7 +2960,7 @@ class Coordinator:
                 self.finish(1, f'No runnable task can start: {self.last_waiting or "see --status"}')
             self.merge_waiting()
             return self.pause(self.interval)
-        # --once/budget draining never reach IDLE's maintainer pass. Finish their
+        # --once/--max-cycles draining never reach IDLE's maintainer pass. Finish their
         # proposal batches (including discarded ones) without dispatching new work.
         if self.draining and self.maintain(ledger_edits_only=True):
             return

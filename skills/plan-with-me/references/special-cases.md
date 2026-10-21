@@ -12,8 +12,7 @@ old execution grant. On reactivation reuse its ID and keep the cancellation in
 history. If the owner instead requests a new replacement, add its successor with
 `autowork tasks add`, then supersede the old task with `autowork tasks supersede ID
 --by NEW --reason TEXT`;
-preserve original acceptance/results without importing withdrawn scope or
-historical allowance. Report queue eligibility separately from execution authority.
+preserve original acceptance/results without importing withdrawn scope. Report queue eligibility separately from execution authority.
 
 ## Validation-performance plans
 
@@ -52,7 +51,7 @@ State whether low-priority items means test cases or repository tasks; do not
 silently turn a test-cleanup request into unrelated backlog cancellation. If the
 user requests a new simpler replacement, save the successor and supersede the old
 task without marking its unproven outcome passed. Creating that replacement does
-not implement it, renew an execution budget or dispatch a worker.
+not implement it or dispatch a worker.
 
 ## Blockers and recovery
 
@@ -75,7 +74,7 @@ integration, leaving only the remaining receipt or qualification gap.
 ## Pending-task lists
 
 For a pending-task list, separate unresolved product
-choices, recovery scope/budget and live-operation gates; do not interview every task
+choices, recovery scope and live-operation gates; do not interview every task
 or reopen settled deferrals and cancellations. Group tasks only when one shared
 choice governs them, retaining each task's acceptance and separate operation gates.
 Ask that shared choice once, record which tasks its answer governs and reuse it
@@ -162,11 +161,10 @@ mismatch; update it only under existing scheduling authority, preserving cadence
 paused state, history and no-code/publication limits. A one-time commit/push request
 does not create standing publication permission for future research runs.
 
-## Allowances, continuations and live gates
+## Continuations and live gates
 
-For a conditional extra allowance, record its unit, scope, recovery prerequisite and
-whether it is new or explicitly reused. Preserve consumed and closed allocations;
-permission to plan a continuation does not launch it. A shared live-campaign sequence
+Permission to plan a continuation does not launch it; Autowork has no token, cost or
+time budgets to grant or extend. A shared live-campaign sequence
 likewise grants no target access or mutation approval; retain per-operation gates.
 
 When the user
@@ -180,5 +178,5 @@ condition, then recheck that worker's terminal state: execute the continuation n
 if satisfied, otherwise keep one pending request for the existing coordinator. A
 scope expansion to a shared runtime or upgrade stays conditional on a supported
 candidate proving the required operations; planning acceptance permits neither the
-upgrade nor job resumption, and preserves existing pauses and allocations. No new
+upgrade nor job resumption, and preserves existing pauses. No new
 scheduler, parallel backlog, automatic deployment or invented acceptance.

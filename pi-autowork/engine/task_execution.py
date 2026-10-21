@@ -452,25 +452,7 @@ def task_path(task_id):
 def command(args, repo, state, common, task, lease, lock_fd):
     if not args.timeout or not math.isfinite(args.timeout) or args.timeout <= 0:
         raise ValueError('--run requires a positive finite --timeout')
-    if args.budget_seconds is not None and (not math.isfinite(args.budget_seconds) or args.budget_seconds <= 0):
-        raise ValueError('--budget-seconds must be positive and finite')
-    budget_path = common / ('budget-' + task['id'] + '.json')
-    budget = read(budget_path)
-    if budget is None and budget_path.exists():
-        return {'outcome': 'LIMIT_REQUIRED', 'reason': 'Retained allowance is null; unknown usage is not a new allocation.'}
     timeout = args.timeout
-    if budget is not None:
-        if (not isinstance(budget, dict) or type(budget.get('allocation')) not in (int, float) or
-                not math.isfinite(budget['allocation']) or budget['allocation'] <= 0 or
-                budget.get('pending') is not False or type(budget.get('remaining')) not in (int, float) or
-                not math.isfinite(budget['remaining']) or budget['remaining'] <= 0 or
-                budget['remaining'] > budget['allocation'] or
-                (args.budget_seconds is not None and args.budget_seconds != budget.get('allocation'))):
-            return {'outcome': 'LIMIT_REQUIRED', 'reason': 'Retained command allowance exhausted, changed or usage unknown; no automatic reset.'}
-        timeout = min(timeout, budget['remaining'])
-    elif args.budget_seconds is not None:
-        budget = {'allocation': args.budget_seconds, 'remaining': args.budget_seconds, 'pending': False}
-        timeout = min(timeout, args.budget_seconds)
     paths = [task_path(task['id'])] + args.source_path
     if args.plan:
         paths.append(args.plan.split('#', 1)[0])
@@ -483,22 +465,13 @@ def command(args, repo, state, common, task, lease, lock_fd):
         save(common / 'active.json', dict(lease, owner=identity(child.pid), command_group=child.pid))
 
     def finished(elapsed):
-        if budget:
-            budget['remaining'] = max(0, budget['remaining'] - elapsed)
-            budget['pending'] = False
-            save(budget_path, budget)
         if args.owner_pid:
             save(common / 'active.json', lease)
         else:
             (common / 'active.json').unlink(missing_ok=True)
 
-    def pending():
-        if budget:
-            save(budget_path, dict(budget, pending=run_id))
-
     return bounded_command(args.run, repo, common, task['id'], timeout, before,
-                           on_start=started, on_finish=finished, on_pending=pending,
-                           pass_fds=(lock_fd,), run_id=run_id)
+                           on_start=started, on_finish=finished, pass_fds=(lock_fd,), run_id=run_id)
 
 
 def reap_exited(keep):
@@ -561,7 +534,7 @@ def wait_check_command(child, timeout, fd, keep=()):
 
 
 def bounded_command(argv, repo, common, task_id, timeout, before=None, *,
-                    on_start=None, on_finish=None, on_pending=None, pass_fds=(), run_id=None,
+                    on_start=None, on_finish=None, pass_fds=(), run_id=None,
                     receipt_context=None, receipt_writer=None, check_slot_wait=False):
     """Bound a process tree in cwd ``repo`` and persist its source-bound receipt.
 
@@ -584,8 +557,6 @@ def bounded_command(argv, repo, common, task_id, timeout, before=None, *,
     subreaper()
     run_id = run_id or uuid.uuid4().hex
     log = common / (run_id + '.log')
-    if on_pending:
-        on_pending()
     started = time.monotonic()
     timed_out = False
     terminated = []
@@ -824,7 +795,6 @@ def main(argv=None):
     parser.add_argument('--owner-pid', type=int)
     parser.add_argument('--release', action='store_true')
     parser.add_argument('--timeout', type=float)
-    parser.add_argument('--budget-seconds', type=float, help='Optional cumulative command walltime; not a model spending limit.')
     parser.add_argument('--source-path', action='append', default=[])
     parser.add_argument('--run', nargs=argparse.REMAINDER)
     parser.add_argument('--writers', action='store_true',
@@ -903,8 +873,8 @@ def main(argv=None):
     try:
         if args.scope == 'tasks' and not args.tasks:
             raise ValueError('--scope tasks requires an explicit --tasks filter')
-        if args.run is None and (args.timeout is not None or args.budget_seconds is not None):
-            raise ValueError('--timeout and --budget-seconds bound --run commands only; use actual host limits for coordinator work')
+        if args.run is None and args.timeout is not None:
+            raise ValueError('--timeout bounds --run commands only; use actual host limits for coordinator work')
         if args.run is not None and (not args.run or not args.apply or args.release):
             raise ValueError('--run requires --apply and a nonempty argv; cannot combine with --release')
         result = execute(args)

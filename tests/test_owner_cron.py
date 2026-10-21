@@ -35,7 +35,7 @@ class OwnerCronTests(unittest.TestCase):
         for rule in ('current agent session', 'TODO.md', 'goals.json',
                      'no separate mandatory validate-only', '--owner-pid',
                      'actual cron occurrence and manual-continuation liveness',
-                     'no Kanban lookup', 'explicit task/caller limits'):
+                     'no Kanban lookup', 'explicit task/caller scope'):
             self.assertIn(rule, prompt)
         self.assertIn('retain named task filter', prompt)
         self.assertEqual(load().owner_prompt(prompt, True), prompt)
@@ -75,19 +75,21 @@ class OwnerCronTests(unittest.TestCase):
         self.assertIn('Offline removal only; no deployment.', prompt)
         self.assertIn('Do not push or deploy', prompt)
 
-    def test_generated_prompt_preserves_caps_without_mandatory_native_allocation(self):
+    def test_generated_prompt_states_no_budgets_and_no_mandatory_native_allocation(self):
         module = load()
         scope = ('Only TASK-1. No push. Pause remains. Continue original card only; '
                  'wait for native continuation before implementation.')
         for enabled in (False, True):
             prompt = module.owner_prompt(scope, enabled)
             self.assertTrue(prompt.startswith(scope))
-            for rule in ('supersedes earlier card-only', 'unknown usage is not zero',
-                         'never reset an exhausted allocation', 'actual process identity',
-                         'explicit task/caller limits', 'no Kanban lookup'):
+            for rule in ('supersedes earlier card-only', 'no token, cost or time budgets',
+                         'not held for it', 'actual process identity',
+                         'explicit task/caller scope', 'no Kanban lookup'):
                 self.assertIn(rule, prompt)
             for obsolete in ('100 turns by default', '--goal-max-turns', '--max-retries',
-                             'as well as native cards', 'same-card registration'):
+                             'as well as native cards', 'same-card registration',
+                             'unknown usage is not zero', 'exhausted allocation', 'fresh allocation',
+                             'consumed budgets', 'reset budgets'):
                 self.assertNotIn(obsolete, prompt)
             self.assertEqual(module.owner_prompt(prompt, enabled), prompt)
 
@@ -272,7 +274,7 @@ class OwnerCronTests(unittest.TestCase):
                      'cron pause JOB_ID', 'read back enabled=false'):
             self.assertIn(rule, prompt)
         self.assertIn('No product writes', prompt)
-        self.assertIn('Do not reset budgets', prompt)
+        self.assertIn('Do not reset retry counters', prompt)
         self.assertIn('Do not push', prompt)
 
     def test_authorized_maintenance_repairs_shared_source_not_products(self):
@@ -281,7 +283,7 @@ class OwnerCronTests(unittest.TestCase):
         prompt = module.audit_prompt(scope, repair=True)
         for rule in ('shared-source repair', 'earliest failed transition',
                      'regression RED', 'same read-only consumer',
-                     'actual execution remains separate', 'Do not reset budgets',
+                     'actual execution remains separate', 'Do not reset retry counters',
                      'No product writes', 'Preserve paused jobs'):
             self.assertIn(rule, prompt)
         self.assertNotIn(module.AUDIT_MARKER, prompt)

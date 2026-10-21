@@ -157,7 +157,7 @@ Record a completed focused check with its source/tools, selected-versus-recorded
 setup-versus-product cases, skip reasons and cleanup evidence. Keep its duration
 out of full-gate speedup claims. Put the detailed result in one existing evidence
 owner and link it from the live task's `Evidence:` note and the plan; update the next
-action without resetting ownership, budgets or acceptance. For paired visual evidence, retain baseline and
+action without resetting ownership or acceptance. For paired visual evidence, retain baseline and
 candidate observations separately: a defect present in both is an outstanding
 acceptance gap, not proof that the candidate introduced it. State fixture limits
 such as substituted fonts or a blank renderer alongside the claim, because painted

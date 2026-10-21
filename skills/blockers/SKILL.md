@@ -192,7 +192,7 @@ publication authority, and never turns an unobserved check into a pass.
 
 ## 4. Resolve and verify each item
 
-For each technical hold, keep the same task, candidate and cumulative budgets.
+For each technical hold, keep the same task and candidate.
 Inspect its latest attempt, actual writer/session activity and exact qualification
 inputs; fix the smallest in-scope local cause using the existing Autowork execution
 workflow. Reuse retained code and valid checks, repair local metadata/scope omissions

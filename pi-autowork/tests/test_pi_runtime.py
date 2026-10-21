@@ -115,11 +115,9 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(runtime.choose(settings)[0], None)
         os.environ['FAKE_UNAUTH'] = ''
         (self.state / 'provider.json').unlink()
-        self.job()  # spends 0.25
-        result = self.job(PI_AUTOWORK_MAX_COST='0.25')
-        self.assertFalse(result['ok'])
-        self.assertEqual(result['notes'], ['worker T-1: budget reached ($0.25 of $0.25 in 24 h); not starting Pi'])
-        self.assertEqual(len(self.calls()), 1)
+        self.job()  # costs 0.25: recorded, never a limit
+        self.assertTrue(self.job()['ok'])
+        self.assertEqual(len(self.calls()), 2)
 
 
 if __name__ == '__main__':

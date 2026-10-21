@@ -25,8 +25,7 @@ and retained complete artifacts; do not request implementation permission again 
 create a planning/recovery task merely to prepare inputs for the current task.
 Restoring a pinned artifact requires equality with its original pin. Implementing
 an accepted change without such a pin uses the task's checks; do not invent a
-byte-equality requirement. Preserve foreign work, original admission evidence and
-consumed budget. Retry the failed consumer after repair, then continue execution.
+byte-equality requirement. Preserve foreign work and original admission evidence. Retry the failed consumer after repair, then continue execution.
 
 If a tool returns `pending_approval`, preserve its operation, resume step and request
 ID when supplied; a missing display ID does not hold independent work. The host

@@ -9,11 +9,11 @@ Caller scope and saved stop/batch limits govern each occurrence. Preserve a save
 at-most-one-new-batch limit: fixes, recovery and authorized closeout inside that
 batch need no new permission, but they grant no second batch. An explicit
 multi-batch/whole-spec mandate continues only within its existing bounds. Recurrence
-does not widen scope, unpause a job or reset budgets; unknown usage is not zero.
+does not widen scope or unpause a job.
 Reuse concurrent implementation only after provenance, current ownership,
 checks and required review are verified. A pending review or approval holds its
 operation and dependent work, not independently authorized non-overlapping work;
-fallback still consumes the saved batch allowance and never expands worker scope.
+fallback never expands worker scope.
 
 Start with `autowork:autowork` for repository-stage preparation, then use the
 current session and actual repository state. A missing `tasks/` store alone is setup work (`autowork migrate`, or planning); an

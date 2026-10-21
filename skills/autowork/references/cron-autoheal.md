@@ -3,7 +3,7 @@
 A scheduled Autowork occurrence repairs attributable Toolset and managed job-wiring
 faults within its existing authority. A cron failure is work to diagnose and repair,
 not a reason to ask again whether to do already-authorized local work. Preserve the
-original task, candidate, execution history and consumed budget. This policy grants
+original task, candidate and execution history. This policy grants
 neither product changes to a shared maintainer nor external publication authority.
 
 ## Repair the exact saved job
@@ -58,7 +58,7 @@ After a failure, identify the earliest failed consumer and its exact inputs:
   commit alone does not update a private installation.
 - Selection or ownership refused: repair the exact task input or reconcile the
   actual process/workspace conflict, then rerun the direct owner cycle. Preserve
-  source/check evidence and consumed budgets. No original-card lookup, release or
+  source/check evidence. No original-card lookup, release or
   native continuation API is required.
 - Missing executable/dependency, invalid workdir, failing script, model credentials
   or delivery transport: verify the actual failing boundary. Repair only from an

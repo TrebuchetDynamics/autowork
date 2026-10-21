@@ -43,8 +43,7 @@ main inclusion, deployment and live acceptance, and retain historical failed evi
 without treating it as the current frontier when a matching newer check passes.
 Separate missing intent or excluded repair scope from transport, gate or accounting
 failures, comparing the fix with the original worker contract. Reuse the original
-task, candidate and cumulative accounting; never infer budget from displayed turn
-counts. Save findings in the existing task body; a conditional recovery recommendation
+task and candidate. Save findings in the existing task body; a conditional recovery recommendation
 is not an executable next task, and consumer eligibility does not prove a free lease
 or authorize redispatch. Before proposing a "patch-only" security-remediation
 exception, compare the resolved versions, advisory fixed ranges, available releases
