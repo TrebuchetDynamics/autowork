@@ -9,6 +9,7 @@ repository, under `${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key
 
 | Module | Role |
 | --- | --- |
+| `engine/task_store.py` | Read-only, pinned-commit TaskStore; [schema and API](task-store.md). Not yet wired into consumers |
 | `pi_autowork/cli.py` | Options, repository and toolset resolution (one release per run), `--status`, `--dry-run`, `--fleet`, `--set-aside`, the runner lock |
 | `pi_autowork/coordinator.py` | The loop: engine lease owner, session branch and final merge, settle and close, requests, priority drift, Touches proposals and widening, health, self-update and restart, graceful stop |
 | `pi_autowork/worker.py` | The engine-launched `--worker` and `--verify` modes |
