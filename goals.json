@@ -830,7 +830,6 @@
       "TOOLSET-292-6a",
       "TOOLSET-276-11",
       "TOOLSET-287-44",
-      "TOOLSET-277-52",
       "TOOLSET-270-a9",
       "TOOLSET-271-d6",
       "TOOLSET-274-f0",
@@ -903,15 +902,15 @@
       "TOOLSET-144-c0",
       "TOOLSET-184-1d",
       "TOOLSET-066",
-      "TOOLSET-003",
-      "TOOLSET-098-5d",
       "TOOLSET-019",
       "TOOLSET-096-7e",
       "TOOLSET-029",
-      "TOOLSET-011",
       "TOOLSET-149-df",
       "TOOLSET-150-71",
       "TOOLSET-151-01",
+      "TOOLSET-003",
+      "TOOLSET-098-5d",
+      "TOOLSET-011",
       "TOOLSET-123-a0",
       "TOOLSET-129-6c",
       "TOOLSET-101-f6",
@@ -1236,24 +1235,6 @@
     {
       "depends_on": [],
       "goal": "RECOVERY",
-      "id": "TOOLSET-003",
-      "section": "Next",
-      "status": "open",
-      "title": "Qualify automatic planning recovery with a real bounded workflow"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-010"
-      ],
-      "goal": "CRON-REPORTING",
-      "id": "TOOLSET-011",
-      "section": "Next",
-      "status": "open",
-      "title": "Qualify the updated reporting workflow on the affected profile"
-    },
-    {
-      "depends_on": [],
-      "goal": "RECOVERY",
       "id": "TOOLSET-019",
       "section": "Next",
       "status": "in_progress",
@@ -1288,16 +1269,6 @@
       "section": "Next",
       "status": "open",
       "title": "Qualify the worktree runner live on a fleet repository"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-082"
-      ],
-      "goal": "OMH-TRIM",
-      "id": "TOOLSET-098-5d",
-      "section": "Next",
-      "status": "open",
-      "title": "Refresh the installed OMH plugin in each OMH profile to the Hermes 0.22 release"
     },
     {
       "depends_on": [],
@@ -1745,6 +1716,34 @@
       "section": "Next",
       "status": "open",
       "title": "Split goals.py once its private copies and the runner's parse cache allow it"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-003",
+      "section": "Needs decision",
+      "status": "open",
+      "title": "Qualify automatic planning recovery with a real bounded workflow"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-010"
+      ],
+      "goal": "CRON-REPORTING",
+      "id": "TOOLSET-011",
+      "section": "Needs decision",
+      "status": "open",
+      "title": "Qualify the updated reporting workflow on the affected profile"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-082"
+      ],
+      "goal": "OMH-TRIM",
+      "id": "TOOLSET-098-5d",
+      "section": "Needs decision",
+      "status": "open",
+      "title": "Refresh the installed OMH plugin in each OMH profile to the Hermes 0.22 release"
     },
     {
       "depends_on": [

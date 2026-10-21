@@ -5287,3 +5287,28 @@ Source section: Now
 - Exclusions: No product/runtime redesign, live qualification, publication or coordinator-owned planning edits by the code worker. Do not reopen TOOLSET-184-b3 or replay its older candidate.
 - Next action: Reproduce the two assertions using repository files, make the smallest policy-preserving repair, then run the focused and full checks. The original runner bundle is not a prerequisite; TOOLSET-234-d4 owns its delivery and the failures reproduce locally.
 - Priority reason: The current DOCS-MAINTAINER instruction explicitly puts an uncovered main-red repair first in Now. Preserve every pre-existing task's relative order.
+
+
+## Retired reporting qualification — 2026-10-20
+
+Owner disposition: retire TOOLSET-011 without claiming qualification. The following original unchecked contract is retained verbatim as history, not executable work or a passing result.
+
+### TOOLSET-011 — Qualify the updated reporting workflow on the affected profile
+
+- [ ] TOOLSET-011 — Qualify the updated reporting workflow on the affected profile
+- Short: Qualify the updated reporting workflow
+- Status: open; original target environment unavailable.
+- Goal: CRON-REPORTING — Verify setup confirmation and scheduled Telegram delivery separately.
+- Sources: [accepted reporting qualification](docs/workflows.md#telegram-reporting-qualification), [reporting contract](skills/cron-autowork/SKILL.md), [verification boundaries](docs/workflows.md), archived TOOLSET-010 source delivery.
+- Scope: On the original host/profile, install the updated bundle through its supported path. Identify the existing job, preserve its state/scope, verify its requested Telegram route, then inspect the next scheduled result.
+- Acceptance: A setup request from another surface confirms once in the intended chat/topic; a scheduled occurrence has attributable execution and Telegram message receipts. Report failed, queued or unverified delivery honestly.
+- Checks: Read back installed source and saved route/state; verify the actual setup message and scheduled result/delivery. These live checks are not run.
+- Exclusions: No duplicate job, implicit resume, immediate development run, budget reset, push/deployment, USB formatting or real-PC changes. Never substitute another profile.
+- Dependencies: TOOLSET-010.
+- Environment prerequisite: Original host, affected profile/job and authorized Telegram transport.
+- Ownership: Coordinator with that access; no active claim.
+- Current evidence: Exact original profile directory and original job ID are absent from this host's root and existing-profile job stores. No replacement job, profile or message was created.
+- Next action: Restore access to the original host/profile/job and its authorized Telegram route, then inspect the setup and scheduled delivery receipts.
+
+
+Retirement disposition: cancelled, not completed; original acceptance remains unmet.
