@@ -1455,24 +1455,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Current evidence (2026-10-15): fleet-wide `/autowork update` has since installed every reviewed fix in all profiles (all at 90f164f, finalize readback ready). Only the selected-profile mode (`--profile NAME`) is still unqualified live.
 - Next action: Run the reviewed updater once in selected-profile mode for one profile, read back installed hashes and registrations, rerun it to confirm a no-op, and record the receipts. Reuse the reviewed updater; do not repeat its completed implementation or label preflight as deployment.
 
-### TOOLSET-096-7e — Qualify the worktree runner live on a fleet repository
-
-- [ ] TOOLSET-096-7e — Qualify the worktree runner live on a fleet repository
-- Payoff: Run Autowork continuously through Pi with a model fallback.
-- Blocker resolution: Repository choice is answered. Remaining work is live qualification through the existing authorized execution workflow with exclusive ownership, not another product decision or permission to escape a worker sandbox.
-- Target: The canonical checkout of the current Autowork repository; resolve it from git worktree list, not the assigned task worktree.
-- Owner decision: 2026-10-20: Owner selected the canonical Autowork repository, with an alternate fleet test repository also permitted in the private owner record. Use this repository first. Preserve no-push and no-Hermes-job-change exclusions; do not launch a competing runner.
-- Short: Qualify the worktree runner live
-- Status: open
-- Goal: PI-RUNNER
-- Sources: [usage](docs/cross-host.md#run-autowork-continuously).
-- Scope: Run the released runner on a fleet repository alongside its Hermes jobs (owner's choice) until it ends a session, and record what it completed and how the end-of-session merge went.
-- Acceptance: `runs.jsonl` and the repository's main branch show completed tasks merged at the end of a session, or a `Merge pending` with the exact reason and the branch kept; no push by the runner; the repository's uncommitted changes untouched.
-- Checks: `runs.jsonl`, runner output, `git -C <fleet-repo> log` and `worktree list`.
-- Dependencies: TOOLSET-095-48.
-- Ownership: Toolset coordinator on the owner's request.
-- Exclusions: No push; no change to the repository's Hermes jobs.
-
 ### TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
 
 - [ ] TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order

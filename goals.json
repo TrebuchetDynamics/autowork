@@ -1254,16 +1254,6 @@
     },
     {
       "depends_on": [
-        "TOOLSET-095-48"
-      ],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-096-7e",
-      "section": "Next",
-      "status": "open",
-      "title": "Qualify the worktree runner live on a fleet repository"
-    },
-    {
-      "depends_on": [
         "TOOLSET-172-92"
       ],
       "goal": "PI-RUNNER",
@@ -2479,6 +2469,16 @@
       "section": "Done",
       "status": "done",
       "title": "Run Pi Autowork from the main branch with per-task worktrees merged at the end"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-095-48"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-096-7e",
+      "section": "Done",
+      "status": "done",
+      "title": "Qualify the worktree runner live on a fleet repository"
     },
     {
       "depends_on": [],

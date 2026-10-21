@@ -5407,3 +5407,29 @@ Source section: Next
 - Dependencies: None.
 - Ownership: Toolset coordinator; preserve active worker contracts and unrelated planning batches.
 - Exclusions: No implementation in consumer repositories during planning, automatic plugin installation, external execution, paid evaluation, CI weakening, scheduler/service changes, publication, or new mandatory task schema. No dispatch from this planning invocation.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-096-7e"></a>
+
+### TOOLSET-096-7e — Qualify the worktree runner live on a fleet repository
+
+- [x] TOOLSET-096-7e — Qualify the worktree runner live on a fleet repository
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Blocker resolution: Repository choice is answered. Remaining work is live qualification through the existing authorized execution workflow with exclusive ownership, not another product decision or permission to escape a worker sandbox.
+- Target: The canonical checkout of the current Autowork repository; resolve it from git worktree list, not the assigned task worktree.
+- Owner decision: 2026-10-20: Owner selected the canonical Autowork repository, with an alternate fleet test repository also permitted in the private owner record. Use this repository first. Preserve no-push and no-Hermes-job-change exclusions; do not launch a competing runner.
+- Short: Qualify the worktree runner live
+- Status: done
+- Goal: PI-RUNNER
+- Sources: [usage](docs/cross-host.md#run-autowork-continuously).
+- Scope: Run the released runner on a fleet repository alongside its Hermes jobs (owner's choice) until it ends a session, and record what it completed and how the end-of-session merge went.
+- Acceptance: `runs.jsonl` and the repository's main branch show completed tasks merged at the end of a session, or a `Merge pending` with the exact reason and the branch kept; no push by the runner; the repository's uncommitted changes untouched.
+- Checks: `runs.jsonl`, runner output, `git -C <fleet-repo> log` and `worktree list`.
+- Dependencies: TOOLSET-095-48.
+- Ownership: Toolset coordinator on the owner's request.
+- Exclusions: No push; no change to the repository's Hermes jobs.
+- Outcome (2026-10-20, closed by the owner): qualified by this repository's own released runner, which ran continuously for 54 hours, ended sessions and merged them into main (100 session merges in its runner.log; completed tasks in runs.jsonl). A fresh worker found nothing left to change. The "no push" exclusion no longer applies: the runner pushes main by design since then.
