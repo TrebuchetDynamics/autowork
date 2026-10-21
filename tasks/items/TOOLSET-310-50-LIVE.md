@@ -18,3 +18,4 @@ checks = ["Live qualification by an authorized person"]
 exclusions = ["Offline evidence does not count"]
 +++
 
+- Owner decision: 2026-10-21: Owner deferred the shared 30-day live evaluation on at least two other repositories. Keep the baseline, controlled-permission, privacy, weekly evidence and aggregate-verdict requirements; no completion or qualification is claimed. Do not create jobs, start runners, widen push authority or change existing pauses. Reuse this same decision for TOOLSET-311-d7 and TOOLSET-310-50-LIVE rather than asking twice.
