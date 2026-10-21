@@ -840,7 +840,8 @@
         "TOOLSET-294-9d",
         "TOOLSET-295-c8",
         "TOOLSET-296-ee",
-        "TOOLSET-300-3d"
+        "TOOLSET-300-3d",
+        "TOOLSET-301-d1"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -851,6 +852,7 @@
       "TOOLSET-291-ae",
       "TOOLSET-292-6a",
       "TOOLSET-276-11",
+      "TOOLSET-301-d1",
       "TOOLSET-295-c8",
       "TOOLSET-296-ee",
       "TOOLSET-297-cb",
@@ -1281,6 +1283,14 @@
       "section": "Now",
       "status": "open",
       "title": "A main check that did not pass says why: failing tests, timeout, killed, environment or incomplete"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-301-d1",
+      "section": "Now",
+      "status": "open",
+      "title": "A worker's commit runs the tests that import what it changed before it reports"
     },
     {
       "depends_on": [],
