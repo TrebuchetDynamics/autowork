@@ -26,6 +26,13 @@ MIGRATION_DEFERRED (work in flight; the runner converts after its drain),
 MIGRATION_BLOCKED (a refusal only a person resolves), INVALID_STORE, or
 ACTIVATION_PENDING (the store is ready but the running runner's release cannot read it).
 `runner` says whether this repository's runner runs and can execute tasks/.
+
+`--force` is the owner's override (`/docs_sync force`) for a legacy repository: it does not
+wait for a drain. It stops this repository's service, ends live workers and any other lease
+holder, sets every attempt aside (worktrees, branches and uncommitted files kept; repeated
+holds too), releases claims, commits the owner's planning edits, converts, and starts the
+service again. It still never discards work or data: content a conversion cannot account
+for, or a queue that does not validate, refuses with MIGRATION_BLOCKED.
 """
 import hashlib
 import json
@@ -33,6 +40,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 
 from pi_autowork import task_commands, task_migrate
 from pi_autowork.task_commands import worktree_store
@@ -41,7 +49,7 @@ from task_store import StoreError, TaskStore  # noqa: E402
 
 # The prepare contract a skill checks (`autowork capabilities`) before it relies on it; raise
 # API when a skill would need a new prepare behaviour to act correctly.
-API = 2
+API = 3  # 3: prepare --force
 OUTCOMES = ('READY', 'MIGRATED', 'NO_STORE', 'MIGRATION_DEFERRED', 'MIGRATION_BLOCKED', 'INVALID_STORE',
             'ACTIVATION_PENDING')
 HEADING = re.compile(r'^(#{1,6})\s+(.*?)\s*#*\s*$')
@@ -233,6 +241,8 @@ def outcome(report):
     if report['state'] == 'invalid':
         return 'INVALID_STORE'
     if report['state'] in ('legacy', 'conversion_pending'):
+        if report.get('forced'):
+            return 'MIGRATION_BLOCKED'  # force converts or names what it will not discard
         if report.get('deferred') or (report['mode'] == 'check' and task_migrate.deferrable(report['refusals'])):
             return 'MIGRATION_DEFERRED'
         return 'MIGRATION_BLOCKED' if report['refusals'] else 'READY'  # --check: it would convert
@@ -250,14 +260,54 @@ def prepare(repo, mode='commit'):
         return dict(ok=False, state='no_repository', outcome='INVALID_STORE',
                     refusals=[f'{repo} is not a Git working tree'])
     repo = Path(top).resolve()
+    forced = None
+    if mode == 'force':
+        forced = force(repo) if detect(repo) in ('legacy', 'conversion_pending') else None
+        # Converted: report on the new store. Refused: report what still stands, writing nothing more.
+        mode = 'check' if forced and forced['step'].get('outcome') != 'CONVERTED' else 'commit'
     if mode == 'check':
         report = _prepare(repo, mode)
     else:
         with task_commands.locked(repo):
             report = _prepare(repo, mode)
+    if forced:
+        report.update(forced=forced, mode='force')
+        if forced['step'].get('outcome') == 'CONVERTED':
+            report['actions'].insert(0, dict(action='convert', forced=True, **{
+                k: forced['step'][k] for k in ('commit', 'tasks', 'goals') if k in forced['step']}))
+        else:
+            report.update(ok=False, refusals=[forced['step'].get('detail', 'the forced conversion failed')],
+                          next='force could not convert without discarding work or data; resolve the named '
+                               'refusal, then run prepare --force again')
+            report.pop('deferred', None)  # forced: nothing is left waiting for a drain
     report['runner'] = runner(repo)
     report['outcome'] = outcome(report)
     return report
+
+
+def force(repo):
+    """The owner's force (`/docs_sync force`): convert a legacy repository now. Stops this
+    repository's service if it runs, ends live workers and other lease holders, sets every
+    attempt aside with its work kept, commits the owner's planning edits, converts through a
+    helper (the lease names its parent), then starts the service again if it was running.
+    Returns dict(service_stopped, service_started, step)."""
+    from pi_autowork import command, fleet_view
+    paths = command.env_paths()
+    name = fleet_view.instance(str(repo))
+    was_active = command.service_state(paths, name) == 'active'
+    if was_active:
+        command.systemctl(paths, 'stop', f'pi-autowork@{name}.service')
+    script = Path(__file__).resolve().parent / 'command.py'
+    result = subprocess.run([sys.executable, str(script), 'migrate', str(repo), '--after-drain', '--force',
+                             '--owner-pid', str(os.getpid())], capture_output=True, text=True, timeout=900)
+    try:
+        step = json.loads(result.stdout)
+    except ValueError:
+        step = dict(outcome='BLOCKED', detail=' '.join((result.stderr or 'no answer').split())[-300:])
+    started = False
+    if was_active:
+        started = command.systemctl(paths, 'start', f'pi-autowork@{name}.service').returncode == 0
+    return dict(service_stopped=was_active, service_started=started, step=step)
 
 
 def _prepare(repo, mode):

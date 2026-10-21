@@ -341,9 +341,20 @@ does not move; report it as pending, not landed (work in flight is then
 `MIGRATION_BLOCKED`, since the runner's later conversion commits). A refusal (`ok:
 false`) writes nothing to the repository: uncommitted planning files, or content that
 is neither the old nor the converted version, or work in flight (deferred as above).
-Report it and continue independent document work; never force, hand-convert, stop
-workers, break a lease, close a task or delete the recorded conversion ref to get past
-one.
+Report it and continue independent document work; never hand-convert, stop workers,
+break a lease, close a task or delete the recorded conversion ref to get past one.
+
+**`/docs_sync force`** (the owner's word `force` in the request) means: convert now, do
+not wait. Run `autowork tasks prepare --force <consumer>` (needs `prepare_api` 3) instead
+of plain `prepare`. It stops the repository's service, ends live workers and any other
+lease holder, sets every attempt aside with its worktree, branch and uncommitted files
+kept, releases the claims, commits the owner's TODO.md/goals.json edits, converts, and
+starts the service again. Report `forced`: what it stopped (`step.stopped`,
+`step.ended`), what it set aside (`step.set_aside`, each kept as `-set-aside-N`), the
+planning it committed, and the conversion commit. Force never discards work or data:
+if it still answers `MIGRATION_BLOCKED` (content a conversion cannot account for, an
+invalid queue), report that refusal; do not delete or overwrite anything to get past it.
+`force` changes only this step; the rest of the run follows the normal rules.
 
 Then work its `diagnostics`, each with the command that repairs it: `DRAFT`,
 `NOT_RUNNABLE`, `LIVE_NOT_AUTHORIZED`, `UNKNOWN_DEPENDENCY`, `SUPERSEDED_DEPENDENCY`,

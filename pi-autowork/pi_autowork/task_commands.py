@@ -681,6 +681,10 @@ def add_parser(sub):
     mode.add_argument('--check', action='store_true', help='read only: report the state and what would be done')
     mode.add_argument('--no-commit', action='store_true',
                       help='stage a conversion in the working tree and index; never move HEAD')
+    mode.add_argument('--force', action='store_true',
+                      help="the owner's force: convert now; stop this repository's service, live workers and "
+                           'other lease holders, set every attempt aside with its work kept, commit planning '
+                           'edits, convert and start the service again')
     p = verbs.add_parser('add')
     p.add_argument('repo', nargs='?', default='.')
     for flag in ('--goal', '--title', '--short'):
@@ -741,7 +745,8 @@ def run(args, repo):
     try:
         if args.verb == 'prepare':
             from pi_autowork import task_prepare
-            out = task_prepare.prepare(repo, 'check' if args.check else 'stage' if args.no_commit else 'commit')
+            out = task_prepare.prepare(repo, 'check' if args.check else 'stage' if args.no_commit
+                                       else 'force' if args.force else 'commit')
             print(json.dumps(out, indent=2))
             # 3: deferred (the runner converts after its drain), not prepared and not an error.
             return 0 if out['ok'] else 3 if out.get('outcome') == 'MIGRATION_DEFERRED' else 1
