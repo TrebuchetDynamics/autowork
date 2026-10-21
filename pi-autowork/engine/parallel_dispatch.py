@@ -161,6 +161,11 @@ def earlier_task_work(worktree, task_id, branch, baseline):
     """
     safe = re.sub(r'[^A-Za-z0-9._-]+', '-', task_id)
     pattern = re.compile(r'autowork/' + re.escape(safe) + r'(?:-r[0-9]+)?(?:-set-aside-[0-9]+)?')
+    trees = {}
+    for entry in execution.git(worktree, 'worktree', 'list', '--porcelain', '-z').split('\0\0'):
+        fields = dict(field.partition(' ')[::2] for field in entry.split('\0') if field)
+        if fields.get('branch') and fields.get('worktree'):
+            trees[fields['branch']] = fields['worktree']
     refs = execution.git(worktree, 'for-each-ref', '--sort=refname', '--sort=-committerdate',
                          '--format=%(refname)%00%(objectname)%00%(committerdate:iso-strict)',
                          'refs/heads/autowork/')
@@ -170,6 +175,29 @@ def earlier_task_work(worktree, task_id, branch, baseline):
         name = ref.removeprefix('refs/heads/')
         if name == branch or not pattern.fullmatch(name):
             continue
+        tree = trees.get(ref)
+        if tree and '-set-aside-' in name:
+            # git() strips leading whitespace, including an unstaged status's first column.
+            try:
+                result = subprocess.run(['git', '-C', tree, 'status', '--porcelain=v1', '-z', '--untracked-files=all'],
+                                        env={k: v for k, v in os.environ.items() if not k.startswith('GIT_')},
+                                        capture_output=True, text=True, timeout=10)
+            except (OSError, subprocess.TimeoutExpired):
+                result = None
+            if result is None or result.returncode:
+                work.append(f'- worktree {tree}; branch {name}; uncommitted paths: unavailable '
+                            '(status failed; inspect this retained worktree before assuming work is lost)')
+            else:
+                entries = iter(result.stdout.split('\0'))
+                paths = []
+                for entry in entries:
+                    if not entry:
+                        continue
+                    paths.append(entry[3:])
+                    if 'R' in entry[:2] or 'C' in entry[:2]:
+                        paths.append(next(entries))  # -z renames include destination, then source
+                if paths:
+                    work.append(f'- worktree {tree}; branch {name}; uncommitted paths: {json.dumps(paths)}')
         try:
             base = execution.git(worktree, 'merge-base', baseline, tip)
         except ValueError:  # A preserved orphan branch may have an unrelated root.
@@ -337,6 +365,8 @@ def prompt(task, worktree, branch, baseline, report, resume=False, commit_finish
                   'Bring in no coordinator-owned files and no protected paths the entry does not declare.',
                   'For a mixed-scope tip, reuse only what this task needs instead of the whole commit.',
                   'Keep one final task commit (for example cherry-pick --no-commit or merge --squash).',
+                  'Listed set-aside worktrees may also hold uncommitted work absent from every branch tip.',
+                  'Inspect those paths there and copy only task-relevant work into your assigned worktree.',
                   'Never modify the earlier branches or their worktrees; no work is applied automatically.']
     if retained_commit:
         lines += ['', f'Your commit {retained_commit} is retained on this branch, but this attempt has no matching report.',

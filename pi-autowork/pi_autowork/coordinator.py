@@ -1817,9 +1817,14 @@ class Coordinator:
     def close_task(self, task):
         """Close an integrated task in its record and commit exactly the files the close wrote."""
         result = self.engine('--parallel-close', task)
-        if result.get('outcome') == 'CLOSED':
-            self.commit(result.get('files') or [], f'docs(tasks): close {task} (pi-autowork)',
-                        'Integrated, verified and closed by the Parallel Autowork engine.')
+        if result.get('outcome') == 'CLOSED' and result.get('files'):
+            if not self.commit(result['files'], f'docs(tasks): close {task} (pi-autowork)',
+                               'Integrated, verified and closed by the Parallel Autowork engine.'):
+                LOG.say(f'{task}: could not close: closure commit failed; slot stays integrated')
+                return
+            finalized = self.engine('--parallel-close', task)
+            result = {**result, **finalized}
+        if result.get('outcome') == 'CLOSED' and not result.get('files'):
             self.note_state(task, 'closed')
             self.land()
             if result.get('live_followup'):

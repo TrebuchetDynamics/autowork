@@ -444,7 +444,7 @@ def _same_title(title):
 @_serialized
 def cmd_add(repo, goal, title, short, section='Now', scope=None, acceptance=(), checks=(), touches=(),
             depends_on=(), task_id=None, prefix=None, resources=(), exclusions=(), kind='implementation',
-            ownership='worker', sources=None, verified_depends_on=()):
+            ownership='worker', sources=None, verified_depends_on=(), notes=None):
     """One complete record in one write. A task of the same goal with the same title, open or
     done, is the same outcome: it is refused, naming that task, so a repeated pass adds nothing."""
     store = worktree_store(repo)
@@ -468,7 +468,9 @@ def cmd_add(repo, goal, title, short, section='Now', scope=None, acceptance=(), 
         fields['acceptance'] = list(acceptance)
     if checks:
         fields['checks'] = list(checks)
-    text = task_store.render(fields, '\n')
+    # Canonical records keep render's newline policy; an explicit raw body must
+    # retain its exact ending, including no newline or several trailing newlines.
+    text = task_store.render(fields, '\n') if notes is None else task_store.render(fields) + notes
     if sources:
         text = task_store.set_note(text, 'Sources', ' '.join(sources.split()))
     _write(repo, _path(repo, tid), None, text)
@@ -546,7 +548,7 @@ TYPED = {'rank': int, 'depends_on': list, 'touches': list, 'resources': list, 'a
 
 
 @_serialized
-def cmd_field(repo, tid, key, value):
+def cmd_field(repo, tid, key, value, *, raw_notes=False):
     """A typed header field (rank, touches, ...) or, for any other label, a note line such as
     `Held by` or `Owner decision` in the task's body."""
     _task(worktree_store(repo), tid)
@@ -556,15 +558,22 @@ def cmd_field(repo, tid, key, value):
         raise CommandError(f'use place or supersede to change {key}')
     if key in CONTRACT:
         _unheld(repo, tid)
-    if key in TYPED:
+    if key == 'notes' and raw_notes:
+        path = _path(repo, tid)
+        before = path.read_bytes()
+        lines = before.decode().splitlines(keepends=True)
+        end = next(i for i in range(1, len(lines)) if lines[i].strip() == '+++')
+        _write(repo, path, before, ''.join(lines[:end + 1]) + value)
+    elif key in TYPED:
         kind = TYPED[key]
         if kind is int:
             try:
-                parsed = int(value)
+                parsed = value if type(value) is int else int(value)
             except ValueError:
                 raise CommandError(f'{key} must be an integer') from None
         elif kind is list:
-            parsed = json.loads(value) if value.strip().startswith('[') else [v.strip() for v in value.split(',') if v.strip()]
+            parsed = value if isinstance(value, list) else (json.loads(value) if value.strip().startswith('[')
+                                                           else [v.strip() for v in value.split(',') if v.strip()])
         else:
             parsed = value
         _set(repo, tid, {key: parsed})
@@ -712,17 +721,20 @@ def add_parser(sub):
     p = verbs.add_parser('add')
     p.add_argument('repo', nargs='?', default='.')
     for flag in ('--goal', '--title', '--short'):
-        p.add_argument(flag, required=True)
-    p.add_argument('--section', default='Now', choices=('Now', 'Next', 'Needs decision'))
-    p.add_argument('--id', dest='task_id')
-    p.add_argument('--scope')
-    p.add_argument('--kind', default='implementation', choices=('implementation', 'plan', 'inspection'))
-    p.add_argument('--ownership', default='worker', choices=('worker', 'coordinator', 'owner'))
-    p.add_argument('--sources', help='the accepted path#anchor it comes from, kept as its Sources note')
+        p.add_argument(flag, default=argparse.SUPPRESS)
+    p.add_argument('--section', default=argparse.SUPPRESS, choices=('Now', 'Next', 'Needs decision'))
+    p.add_argument('--id', dest='task_id', default=argparse.SUPPRESS)
+    p.add_argument('--scope', default=argparse.SUPPRESS)
+    p.add_argument('--kind', default=argparse.SUPPRESS, choices=('implementation', 'plan', 'inspection'))
+    p.add_argument('--ownership', default=argparse.SUPPRESS, choices=('worker', 'coordinator', 'owner'))
+    p.add_argument('--sources', default=argparse.SUPPRESS,
+                   help='the accepted path#anchor it comes from, kept as its Sources note')
     for flag in ('--acceptance', '--checks', '--touches', '--depends-on', '--verified-depends-on', '--resources', '--exclusions'):
-        p.add_argument(flag, action='append', default=[])
+        p.add_argument(flag, action='append', default=argparse.SUPPRESS)
     p = verbs.add_parser('field')
-    p.add_argument('task'); p.add_argument('label'); p.add_argument('value')
+    p.add_argument('task')
+    p.add_argument('label', nargs='?', default=argparse.SUPPRESS)
+    p.add_argument('value', nargs='?', default=argparse.SUPPRESS)
     p.add_argument('repo', nargs='?', default='.')
     p = verbs.add_parser('place')
     p.add_argument('task'); p.add_argument('section', choices=('Now', 'Next', 'Needs decision'))
@@ -748,13 +760,17 @@ def add_parser(sub):
     p.add_argument('--reason', required=True)
     p = verbs.add_parser('goal', help='add a goal, or change its title, source, priority, status, focus or dependencies')
     p.add_argument('goal'); p.add_argument('repo', nargs='?', default='.')
-    p.add_argument('--title'); p.add_argument('--source', help='the accepted plan or spec it comes from, path#anchor')
-    p.add_argument('--priority', type=int, help='1 is first among goals')
-    p.add_argument('--status', choices=('unmet', 'partial', 'unverified', 'met'))
-    p.add_argument('--focus', action=argparse.BooleanOptionalAction, default=None,
+    p.add_argument('--title', default=argparse.SUPPRESS)
+    p.add_argument('--source', default=argparse.SUPPRESS, help='the accepted plan or spec it comes from, path#anchor')
+    p.add_argument('--priority', type=int, default=argparse.SUPPRESS, help='1 is first among goals')
+    p.add_argument('--status', default=argparse.SUPPRESS, choices=('unmet', 'partial', 'unverified', 'met'))
+    p.add_argument('--focus', action=argparse.BooleanOptionalAction, default=argparse.SUPPRESS,
                    help='the one goal whose tasks go first')
-    p.add_argument('--depends-on', action='append', help='a goal that must be met first')
-    p.add_argument('--evidence', help='for --status met: the executed, passing check')
+    p.add_argument('--depends-on', action='append', default=argparse.SUPPRESS, help='a goal that must be met first')
+    p.add_argument('--evidence', default=argparse.SUPPRESS, help='for --status met: the executed, passing check')
+    for name in ('add', 'field', 'goal'):
+        verbs.choices[name].add_argument('--json', dest='json_input', metavar='FILE',
+                                        help='read literal values from one JSON object (use - for stdin)')
     for name in WRITES:
         if name != 'add':
             verbs.choices[name].add_argument('--expect', metavar='REVISION',
@@ -764,11 +780,70 @@ def add_parser(sub):
 
 WRITES = ('add', 'field', 'place', 'move', 'hold', 'release', 'done', 'supersede', 'goal')
 
+# JSON keys follow option names with underscores; `id` is the add option --id.
+_INPUT_TYPES = {
+    'add': {**{k: str for k in ('goal', 'title', 'short', 'section', 'id', 'scope', 'kind', 'ownership',
+                                'sources', 'notes')},
+            **{k: list for k in ('acceptance', 'checks', 'touches', 'depends_on', 'verified_depends_on',
+                                 'resources', 'exclusions')}},
+    'goal': dict(title=str, source=str, priority=int, status=str, focus=bool, depends_on=list, evidence=str),
+    'field': dict(label=str, value=object),
+}
+_INPUT_DEFAULTS = {
+    'add': dict(section='Now', task_id=None, scope=None, kind='implementation', ownership='worker',
+                sources=None, notes=None, **{k: [] for k in ('acceptance', 'checks', 'touches', 'depends_on',
+                                                          'verified_depends_on', 'resources', 'exclusions')}),
+    'goal': {k: None for k in _INPUT_TYPES['goal']},
+    'field': {},
+}
+
+
+def _input_values(args):
+    """Decode data, never shell text. Refuse bad/mixed input before locking or writing."""
+    types = _INPUT_TYPES.get(args.verb)
+    if types is None:
+        return
+    source = getattr(args, 'json_input', None)
+    if source is not None:
+        try:
+            if source == '-':
+                values = json.load(sys.stdin)
+            else:
+                with open(source, encoding='utf-8') as handle:
+                    values = json.load(handle)
+        except (OSError, ValueError, UnicodeError) as exc:
+            raise CommandError(f'cannot read --json {source}: {exc}') from None
+        if not isinstance(values, dict):
+            raise CommandError('--json needs one JSON object')
+        for key in values:
+            if key not in types:
+                raise CommandError(f'unknown --json key {key}')
+        if any(hasattr(args, 'task_id' if key == 'id' else key) for key in types):
+            raise CommandError('--json cannot be combined with value flags or label/value arguments')
+        if args.verb == 'add' and 'notes' in values and 'sources' in values:
+            raise CommandError('--json notes and sources conflict; include the Sources line in notes instead')
+        if args.verb == 'field' and 'label' in values:
+            types = {**types, 'value': TYPED.get(values['label'], str) if isinstance(values['label'], str) else str}
+        for key, value in values.items():
+            kind = types[key]
+            if type(value) is not kind or (kind is list and any(not isinstance(v, str) for v in value)):
+                raise CommandError(f'--json {key} must be {kind.__name__}' + (' of strings' if kind is list else ''))
+        for key, value in values.items():
+            setattr(args, 'task_id' if key == 'id' else key, value)
+    required = {'add': ('goal', 'title', 'short'), 'field': ('label', 'value'), 'goal': ()}[args.verb]
+    missing = [key for key in required if not hasattr(args, key)]
+    if missing:
+        raise CommandError('missing required values: ' + ', '.join(missing))
+    for key, value in _INPUT_DEFAULTS[args.verb].items():
+        if not hasattr(args, key):
+            setattr(args, key, value)
+
 
 def run(args, repo):
     """Print the result as JSON (reads) or one line (writes); return the exit code. Writes
     hold the repository's task lock, so two writers never interleave."""
     try:
+        _input_values(args)
         if args.verb == 'prepare':
             from pi_autowork import task_prepare
             out = task_prepare.prepare(repo, 'check' if args.check else 'stage' if args.no_commit
@@ -807,9 +882,10 @@ def _run(args, repo):
         out = 'added ' + cmd_add(repo, args.goal, args.title, args.short, args.section, args.scope,
                                  args.acceptance, args.checks, args.touches, args.depends_on, args.task_id,
                                  resources=args.resources, exclusions=args.exclusions, kind=args.kind,
-                                 ownership=args.ownership, sources=args.sources, verified_depends_on=args.verified_depends_on)
+                                 ownership=args.ownership, sources=args.sources,
+                                 verified_depends_on=args.verified_depends_on, notes=args.notes)
     elif verb == 'field':
-        cmd_field(repo, args.task, args.label, args.value)
+        cmd_field(repo, args.task, args.label, args.value, raw_notes=args.json_input is not None)
         out = f'ok {args.task} {args.label}'
     elif verb == 'place':
         cmd_place(repo, args.task, args.section, args.decision)

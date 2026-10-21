@@ -130,6 +130,19 @@ note and `touches` to the widest owning directory. Do not list `tasks/`,
 | `autowork tasks supersede ID --by OTHER --reason TEXT` | Replace a task. |
 | `autowork tasks goal ID [--title --source --priority --status --focus/--no-focus --depends-on --evidence]` | Add or change a goal; `--status met` needs `--evidence` naming an executed, passing check. |
 
+**Pass prose as literal JSON.** For quotes, backticks, `$` (including `$(...)`
+and `$VAR`) or newlines, write a UTF-8 JSON object with a file-writing tool; from
+the consumer repository run `autowork tasks add --json task.json`,
+`autowork tasks field ID --json field.json`, or
+`autowork tasks goal ID --json goal.json`. Stdin uses `--json - < task.json`.
+Never interpolate prose into shell arguments, `echo` or an unquoted heredoc.
+Keys mirror options with underscores, list options take arrays, and field uses
+`{"label": "scope", "value": "text"}` (arrays for list fields). Add's `notes`
+and field label `notes` preserve the entire raw multiline Markdown body; read it
+first and retain Sources, holds and other notes. Do not mix JSON with value flags
+or label/value arguments. See [literal input](../../pi-autowork/task-store.md#literal-prose-input---json)
+for all keys/types. Validation, authority checks and `--expect REV` still apply.
+
 Finish a planning batch with `autowork tasks validate --worktree .`, then commit the
 `tasks/` changes. A worker never edits `tasks/`: its commit that does is held and
 never merged. Live authorization is the owner's to grant. The engine's verified

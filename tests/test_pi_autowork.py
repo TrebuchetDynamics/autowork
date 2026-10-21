@@ -527,9 +527,15 @@ class Fixture(unittest.TestCase):
         path.write_text(task_store.set_note(text, *note) if note else text)
         self.git(repo, 'add', '--', path.relative_to(repo).as_posix())
 
-    def git(self, repo, *args):
-        result = subprocess.run(['git', '-C', str(repo), '-c', 'user.email=t@example.invalid', '-c', 'user.name=T',
-                                 *args], capture_output=True, text=True)
+    def git(self, repo, *args, retry_index_lock=False):
+        deadline = time.monotonic() + 30
+        while True:
+            result = subprocess.run(['git', '-C', str(repo), '-c', 'user.email=t@example.invalid', '-c', 'user.name=T',
+                                     *args], capture_output=True, text=True)
+            if (not retry_index_lock or result.returncode == 0 or 'index.lock' not in result.stderr
+                    or 'File exists' not in result.stderr or time.monotonic() >= deadline):
+                break
+            time.sleep(0.05)  # an owner waits for the runner's Git write, never removes its lock
         self.assertEqual(result.returncode, 0,
                          f'fixture Git {args} in {repo}: {result.stdout}\n{result.stderr}')
         return result.stdout.strip()
@@ -626,6 +632,45 @@ class EngineTests(Fixture):
         self.assertEqual((self.repo / 'B.txt').read_text(), '')
         self.assertEqual(self.closed(), {'A'})
         self.assertFalse((self.repo / '.gitattributes').exists())  # the store needs no merge drivers
+
+    def test_rejected_close_reports_hook_output_and_retries_without_redispatch(self):
+        hook = self.repo / '.git/hooks/pre-commit'
+        rejected = self.root / 'close-rejected'
+        hook.write_text('#!/bin/sh\n'
+                        'if git diff --cached --name-only | grep -q "^tasks/evidence/A.toml$"; then\n'
+                        f'  echo rejected >> {shlex.quote(str(rejected))}\n'
+                        '  echo "fixture close rejected on stdout"\n'
+                        '  echo "fixture close rejected on stderr" >&2\n'
+                        '  exit 1\n'
+                        'fi\n')
+        hook.chmod(0o755)
+        runner = self.start_runner('--once', '--interval', '1')
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        try:
+            deadline = time.monotonic() + 60
+            while not rejected.exists() or len(rejected.read_text().splitlines()) < 2:
+                self.assertIsNone(runner.poll())
+                self.assertLess(time.monotonic(), deadline, 'close was not retried')
+                time.sleep(.05)
+            log = ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+            slot = json.loads((self.repo / '.git/autowork-execution/slots/A.json').read_text())
+            self.assertEqual(slot['state'], 'integrated', log)
+            self.assertIn('fixture close rejected on stdout', log)
+            self.assertIn('fixture close rejected on stderr', log)
+            self.assertNotIn('A: done', log)
+            self.assertEqual(self.record('A').status, 'open')
+            self.assertEqual([r['task'] for r in self.runs('worker')], ['A'])
+            hook.unlink()  # the same verified attempt can now finish its closure
+            out, err = runner.communicate(timeout=60)
+            self.assertEqual(runner.returncode, 0, out + err)
+            self.assertEqual(self.closed(), {'A'})
+            self.assertEqual([r['task'] for r in self.runs('worker')], ['A'])
+            self.assertEqual(self.git(self.repo, 'log', '--format=%s', '--grep=^docs(tasks): close A').splitlines(),
+                             ['docs(tasks): close A (pi-autowork)'])
+        finally:
+            if runner.poll() is None:
+                runner.kill()
+                runner.communicate()
 
     def test_empty_queue_calls_no_model(self):
         # Seed the consumed artifacts of a completed A/B/C session, not another
@@ -2853,10 +2898,10 @@ class EngineTests(Fixture):
         integ = Path(session['path'])
         with open(integ / 'tasks/items/B.md', 'a') as out:
             out.write('\nSession note.\n')
-        self.git(integ, 'commit', '-qam', 'session bookkeeping')
+        self.git(integ, 'commit', '-qam', 'session bookkeeping', retry_index_lock=True)
         with open(self.repo / 'tasks/items/B.md', 'a') as out:
             out.write('\nOwner decision: B needs no device.\n')
-        self.git(self.repo, 'commit', '-qam', 'owner plan')
+        self.git(self.repo, 'commit', '-qam', 'owner plan', retry_index_lock=True)
         deadline = time.monotonic() + 60
         while not (self.done('A') and 'session bookkeeping' in self.git(self.repo, 'log', '--format=%s', 'main')):
             self.assertLess(time.monotonic(), deadline, log())
@@ -2871,8 +2916,8 @@ class EngineTests(Fixture):
         (self.repo / 'tasks/items/C.md').write_text(
             record.replace('id = "B"', 'id = "C"').replace('B.txt', 'C.txt').replace('Task B', 'Task C'))
         (self.repo / 'C.txt').write_text('')
-        self.git(self.repo, 'add', 'tasks/items/C.md', 'C.txt')
-        self.git(self.repo, 'commit', '-qm', 'add C')
+        self.git(self.repo, 'add', 'tasks/items/C.md', 'C.txt', retry_index_lock=True)
+        self.git(self.repo, 'commit', '-qm', 'add C', retry_index_lock=True)
         deadline = time.monotonic() + 60
         while not (self.root / 'busy-C').exists():
             self.assertLess(time.monotonic(), deadline, log())
@@ -2881,10 +2926,10 @@ class EngineTests(Fixture):
         integ = Path(session['path'])
         with open(integ / 'tasks/items/B.md', 'a') as out:
             out.write('\nSecond session note.\n')
-        self.git(integ, 'commit', '-qam', 'second bookkeeping')
+        self.git(integ, 'commit', '-qam', 'second bookkeeping', retry_index_lock=True)
         with open(self.repo / 'tasks/items/B.md', 'a') as out:
             out.write('\nSecond owner decision.\n')
-        self.git(self.repo, 'commit', '-qam', 'second owner plan')
+        self.git(self.repo, 'commit', '-qam', 'second owner plan', retry_index_lock=True)
         deadline = time.monotonic() + 60
         while 'second bookkeeping' not in self.git(self.repo, 'log', '--format=%s', 'main'):
             self.assertLess(time.monotonic(), deadline, log())

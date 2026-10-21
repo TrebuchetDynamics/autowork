@@ -35,7 +35,7 @@ name, a repository path or `.`. Nothing here calls a model.
 | Command | What it does |
 |---|---|
 | `autowork` | The live TUI on a terminal (help otherwise) |
-| `autowork start [dir]` | Install (if needed) and start the repository's service; refuses a directory without a committed `tasks/` store and its main branch checked out, saying what is missing (an unconverted repository: `autowork migrate`). Services run from the Pi package installed from `git:github.com/TrebuchetDynamics/autowork`; a service on another copy (a package under an older name) is moved onto it and restarted, and the others follow at their next restart |
+| `autowork start [dir]` | Install (if needed) and start the repository's service; refuses a directory without a committed `tasks/` store and its main branch checked out, saying what is missing (`autowork tasks prepare` converts legacy planning or reports the next step). Services run from the Pi package installed from `git:github.com/TrebuchetDynamics/autowork`; a service on another copy (a package under an older name) is moved onto it and restarted, and the others follow at their next restart |
 | `autowork stop [target]` | Stop the service; workers pause and resume on the same attempt |
 | `autowork restart [target] [--stop-workers]` | Reload the runner in place on its current release and settings; running workers keep running. `--stop-workers` restarts the service instead, pausing them |
 | `autowork pause` / `resume [target]` | Stop the service and keep it off, also after a reboot (disable), or start it again (enable); only a paused service is listed as `paused`, any other stopped one as `not running` |
@@ -68,8 +68,18 @@ In the TUI each key is the first letter of its word, highlighted in the detail p
 paused one, pauses a running one), `s` **S**top, `r` **R**estart, `m` **M**odel and
 `f` **F**allback (from Pi's list, type to filter), `t` **T**asks, `u` **U**ninstall the
 service, `n` **N**ew: browse directories (from `~/git`, `AUTOWORK_BROWSE_ROOT`), see which
-repositories are ready or what they need, and `p` there plays one; `q` **Q**uit. The Tasks
-window lists open tasks in priority order (section, then rank) with their short title, state and reason,
+repositories are ready or what they need, and `p` there plays one; `q` **Q**uit.
+On an unready repository, Play offers **Prepare** or **Prepare and start**, which run
+`autowork tasks prepare` without blocking the TUI. Prepare can commit a legacy
+conversion; it displays the outcome code, refusals and next step, then refreshes
+the repository's readiness and tree label. `NO_STORE` directs you to plan accepted
+intent with `/docs_sync`; it creates no goals or tasks. Deferred, blocked, invalid
+and toolchain outcomes are not readiness. Prepare and start asks to start only
+after successful preparation and a fresh readiness check; Prepare alone never
+starts a service. A deferred conversion stays unavailable until it completes.
+The existing headless pilot exercises this flow on disposable repositories with
+real preparation commands and faked service starts; it does not qualify a live service.
+The Tasks window lists open tasks in priority order (section, then rank) with their short title, state and reason,
 followed in All by closed tasks: **Verified** with the receipt, or **Manual** with the reason
 (a missing/invalid verified receipt is explicitly warned, never relabelled Manual);
 `1`–`5` (or Tab) show All, Working, Held, Waiting or Questions; on the selected task `u`/`d`
@@ -121,6 +131,20 @@ conversion reads `Task store needs repair`. Docs Sync prepares and reconciles th
 store; `autowork migrate` remains available as direct CLI conversion recovery.
 
 The TUI and web view run Textual 8.2.8 (and textual-serve 1.1.3) through `uv`.
+
+## Retained attempt files
+
+The stale `/tmp` sweep (`PI_AUTOWORK_TMP_STALE`) preserves scratch allocated to
+unfinished engine slots, including held and interrupted attempts with no live
+worker. It reads current slots for all registered runners, including stopped
+runners, rather than relying on cached health; incomplete reservation discovery
+defers the sweep. Released, closed and set-aside slots no longer reserve scratch;
+close and set-aside also remove their allocated temp directories directly.
+
+When a task runs fresh after set-aside, its prompt lists earlier task branches
+and any retained set-aside worktrees with their uncommitted paths. These files
+are not restored automatically: inspect them and reuse only work relevant to the
+current task, without modifying the retained worktree.
 
 ## Cost and owner attention
 

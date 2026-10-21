@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-327-02"
 title = "Play on a repository without a task store offers to prepare it through autowork tasks prepare"
 short = "Prepare from Play in the TUI (issue 9)"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 22000
@@ -16,6 +16,8 @@ scope = "GitHub issue 9 (onboarding part; the tree and Play already share fleet_
 acceptance = ["In a headless TUI test, Play on a legacy repository offers Prepare; choosing it converts the repository and the node then shows ready", "On a repository with no accepted intent, Prepare reports NO_STORE and creates no task file", "On a repository with work in flight, Prepare reports MIGRATION_DEFERRED and Start stays unavailable"]
 checks = ["python3 scripts/check.py pi-autowork/tests/test_fleet_view.py tests/test_task_prepare.py"]
 exclusions = []
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-327-02.toml"
 +++
 
 - Sources: https://github.com/TrebuchetDynamics/autowork/issues/9
