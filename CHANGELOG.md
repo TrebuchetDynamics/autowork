@@ -319,6 +319,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A landing that waits for uncommitted work in the main checkout names the files and the
+  session holding the checkout lock ("uncommitted changes in the main checkout: X (held by
+  session S) would be overwritten; it lands once they are committed or reverted") instead of
+  listing every agent process in the checkout as a live writer. A session holding a file open,
+  or an unattributed process, still blocks as before.
 - The TUI's question count says how it relates to the Blocker count: "2 questions for you
   in BLOCKERS.md: 1 for the blocker above, 1 that blocks no task". The Blocker column counts
   held tasks, while questions also cover waiting tasks and the runner itself, so a bare
