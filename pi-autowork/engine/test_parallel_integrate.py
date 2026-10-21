@@ -2834,5 +2834,33 @@ class ExpectedBranchTests(unittest.TestCase):
                          ['autowork/A-r2', 'autowork/A-r2', 'autowork/A', 'autowork/A'])
 
 
+class MergeRefusalTests(unittest.TestCase):
+    def test_a_merge_git_refuses_to_start_reports_gits_own_error(self):
+        """CI read only 'There is no merge to abort': the no-conflict path aborted a merge
+        that never started and hid why git refused it."""
+        import parallel_integrate as integ
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run = lambda *a: subprocess.run(['git', '-C', tmp, '-c', 'user.email=t@example.invalid',
+                                             '-c', 'user.name=T', *a], check=True, capture_output=True,
+                                            text=True).stdout.strip()
+            run('init', '-q', '-b', 'main')
+            (root / 'a').write_text('a\n')
+            run('add', 'a')
+            run('commit', '-qm', 'base')
+            baseline = run('rev-parse', 'HEAD')
+            run('checkout', '-qb', 'work')
+            (root / 'b').write_text('worker\n')
+            run('add', 'b')
+            run('commit', '-qm', 'work')
+            commit = run('rev-parse', 'HEAD')
+            run('checkout', '-q', 'main')
+            (root / 'b').write_text('untracked\n')  # git refuses: it would overwrite this
+            with self.assertRaises(ValueError) as caught:
+                integ.merge_candidate(root, {'baseline': baseline, 'commit': commit}, baseline)
+            self.assertIn('would be overwritten', str(caught.exception))
+            self.assertNotIn('no merge to abort', str(caught.exception))
+
+
 if __name__ == '__main__':
     unittest.main()
