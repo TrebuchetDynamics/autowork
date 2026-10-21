@@ -901,13 +901,13 @@
       "TOOLSET-123-de",
       "TOOLSET-144-c0",
       "TOOLSET-184-1d",
-      "TOOLSET-066",
       "TOOLSET-019",
       "TOOLSET-096-7e",
       "TOOLSET-029",
       "TOOLSET-149-df",
       "TOOLSET-150-71",
       "TOOLSET-151-01",
+      "TOOLSET-066",
       "TOOLSET-003",
       "TOOLSET-098-5d",
       "TOOLSET-011",
@@ -1252,16 +1252,6 @@
     },
     {
       "depends_on": [
-        "TOOLSET-065"
-      ],
-      "goal": "CLAUDE-CODE",
-      "id": "TOOLSET-066",
-      "section": "Next",
-      "status": "open",
-      "title": "Qualify the Claude Code plugin with a live questions-only workflow"
-    },
-    {
-      "depends_on": [
         "TOOLSET-095-48"
       ],
       "goal": "PI-RUNNER",
@@ -1321,7 +1311,8 @@
     },
     {
       "depends_on": [
-        "TOOLSET-124-97"
+        "TOOLSET-124-97",
+        "TOOLSET-270-a9"
       ],
       "goal": "TEST-SUITE",
       "id": "TOOLSET-127-b1",
@@ -1414,7 +1405,12 @@
       "title": "Add the conversational tasks skill and host commands"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-129-c4",
+        "TOOLSET-135-16",
+        "TOOLSET-172-92",
+        "TOOLSET-270-a9"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-144-c0",
       "section": "Next",
@@ -1471,7 +1467,10 @@
     },
     {
       "depends_on": [
-        "TOOLSET-142-85"
+        "TOOLSET-129-c4",
+        "TOOLSET-142-85",
+        "TOOLSET-172-92",
+        "TOOLSET-270-a9"
       ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-184-1d",
@@ -1744,6 +1743,18 @@
       "section": "Needs decision",
       "status": "open",
       "title": "Qualify the updated reporting workflow on the affected profile"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-065",
+        "TOOLSET-172-92",
+        "TOOLSET-270-a9"
+      ],
+      "goal": "CLAUDE-CODE",
+      "id": "TOOLSET-066",
+      "section": "Needs decision",
+      "status": "open",
+      "title": "Qualify the Claude Code plugin with a live questions-only workflow"
     },
     {
       "depends_on": [

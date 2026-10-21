@@ -1291,7 +1291,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-127-b1 — Thin repeated Pi lifecycle fixtures and fixed waits
 
 - [ ] TOOLSET-127-b1 — Thin repeated Pi lifecycle fixtures and fixed waits
-- Scheduling: The audit-file write moves to existing TOOLSET-128-69, which already depends on this task and TOOLSET-125-e6. The remaining legacy/component lifecycle fixtures do not touch 125-e6's task-execution test file, so retain only the existing TOOLSET-124-97 prerequisite. Preserve original lifecycle/composed proof and process cleanup; no duplicate audit or new qualification task.
+- Scheduling: Wait for reported TOOLSET-270-a9 to land before editing tests/test_pi_autowork.py; its 7073133f7c964a3b61f20fb4e03d82237872906e changes that file's push/runner journeys, not lifecycle thinning. Keep the legacy/component assertion mapping, before/after focused timings and composed lifecycle proof together: the accepted pause, stall-notice and idle-adoption cases live in the shared legacy file, so a component-only carve-out does not deliver this batch. The audit-file write remains with TOOLSET-128-69 after this task and TOOLSET-125-e6; no new audit or qualification task, and no edit to the reported prerequisite's contract.
 - Evidence handoff: Keep the per-removal rationale, retained detector/non-executable obligation, exact surviving assertions, source revision and actual commands/results in the worker report; include before/after focused timings where required by this task. TOOLSET-128-69 imports this evidence into docs/test-suite-audit.md after all three implementation batches land. This batch reads the accepted audit map but does not edit that shared file. All existing Acceptance and Checks remain required; the report is not proof until its results are verified.
 - Short: Thin Pi lifecycle fixtures and waits
 - Status: open
@@ -1302,7 +1302,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Scope: Start with the service pause, one-time stall notice and idle-claim adoption cases. Remove unrelated task warm-ups and replace elapsed sleeping with observable cycle/event milestones or controlled time at an existing component seam. Keep real process/Git journeys for cancellation, duplicate ownership, worker-push refusal, integration and update/restart boundaries. Keep fixtures fresh for mutation cases; share only immutable setup. Use the audit map to assign one owning suite per behavior across the legacy runner test and component tests; splitting a file alone is not thinning.
 - Acceptance: Preserve every named lifecycle regression and negative case. Reduced fixture/setup work and fixed waits are evidenced by before/after focused timings and the exact surviving assertions; no global clock mocking in race tests, hidden skips, reduced cycle proof or production test-only hooks. Focused component tests, original composed journeys and normal gate pass; process fixtures are reaped.
 - Checks: python3 scripts/check.py tests/test_pi_autowork.py; python3 -m unittest discover -s pi-autowork/tests; python3 scripts/check.py; git diff --check
-- Dependencies: TOOLSET-124-97
+- Dependencies: TOOLSET-124-97, TOOLSET-270-a9.
 - Ownership: Toolset coordinator; one writer per affected workspace.
 - Exclusions: No live/model runs, new test framework/dependency, publication, hidden test skips, weakened safety cases or changes outside the named batch.
 - Completion-first fixture alignment: Reuse the cited lifecycle scenarios and existing audit map while thinning the named fixtures; record exactly which unique assertion survives each removal. Keep controlled process/Git evidence for the finish-line boundaries and safety cases, replacing fixed waits with owned milestones where justified. Do not repeat 115-bf's implementation or start another full-gate recovery campaign. Report actual source-bound before/after results only; this planning pass adds no measured speedup.
@@ -1453,6 +1453,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-144-c0 — Choose repository models and connect Pi provider accounts in Autowork
 
 - [ ] TOOLSET-144-c0 — Choose repository models and connect Pi provider accounts in Autowork
+- Scheduling: Wait for reported TOOLSET-135-16 before tests/portable_pi.test.mjs, running TOOLSET-129-c4 before the shared TUI/fleet fixtures, reported TOOLSET-270-a9 before command/service settings and command tests, and reported TOOLSET-172-92 before README.md/docs/cross-host.md. Reports 253a1b618f68407ff911ce0575b416700618d30c, 7073133f7c964a3b61f20fb4e03d82237872906e and 5ed86c931ea7de7e8925ac4b3cc67f682d60d13c supply those write sets, not model/account acceptance. Keep the SDK/context bridge, pre-service settings, release closure and UI security proof together: deferring only the portable fixture still leaves runtime and guide overlaps, while a bridge-only slice lacks the composed two-repository/auth denial proof. Preserve every prerequisite contract and all offline/live boundaries; reported commits are not integration evidence.
 - Short: Choose models and connect Pi providers
 - Status: open
 - Goal: PI-RUNNER
@@ -1461,7 +1462,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Scope: Implement the cited model/account contract in the existing TUI and shared command/view layers. Reuse the selected Pi installation's public ModelRuntime through a small packaged Node JSON-lines bridge, with version/layout capability errors, structured model/provider data and metadata-only account status. Provide per-repository primary/fallback configuration before service installation, existing-service configuration, and local masked API-key or Pi-supported OAuth/subscription login. Keep Pi as the credential/refresh authority. Resolve target SDK, runtime and agent directory consistently; preserve custom models and project trust. Decouple saved configuration from actual installed units so first Start still installs a service correctly.
 - Acceptance: Two repository fixtures keep distinct model/fallback values, including slash-containing IDs and fallback clearing, without changing another repository or Pi defaults; name collisions refuse safely. A not-yet-installed repository saves models without any systemctl mutation, and its first explicit Start installs the unit and retains settings; existing running services restart only after the current explicit confirmation, with pending/effective values shown after decline. Pi-derived catalogs and supported login methods follow the selected runner context; no copied provider table, legacy AuthStorage import or guessed CLI/RPC login. API-key/OAuth fixture flows use Pi-owned persistence, show only non-secret metadata, refresh the current context and do not start work or make model requests. Tests cover missing/incompatible SDK, managed and npm layouts, release packaging, ambient/custom model sources, absent auth and unsupported subscription methods, replacement confirmation, cancellation before commit, committed-but-refresh-failed outcomes, timeout/child exit, late results after context change and secret exclusion from logs/stdout/receipts/env/repo files. Bridge and UI deny authentication from served web origin (even a PTY) and all mutation in view-only mode. Opening/refreshing account display performs no token refresh, key command or network catalog refresh. New headless pilot cases must actually run in a supported Textual environment, not count skipped UI coverage as a pass.
 - Checks: Planned after implementation: `python3 -m unittest pi-autowork/tests/test_model_accounts.py pi-autowork/tests/test_fleet_view.py pi-autowork/tests/test_release.py tests/test_autowork_command.py`; `node --test tests/portable_pi.test.mjs`; `python3 scripts/check.py`. Add the focused model/account module and bind bridge tests to the installed public SDK interface as part of this task; proposed fixtures are not existing passing tests.
-- Dependencies: None.
+- Dependencies: TOOLSET-129-c4, TOOLSET-135-16, TOOLSET-172-92, TOOLSET-270-a9.
 - Ownership: Autowork's assigned isolated implementation worker and integration coordinator; normal independent review and canonical delivery gates remain.
 - Context: Successor to the already-implemented model-picker slice of TOOLSET-122-27, not a reimplementation or dependency on its pending fleet migration. Keep that task's ID, historical checks and live gate unchanged.
 - External gates: Offline fixtures only. Real credentials and OAuth network calls belong to TOOLSET-145-6d; do not request secrets in chat, patch Pi, install another SDK, restart/migrate services, dispatch work, or resume/create cronjobs under this task.
@@ -1470,6 +1471,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-184-1d — Browse all recorded tasks in the Autowork TUI
 
 - [ ] TOOLSET-184-1d — Browse all recorded tasks in the Autowork TUI
+- Scheduling: Wait for running TOOLSET-129-c4 before tui.py, test_fleet_view.py and tui_pilot.py, and reported TOOLSET-172-92/TOOLSET-270-a9 before docs/cross-host.md. Their contracts and saved reports own Needs presentation, managed-checkout recovery and push settings, not the all-task browser. Keep the installed query adapter, task screen and read-only/narrow-screen pilot proof together: a guide-only split leaves the implementation/pilot overlap, and an adapter-only slice does not prove that all records are reachable safely through the TUI. Preserve TOOLSET-142-85 and every existing acceptance item; do not change active prerequisite contracts.
 - Short: Browse all recorded tasks in the TUI
 - Status: open
 - Goal: PI-RUNNER
@@ -1478,27 +1480,11 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Scope: Add the planned full-screen read-only task browser and a thin query adapter, not a second ledger/parser. `t` opens the selected repository, with an All repositories selector restricted to the configured fleet, including paused/inactive runners. All states include current unfinished, done/archive and superseded records. Show source-attributed recorded state separately from observed runtime phase; keep human TODO order for unfinished tasks. Search literal ID/title, filter state/section, page all matches and open scrollable contract details. Use the installed read-only helper JSON CLI with python -B and safe argv, two background readers at most, explicit refresh and in-memory filtering. Preserve identity/filters on refresh and reject stale asynchronous results. Reuse existing modal/freshness work where present, without adding a prerequisite to unrelated live qualification.
 - Acceptance: Every loaded unique task is reachable beyond the 100-row page, with correct matched/loaded/page/partial counts. Two repos sharing an ID remain distinct, path aliases deduplicate, and an unavailable repo does not become an empty healthy result. Done, superseded and reopened evidence stays distinct; missing fields/dates remain unknown. Enter reads the selected (repo, ID) detail; Esc restores the fleet selection. At 40x20, 80x24 and 150x45 search, list/detail and navigation remain usable. Typing global control letters, Enter, resize, refresh and view-only browsing cause zero control/provider/network calls and no task/runner/repository/ref/index writes. Hostile task text is literal data, not markup or a command. See the cited plan for source ordering, warnings, empty fleet and out-of-order refresh cases.
 - Checks: Planned after implementation: `python3 -m unittest discover -s pi-autowork/tests -p test_fleet_view.py` with its Textual 8.2.8 pilot actually exercised; `python3 -m unittest discover -s skills/pending/scripts -p test_task_query.py`; `python3 skills/docs-sync/scripts/docs.py check .`; `git diff --check`. Extend the existing compact fixtures/pilot; new cases are unrun and a skipped UI pilot is not a visual pass.
-- Dependencies: TOOLSET-142-85.
+- Dependencies: TOOLSET-142-85, TOOLSET-129-c4, TOOLSET-172-92, TOOLSET-270-a9.
 - Ownership: Assigned isolated Autowork worker; normal integration owner serializes overlapping TUI writes and preserves every active worker's contract.
 - Exclusions: No task editing/completion/reordering, new slash-command alias, filesystem-wide discovery, persistent task cache, extra dependency/parser, credential/log collection, model call, schedule or service change, installation, publication or live runner action. No automatic Git completion-date walk on every UI refresh.
 - Planner's call: Selected repository by default, explicit All repositories scope and All states; unfinished human queue followed by stable-ID history, 100-row navigation and at most two concurrent background readers. Reuse delivered query results rather than increase scope to date/history analytics or a dashboard redesign.
 - Next action: Add a fake-reader browser fixture with two repositories, repeated IDs and more than 100 records; wire the installed query adapter and task screen, then exercise read-only/view-only and narrow-screen cases.
-
-### TOOLSET-066 — Qualify the Claude Code plugin with a live questions-only workflow
-
-- [ ] TOOLSET-066 — Qualify the Claude Code plugin with a live questions-only workflow
-- Short: Qualify the Claude Code plugin live
-- Status: open; live qualification not run.
-- Goal: CLAUDE-CODE — Install the portable workflows in Claude Code.
-- Sources: [Claude Code decision](docs/project.md#claude-code-package-2026-10-15), [install guide](docs/cross-host.md#claude-code), [2026-10-15 replan](docs/project.md#backlog-replan-2026-10-15).
-- Touches: docs/cross-host.md, README.md
-- Scope: Clone the published repository at `origin/main` into a scratch directory and load it for one session with `claude --plugin-dir <clone>` (no marketplace or settings change), run `/autowork:plan-with-me questions only: ask one question about this project` in a disposable repository, and confirm the model asks one question and edits nothing.
-- Acceptance: The namespaced command loads the adapter, follows the host contract and leaves the repository unchanged; the result is recorded with the Claude Code version.
-- Checks: Session transcript or output plus `git status` of the disposable repository.
-- Dependencies: TOOLSET-065.
-- Environment prerequisite: Owner approval for one short model run on their Claude Code account (Claude Code 2.1.300 is installed; the plugin is published).
-- Planner's call (2026-10-15 replan): `--plugin-dir` on a clean clone of the published commit replaces a marketplace install into a disposable configuration, which would need an interactive login; it loads the same files for one session and changes no settings.
-- Exclusions: No real user repositories, settings or credentials changed.
 
 ### TOOLSET-019 — Deploy reviewed local fixes to selected eligible profiles
 
@@ -1608,6 +1594,25 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Current compact-ledger mandate: The owner now makes 149-df → 150-71 → 151-01 the highest-priority chain and delegates local implementation details. Implement compatible readers/writers first, then active-only TODO/goals, then the guarded first conversion here; do not ask again for those reversible decisions. This supersedes older priority comments and planning-only/no-local-adoption wording only for this chain. Preserve mandatory tests/review, existing IDs, evidence, cumulative attempts, live ownership and genuine pauses. No remote push, service/profile/fleet change, new schedule or destructive history removal. The existing live coordinator remains execution owner; current work is not interrupted.
 
 ## Needs decision
+
+### TOOLSET-066 — Qualify the Claude Code plugin with a live questions-only workflow
+
+- [ ] TOOLSET-066 — Qualify the Claude Code plugin with a live questions-only workflow
+- Readiness: Live qualification not run; the existing environment prerequisite still requires owner approval for one short model run.
+- Ownership: Owner for the already-required approved Claude Code account session; coordinator records the qualification evidence.
+- Scheduling: Wait for reported TOOLSET-172-92 and TOOLSET-270-a9 before recording qualification in docs/cross-host.md or README.md; their saved reports include both guides, but neither qualifies this Claude Code workflow. Moving only the guide write would still leave README.md overlap and would not remove the existing owner approval prerequisite for the short model run. Keep the transcript, disposable-repository status and Claude Code version with the original live qualification; no model-run authority or passing evidence is added.
+- Short: Qualify the Claude Code plugin live
+- Status: open
+- Goal: CLAUDE-CODE
+- Sources: [Claude Code decision](docs/project.md#claude-code-package-2026-10-15), [install guide](docs/cross-host.md#claude-code), [2026-10-15 replan](docs/project.md#backlog-replan-2026-10-15).
+- Touches: docs/cross-host.md, README.md
+- Scope: Clone the published repository at `origin/main` into a scratch directory and load it for one session with `claude --plugin-dir <clone>` (no marketplace or settings change), run `/autowork:plan-with-me questions only: ask one question about this project` in a disposable repository, and confirm the model asks one question and edits nothing.
+- Acceptance: The namespaced command loads the adapter, follows the host contract and leaves the repository unchanged; the result is recorded with the Claude Code version.
+- Checks: Session transcript or output plus `git status` of the disposable repository.
+- Dependencies: TOOLSET-065, TOOLSET-172-92, TOOLSET-270-a9.
+- Environment prerequisite: Owner approval for one short model run on their Claude Code account (Claude Code 2.1.300 is installed; the plugin is published).
+- Planner's call (2026-10-15 replan): `--plugin-dir` on a clean clone of the published commit replaces a marketplace install into a disposable configuration, which would need an interactive login; it loads the same files for one session and changes no settings.
+- Exclusions: No real user repositories, settings or credentials changed.
 
 ### TOOLSET-003 — Qualify automatic planning recovery with a real bounded workflow
 
