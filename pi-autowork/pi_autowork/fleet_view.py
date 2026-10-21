@@ -617,6 +617,10 @@ def lanes(runner, now=None):
             progress = main_check.slot_status(Path(runner.state_dir) / 'full-check' / f'{task}.status.json')
             if progress.get('state') == 'waiting' and main_check.alive(progress.get('pid')):
                 phase, detail = 'waiting for a check slot', f"{progress.get('ahead', 0)} ahead"
+        if phase == 'implemented' and task in batch:
+            # A finished commit a running batch (or merge-train car) is checking: it read as idle
+            # "Implemented" for the whole check, so six tasks under check looked forgotten.
+            phase, detail = 'batch check', 'one full check for the batch'
         if phase == 'verifying' and runner.state_dir and task not in single:
             # Its review is gone: hours of "verifying" for three tasks whose reviews had died.
             phase, detail = (('batch check', 'one full check for the batch') if task in batch else
