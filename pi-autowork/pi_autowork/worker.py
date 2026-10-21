@@ -25,8 +25,8 @@ from . import main_check, pi_runtime, workspaces
 from .common import dirty, git, push_guard, safe_name
 
 REVIEW = ('You are an independent reviewer verifying task {task} in {checkout}, which holds a worker\'s commit '
-          'merged onto the session branch (see git log -1 and git diff HEAD^1 HEAD). Read the task\'s entry in '
-          'TODO.md (its Acceptance and Checks), run the offline checks it lists, and judge the merged change '
+          'merged onto the session branch (see git log -1 and git diff HEAD^1 HEAD). Read the task\'s record, '
+          'tasks/items/{task}.md (its acceptance and checks), run the offline checks it lists, and judge the merged change '
           'against the acceptance criteria. Do not ask for more tests than the acceptance and Checks need; fail a '
           'change whose new tests mostly repeat existing cases or add many near-identical tests where one table '
           'would do. Do not edit, create or delete files, commit, push or change branches; '
@@ -65,7 +65,8 @@ ENVIRONMENT = re.compile(r'^PI_AUTOWORK_VERIFY: fail environment(?:\s*[—:-]+\s
 # The reviewer's verdict, with any reason after it (`pass all checks`); an echo of the prompt's
 # `pass or ... fail` line is never a pass.
 VERDICT = re.compile(r'^PI_AUTOWORK_VERIFY: (?:(pass)(?:ed)?\b(?!\s+or\b)|(fail)\b)')
-PLANNING_FILES = ('TODO.md', 'TODO.archive.md', 'todo.archive.md', 'goals.json', 'BLOCKERS.md')
+PLANNING_FILES = ('TODO.archive.md', 'todo.archive.md', 'BLOCKERS.md')
+PLANNING_DIRS = ('docs', 'tasks')  # no check reads them
 
 
 def setting(name, default, kind=int):
@@ -271,7 +272,7 @@ def run_suite(command, checkout, limit, log, progress=None):
 
 
 def base_tree(checkout, rev):
-    """A Git tree ID excluding root planning files and the docs/ subtree, not the worktree."""
+    """A Git tree ID excluding root planning files and the docs/ and tasks/ subtrees, not the worktree."""
     listing = subprocess.run(['git', '-C', str(checkout), 'ls-tree', '-z', rev],
                              check=True, capture_output=True).stdout
     excluded = {path.encode() for path in PLANNING_FILES}
@@ -281,7 +282,7 @@ def base_tree(checkout, rev):
             continue
         metadata, path = entry.split(b'\t', 1)
         directory = metadata.startswith(b'040000 ')
-        if (path in excluded and not directory) or (path == b'docs' and directory):
+        if (path in excluded and not directory) or (directory and path.decode() in PLANNING_DIRS):
             continue
         entries.append(entry + b'\0')
     return subprocess.run(['git', '-C', str(checkout), 'mktree', '-z'], input=b''.join(entries),
@@ -564,12 +565,12 @@ def batch_record(state, task):
 
 
 def same_code(checkout, left, right):
-    """Whether two trees differ at most in planning files or docs/, which no check reads."""
+    """Whether two trees differ at most in planning files, docs/ or tasks/, which no check reads."""
     if not left:
         return False
     out = subprocess.run(['git', '-C', str(checkout), 'diff', '-z', '--name-only', left, right],
                          capture_output=True, text=True)
-    return out.returncode == 0 and all(p in PLANNING_FILES or p.startswith('docs/')
+    return out.returncode == 0 and all(p in PLANNING_FILES or p.startswith(tuple(d + '/' for d in PLANNING_DIRS))
                                        for p in out.stdout.split('\0') if p)
 
 

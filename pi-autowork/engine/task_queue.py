@@ -8,12 +8,14 @@ record's body notes (Held by, Owner decision, Next action, ...); typed values al
 over a note of the same label. A repository without tasks/ selects nothing: it says to
 run `autowork migrate`.
 """
+import datetime
 from functools import lru_cache
 import re
 import subprocess
+import tomllib
 
 import task_select
-from task_store import Ownership, LiveAuthorization, Kind, StoreError, TaskStore
+from task_store import Ownership, LiveAuthorization, Kind, StoreError, TaskStore, _blobs
 
 NOTE = re.compile(r'^- ([A-Za-z][A-Za-z \'-]*): (.*)$', re.M)
 UNCONVERTED = 'no tasks/ store: run `autowork migrate {repo}` to convert this repository once'
@@ -160,11 +162,19 @@ def present(repo, rev='HEAD'):
         return None
 
 
+def _dated(text):
+    stamp = re.search(r'\b(\d{4}-\d{2}-\d{2})\b', text)
+    try:
+        return bool(stamp) and bool(datetime.date.fromisoformat(stamp[1]))
+    except ValueError:
+        return False  # 2026-02-30 is no date
+
+
 def deferred(snapshot):
     """Owner-answered deferrals: open tasks in Needs decision with a dated `Owner decision:` note.
     Their dependents wait for them without another question."""
     return {t.id for t in snapshot.tasks.values() if t.status == 'open' and t.section == 'Needs decision'
-            and re.search(r'\b\d{4}-\d{2}-\d{2}\b', notes(t).get('Owner decision', ''))}
+            and _dated(notes(t).get('Owner decision', ''))}
 
 
 CONTRACT_LINE = re.compile(r"^[ \t]*(?:[-*][ \t]+)?([A-Za-z][A-Za-z '/-]*):[ \t]*(.*)$", re.M)
@@ -190,3 +200,32 @@ def order_ranks(repo):
     open_tasks = sorted((t for t in snapshot.tasks.values() if t.status == 'open' and t.section in task_select.SECTION_RANK),
                         key=lambda t: (task_select.SECTION_RANK[t.section], t.rank or 0, t.id))
     return {t.id: index for index, t in enumerate(open_tasks)}, {t.id: set(t.depends_on) for t in open_tasks}
+
+
+def stale_closures(repo, rev='HEAD'):
+    """[(task, receipt hash, record hash)] for each done task whose verified close no longer
+    covers its contract: its receipt tasks/evidence/<ID>.toml pins another contract_hash than
+    its record has at ``rev``. A merge can produce one (one side closed the task, the other
+    changed its acceptance); the runner reopens it, since no one verified the merged contract.
+    A task closed without a receipt (by a person, with its evidence note) is not checked."""
+    snapshot = store(repo, rev)
+    done = {t.id: t for t in snapshot.tasks.values() if t.status == 'done'}
+    listing = subprocess.run(['git', '-C', str(repo), 'ls-tree', '-z', snapshot.rev, '--', 'tasks/evidence/'],
+                             capture_output=True, timeout=60).stdout.split(b'\0')
+    receipts = {}
+    for entry in listing:
+        if not entry:
+            continue
+        metadata, path = entry.split(b'\t', 1)
+        task = path.decode().removeprefix('tasks/evidence/').removesuffix('.toml')
+        if task in done and metadata.split()[1] == b'blob':
+            receipts[task] = metadata.split()[2].decode()
+    found = []
+    for task, blob in zip(receipts, _blobs(repo, list(receipts.values()))):
+        try:
+            pinned = tomllib.loads(blob.decode()).get('contract_hash')
+        except (UnicodeDecodeError, tomllib.TOMLDecodeError):
+            pinned = None  # an unreadable receipt proves nothing about this contract
+        if pinned != done[task].contract_hash:
+            found.append((task, pinned, done[task].contract_hash))
+    return sorted(found)

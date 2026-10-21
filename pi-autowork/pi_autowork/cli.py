@@ -29,7 +29,7 @@ Runs Autowork through Pi until stopped: the toolset's Parallel
 Autowork engine runs up to N tasks at once (default 8), each Pi worker in its own Git
 worktree, and integrates verified results one at a time. Targets the Git repository
 of the current directory (or of this script, when it was copied into a repository),
-which must have its main branch checked out and a TODO.md.
+which must have its main branch checked out and a tasks/ store.
 
 Each session builds on an integration branch (pi-autowork/<session>) in its own
 worktree; after each closed task, and when the queue drains or the runner stops, the
@@ -49,7 +49,7 @@ Options:
   --repo PATH          Use the repository at PATH
   --workers N          Tasks run at once, 1-16 (default 8; PI_AUTOWORK_WORKERS); the engine's
                        memory and load gate starts fewer when the machine is busy
-  --interval SECONDS   Longest idle wait (default 60); a change to TODO.md, goals.json,
+  --interval SECONDS   Longest idle wait (default 60); a change under tasks/, to
                        BLOCKERS.md or the main branch ends it within seconds
   --max-cycles N       Start at most N Pi workers, then finish
   --no-fallback        Never switch to the fallback model
@@ -62,7 +62,6 @@ Environment (optional):
   PI_AUTOWORK_PRIMARY       provider/model (default openai-codex/gpt-6.1-sol)
   PI_AUTOWORK_FALLBACK      provider/model (default openrouter/deepseek/deepseek-v4.1-flash)
   PI_AUTOWORK_WORKERS       default for --workers (default 8)
-  PI_AUTOWORK_INFER_TOUCHES 0 to stop proposing Touches: for tasks that lack them
   PI_AUTOWORK_UPDATE_INTERVAL seconds between idle `pi update` checks of the toolset package;
                             new toolset code restarts the runner (default 120; 0 off)
   PI_AUTOWORK_UPDATE_WAIT   seconds a new release waits for no runner to have work in
@@ -80,8 +79,8 @@ Environment (optional):
                             main checkout into each task and review worktree with hard links;
                             only paths Git ignores there; cooperative, not write-protected.
                             Lockfile dependencies (node_modules, .venv) link without it
-  PI_AUTOWORK_PLANNING_QUIET seconds uncommitted planning (TODO.md, goals.json, BLOCKERS.md,
-                            the archive) must rest before the runner commits it so its merge
+  PI_AUTOWORK_PLANNING_QUIET seconds uncommitted planning (task files under tasks/,
+                            BLOCKERS.md) must rest before the runner commits it so its merge
                             can land; any other uncommitted file keeps the merge pending (600)
   PI_AUTOWORK_PLAN_SETTLE   seconds a plan change must be quiet before an idle runner reads it
                             (default 3)
@@ -108,7 +107,7 @@ COMPONENT = Path(__file__).resolve().parents[1]
 
 def is_toolset(path):
     return (Path(path) / 'pi-autowork/engine/owner_cycle.py').is_file() and \
-        (Path(path) / 'skills/docs-sync/scripts/goals.py').is_file()
+        (Path(path) / 'pi-autowork/engine/task_store.py').is_file()
 
 
 PI_SOURCE = 'git:github.com/TrebuchetDynamics/autowork'
@@ -274,8 +273,9 @@ def main(argv):
     repo = git(start, 'rev-parse', '--show-toplevel')
     if not repo:
         die(2, f'Not inside a Git repository: {start}')
-    if not (Path(repo) / 'TODO.md').is_file():
-        die(2, f'No TODO.md at {repo}. Create the backlog first, for example with /docs_sync in Pi.')
+    if not (Path(repo) / 'tasks').is_dir():
+        die(2, f'No tasks/ store at {repo}. Run `autowork migrate {repo}` once to convert TODO.md and '
+               'goals.json, or plan the work first, for example with /plan-with-me.')
     base = git(repo, 'symbolic-ref', '--short', '-q', 'HEAD')
     if not base:
         die(2, f'{repo} has a detached HEAD; check out its main branch first.')

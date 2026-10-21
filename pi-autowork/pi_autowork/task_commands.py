@@ -1,7 +1,7 @@
 """`autowork tasks ...`: read and edit a repository's tasks/ store. Standard library only.
 
 Reads (list, show, why, validate) use a pinned commit, HEAD by default; validate
---worktree checks uncommitted edits. Writes (add, field, place, move, hold, release, supersede)
+--worktree checks uncommitted edits. Writes (add, field, place, move, hold, release, done, supersede)
 change task files in the working tree and never commit; each refuses a file that
 changed since it was read, and the whole would-be store is validated before the
 write is kept. A written file grants no authority beyond its typed fields, and a
@@ -248,14 +248,17 @@ def cmd_field(repo, tid, key, value):
         _set(repo, tid, {}, (key, ' '.join(value.split())))
 
 
-def cmd_place(repo, tid, section):
+def cmd_place(repo, tid, section, decision=None):
+    """Move an open task to the bottom of a section; ``decision`` also records why, as its
+    `Owner decision:` note."""
     store = worktree_store(repo)
     t = _task(store, tid)
     if t.status != 'open':
         raise CommandError(f'{tid} is {t.status}')
     if section not in ('Now', 'Next', 'Needs decision'):
         raise CommandError('section is Now, Next or Needs decision')
-    _set(repo, tid, {'section': section, 'rank': bottom_rank(store, section, without=tid)})
+    note = ('Owner decision', ' '.join(decision.split())) if decision else None
+    _set(repo, tid, {'section': section, 'rank': bottom_rank(store, section, without=tid)}, note)
 
 
 def cmd_move(repo, tid, direction):
@@ -298,6 +301,29 @@ def cmd_release(repo, tid):
     if after == text:
         raise CommandError(f'{tid} is not held')
     _write(repo, path, before, after)
+
+
+def cmd_done(repo, tid, evidence):
+    """Close a task without the engine's verified closure: a planning task, or one whose
+    acceptance the evidence shows already met. The evidence is kept as the task's note."""
+    t = _task(worktree_store(repo), tid)
+    if t.status != 'open':
+        raise CommandError(f'{tid} is {t.status}')
+    if not evidence.strip():
+        raise CommandError('done needs --evidence naming why the acceptance is met')
+    _set(repo, tid, {'status': 'done'}, ('Evidence', ' '.join(evidence.split())))
+
+
+def reopen(repo, tid, reason):
+    """Open a done task again, at the bottom of its section, with why as its `Reopened:` note:
+    the runner's answer to a close whose receipt no longer matches the task's contract."""
+    store = worktree_store(repo)
+    t = _task(store, tid)
+    if t.status != 'done':
+        raise CommandError(f'{tid} is {t.status}')
+    section = t.section or 'Now'
+    _set(repo, tid, {'status': 'open', 'section': section, 'rank': bottom_rank(store, section, without=tid)},
+         ('Reopened', ' '.join(reason.split())))
 
 
 def cmd_supersede(repo, tid, by, reason):
@@ -343,6 +369,7 @@ def add_parser(sub):
     p = verbs.add_parser('place')
     p.add_argument('task'); p.add_argument('section', choices=('Now', 'Next', 'Needs decision'))
     p.add_argument('repo', nargs='?', default='.')
+    p.add_argument('--decision', help='also record this as its Owner decision (dated, one line)')
     p = verbs.add_parser('move')
     p.add_argument('task'); p.add_argument('direction', choices=('up', 'down'))
     p.add_argument('repo', nargs='?', default='.')
@@ -352,6 +379,9 @@ def add_parser(sub):
     p.add_argument('--until', help='YYYY-MM-DD; the hold ends after this day')
     p = verbs.add_parser('release', help='remove the hold so the runner may select the task')
     p.add_argument('task'); p.add_argument('repo', nargs='?', default='.')
+    p = verbs.add_parser('done', help='close an open task with the evidence that its acceptance is met')
+    p.add_argument('task'); p.add_argument('repo', nargs='?', default='.')
+    p.add_argument('--evidence', required=True)
     p = verbs.add_parser('supersede')
     p.add_argument('task'); p.add_argument('repo', nargs='?', default='.')
     p.add_argument('--by', action='append', required=True)
@@ -380,7 +410,7 @@ def run(args, repo):
             cmd_field(repo, args.task, args.label, args.value)
             out = f'ok {args.task} {args.label}'
         elif verb == 'place':
-            cmd_place(repo, args.task, args.section)
+            cmd_place(repo, args.task, args.section, args.decision)
             out = f'ok {args.task} -> {args.section}'
         elif verb == 'move':
             changes = cmd_move(repo, args.task, args.direction)
@@ -391,6 +421,9 @@ def run(args, repo):
         elif verb == 'release':
             cmd_release(repo, args.task)
             out = f'ok {args.task} released'
+        elif verb == 'done':
+            cmd_done(repo, args.task, args.evidence)
+            out = f'ok {args.task} done'
         elif verb == 'supersede':
             cmd_supersede(repo, args.task, args.by, args.reason)
             out = f'ok {args.task} superseded'

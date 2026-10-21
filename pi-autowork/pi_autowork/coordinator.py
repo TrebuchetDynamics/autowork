@@ -22,13 +22,29 @@ import sys
 import tempfile
 import time
 
-from . import fleet_view, health, janitor, main_check, maintainer, pi_runtime, questions, release, touches_inference, worker, workspaces
+from . import fleet_view, health, janitor, main_check, maintainer, pi_runtime, questions, release, task_commands, worker, workspaces
 from .common import LOG, dirty, git, git_ok, lifecycle, open_for_writing, safe_name, summary_list
 
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
-# The engine's planning files (parallel_integrate.PLANNING_FILES): a session that moves only by
-# commits to these, or under docs/, does not invalidate a running review (TOOLSET-233-ba).
-PLANNING_FILES = ('TODO.md', 'TODO.archive.md', 'todo.archive.md', 'goals.json', 'BLOCKERS.md')
+
+
+def dispatch_module(toolset):
+    """The toolset's parallel_dispatch, with the engine (task_queue, parallel_plan) importable."""
+    engine = str(Path(toolset) / 'pi-autowork/engine')
+    if engine not in sys.path:
+        sys.path.insert(0, engine)
+    import parallel_dispatch
+    return parallel_dispatch
+
+# The engine's planning paths (parallel_integrate.planning_only): the task store, the owner's
+# questions and the frozen history. A session that moves only by commits to these, or under
+# docs/, does not invalidate a running review (TOOLSET-233-ba); integration still revalidates a
+# review whose own task's contract changed.
+PLANNING_FILES = ('BLOCKERS.md', 'TODO.archive.md', 'todo.archive.md')
+
+
+def planning_path(path):
+    return path in PLANNING_FILES or path.startswith('tasks/')
 CONTRACT_CHANGED = 'task contract changed since integration; no close'
 MERGE_PROMPT = (
     'This worktree is on branch {branch} with an unfinished merge of {base} that conflicts '
@@ -38,12 +54,14 @@ MERGE_PROMPT = (
     'switch branches or touch {repo}. End with one line: PI_AUTOWORK_RESULT: completed|blocked, then one sentence.')
 
 
-def merge_prompt(*, branch, base, files, goals, repo):
-    """Only actual planning conflicts need ledger reconciliation, not source-only merges."""
-    planning = ('Keep both task entries in TODO.md and TODO.archive.md and every task record in goals.json. '
-                f'Run python3 {goals} merge-finalize . and python3 {goals} validate . if goals.json exists. '
-                if set(files) & {'TODO.md', 'TODO.archive.md', 'goals.json'} else
-                'For this merge, leave TODO.md, TODO.archive.md and goals.json unchanged. ')
+def merge_prompt(*, branch, base, files, tasks, repo):
+    """Only actual task-store conflicts need reconciliation, not source-only merges."""
+    planning = ('In each conflicted task file under tasks/, keep both sides\' changes; where both changed the '
+                'same field, keep the base\'s value; keep a status of done or superseded (the runner reopens a '
+                'close whose contract the merge changed). '
+                f'Then run {tasks} validate --worktree . and fix what it reports. '
+                if any(f.startswith('tasks/') for f in files) else
+                'For this merge, leave the task files under tasks/ unchanged. ')
     return MERGE_PROMPT.format(branch=branch, base=base, files=' '.join(files) or '(unknown files)',
                                planning=planning, repo=repo)
 
@@ -82,7 +100,7 @@ def publishable(repo, paths):
 
 TRIAGE_PROMPT = (
     'You triage a blocker for the runner of {repo}. The worker of task {task} stopped and reported blockers '
-    'instead of finishing; read them in full in {report}, then the task\'s TODO.md entry, its Sources and, if '
+    'instead of finishing; read them in full in {report}, then the task\'s record (tasks/items/{task}.md), its Sources and, if '
     'needed, the worker log beside the report. Its worktree is {root}: read it, but do not edit, commit or run '
     'anything that writes there (scratch goes in $TMPDIR). Decide whether only a person can resolve the '
     'blockers. Only these need the owner: credentials, secrets or an account; a physical device, hardware or '
@@ -122,7 +140,7 @@ def triage_verdict(text):
 PROVISION_PROMPT = (
     'In {repo}, the review of task {task} could not run its checks because this is missing: {missing}. '
     'Install what is missing so that the checks can run, following the repository\'s own setup docs '
-    '(README, docs, an ENVIRONMENT or setup file, the task\'s TODO.md entry), pinned versions included. '
+    '(README, docs, an ENVIRONMENT or setup file, the task\'s record under tasks/items/), pinned versions included. '
     'Install only under {cache} ($AUTOWORK_CACHE), as <name>-<version>, and reuse what is already there. '
     'Do not edit, create or delete files in this checkout, commit, push or change branches. Check that the '
     'installed tool runs. End with one line: PI_AUTOWORK_RESULT: completed or PI_AUTOWORK_RESULT: blocked, '
@@ -209,7 +227,8 @@ class Coordinator:
         self.plan_seen = None
         self.stall_after = env.get('PI_AUTOWORK_STALL_AFTER', '1800')
         self.engine_path = Path(self.toolset) / 'pi-autowork/engine/owner_cycle.py'
-        self.goals = Path(self.toolset) / 'skills/docs-sync/scripts/goals.py'
+        # How the runner and its maintainer edit the task store: the toolset's own CLI.
+        self.tasks_cli = f'{shlex.quote(sys.executable)} {shlex.quote(str(Path(self.toolset) / "pi-autowork/pi_autowork/command.py"))} tasks'
         self.process_script = str(Path(self.toolset) / 'scripts/pi-autowork.sh')
         self.worker_command = json.dumps(['/bin/bash', self.process_script, '--worker', str(self.state), '{worktree}',
                                           '{prompt_file}', '{report_file}', '{timeout}'])
@@ -230,13 +249,10 @@ class Coordinator:
         self.pause_until = 0.0
         self.seen, self.touches_tried = {}, set()
         self.known_at_start = False  # the first status read records task states without logging them
-        self.drift_tried = self.drift_last_reason = self.drift_reason = ''
         self.last_update, self.last_update_note = time.monotonic(), ''
         self.settled = False
         self.toolset_rev = cfg['toolset_rev']
         self.runtime = pi_runtime.Settings(self.state)
-        self.merge_drivers_registered = False
-        self.planning_attributes = None
 
     # --- Engine -----------------------------------------------------------------
     def start_integration(self, task):
@@ -421,7 +437,7 @@ class Coordinator:
         """Whether main holds anything but planning files and docs the session lacks; a batch
         verdict survives those (worker.same_code)."""
         changed = git(self.repo, 'diff', '--name-only', f'{self.integ_branch}...{self.base}').split()
-        return any(p not in PLANNING_FILES and not p.startswith('docs/') for p in changed)
+        return any(not planning_path(p) and not p.startswith('docs/') for p in changed)
 
     def batch_pending(self):
         """Batch verdicts not used yet: the session holds still for them, or their trees no longer match."""
@@ -634,12 +650,12 @@ class Coordinator:
         settings at the next safe point, keeping the PID and every running worker."""
         self.reload = True
 
-    PLAN_FILES = ('TODO.md', 'goals.json', 'BLOCKERS.md', 'TODO.archive.md')
+    PLAN_FILES = ('BLOCKERS.md', 'TODO.archive.md')
 
     def plan_signature(self):
-        """What the owner's plan looks like on disk: the planning files in the main checkout
-        and the main branch's commit (a planning commit moves it). Stat calls, plus reading the
-        ref files when they changed."""
+        """What the owner's plan looks like: the main checkout's uncommitted task and question
+        edits (an edit to a task file does not change its directory's timestamp, so status, not
+        stat), the planning files' stats, and the main branch's commit (a planning commit moves it)."""
         found = {}
         for path in [Path(self.repo) / name for name in self.PLAN_FILES]:
             try:
@@ -647,6 +663,7 @@ class Coordinator:
                 found[path.name] = (info.st_mtime_ns, info.st_size)
             except OSError:
                 found[path.name] = None
+        found['tasks'] = git(self.repo, 'status', '--porcelain', '--untracked-files=all', '--', 'tasks') or ''
         found[self.base] = self.base_commit()
         return found
 
@@ -761,48 +778,8 @@ class Coordinator:
         os.environ['PI_AUTOWORK_SESSION'] = branch
         return True
 
-    def register_planning_merges(self):
-        """Repair local driver commands even when planning is not ready for a session."""
-        if not self.merge_drivers_registered:
-            # Git also runs these after the runner exits. Keep engine calls on
-            # self.goals pinned, but register the package that outlives releases.
-            driver_goals = Path(self.package) / 'skills/docs-sync/scripts/goals.py'
-            for kind in ('goals', 'todo', 'archive'):
-                prefix = f'merge.docs-sync-{kind}'
-                command = (f'{shlex.quote(sys.executable)} {shlex.quote(str(driver_goals))} '
-                           f'merge-driver {kind} %O %A %B')
-                for key, value in (('driver', command), ('recursive', 'binary')):
-                    if git(self.repo, 'config', '--local', '--get', f'{prefix}.{key}') != value:
-                        if not git_ok(self.repo, 'config', '--local', f'{prefix}.{key}', value):
-                            raise Finish(1, 'Cannot register planning merge drivers')
-            self.merge_drivers_registered = True
-
-    def setup_planning_merges(self):
-        """Local executable paths stay in Git config; portable attributes travel in Git."""
-        self.register_planning_merges()
-        if self.session_busy():
-            return  # restored reviews own their pinned session until they finish
-        path = Path(self.integ) / '.gitattributes'
-        if path.is_symlink():
-            raise Finish(1, 'Refusing symlink .gitattributes in session')
-        before = path.read_text() if path.exists() else ''
-        if self.planning_attributes is None:
-            result = subprocess.run([sys.executable, str(self.goals), 'merge-attributes', self.integ],
-                                    capture_output=True, text=True)
-            if result.returncode:
-                raise Finish(1, 'Cannot locate planning archive: ' + result.stderr.strip())
-            self.planning_attributes = result.stdout.splitlines()
-        missing = [line for line in self.planning_attributes if line not in before.splitlines()]
-        if missing:
-            # Never include another writer's dirty attributes in this setup commit.
-            if git(self.integ, 'status', '--porcelain', '--', '.gitattributes'):
-                raise Finish(1, 'Session .gitattributes is dirty; preserve it and reconcile planning drivers')
-            path.write_text(before + ('\n' if before and not before.endswith('\n') else '') + '\n'.join(missing) + '\n')
-            self.commit(['.gitattributes'], 'chore: register planning-file merge attributes (pi-autowork)')
-
     def ensure_session(self):
         if self.integ or self.load_session():
-            self.setup_planning_merges()
             return
         branch = f'pi-autowork/{datetime.now():%Y%m%d-%H%M%S}'
         path = str(workspaces.task_path(self.toolset, self.repo, branch.replace('/', '-')))
@@ -817,22 +794,55 @@ class Coordinator:
         self.integ, self.integ_branch = path, branch
         os.environ['PI_AUTOWORK_SESSION'] = branch
         LOG.say(f'Session {branch} started from {self.base}')
-        self.setup_planning_merges()
+
+    def reopen_stale_closures(self):
+        """After a merge into the session: reopen every done task whose receipt pins another
+        contract than its merged record (one side closed it, the other changed its acceptance),
+        in one commit, so neither dependents nor main take a close no one verified. The resolver's
+        prompt is guidance; this is the check. False when such a task is still done."""
+        dispatch = dispatch_module(self.toolset)
+        try:
+            stale = dispatch.task_queue.stale_closures(Path(self.integ))
+        except dispatch.task_queue.StoreError:
+            return True  # an unreadable store is the LEDGER repair's, and selects nothing
+        if not stale:
+            return True
+        paths = []
+        for task, pinned, now in stale:
+            reason = (f'{datetime.now():%Y-%m-%d}: its contract changed after its verified close '
+                      f'(receipt {str(pinned)[:12]}, record {now[:12]}); verify it again')
+            try:
+                task_commands.reopen(self.integ, task, reason)
+            except (task_commands.CommandError, OSError, ValueError) as exc:
+                LOG.warn(f'{task}: could not reopen a close its contract no longer matches: {exc}')
+                continue
+            paths.append(f'tasks/items/{task}.md')
+        names = ', '.join(p.removeprefix('tasks/items/').removesuffix('.md') for p in paths)
+        if not paths or not git_ok(self.integ, 'add', '--', *paths) or not git_ok(
+                self.integ, 'commit', '-q', '-m', f'docs(tasks): reopen {names} (pi-autowork)',
+                '-m', 'Each was closed against another contract than its merged record states.'):
+            if paths:
+                git(self.integ, 'reset', '-q', '--', *paths)
+                git(self.integ, 'checkout', '--', *paths)
+            return False
+        self.land_soon = True
+        LOG.say(f'Reopened {names}: closed against another contract than the merged record states')
+        return True
 
     def merge_planning(self, ref):
-        """Complete derived planning data before Git commits, regardless of driver order."""
+        """Merge ``ref`` into the session; task files merge per file like any other text, and a
+        conflicting one is left for the Pi resolver. A close the merge left under another contract
+        is reopened; if that cannot be committed, the merge is undone (it waits, not lands)."""
         if git_ok(self.integ, 'merge-base', '--is-ancestor', ref, 'HEAD'):
             return True
-        if not git_ok(self.integ, 'merge', '-q', '--no-commit', '--no-ff', ref):
+        before = git(self.integ, 'rev-parse', 'HEAD')
+        if not git_ok(self.integ, 'merge', '-q', '--no-ff', '--no-edit', ref):
             return False
-        if (Path(self.integ) / 'goals.json').exists():
-            result = subprocess.run([sys.executable, str(self.goals), 'merge-finalize', self.integ],
-                                    capture_output=True, text=True)
-            if result.returncode:
-                LOG.say('Planning merge needs reconciliation: ' + (result.stderr or result.stdout).strip())
-                return False  # leave the merge for the existing Pi resolver
-            git(self.integ, 'add', '--', 'goals.json', 'TODO.md')
-        return git_ok(self.integ, 'commit', '-q', '--no-edit')
+        if self.reopen_stale_closures():
+            return True
+        git(self.integ, 'reset', '-q', '--hard', before)
+        LOG.say(f'Held the merge of {ref}: a task it leaves done under a changed contract could not be reopened')
+        return False
 
     def end_session(self):
         """Only a clean, fully merged session is removed. Its regenerable build output goes first:
@@ -895,7 +905,7 @@ class Coordinator:
                 LOG.say(f'{self.base} moved and conflicts with this session in: {files}; asking Pi to resolve the merge')
                 self.pi_job('merge', self.integ_branch.removeprefix('pi-autowork/'), self.integ,
                             merge_prompt(branch=self.integ_branch, base=self.base, files=conflicts,
-                                         goals=self.goals, repo=self.repo),
+                                         tasks=self.tasks_cli, repo=self.repo),
                             f'pi-autowork-merge-{datetime.now():%Y%m%d%H%M%S}', self.verify_timeout)
             marker = git(self.integ, 'rev-parse', '--path-format=absolute', '--git-path', 'MERGE_HEAD')
             if ((marker and Path(marker).exists())
@@ -903,6 +913,10 @@ class Coordinator:
                     or dirty(self.integ)):
                 git(self.integ, 'merge', '--abort')
                 self.merge_pending = f'{self.integ_branch} conflicts with {self.base} in: {files}'
+                LOG.say(f'Merge pending: {self.merge_pending}. The branch and its worktree ({self.integ}) are kept.')
+                return False
+            if not self.reopen_stale_closures():  # the resolver's merge, checked as merge_planning checks its own
+                self.merge_pending = f'{self.integ_branch} leaves a task done under a changed contract'
                 LOG.say(f'Merge pending: {self.merge_pending}. The branch and its worktree ({self.integ}) are kept.')
                 return False
         reason = self.fast_forward_main()
@@ -943,7 +957,7 @@ class Coordinator:
         overlap = [p for p in changed if p and git(self.repo, 'status', '--porcelain', '--', p)]
         if overlap:
             planning = self.owner_planning_paths()
-            owned = [p for p in overlap if p not in planning]
+            owned = [p for p in overlap if not planning(p)]
             if owned:
                 return 'uncommitted changes overlap the landing: ' + ', '.join(owned)
             return self.land_around_edits(old, new)
@@ -1211,13 +1225,9 @@ class Coordinator:
         self.merge_main()
 
     def owner_planning_paths(self):
-        """The only main-checkout paths the quiet owner-planning sweep may commit."""
-        _, dispatch = touches_inference.modules(self.toolset)
-        try:
-            archive = dispatch.execution.archive_file(Path(self.repo)).relative_to(self.repo).as_posix()
-        except (ValueError, OSError):
-            archive = None
-        return {'TODO.md', 'goals.json', 'BLOCKERS.md', 'TODO.archive.md'} | ({archive} if archive else set())
+        """Which main-checkout paths the quiet owner-planning sweep may commit: a predicate, since
+        the task store is a directory of files."""
+        return lambda path: planning_path(path) and not path.startswith('tasks/evidence/')
 
     def commit_owner_changes(self):
         """Commit only quiet owner-planning files that no process holds open for writing.
@@ -1242,7 +1252,7 @@ class Coordinator:
             if status[0] in 'RC':
                 paths.append(next(entries, ''))  # the rename's source, so the commit records it
         planning = self.owner_planning_paths()
-        paths = self.publishable([p for p in paths if p in planning])
+        paths = self.publishable([p for p in paths if planning(p)])
         quiet = float(os.environ.get('PI_AUTOWORK_PLANNING_QUIET', '600'))
         recent = self.recent_owner_paths(paths, quiet)
         if not paths:
@@ -1360,7 +1370,7 @@ class Coordinator:
         """The session follows the main branch whenever no review is running, and takes
         planning-only commits even beside one, so the owner's plan and toolset fixes reach
         dispatch and validation within one review (TOOLSET-233-ba). With nothing in flight, a
-        conflict (the owner's TODO.md edit against the session's own bookkeeping) is resolved at
+        conflict (the owner's task-file edit against the session's own bookkeeping) is resolved at
         once through the session merge, not left for a final merge a stalled runner never
         reaches; a merge that still fails is a runner blocker the owner sees. A refused ledger is an
         exception: task slots cannot settle until the owner's repair reaches the session, so the
@@ -1380,7 +1390,7 @@ class Coordinator:
             # review's merge on top without validating again (TOOLSET-233-ba). Anything else waits
             # for the review to end, which is at most one review, not until the session lands.
             changed = git(self.repo, 'diff', '--name-only', f'{self.integ_branch}...{self.base}').split()
-            if not changed or not all(p in PLANNING_FILES or p.startswith('docs/') for p in changed):
+            if not changed or not all(planning_path(p) or p.startswith('docs/') for p in changed):
                 return
         # Workers have their own worktrees and integration merges their commits into the session
         # as it is then, so work in flight never keeps the session from following main: a stale
@@ -1516,7 +1526,7 @@ class Coordinator:
         self.failures += 1
 
     def close_task(self, task):
-        """Archive an integrated task and commit exactly the files the close wrote."""
+        """Close an integrated task in its record and commit exactly the files the close wrote."""
         result = self.engine('--parallel-close', task)
         if result.get('outcome') == 'CLOSED':
             self.commit(result.get('files') or [], f'docs(tasks): close {task} (pi-autowork)',
@@ -1531,16 +1541,16 @@ class Coordinator:
             self.settled = True
             return
         reason = result.get('reason') or result.get('outcome') or ''
-        # Its TODO entry was rewritten (or archived by someone else) after the merge: the
+        # Its record's contract changed (or someone else closed it) after the merge: the
         # merge stays in main, so retire the slot instead of blocking on it forever.
         if reason == CONTRACT_CHANGED:
             aside = self.engine('--parallel-set-aside', task)
             if aside.get('outcome') == 'SET_ASIDE':
                 if aside.get('requeued') is False:
-                    LOG.say(f'{task}: its TODO entry was archived or removed by someone else after integration; '
+                    LOG.say(f'{task}: its task record was closed or removed by someone else after integration; '
                             'the merged work stays in main')
                 else:
-                    LOG.say(f'{task}: its TODO entry changed after integration; the merged work stays in main and '
+                    LOG.say(f'{task}: its task contract changed after integration; the merged work stays in main and '
                             'the task is queued again under its new entry')
                 self.seen[task] = 'pending'
                 self.settled = True
@@ -1788,10 +1798,6 @@ class Coordinator:
                 else:
                     LOG.say(f'{task}: waiting to integrate until another session leaves the main checkout ({reason})')
             self.seen['busy-' + task] = said
-        elif outcome == 'PRIORITY_DRIFT' and self.draining and self.reconcile_priority():
-            # A ledger repair can add a task while --once is draining. No refill
-            # will reconcile its order, so do that before retrying this integration.
-            self.settled = True
         elif 'highest-priority' not in reason:  # another reported task goes first
             LOG.say(f'{task}: integration needs attention: {reason or outcome}')
 
@@ -1838,7 +1844,7 @@ class Coordinator:
     def reverify_after_timeout(self, task, version):
         """A review that ran out of time is run again on the same commit, with twice the limit it
         had, up to the cap: no worker reruns and no attempt is spent (TOOLSET-196-fb)."""
-        _, dispatch = touches_inference.modules(self.toolset)
+        dispatch = dispatch_module(self.toolset)
         if dispatch.resource_gate(0, float(self.min_free_mb), self.integ):
             return  # a host/check-only worker hold waits for a quieter host too
         try:
@@ -1901,7 +1907,7 @@ class Coordinator:
             # The runner's own questions and planning commits moved main: a full check for each
             # (8 of 39 in a day) took a host check slot that a waiting review needed.
             changed = (git(self.repo, 'diff', '--name-only', record['rev'], rev) or '').split()
-            if changed and all(p in PLANNING_FILES for p in changed):
+            if changed and all(planning_path(p) for p in changed):
                 main_check.write(self.state, dict(record, rev=rev, green=rev))
                 return
         # It waits for room at most MAIN_CHECK_WAIT: with eight workers and batches a review or a
@@ -2033,15 +2039,14 @@ class Coordinator:
         self.maintain(main_only=True)  # one repair task, now: red main hides every later regression
 
     def validate_ledger(self, reason=''):
-        """Read full validator errors, falling back to an engine refusal if needed."""
-        if (Path(self.integ) / 'goals.json').exists():
-            result = self.goals_cli('validate', self.integ)
-            if result.returncode:
-                errors = (result.stdout + result.stderr).strip().splitlines()
-                if errors:
-                    return sorted({' '.join(e.split()) for e in errors if e.strip()})
-        if reason.startswith('invalid goals.json'):
-            return sorted(set(reason.removeprefix('invalid goals.json').lstrip(': ').split('; ')))
+        """The task store's errors at the session's HEAD (path:line), or [] when it validates."""
+        dispatch = dispatch_module(self.toolset)
+        try:
+            dispatch.task_queue.store(Path(self.integ))
+        except dispatch.task_queue.Unconverted as exc:
+            return [str(exc)]
+        except ValueError as exc:
+            return [' '.join(str(exc).split())]
         return []
 
     def overlap_idles(self):
@@ -2063,7 +2068,7 @@ class Coordinator:
         """DOCS-MAINTAINER (TOOLSET-164-f1): when nothing runs and tasks are held for a planning
         cause or are not runnable as written, one Pi job restates them from the repository's own
         evidence in a disposable checkout. Its commit merges into the session only if it changed
-        planning files alone and goals.py validate passes. Only unhandled trigger items enter
+        planning files alone and the task store still validates. Only unhandled trigger items enter
         the prompt; an unchanged unsuccessful repair needs an owner, not another run.
         True when its repair merged, or another ledger-proposal batch still waits."""
         if self.stop or not self.integ:
@@ -2088,19 +2093,15 @@ class Coordinator:
         found = (maintainer.overlaps(rows) if overlap and not self.ledger_errors else
                  maintainer.triggers(rows, main, findings, ledger_errors=self.ledger_errors, limit=None,
                                      reported_flakes=maintainer.last(self.state).get('flaky_tests', [])))
-        goals = dispatch = None
-        closures = []
-        if not main_only and not ledger_edits_only and not self.ledger_errors:
-            goals, dispatch = touches_inference.modules(self.toolset)
-            closures = maintainer.archive_closures(self.integ, dispatch.execution)
-        found = closures + found
-        before = {}
-        if any(task not in ('MAIN', 'LEDGER') for task, _, _ in found):
-            if goals is None:
-                goals, dispatch = touches_inference.modules(self.toolset)
-            before = maintainer.entries((Path(self.integ) / 'TODO.md').read_text(), goals)
+        dispatch = dispatch_module(self.toolset)
+        queue = dispatch.task_queue
+
+        def entries(snapshot):
+            return maintainer.entries(snapshot, queue)
+
+        before = entries(queue.store(Path(self.integ))) if any(task not in ('MAIN', 'LEDGER')
+                                                                for task, _, _ in found) else {}
         reasons = {r['task']: r.get('reason') or '' for r in rows if r.get('task')}
-        found += maintainer.archive_rejections(self.state, closures, entries=before, reasons=reasons)
         history = maintainer.last(self.state)
         found = [item for item in found if not maintainer.own_main_refresh(
             self.repo, item, history.get('items', {}).get(maintainer.item_key(item), {}),
@@ -2108,14 +2109,8 @@ class Coordinator:
         found = maintainer.pending(self.state, found, entries=before, reasons=reasons)
         if not found:
             return False
-        # Mechanical replay is its own model-free batch in the same transaction.
-        # Failed replay receipts are filtered above, so other repairs still proceed.
-        replay = [item for item in found if item[1] == 'archive close']
-        found = replay or found
         trigger_key = maintainer.key(found)
         rolling = any(kind == 'plan' for _, kind, _ in found)
-        plan_before = maintainer.plan_entries(self.integ, goals, dispatch.execution.archive_file(Path(self.integ))) \
-            if rolling else before
         scratch = self.scratch_checkout('maintainer')
         if not scratch:
             return False
@@ -2124,48 +2119,44 @@ class Coordinator:
         outcome, changed = 'no change', []
         try:
             base = git(scratch, 'rev-parse', 'HEAD')
-            if replay:
-                ok, text = maintainer.replay_archive(scratch, names, dispatch.execution, self.goals_cli)
-                if ok:
-                    ok = git_ok(scratch, 'add', '-A') and git_ok(scratch, 'commit', '-qm',
-                        'docs(tasks): replay archived completion of ' + ', '.join(names))
-            else:
-                message = maintainer.prompt(found, self.repo, self.goals)
-                if rolling:
-                    message += f'\nFinished batch reports: {Path(self.cfg["git_common"]) / "autowork-execution/slot-data"}.'
-                ok, text = self.pi_job('maintainer', maintainer.ROLE, scratch,
-                                       message,
-                                       f'pi-autowork-maintainer-{datetime.now():%Y%m%d%H%M%S}', self.verify_timeout)
+            message = maintainer.prompt(found, self.repo, self.tasks_cli)
+            if rolling:
+                message += f'\nFinished batch reports: {Path(self.cfg["git_common"]) / "autowork-execution/slot-data"}.'
+            ok, text = self.pi_job('maintainer', maintainer.ROLE, scratch,
+                                   message,
+                                   f'pi-autowork-maintainer-{datetime.now():%Y%m%d%H%M%S}', self.verify_timeout)
             head = git(scratch, 'rev-parse', 'HEAD')
             paths = (git(scratch, 'diff', '--name-only', base, head) or '').split() if head and head != base else []
             diff = git(scratch, 'diff', base, head) or '' if paths else ''
             changed = [task for task in names if task in diff]
+            # The proposal's whole store must read: one invalid file refuses it.
+            invalid, proposed = None, None
+            try:
+                proposed = queue.store(Path(scratch))
+            except queue.StoreError as exc:
+                invalid = ' '.join(str(exc).split())
             plan_error = None
             if rolling:
-                try:
-                    proposed = maintainer.plan_entries(scratch, goals, dispatch.execution.archive_file(Path(scratch)))
-                    plan_error = maintainer.plan_error(found, plan_before, proposed, scratch,
-                                                       dispatch.parallel_plan.dependency_ids)
-                except (OSError, ValueError, KeyError, TypeError) as exc:
-                    plan_error = 'invalid planning documents: ' + str(exc)
+                if invalid:
+                    plan_error = 'invalid task store: ' + invalid
+                else:
+                    try:
+                        plan_error = maintainer.plan_error(
+                            found, before, entries(proposed), scratch, dispatch.parallel_plan.dependency_ids,
+                            {goal.id: goal.status for goal in proposed.goals.values()})
+                    except (OSError, ValueError, KeyError, TypeError) as exc:
+                        plan_error = 'invalid planning documents: ' + str(exc)
                 if not ok or git(scratch, 'rev-list', '--count', f'{base}..{head}') != '1':
                     plan_error = 'planning must finish successfully in one commit'
             if rolling and plan_error:
                 outcome = 'planning failed: ' + plan_error
-            elif replay and not ok:
-                outcome = maintainer.REPLAY_REFUSED + text.strip()
             elif not paths:
                 outcome = 'no change' if ok else 'failed'
-            elif (not (maintainer.planning_only(paths) or (replay and all(
-                    maintainer.planning_only([p]) or
-                    p == dispatch.execution.archive_file(Path(scratch)).relative_to(scratch).as_posix()
-                    for p in paths))) or dirty(scratch)):
+            elif not maintainer.planning_only(paths) or dirty(scratch):
                 outcome = 'refused: it changed more than planning files'
-            elif (self.ledger_errors or (Path(scratch) / 'goals.json').exists()) and (
-                    validation := self.goals_cli('validate', scratch)).returncode:
-                outcome = (maintainer.REPLAY_REFUSED + (validation.stdout + validation.stderr).strip()
-                           if replay else 'refused: goals.py validate failed')
-            elif git_ok(self.integ, 'merge', '-q', '--no-edit', head):
+            elif invalid:
+                outcome = 'refused: invalid task store: ' + invalid
+            elif self.merge_planning(head):
                 outcome = 'merged'
                 self.settled = self.land_soon = True
             else:
@@ -2174,9 +2165,9 @@ class Coordinator:
         finally:
             self.drop_scratch(scratch)
         after = before
-        if outcome == 'merged' and (before or replay):
-            after = maintainer.entries((Path(self.integ) / 'TODO.md').read_text(), goals)
-            changed = names if replay else [task for task in names if before.get(task) != after.get(task)
+        if outcome == 'merged' and before:
+            after = entries(queue.store(Path(self.integ)))
+            changed = [task for task in names if before.get(task) != after.get(task)
                        or (task in ('MAIN', 'LEDGER') and task in changed)]
             self.snapshot = None  # waiting reasons must be reread against the repaired entries
         maintainer.remember(self.state, trigger_key=trigger_key, found=found, outcome=outcome, changed=changed,
@@ -2188,11 +2179,10 @@ class Coordinator:
                 self.ledger_errors = []
                 self.snapshot = None
             else:
-                LOG.say('The engine needs attention: invalid goals.json: ' + '; '.join(self.ledger_errors)
+                LOG.say('The engine needs attention: invalid task store: ' + '; '.join(self.ledger_errors)
                         + f'; {maintainer.ROLE} {outcome}; see BLOCKERS.md')
         proposals = [item for item in maintainer.triggers(rows, limit=None) if item[1] == 'ledger edit']
-        return (outcome == 'merged' or (bool(replay) and outcome.startswith(maintainer.REPLAY_REFUSED))
-                or bool(maintainer.pending(self.state, proposals, entries=after, reasons=reasons)))
+        return outcome == 'merged' or bool(maintainer.pending(self.state, proposals, entries=after, reasons=reasons))
 
     def environment_hold(self, task):
         """What a review of the held commit could not run without, or None (TOOLSET-173-94)."""
@@ -2368,7 +2358,7 @@ class Coordinator:
             proc = subprocess.Popen([sys.executable, str(Path(__file__).with_name('pi_runtime.py')), 'job',
                                      str(self.state), 'merge', task, str(root),
                                      f'pi-autowork-merge-{task}-{datetime.now():%Y%m%d%H%M%S}', str(self.verify_timeout),
-                                     merge_prompt(branch=branch, base=head[:12], files=conflicts, goals=self.goals,
+                                     merge_prompt(branch=branch, base=head[:12], files=conflicts, tasks=self.tasks_cli,
                                                   repo=self.repo)], stdout=stream, env=env)
         self.resolvers[task] = {'proc': proc, 'out': out.name, 'root': root, 'head': head, 'commit': commit,
                                 'merged_count': adoption.get('merged_count')}
@@ -2466,40 +2456,6 @@ class Coordinator:
             owned.remove(path)
 
     # --- Priority, requests, health, self-update --------------------------------------
-    def goals_cli(self, *argv):
-        return subprocess.run([sys.executable, str(self.goals), *argv], capture_output=True, text=True)
-
-    def reconcile_priority(self):
-        """TODO.md order is the human priority; record it once per change with the
-        documented guarded command, committing only goals.json, then select again."""
-        self.drift_reason = ''
-        revision = self.goals_cli('revision', self.integ)
-        if revision.returncode:
-            self.drift_reason = 'no ledger revision'
-            return False
-        revision = revision.stdout.strip()
-        if revision == self.drift_tried:
-            self.drift_reason = self.drift_last_reason or 'drift remains after recording the order'
-            return False
-        self.drift_tried = revision
-        if dirty(self.integ):
-            self.drift_reason = 'the session checkout has uncommitted changes'
-        else:
-            result = self.goals_cli('reorder', self.integ, '--expected-revision', revision)
-            if result.returncode:
-                tail = (result.stdout + result.stderr).splitlines()[-3:]
-                self.drift_reason = ' '.join(tail)[:300]
-            else:
-                self.commit(['goals.json'], 'docs(tasks): record TODO.md priority order (pi-autowork)',
-                            'TODO.md order is the human priority; recorded with goals.py reorder.')
-                # Drift that survives the recording is not something another reorder fixes.
-                self.drift_tried = self.goals_cli('revision', self.integ).stdout.strip()
-                self.drift_last_reason = 'drift remains after recording the order (duplicate task IDs?)'
-                LOG.say('TODO.md priority changed; recorded the new order and selecting again')
-                return True
-        self.drift_last_reason = self.drift_reason
-        return False
-
     def handle_requests(self):
         """`--set-aside TASK` requests; only this runner holds the engine lease."""
         for request in sorted((self.state / 'requests').glob('set-aside-*')):
@@ -2571,18 +2527,21 @@ class Coordinator:
         if (not self.integ or (snapshot.get('outcome') != 'PARALLEL_STATUS' and not snapshot.get('ledger_errors'))
                 or dirty(self.integ) or self.session_busy()):
             return
-        goals, _ = touches_inference.modules(self.toolset)
+        dispatch = dispatch_module(self.toolset)
         path = Path(self.integ) / 'BLOCKERS.md'
         try:
             old = path.read_text() if path.exists() else None
-            todo = (Path(self.integ) / 'TODO.md').read_text()
+            try:
+                entries = maintainer.entries(dispatch.task_queue.store(Path(self.integ)), dispatch.task_queue)
+            except dispatch.task_queue.StoreError:
+                entries = {}  # an invalid store is the LEDGER question
             rows = self.tasks(snapshot)
             findings = {r['task']: worker.review_findings(self.state, r['task']) for r in rows
                         if r.get('state') == 'held' and r.get('cause') == 'validation' and r.get('task')}
             triggers = maintainer.triggers(rows, findings=findings, limit=None)
             reasons = {r['task']: r.get('reason') or '' for r in rows if r.get('task')}
-            repairs = maintainer.stalled(self.state, triggers, entries=maintainer.entries(todo, goals), reasons=reasons)
-            found = questions.build(snapshot, todo, goals, repairs=repairs, resolving=self.resolving(rows))
+            repairs = maintainer.stalled(self.state, triggers, entries=entries, reasons=reasons)
+            found = questions.build(snapshot, self.integ, repairs=repairs, resolving=self.resolving(rows))
             if os.environ.get('PI_AUTOWORK_ASK_FULL_CHECK', '1') != '0' and not main_check.full_check(self.integ):
                 # TOOLSET-180-72: nothing guards the suite
                 found.append(questions.full_check_question())
@@ -2746,10 +2705,7 @@ class Coordinator:
 
     def planning_ready(self):
         """A session sees the committed base, not the owner's untracked planning files."""
-        # The direct CLI also supports TODO-only repositories (unlike service readiness).
-        # Once an index exists on disk it too must reach the committed base before dispatch.
-        required = ('TODO.md', 'goals.json') if (Path(self.repo) / 'goals.json').exists() else ('TODO.md',)
-        missing = fleet_view.uncommitted_planning(self.repo, self.base, required)
+        missing = fleet_view.uncommitted_planning(self.repo, self.base)
         path = Path(self.repo) / 'BLOCKERS.md'
         old = path.read_text() if path.exists() else None
         new = questions.update_planning(old, self.base if missing else None)
@@ -2788,9 +2744,9 @@ class Coordinator:
             return True
         blocker = f'planning files are not committed on {self.base}'
         if self.mode != 'continuous':
-            raise Finish(4, f'{blocker}; commit TODO.md and goals.json on {self.base} first')
+            raise Finish(4, f'{blocker}; commit tasks/ on {self.base} first')
         if self.last_waiting != 'planning:' + blocker:
-            LOG.say(f'Runner blocked: {blocker}; commit TODO.md and goals.json on {self.base} first')
+            LOG.say(f'Runner blocked: {blocker}; commit tasks/ on {self.base} first')
         self.last_waiting = 'planning:' + blocker
         self.runner_blocker = blocker
         snapshot = self.status(directory=self.repo)
@@ -2814,6 +2770,8 @@ class Coordinator:
             self.seen['synced-at-start'] = True
             self.sync_upstream()  # publish a backlog left by a run that could not push
         self.follow_base()
+        if self.integ and not self.session_busy() and not dirty(self.integ):
+            self.reopen_stale_closures()  # also a close an owner commit changed the contract of
         self.sweep_tmp()
         self.check_main()
         self.land_planning()
@@ -2893,7 +2851,7 @@ class Coordinator:
             self.seen[task] = ''
             kept = ', '.join(r['branch_now'] for r in result.get('renamed') or [] if r.get('branch_now'))
             if result.get('requeued') is False:
-                LOG.say(f'{task}: its TODO entry was removed or closed while it was held; set aside'
+                LOG.say(f'{task}: its task record was removed or closed while it was held; set aside'
                         + (f' (earlier work kept as {kept})' if kept else ''))
             elif result.get('why') == 'review_rework':
                 LOG.say(f'{task}: its last attempt failed review; reworking it once with the findings'
@@ -2902,7 +2860,7 @@ class Coordinator:
                 LOG.say(f'{task}: its branch was merged past its commit by the runner; running it fresh from that tip'
                         + (f' (earlier work kept as {kept})' if kept else ''))
             else:
-                LOG.say(f'{task}: its TODO entry changed while it was held; running it fresh'
+                LOG.say(f'{task}: its task contract changed while it was held; running it fresh'
                         + (f' (earlier work kept as {kept})' if kept else ''))
         elif outcome in ('RESCOPED', 'RESUMED', 'REOFFERED'):
             self.seen[result.get('task')] = ''
@@ -2947,28 +2905,16 @@ class Coordinator:
                 return self.pause(2)
             LOG.say(f'Repository busy ({reason}); checking again in {self.interval}s')
             return self.blocked_pause(f'repository busy: {reason}')
-        elif outcome == 'PRIORITY_DRIFT':
-            # Scheduled runs record the human order themselves (Autowork SKILL.md), once per change.
-            if self.reconcile_priority():
-                return
-            if self.mode in ('once', 'until-empty'):
-                self.finish(4, f'TODO.md priority changed and could not be recorded: {self.drift_reason}')
-            if self.last_waiting != 'drift:' + self.drift_reason:
-                LOG.say(f'TODO.md priority changed and could not be recorded ({self.drift_reason}); '
-                        f'checking again in {self.interval}s')
-            self.last_waiting = 'drift:' + self.drift_reason
-            return self.blocked_pause(f'TODO.md priority changed and goals.py reorder refused: {self.drift_reason}')
         else:
             reason = result.get('reason') or outcome
-            # Shape/parse failures have no `invalid goals.json` prefix. Consult the
-            # validator on every refusal rather than guessing the engine's wording.
+            # Consult the store on every refusal rather than guessing the engine's wording.
             self.ledger_errors = self.validate_ledger(reason) if outcome == 'ACTION_REQUIRED' else []
             if self.ledger_errors:
                 if self.maintain(ledger_errors=self.ledger_errors):
                     return  # select again on valid docs before asking the owner
                 if self.integration:
                     self.settle()  # reap an existing review so it cannot hold repair forever
-                reason = 'invalid goals.json: ' + '; '.join(self.ledger_errors)
+                reason = 'invalid task store: ' + '; '.join(self.ledger_errors)
                 self.last_waiting = 'engine:' + reason
                 if self.mode != 'continuous':
                     self.runner_blocker = f'the engine needs attention: {reason}'
@@ -3039,7 +2985,6 @@ class Coordinator:
         signal.signal(signal.SIGHUP, self.on_reload)
         LOG.say(f'Started (PID {os.getpid()}). Stop with Ctrl+C.')
         try:
-            self.register_planning_merges()
             while True:
                 self.cycle()
         except Finish as done:
