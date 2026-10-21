@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-333-34"
 title = "The runner never pauses a whole cycle or reports 'Repository busy' for a lock its own background job holds"
 short = "No 'Repository busy' pauses on its own locks"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Now"
 rank = 1000
@@ -20,3 +20,4 @@ exclusions = []
 
 - Dependencies: ["TOOLSET-328-2e"]
 - Coordination: Run after TOOLSET-328-2e closes: both tasks name tests/test_pi_autowork.py. Its attempt-1 report and candidate f7f4b2211c8aa21b62baf56ca15253e334eb1685 add two issue-2 expected-failure regressions in that file; the slot is reported, awaiting integration. Do not merge into or edit that in-flight task. The lock-contention regressions here verify the same behavior this task implements, so retain them with the implementation rather than split off its acceptance proof. Existing lock-wait and external sequential-owner tests in tests/test_pi_autowork.py remain relevant. No scope, acceptance, checks or owner priority change; this dependency records the existing shared-file wait, not a product prerequisite.
+- Held by: owner's interactive session (supervisor), implementing it now
