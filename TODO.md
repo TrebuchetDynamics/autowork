@@ -113,6 +113,8 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-287-44 — A merge conflict the resolver may still adopt is never an owner question
 
 - [ ] TOOLSET-287-44 — A merge conflict the resolver may still adopt is never an owner question
+- Sources: [accepted continuous runner scope](docs/project.md#continuous-pi-runner-2026-10-15); [question exhaustion and publication](pi-autowork/pi_autowork/questions.py) (`exhausted`, `build`); [engine adoption status](skills/autowork/scripts/parallel_status.py) (`merge_adoption`); this task's observed owner-question Evidence.
+- Scheduling: Wait for TOOLSET-154-d3 to land before editing questions.py and test_questions.py. Its reported e720ac974417e5acb17ab63a586359de75c5f824 normalizes IDs/fields; this task changes exhaustion classification, which that report does not deliver. The entire behavior and its proof share those files, so retain this slice intact rather than merge into the already reported task.
 - Short: Adoptable conflicts are not questions
 - Status: open
 - Goal: PI-RUNNER
@@ -121,7 +123,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Scope: (1) questions.exhausted no longer treats a conflict hold as exhausted merely because an earlier merge was adopted (merged_count > 0) or the attempt is the second: a conflict hold is an owner question only when the engine refuses the next adoption (merge_adoption.allowed is False for a reason other than the commit being in integration or a resolver running) or the resolver could not resolve it. (2) The question for a refused adoption keeps naming the conflicting files and the adoption count.
 - Acceptance: In fixtures: a conflict-held row with merged_count 1 and merge_adoption.allowed True yields no question; the same row with allowed False because canonical HEAD has not advanced yields one question naming the files and '1 of 3' (at 'merge adoption limit reached' the runner sets the commit aside and reruns the task, so no question); a second-attempt conflict hold the resolver may adopt yields no question.
 - Checks: python3 -m unittest discover -s pi-autowork/tests -p test_questions.py; python3 scripts/check.py tests/test_pi_autowork.py tests/test_blockers.py
-- Dependencies: None.
+- Dependencies: TOOLSET-154-d3
 - Ownership: Toolset coordinator.
 - Exclusions: No change to the adoption limit, the resolver or how conflicts are detected.
 
@@ -198,6 +200,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-230-bf — Integration and closeout move the runner's branch with a ref update, never through a working copy
 
 - [ ] TOOLSET-230-bf — Integration and closeout move the runner's branch with a ref update, never through a working copy
+- Scheduling: Wait for TOOLSET-261-15 to land: its assigned Touches includes coordinator.py and its report also changes tests/test_pi_autowork.py. The session-ref rollout couples engine integration/closeout to coordinator planning writes; retain the accepted off-tree slice intact rather than expose a partial rollout or edit the reported prerequisite.
 - Short: Integration moves branches by ref update
 - Status: open
 - Goal: PI-RUNNER
@@ -208,7 +211,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Scope: (1) The runner's session branch is checked out by no worktree; a job that needs its files (the maintainer, Touches inference, a check) uses a detached scratch worktree at its commit. (2) Integration builds and validates the merge as today, then moves the session branch with `update-ref refs/heads/<session> <merge> <baseline>`; a branch that moved meanwhile goes through the existing re-integration path. (3) Closeout and every planning commit (maintainer, planning landing, Touches records) are committed in a detached scratch worktree and land the same way. (4) Integration and closeout run no writer check: `require_no_writers`, the pool attribution and the external-worker scan are removed from them (no compatibility path), and kept nowhere else but the landing on `main` (TOOLSET-216-08's file-level rule). (5) Landing on `main` moves the branch and the main checkout together, never the ref alone.
 - Acceptance: In fixtures, integration and closeout complete while an unrelated process sits in the main checkout and while a worker's test process runs in its temp directory; a session branch that moved between read and update is re-integrated, never overwritten; no step writes a working copy except the main-checkout landing; the attribution code paths are gone from integration and closeout, and their tests are replaced by these. The main-checkout landing still never overwrites an uncommitted edit.
 - Checks: python3 scripts/check.py skills/autowork/scripts/test_parallel_integrate.py skills/autowork/scripts/test_parallel_adversarial.py tests/test_pi_autowork.py pi-autowork/tests/test_landing.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
-- Dependencies: TOOLSET-165-f7, TOOLSET-195-ee
+- Dependencies: TOOLSET-165-f7, TOOLSET-195-ee, TOOLSET-261-15
 - Ownership: Toolset coordinator. Supersedes the attribution parts of TOOLSET-224-07; coordinates with TOOLSET-216-08, which owns the main-checkout landing rule.
 - Exclusions: No change to gates, review, priority order or Touches scheduling; no landing that moves `main` without the main checkout.
 - Planner's call: as recorded in the [design](docs/plans/2026-10-18-off-tree-integration.md#off-tree-integration-design): writing no shared working copy removes the need to tell processes apart, which no attribution rule can do for every future kind of process.
@@ -217,6 +220,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-200-c1 — A status read waits for the writer lock, and a failed read never means nothing is running
 
 - [ ] TOOLSET-200-c1 — A status read waits for the writer lock, and a failed read never means nothing is running
+- Scheduling: Wait for TOOLSET-261-15 to land before reconciling coordinator.py and tests/test_pi_autowork.py. Keep the owner-required retained implementation and original checks together: engine BUSY responses and conservative coordinator handling jointly establish the status-read contract. This dependency is scheduling, not new proof or an ownership release.
 - Short: Status read waits for the writer lock
 - Status: open
 - Goal: PI-RUNNER
@@ -227,7 +231,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Scope: (1) `--parallel-status` waits up to `PI_AUTOWORK_STATUS_WAIT` seconds (default 10) for `writer.lock` before giving up, and a timed-out read answers a distinct `outcome: BUSY` rather than `ACTION_REQUIRED`. (2) In the coordinator, a status answer that is not `PARALLEL_STATUS` is unknown: `in_flight()` treats it as busy, and every step that acts on task state skips that cycle step (following main, landing, worktree cleanup, ending the session, closeout, settling, the `BLOCKED`/waiting detection and the DOCS-MAINTAINER trigger). Only display (`autowork status`, the TUI, log lines) uses the last good snapshot's tasks. (3) Three unknown reads in a row are logged once with the reason. When they are `BUSY`, nothing more happens. When they are any other failure (a corrupt slot file, an engine bug), the runner raises a runner blocker in health and `BLOCKERS.md`, and the toolset update is allowed to run even though the pool is unknown, since an update is how a fix arrives. The TUI and `autowork status` show `status busy` instead of an empty task list.
 - Acceptance: In fixtures, a status read started while another process holds `writer.lock` for 2 s returns the full snapshot; one held past the wait returns `BUSY`. With a fake engine answering `BUSY` while a worker runs, the coordinator neither follows main nor lands nor updates the toolset in that cycle, and the next good read resumes normally.
 - Checks: python3 -m unittest discover -s pi-autowork/tests -p test_status_cache.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_e2e.py; python3 scripts/check.py tests/test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
-- Dependencies: None.
+- Dependencies: TOOLSET-261-15
 - Ownership: Toolset coordinator.
 - Exclusions: No lock-free read of slot files; no change to how writers take the lock.
 - Planner's call: a short wait plus a conservative "unknown means busy", not a lock-free read, because slot writes and journal appends are only consistent under the lock. Waiting one cycle costs little; acting under running work can lose it. A persistent non-lock failure must not also block the update that would fix it (builder check, 2026-10-17).
@@ -237,6 +241,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-139-62 — Heal toolset pin drift so every runner receives released fixes
 
 - [ ] TOOLSET-139-62 — Heal toolset pin drift so every runner receives released fixes
+- Scheduling: Wait for TOOLSET-129-c4 to land before reconciling fleet_view.py and test_fleet_view.py. Its live worker owns the Needs classification seam this task consumes. Preserve the retained ten-file pin-healing implementation and aggregate checks; the display slice depends on pin-relation status, so it is not an independent ready slice.
 - Short: Heal toolset pin drift on every runner
 - Status: open
 - Goal: PI-RUNNER
@@ -247,7 +252,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Scope: At start and at each update check, a runner whose toolset is a Git checkout other than the Pi package compares it with the package's main. "Main" means the package's fetched `origin` HEAD (the `FETCH_HEAD` that `release.check` already fetches), not its possibly stale local branch. (1) If the checkout HEAD is an ancestor of main and the worktree is clean, the pin is obsolete. At the next safe checkpoint, using the same gate `release.check` applies, remove only the `PI_AUTOWORK_TOOLSET` line from this service's own env file, which `service.py` owns. Then re-exec on the Pi package, adopting workers without consuming an attempt. Log `Toolset pin <path> is merged into main; now running the Pi package at <rev>`. (2) If it is unmerged, ahead or dirty, keep running it: never drop unmerged code. Record the branch and ahead/behind counts in `status.json`. Log them once per change, and show them as agent work in the Needs cell and in `autowork ls`: "runs unmerged toolset branch <b> (<n> ahead, <m> behind main)". (3) With no pin, or a pin that resolves to the package itself, nothing changes.
 - Acceptance: Fixture repositories show the following. A merged clean pin is removed and re-executed exactly once, never while a worker is integrating, with other env lines byte-identical. An unmerged, ahead or dirty pin causes no env change, a single log line until its relation changes, and correct status and Needs text. No pin causes no change. A worker survives the switch on the same attempt. No model call occurs.
 - Checks: python3 -m unittest discover -s pi-autowork/tests -p test_release.py; python3 -m unittest discover -s pi-autowork/tests -p test_fleet_view.py; python3 -m unittest discover -s pi-autowork/tests -p test_health.py; python3 scripts/check.py
-- Dependencies: None.
+- Dependencies: TOOLSET-129-c4
 - Ownership: Toolset coordinator; reconcile active TOOLSET-115-bf output in overlapping files first.
 - Exclusions: The runner never edits fleet repositories, never switches away from unmerged or dirty code and never rewrites env lines other than `PI_AUTOWORK_TOOLSET`. Live qualification on the four services happens after delivery, through TOOLSET-096-7e.
 - Planner's call: auto-unpin only when the pin is provably merged and clean; otherwise surface it as agent work, not an owner question.
@@ -261,6 +266,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-179-cf — The runner merges the upstream before it dispatches work
 
 - [ ] TOOLSET-179-cf — The runner merges the upstream before it dispatches work
+- Scheduling: After TOOLSET-154-d3; keep upstream dispatch and its question proof together.
 - Short: Merge the upstream before dispatching
 - Status: open
 - Goal: PI-RUNNER
@@ -271,7 +277,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Scope: (1) Before admission, at most once a minute (`PI_AUTOWORK_UPSTREAM_INTERVAL`, seconds, default 60, 0 off), fetch the main branch's upstream. When it has commits main lacks, merge it into the session, land the session on main and push, so every task dispatched after that branches from a base that includes the upstream. (2) A conflict goes to the existing Pi merge resolver, once per upstream revision, in the session worktree; one that stays unresolved stops new dispatch, keeps running workers going and becomes one owner question naming the upstream revision, the files and the ahead/behind counts. (3) The log says `merged <n> upstream commit(s) before dispatch` once per upstream revision. Without an upstream, nothing changes.
 - Acceptance: In fixtures with a bare upstream, an upstream commit made while a task runs is on main before the next task starts, and the next task's baseline includes it. A conflicting upstream commit asks the resolver once and, resolved, lands; unresolved, new dispatch stops with one question and running work continues. An unchanged upstream causes no merge and no extra log line. Nothing is force-pushed.
 - Checks: python3 scripts/check.py tests/test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
-- Dependencies: None.
+- Dependencies: TOOLSET-154-d3
 - Ownership: Toolset coordinator; shares the upstream merge and resolver path with TOOLSET-158-08, so whichever lands second reuses it.
 - Exclusions: No force-push, no rebase of published history, no hand merges in fleet repositories.
 - Planner's call: once a minute before admission instead of before every single dispatch, so a burst of dispatches costs one fetch. A stop on an unresolved conflict keeps new work from piling onto a diverged base, which is how the gap grew.
@@ -285,16 +291,17 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-158-08 — A rejected push with a conflicting upstream is resolved, not left to diverge silently
 
 - [ ] TOOLSET-158-08 — A rejected push with a conflicting upstream is resolved, not left to diverge silently
+- Scheduling: Wait for TOOLSET-261-15 to land before editing coordinator.py and tests/test_pi_autowork.py. Resolver handoff, review/batch guards and push-status proof use the same coordinator path; retain this bounded recovery slice intact. Reuse TOOLSET-179-cf output when present without changing either acceptance contract.
 - Short: Resolve a rejected push, never diverge
 - Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Goal: PI-RUNNER
 - Sources: [monitor findings](docs/plans/2026-10-16-pi-autowork-coordinator.md#fleet-monitor-findings-delivery-environment-and-stall-repair), [push](pi-autowork/pi_autowork/coordinator.py) (`Coordinator.push`, `merge_main`, the Pi merge resolver).
 - Evidence (2026-10-17 09:23 monitor pass): one runner's push was rejected as non-fast-forward. Its local main was 364 commits ahead of upstream and 19 behind. `push(retry=True)` fetches and merges upstream into the session once; on conflict it runs `merge --abort`. The failure is logged once, deduplicated by `push-note`, and every later attempt fails silently while the unpublished count grows.
 - Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
 - Scope: (1) When the upstream merge during a push retry conflicts, hand it to the existing Pi merge resolver, as `merge_main` does for local main: once per upstream revision, in the integration worktree, never in the canonical checkout. Then land on the base branch and push again. (2) Never force-push. (3) Record `unpublished_commits`, `behind_upstream` and the last push error in `status.json` on every attempt, so TOOLSET-125-3c and the TUI show them. A push that has failed past the stall threshold becomes one investigate question naming the counts. (4) Log each new upstream revision's failure once, so silence never hides a growing gap.
 - Acceptance: In fixtures with a diverged upstream, a conflicting upstream merge invokes the resolver once per upstream revision, and a resolved merge pushes fast-forward. An unresolved one keeps the branch and produces one question with the ahead/behind counts. A new upstream revision retries, and an unchanged one does not. Nothing is force-pushed. `status.json` always carries the counts.
-- Checks: python3 -m unittest tests/test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
-- Dependencies: None.
+- Checks: python3 scripts/check.py tests/test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: TOOLSET-261-15
 - Ownership: Toolset coordinator; reconcile active TOOLSET-115-bf output in coordinator.py first.
 - Exclusions: No force-push, no rewriting of published history, no hand edits to fleet repositories.
 - Planner's call: reuse the existing resolver path. Delivery that silently stops publishing is worse than a visible stall.

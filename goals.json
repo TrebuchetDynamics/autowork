@@ -992,7 +992,9 @@
       "title": "Separate worker activity, delivery evidence and available capacity"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-129-c4"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-139-62",
       "section": "Now",
@@ -1044,7 +1046,9 @@
       "title": "Split a task into subtasks when that unlocks parallel work or reduces complexity"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-261-15"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-158-08",
       "section": "Now",
@@ -1082,7 +1086,9 @@
       "title": "A review that fails only for a missing toolchain gets a provisioning run, then one more review"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-154-d3"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-179-cf",
       "section": "Now",
@@ -1100,7 +1106,9 @@
       "title": "Back-to-back question updates make one commit"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-261-15"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-200-c1",
       "section": "Now",
@@ -1110,7 +1118,8 @@
     {
       "depends_on": [
         "TOOLSET-165-f7",
-        "TOOLSET-195-ee"
+        "TOOLSET-195-ee",
+        "TOOLSET-261-15"
       ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-230-bf",
@@ -1185,7 +1194,9 @@
       "title": "A failed batch is split in halves to find the breaking candidate, not reviewed one candidate at a time"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-154-d3"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-287-44",
       "section": "Now",
