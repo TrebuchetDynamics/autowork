@@ -1164,24 +1164,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Ownership: Toolset coordinator under the owner's request (2026-10-17).
 - Exclusions: No edits to the runner log output or the TUI log view (ht2, 2026-10-17), nor to `update_toolset`/`release.py`; no force push; never delete uncommitted or unpushed work.
 
-### TOOLSET-126-6b — Trim prose-only test assertions while retaining executable contracts
-
-- [ ] TOOLSET-126-6b — Trim prose-only test assertions while retaining executable contracts
-- Payoff: Optimize test suites without losing defect detection.
-- Scheduling: The audit-file write moves to existing TOOLSET-128-69, which already depends on this task and TOOLSET-125-e6; do not add a dependency on inherited-execution thinning for otherwise disjoint test edits. Wait for reported TOOLSET-135-16 to land before touching test_workflow_commands.py, test_portable_package.py and portable_pi.test.mjs; retain its new unique boundary regressions while thinning only the accepted editorial predicates. No active prerequisite contract is changed.
-- Evidence handoff: Keep the per-removal rationale, retained detector/non-executable obligation, exact surviving assertions, source revision and actual commands/results in the worker report; include before/after focused timings where required by this task. TOOLSET-128-69 imports this evidence into docs/test-suite-audit.md after all three implementation batches land. This batch reads the accepted audit map but does not edit that shared file. All existing Acceptance and Checks remain required; the report is not proof until its results are verified.
-- Short: Trim prose-only test assertions
-- Status: open
-- Goal: TEST-SUITE
-- Sources: [accepted thinning plan](docs/test-suite-audit.md#suite-thinning-plan-2026-10-16), [test budget](skills/shared/ENGINEERING-CYCLE.md#test-budget).
-- Touches: tests/test_blockers.py, tests/test_skill_descriptions.py, tests/test_workflow_contract.py, tests/test_workflow_commands.py, tests/test_portable_package.py, tests/portable_pi.test.mjs
-- Scope: Use the audit disposition map to remove or consolidate wording-only assertions, starting with BlockersContract. Keep BlockersRouting, archive-extracted helper execution, command routing, required manifest/link/index compatibility and security/authority contracts. Classify each assertion before removal: a document mentions a rule is not proof the agent follows it. Map instruction-behavior obligations to explicit bounded behavioral evaluation; do not replace them with another large phrase list or add an always-on model dependency.
-- Acceptance: Each removed assertion has a specific rationale and retained detection seam or explicit non-executable obligation; executable routing/packaging cases and named safety regressions remain; edits to equivalent prose no longer fail tests; broken registration, skill paths or package references still fail. No unproven coverage-equivalence claim from text tests.
-- Checks: python3 -m unittest discover -s tests -p test_blockers.py; python3 -m unittest discover -s tests -p test_workflow_contract.py; python3 -m unittest discover -s tests -p test_portable_package.py; node --test tests/portable_pi.test.mjs; python3 scripts/check.py; git diff --check
-- Dependencies: TOOLSET-124-97, TOOLSET-135-16.
-- Ownership: Toolset coordinator; one writer per affected workspace.
-- Exclusions: No live/model runs, new test framework/dependency, publication, hidden test skips, weakened safety cases or changes outside the named batch.
-
 ### TOOLSET-127-b1 — Thin repeated Pi lifecycle fixtures and fixed waits
 
 - [ ] TOOLSET-127-b1 — Thin repeated Pi lifecycle fixtures and fixed waits
@@ -1646,6 +1628,14 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
   - Actual installed Hermes/Claude Code/Codex/Pi host-model and cache qualification, and live Telegram delivery, are not established by these disposable source-model runs or package tests. Preserve existing qualification tasks; reuse TOOLSET-066 when its host scope is relevant. No live task or worker was launched.
   Checks: Live qualification by an authorized person; offline evidence does not count.
   Dependencies: TOOLSET-135-16.
+  Status: open
+
+- [ ] TOOLSET-126-6b-LIVE — Live checks for TOOLSET-126-6b
+  Scope: Run the live checks the offline work for TOOLSET-126-6b left pending.
+  Acceptance: Each check passes on the real target:
+  - Separate bounded host/model evaluations E1–E6 below remain UNRUN. This task prohibits live/model runs; offline route/resource checks and surviving instruction guards are not agent compliance proof. These obligations must not be silently discarded when TOOLSET-128 imports the evidence.
+  Checks: Live qualification by an authorized person; offline evidence does not count.
+  Dependencies: TOOLSET-126-6b.
   Status: open
 
 ## Goal coverage

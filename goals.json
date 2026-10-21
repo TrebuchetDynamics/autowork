@@ -197,6 +197,7 @@
         "TOOLSET-124-97",
         "TOOLSET-125-e6",
         "TOOLSET-126-6b",
+        "TOOLSET-126-6b-LIVE",
         "TOOLSET-127-b1",
         "TOOLSET-128-69",
         "TOOLSET-133-f5",
@@ -834,7 +835,6 @@
       "TOOLSET-276-11",
       "TOOLSET-287-44",
       "TOOLSET-270-a9",
-      "TOOLSET-271-d6",
       "TOOLSET-274-f0",
       "TOOLSET-230-bf",
       "TOOLSET-200-c1",
@@ -846,7 +846,6 @@
       "TOOLSET-265-16",
       "TOOLSET-164-f1",
       "TOOLSET-147-54",
-      "TOOLSET-154-d3",
       "TOOLSET-163-f7",
       "TOOLSET-182-ce",
       "TOOLSET-153-64",
@@ -862,11 +861,9 @@
       "TOOLSET-235-0d",
       "TOOLSET-279-eb",
       "TOOLSET-294-9d",
-      "TOOLSET-293-25",
       "TOOLSET-286-32",
       "TOOLSET-276-2c",
       "TOOLSET-276-a9",
-      "TOOLSET-276-3f",
       "TOOLSET-276-3d",
       "TOOLSET-266-7a",
       "TOOLSET-267-a0",
@@ -890,7 +887,6 @@
       "TOOLSET-131-ac",
       "TOOLSET-132-af",
       "TOOLSET-127-8f",
-      "TOOLSET-126-6b",
       "TOOLSET-127-b1",
       "TOOLSET-128-69",
       "TOOLSET-134-ab",
@@ -918,7 +914,8 @@
       "TOOLSET-146-bc-LIVE",
       "TOOLSET-117-cb-LIVE",
       "TOOLSET-172-92-LIVE",
-      "TOOLSET-135-16-LIVE"
+      "TOOLSET-135-16-LIVE",
+      "TOOLSET-126-6b-LIVE"
     ]
   },
   "tasks": [
@@ -1254,17 +1251,6 @@
       "section": "Next",
       "status": "open",
       "title": "One install.sh for every component, chosen with checkboxes"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-124-97",
-        "TOOLSET-135-16"
-      ],
-      "goal": "TEST-SUITE",
-      "id": "TOOLSET-126-6b",
-      "section": "Next",
-      "status": "open",
-      "title": "Trim prose-only test assertions while retaining executable contracts"
     },
     {
       "depends_on": [
@@ -1734,6 +1720,16 @@
       "section": "Needs decision",
       "status": "open",
       "title": "Reinstall the live Hermes profiles and host plugins as autowork"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-126-6b"
+      ],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-126-6b-LIVE",
+      "section": "Needs decision",
+      "status": "open",
+      "title": "Live checks for TOOLSET-126-6b"
     },
     {
       "depends_on": [
@@ -2638,6 +2634,17 @@
       "section": "Done",
       "status": "done",
       "title": "Run inherited execution regressions once"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-124-97",
+        "TOOLSET-135-16"
+      ],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-126-6b",
+      "section": "Done",
+      "status": "done",
+      "title": "Trim prose-only test assertions while retaining executable contracts"
     },
     {
       "depends_on": [],
