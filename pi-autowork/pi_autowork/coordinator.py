@@ -2091,6 +2091,19 @@ class Coordinator:
             if changed and all(planning_path(p) for p in changed):
                 main_check.write(self.state, dict(record, rev=rev, green=rev))
                 return
+        # A batch or merge-train check that passed on exactly main's tree already ran this check:
+        # record main green from it instead of running the suite a second time (TOOLSET-336-3c).
+        if passed := self.passed_on_tree(rev, cmd):
+            main_check.write(self.state, dict(state='green', rev=rev, green=rev, finished=time.time(),
+                                              checked_rev=rev, from_receipt=passed, flaky=[],
+                                              flaky_history=record.get('flaky_history') or {}))
+            LOG.say(f'Main is green at {rev[:7]}: the full check already passed on its tree ({passed})')
+            return
+        # A batch (or the merge train) is checking main plus its candidates right now: it covers
+        # main's code and lands as main, so main's own check waits for it rather than running a
+        # second full suite beside it, up to twice MAIN_CHECK_WAIT since the last main check.
+        if self.batch_running() and time.time() - float(record.get('finished') or 0) < 2 * self.MAIN_CHECK_WAIT:
+            return
         # It waits for room at most MAIN_CHECK_WAIT: with eight workers and batches a review or a
         # loaded host was nearly always there, and main went unchecked for hours while it was red.
         if time.time() - float(record.get('finished') or 0) < self.MAIN_CHECK_WAIT:
@@ -2129,6 +2142,26 @@ class Coordinator:
                                           red_since=record.get('red_since'), gated=record.get('gated'),
                                           crashed=record.get('crashed'), flaky_history=record.get('flaky_history') or {}))
         LOG.say(f'Checking main at {rev[:7]} in the background: {cmd}')
+
+    def batch_running(self):
+        """Whether a batch check or the merge train's next car is running beside the loop."""
+        job = getattr(self, 'integration', None)
+        return bool(self.train) or bool(job and job.get('task') == self.BATCH)
+
+    def passed_on_tree(self, rev, cmd):
+        """The task or batch whose passing full check (the same command) ran on exactly ``rev``'s
+        tree, from its tree receipt in full-check/, or None."""
+        tree = git(self.repo, 'rev-parse', f'{rev}^{{tree}}')
+        if not tree:
+            return None
+        try:
+            receipt = json.loads((self.state / 'full-check' / f'tree-{tree}.json').read_text())
+        except (OSError, ValueError):
+            return None
+        if not isinstance(receipt, dict) or receipt.get('ok') is not True or receipt.get('tree') != tree \
+                or receipt.get('command') != cmd:
+            return None
+        return str(receipt.get('task') or receipt.get('commit') or 'a full check')
 
     def finish_main_check(self, record):
         """Record a finished (or aborted) main check and clean its checkout up."""
