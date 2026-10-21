@@ -89,6 +89,63 @@ class DirtyLandingTests(LandingFixture):
         self.parked = self.original.replace('owner: old', 'owner: parked')
         self.note.write_text(self.parked)
 
+    def test_staged_session_bookkeeping_survives_a_refused_hook_and_then_lands(self):
+        self.note.write_text(self.original)
+        self.git(self.integ, 'reset', '--hard', 'main')  # no prior session commit may hide the main fix
+        note = self.integ / 'BLOCKERS.md'
+        edited = note.read_text() + 'new session question\n'
+        note.write_text(edited)
+        (self.repo / 'main-fix.txt').write_text('fix for the failing check\n')
+        self.git(self.repo, 'add', 'main-fix.txt')
+        self.git(self.repo, 'commit', '-qm', 'main fix')
+        hook = self.repo / '.git/hooks/pre-commit'
+        hook.write_text('#!/bin/sh\necho "pre-commit: checks failed" >&2\nexit 1\n')
+        hook.chmod(0o755)
+        with mock.patch('pi_autowork.coordinator.LOG.warn') as warning:
+            self.assertFalse(self.runner.commit(['BLOCKERS.md'], 'docs(blockers): questions'))
+        self.assertIn('pre-commit: checks failed', str(warning.call_args))
+        self.assertEqual(self.git(self.integ, 'diff', '--cached', '--name-only'), 'BLOCKERS.md')
+        self.runner.in_flight = lambda: False
+        self.runner.merge_blocker = 'previous merge hold'
+        self.runner.follow_base()
+        self.assertEqual(self.runner.merge_blocker, '')
+        self.assertEqual((self.integ / 'main-fix.txt').read_text(), 'fix for the failing check\n')
+        self.assertTrue(hook.exists())
+        self.assertEqual(self.git(self.integ, 'diff', '--cached', '--name-only'), '')
+        self.assertEqual(note.read_text(), edited)
+        self.assertEqual(self.head('main'), self.head('pi-autowork/s'))
+        hook.unlink()
+        self.assertTrue(self.runner.merge_main(), self.runner.merge_pending)
+        self.assertEqual(self.git(self.integ, 'status', '--porcelain'), '')
+        self.assertEqual(self.git(self.repo, 'show', 'main:BLOCKERS.md'), edited.strip())
+
+    def test_refused_work_commit_stays_staged_and_does_not_land(self):
+        self.note.write_text(self.original)
+        work = self.integ / 'landed.txt'
+        work.write_text('uncommitted code change\n')
+        hook = self.repo / '.git/hooks/pre-commit'
+        hook.write_text('#!/bin/sh\necho "pre-commit: checks failed" >&2\nexit 1\n')
+        hook.chmod(0o755)
+        main = self.head('main')
+        self.assertFalse(self.runner.merge_main())
+        self.assertIn('pre-commit: checks failed', self.runner.merge_pending)
+        self.assertEqual(self.head('main'), main)
+        self.assertEqual(self.git(self.integ, 'diff', '--cached', '--name-only'), 'landed.txt')
+        self.assertEqual(work.read_text(), 'uncommitted code change\n')
+
+    def test_merge_refused_before_conflicts_reports_git_diagnostic_without_a_resolver(self):
+        self.note.write_text(self.original)
+        self.git(self.repo, 'commit', '-q', '--allow-empty', '-m', 'main moved')
+        lock = Path(self.git(self.integ, 'rev-parse', '--path-format=absolute', '--git-path', 'index.lock'))
+        lock.touch()
+        self.addCleanup(lock.unlink, missing_ok=True)
+        self.runner.tasks_cli, self.runner.verify_timeout = 'autowork tasks', 1
+        with mock.patch.object(self.runner, 'pi_job', side_effect=AssertionError('not a merge conflict')):
+            self.assertFalse(self.runner.merge_main())
+        self.assertIn('Unable to write index', self.runner.merge_pending)
+        self.assertNotIn('unknown files', self.runner.merge_pending)
+        self.assertEqual(self.runner.resolved_for, '')
+
     def test_lands_around_an_uncommitted_edit_without_committing_it(self):
         permissions = self.note.stat().st_mode & 0o777
         (self.repo / 'other.txt').write_text('unrelated staged work\n')

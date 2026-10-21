@@ -907,7 +907,8 @@ class BatchLandingTests(unittest.TestCase):
                 self.assertFalse(runner.merge_main())
             self.assertEqual(said, ['Merge pending: B land first, on the trees their batch passed'])  # said once
             runner.commit_session_leftovers, runner.ahead = (lambda: None), (lambda: 0)
-            with patch.object(coordinator, 'git', return_value='tasks/items/T.md\ndocs/plan.md\n'):
+            with patch.object(coordinator, 'git', return_value='tasks/items/T.md\ndocs/plan.md\n'), \
+                    patch.object(coordinator, 'git_ok', return_value=True):  # main is already in the session
                 self.assertTrue(runner.merge_main())  # planning and docs leave the verdicts valid
 
     def test_a_commit_at_the_merge_limit_runs_fresh_instead_of_asking_the_owner(self):
