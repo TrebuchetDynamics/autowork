@@ -592,6 +592,31 @@ class IntegrationTests(unittest.TestCase):
         self.assertTrue(module.touches_none_of(worker, ['B.txt'], main))
         self.assertFalse(module.touches_none_of(worker, ['A.txt'], main))
 
+    def test_a_session_blocks_landing_only_by_name_of_its_uncommitted_files(self):
+        """Three Claude sessions in the checkout were each named as a blocker while the only reason
+        was one file a session had left uncommitted that the landing writes."""
+        module = self.module()
+        main = module.main_checkout(self.repo)
+        proc = self.agent_process()
+        worker = {'pid': proc.pid, 'kind': 'session', 'active': True, 'written': [],
+                  'workspaces': [main], 'evidence': 'running commands',
+                  **{k: v for k, v in execution.identity(proc.pid).items() if k != 'pid'}}
+        (self.repo / 'A.txt').write_text('an uncommitted edit\n')
+        (Path(self.git('rev-parse', '--path-format=absolute', '--git-common-dir')) / 'interactive-writer.json').write_text(
+            json.dumps({'session': 'S1', 'files': ['A.txt']}))
+        with patch.object(execution, 'external_workers', return_value=[dict(worker)]):
+            with self.assertRaises(module.WritersBusy) as refused:
+                module.require_no_writers(self.repo, ['A.txt'])
+            module.require_no_writers(self.repo, ['B.txt'])  # a write elsewhere never waits
+        message = str(refused.exception)
+        self.assertTrue(message.startswith('uncommitted changes in the main checkout: A.txt (held by session S1)'), message)
+        self.assertNotIn(f'pid {proc.pid}', message)
+        # A session holding the file open is still named as the process it is.
+        worker['written'] = [main + '/A.txt']
+        with patch.object(execution, 'external_workers', return_value=[worker]), \
+                self.assertRaisesRegex(module.WritersBusy, f'live or unknown external writer.*pid {proc.pid}'):
+            module.require_no_writers(self.repo, ['A.txt'])
+
     def test_a_refused_candidate_records_the_writer_window_on_its_slot(self):
         """TOOLSET-223-8e: a WritersBusy refusal is remembered on the slot, not only in memory."""
         module = self.module()

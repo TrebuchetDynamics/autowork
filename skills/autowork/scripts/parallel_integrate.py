@@ -430,6 +430,9 @@ class WritersBusy(ValueError):
 
 
 WRITER_HOLD = 'live or unknown external writer'
+# The one reason a person's session in the main checkout blocks: files it left uncommitted that
+# the landing writes. Said by file, not as every Claude process in the checkout (2026-10-20).
+UNCOMMITTED_HOLD = 'uncommitted changes in the main checkout'
 # The owner's uncommitted planning files do not stop a merge elsewhere: landing reconciles
 # them or keeps the branch (TOOLSET-223-8e). A planning file the session holds open for
 # writing still counts (it stays in ``mine``).
@@ -468,6 +471,22 @@ def remerge_planning(repo, root, merge, head):
     return remerged
 
 
+def uncommitted(main):
+    """Paths with uncommitted changes in the main checkout, planning files excepted."""
+    listing = git(main, 'status', '--porcelain', '-z', '--untracked-files=all')
+    return {entry[3:] for entry in listing.split('\0') if entry} - set(PLANNING_FILES) if listing else set()
+
+
+def checkout_holder(repo):
+    """The interactive session holding the checkout lock (checkout_lock.py), or ''."""
+    try:
+        record = json.loads((Path(git(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir'))
+                             / 'interactive-writer.json').read_text())
+    except (OSError, ValueError):
+        return ''
+    return str(record.get('session') or '') if isinstance(record, dict) else ''
+
+
 def touches_none_of(worker, files, main):
     """A session working in the main checkout that neither holds open nor has left uncommitted
     any of ``files`` (sierra, 2026-10-16: TASK-026 waited an hour on an unrelated session).
@@ -477,10 +496,7 @@ def touches_none_of(worker, files, main):
     if files is None or main not in (worker.get('workspaces') or []):
         return False
     mine = {os.path.relpath(path, main) for path in worker.get('written') or []}
-    listing = git(main, 'status', '--porcelain', '-z', '--untracked-files=all')
-    dirty = {entry[3:] for entry in listing.split('\0') if entry} if listing else set()
-    dirty -= set(PLANNING_FILES)
-    return not (set(files) & (mine | dirty))
+    return not (set(files) & (mine | uncommitted(main)))
 
 
 def slot_workspace_roots(common, slot):
@@ -508,6 +524,7 @@ def require_no_writers(repo, files=None):
     main = main_checkout(repo)
     common = state.common_dir(repo)
     pool = [(slot, slot_workspace_roots(common, slot)) for slot in state.slots(common)]
+    only_uncommitted = set()  # sessions that block for the checkout's uncommitted files alone
     if main:
         # A person's session in the canonical checkout never gates work by existing, being
         # busy or having another checkout open: only a file it holds open or has left
@@ -523,6 +540,11 @@ def require_no_writers(repo, files=None):
         workers = [w for w in workers
                    if not (w['kind'] == 'session' and touches_none_of(w, files, main)
                            and not in_pool(w) and not recorded(w))]
+        if files is not None:
+            only_uncommitted = {w['pid'] for w in workers
+                                if w['kind'] == 'session' and main in (w.get('workspaces') or [])
+                                and not in_pool(w) and not recorded(w)
+                                and not set(files) & {os.path.relpath(path, main) for path in w.get('written') or []}}
     blocking = execution.blocking_workers(workers, repo)
     unattributed = {}
     for worker in workers:
@@ -558,6 +580,13 @@ def require_no_writers(repo, files=None):
     # writer still alive with the same birth identity blocks.
     blocking = [w for w in blocking
                 if execution.identity(w['pid']) == {k: w.get(k) for k in ('pid', 'start_ticks', 'boot_id')}]
+    if blocking and files is not None and all(w['pid'] in only_uncommitted for w in blocking):
+        overlap = sorted(set(files) & uncommitted(main))
+        holder = checkout_holder(repo)
+        raise WritersBusy(f'{UNCOMMITTED_HOLD}: {", ".join(overlap[:6])}'
+                          + (f' and {len(overlap) - 6} more' if len(overlap) > 6 else '')
+                          + (f' (held by session {holder})' if holder else '')
+                          + ' would be overwritten; it lands once they are committed or reverted')
     if blocking:
         def describe(worker):
             name = Path((execution.argv_of(worker['pid']) or ['?'])[0]).name or '?'

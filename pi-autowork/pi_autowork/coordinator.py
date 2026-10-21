@@ -1784,6 +1784,8 @@ class Coordinator:
                 if reason.startswith(('the repository writer lock', 'Repository execution lock')):
                     # This runner's own engine steps held it (TOOLSET-194-46): not another session.
                     LOG.say(f'{task}: integrating again shortly; {reason}')
+                elif reason.startswith('uncommitted changes in the main checkout'):
+                    LOG.say(f'{task}: waiting to integrate: {reason}')
                 else:
                     LOG.say(f'{task}: waiting to integrate until another session leaves the main checkout ({reason})')
             self.seen['busy-' + task] = said
