@@ -1707,14 +1707,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-285-47",
-      "section": "Next",
-      "status": "open",
-      "title": "Harden release-retention and pruning test isolation under concurrent checks"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-286-32",
       "section": "Next",
       "status": "open",
@@ -3473,6 +3465,14 @@
       "section": "Done",
       "status": "done",
       "title": "A task whose last attempt failed its review is reworked once with the findings, never left silently held"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-285-47",
+      "section": "Done",
+      "status": "done",
+      "title": "Harden release-retention and pruning test isolation under concurrent checks"
     },
     {
       "depends_on": [],

@@ -5312,3 +5312,28 @@ Owner disposition: retire TOOLSET-011 without claiming qualification. The follow
 
 
 Retirement disposition: cancelled, not completed; original acceptance remains unmet.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-285-47"></a>
+
+### TOOLSET-285-47 — Harden release-retention and pruning test isolation under concurrent checks
+
+- [x] TOOLSET-285-47 — Harden release-retention and pruning test isolation under concurrent checks
+- Coordination: TOOLSET-127-b1 owns broader fixture thinning, not this reported pruning flake. This task has no prerequisite on thinning, main-evidence delivery or product changes; preserve existing Now priority.
+- Next action: Start with the named focused test and inspect the existing child ready/input handshake, fixture environment and release .git timestamp ordering; reproduce under isolated and normal concurrent-check conditions, then make a test-only change supported by those observations. Use repository source and saved reports without requiring an owner-supplied receipt.
+- Exclusions: No runtime/product-code repair, altered release-retention policy, global /proc suppression, weakened full-check classification, live/model run, publication or coordinator-owned planning edits by the worker.
+- Ownership: Toolset coordinator; one writer per affected workspace.
+- Touches: pi-autowork/tests/test_release.py
+- Evidence: DOCS-MAINTAINER MAIN (flaky test): the full check failed but the named test passed alone on 1f054477d18c7f9af6165c269775267ba99b4ca8, fc3e2f7fe9123273c015cdb47e5fb838c38138be and d575046eed5bcffcd73c8420b3e1c068c28cd65c. Saved reports in the Git common directory: autowork-execution/slot-data/TOOLSET-173-94/attempt-1/report.json records the unrelated pruning failure followed by isolated and component passes; TOOLSET-118-68/attempt-1/report.json records a pruning assertion failure under concurrent runs followed by isolated and component passes. These historical reports do not establish a root cause or current stability. Main is not red for this flaky test.
+- Sources: [accepted runner contract](docs/project.md#continuous-pi-runner-2026-10-15); [release regression](pi-autowork/tests/test_release.py); [release retention/pruning implementation](pi-autowork/pi_autowork/release.py).
+- Short: Stable release-retention fixture
+- Status: done
+- Goal: PI-RUNNER
+- Scope: Investigate isolation, resource load and fixture timing in test_release.ReleaseCheckTests.test_late_imports_keep_the_selected_release_while_unused_releases_are_pruned. Harden only its test-owned setup, child synchronization, release ordering and cleanup as evidence warrants. Keep a real child importing from its selected old release while newer releases are prepared; do not repair product code.
+- Acceptance: `test_release.ReleaseCheckTests.test_late_imports_keep_the_selected_release_while_unused_releases_are_pruned` still proves that a live child keeps its selected release, its late import returns the old API, and unused releases are pruned after the child exits while the newest two remain. Diagnose environment leakage, /proc visibility, filesystem timestamp ordering and concurrent process load as hypotheses, not established causes. Repeated isolated runs, the component module and the full offline gate retain these assertions without intermittent fixture failures; report commands, repetitions and outcomes, including any remaining flake. Preserve conservative production behavior when process usage is unknown; do not weaken assertions, skip cases, inflate timeouts or introduce production test hooks. Reap the child and close its pipes on success and failure.
+- Checks: `for run in 1 2 3; do python3 scripts/check.py pi-autowork/tests/test_release.py -k test_late_imports_keep_the_selected_release_while_unused_releases_are_pruned || exit; done`; `python3 scripts/check.py pi-autowork/tests/test_release.py`; `python3 scripts/check.py`; `git diff --check`. Use a fresh short TMPDIR for check runs; these are required checks, not executed evidence.
+- Dependencies: None.
