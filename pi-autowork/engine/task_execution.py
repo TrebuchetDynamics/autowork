@@ -98,7 +98,12 @@ def lock(path, wait=None):
     in the file, so a refusal names who holds it."""
     path = safe_path(path)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    wait = LOCK_WAIT.get(path.name, 0.0) if wait is None else wait
+    if wait is None:
+        wait = LOCK_WAIT.get(path.name, 0.0)
+        try:  # AUTOWORK_LOCK_WAIT caps these defaults (0: answer at once, as before them)
+            wait = min(wait, float(os.environ['AUTOWORK_LOCK_WAIT']))
+        except (KeyError, ValueError):
+            pass
     fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     try:
         end = time.monotonic() + wait

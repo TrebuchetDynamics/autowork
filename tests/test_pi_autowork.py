@@ -1542,16 +1542,23 @@ class EngineTests(Fixture):
             self.assertEqual(holder.stdout.readline().strip(), 'held')
             return holder
 
+        # The runner's own bound is what this checks: the engine's short-lock wait is off.
+        env = {**self.env, 'AUTOWORK_LOCK_WAIT': '0'}
         first = hold(60)
-        result = self.run_runner('--until-empty', env={**self.env, 'PI_AUTOWORK_BUSY_WAIT': '2'})
+        result = self.run_runner('--until-empty', env={**env, 'PI_AUTOWORK_BUSY_WAIT': '2'})
         self.assertEqual(result.returncode, 4, result.stdout + result.stderr)  # past the bound: busy, as before
         self.assertIn('Repository busy', result.stdout + result.stderr)
         first.kill()
         first.wait()
         hold(4)
-        result = self.run_runner('--until-empty', env={**self.env, 'PI_AUTOWORK_BUSY_WAIT': '60'})
+        result = self.run_runner('--until-empty', env={**env, 'PI_AUTOWORK_BUSY_WAIT': '60'})
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('waiting for it to finish', result.stdout)
+        # With the default short-lock wait, the same brief hold is absorbed: no busy at all.
+        hold(4)
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn('Repository busy', result.stdout + result.stderr)
         self.assertTrue(self.done('A', 'B', 'C'))
 
     def test_a_reload_keeps_the_runner_and_its_worker_and_applies_new_settings(self):
