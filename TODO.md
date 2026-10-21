@@ -164,6 +164,24 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No journal rotation or compaction of existing lines in this slice; slot events are untouched.
 - Planner's call: dedupe at the writer, the cheapest change that bounds growth while every reader keeps its meaning; rotation can follow if the heartbeat rate still matters.
 
+### TOOLSET-300-3d — A main check that did not pass says why: failing tests, timeout, killed, environment or incomplete
+
+- [ ] TOOLSET-300-3d — A main check that did not pass says why: failing tests, timeout, killed, environment or incomplete
+- Short: Main check names why it failed
+- Status: open
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [main check](pi-autowork/pi_autowork/main_check.py) (`run_command` returns `(code, timed_out)`; the background `--run` entry point keeps only `code` in `main-check.exit`; `crash_line`; `line`: "it crashed"); [coordinator](pi-autowork/pi_autowork/coordinator.py) (`finish_main_check`: every non-zero exit with no named failing test becomes `recheck`, then `broken`, logged "it crashed twice before any test result").
+- Evidence: a suite the runner killed at its own deadline, a process killed by a signal (exit 137, out of memory), a missing command or module (exit 126/127, `ModuleNotFoundError`) and a suite that stopped without its summary are all reported as the same crash, so the maintainer's MAIN repair and the owner cannot tell a slow suite from a broken environment or a real crash.
+- Touches: pi-autowork/pi_autowork/main_check.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/tests/test_main_check_outcome.py
+- Scope: (1) The background run writes the timed-out flag beside the exit code. (2) A finished main check records one `outcome`: `pass`, `test_failure` (named failing tests), `timeout` (the runner's deadline), `killed` (a signal, with its name), `environment` (exit 126/127 or an import or command-not-found line), or `incomplete` (non-zero, no summary, none of the above). (3) The log line, `main_check.line` and the MAIN repair bundle name that outcome and its evidence line instead of "crashed". (4) Only `killed` and `incomplete` get today's one recheck; a `timeout` or `environment` result of the same revision is not rerun in full before something changes (the revision, the check command or its timeout). Existing records without `outcome` read as before.
+- Acceptance: Given a fixture suite that sleeps past the check's timeout, the record says `timeout` and the log names the limit, not a crash (`pi-autowork/tests/test_main_check_outcome.py::test_a_suite_past_its_deadline_is_a_timeout`); exits 127 and 137 and a truncated unittest run record `environment`, `killed` (SIGKILL) and `incomplete` (`test_each_exit_names_its_outcome`); a `timeout` on an unchanged revision and command is not run again in full (`test_an_unchanged_timeout_is_not_rerun`).
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_main_check_outcome.py; python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py
+- Dependencies: TOOLSET-291-ae.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to how red results with named tests, flaky reruns or busy-host rechecks work; no change to worker-side check receipts in this slice.
+- Planner's call: classify where the exit is observed, and keep the full rerun only for outcomes a rerun can change; after the coordinator split, which owns `finish_main_check`.
+
 ### TOOLSET-298-05 — A task claim names its holder, and a claim whose holder is gone is adoptable at once
 
 - [ ] TOOLSET-298-05 — A task claim names its holder, and a claim whose holder is gone is adoptable at once
