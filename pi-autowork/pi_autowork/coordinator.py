@@ -1665,15 +1665,17 @@ class Coordinator:
         tasks run fresh on current main, the new worker shown the earlier work. Twenty commits a day
         old, written against code main had since redesigned, conflicted with each other at every
         landing and held back every task that shared their files. Never beside a review or a batch,
-        whose verdicts hold for the trees they were reached on."""
+        whose verdicts hold for the trees they were reached on. Its age is this slot's, from its
+        dispatch: counted from the task's first event, a fresh rerun of a set-aside task was a day
+        old as it finished and was set aside again, round after round."""
         hours = float(os.environ.get('PI_AUTOWORK_STALE_HOURS') or 24)
+        now = time.time()
         if hours <= 0 or self.stop or self.integration or self.batch_landing():
             return False
         changed = False
         for row in rows:
-            task = row.get('task')
-            if (row.get('state') not in ('reported', 'integrating') or task in self.resolvers
-                    or float(row.get('elapsed_seconds') or 0) < hours * 3600):
+            task, age = row.get('task'), now - float(row.get('started_at') or now)
+            if row.get('state') not in ('reported', 'integrating') or task in self.resolvers or age < hours * 3600:
                 continue
             result = self.engine('--parallel-set-aside', task)
             if result.get('outcome') != 'SET_ASIDE':
@@ -1683,7 +1685,7 @@ class Coordinator:
                 self.seen['stale-' + task] = reason
                 continue
             kept = ', '.join(r['branch_now'] for r in result.get('renamed') or [] if r.get('branch_now'))
-            LOG.say(f'{task}: its commit waited {float(row["elapsed_seconds"]) / 3600:.0f} h to merge; set aside as '
+            LOG.say(f'{task}: its commit waited {age / 3600:.0f} h to merge; set aside as '
                     f'{kept}, and the task runs fresh on current main')
             self.seen[task] = 'pending'
             self.settled = changed = True

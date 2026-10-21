@@ -227,6 +227,7 @@ def _snapshot(repo, common, now):
         end = changes[-1]['timestamp'] if changes and slot['state'] == 'closed' else now
         rows.append(dict(task=task, state='closing' if slot.get('closing') else slot['state'], slot=dispatch.meta(common, slot).get('slot_index'),
                          elapsed_seconds=max(0, end - (changes[0]['timestamp'] if changes else slot['started_at'])),
+                         started_at=slot['started_at'],
                          reason=slot.get('reason'), worktree=slot['worktree'], checks=slot.get('checks'),
                          commit=slot.get('commit'), integration=slot.get('integration'), attempt=slot['attempt'],
                          worker_live=live, cause=slot.get('cause'), requested=slot.get('requested'),
