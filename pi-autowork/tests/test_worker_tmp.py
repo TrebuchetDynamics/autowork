@@ -939,12 +939,13 @@ class BatchLandingTests(unittest.TestCase):
             runner.engine = lambda *args: calls.append(args) or (
                 {'outcome': 'SET_ASIDE', 'renamed': [{'branch_now': f'autowork/{args[1]}-set-aside-1'}]}
                 if args[1] != 'D' else {'outcome': 'REFUSED', 'reason': 'its interrupted integration already landed'})
-            day = 25 * 3600
-            rows = [{'task': 'A', 'state': 'reported', 'elapsed_seconds': day},
-                    {'task': 'B', 'state': 'reported', 'elapsed_seconds': 3600},  # young: it batches
-                    {'task': 'C', 'state': 'held', 'elapsed_seconds': day},  # held: the merge limit decides
-                    {'task': 'D', 'state': 'integrating', 'elapsed_seconds': day},
-                    {'task': 'E', 'state': 'running', 'elapsed_seconds': day}]
+            day, now = 25 * 3600, time.time()
+            rows = [{'task': 'A', 'state': 'reported', 'elapsed_seconds': day, 'started_at': now - day},
+                    # Young: it batches. Its task's first event was two days ago: a fresh rerun of a set-aside one.
+                    {'task': 'B', 'state': 'reported', 'elapsed_seconds': 2 * day, 'started_at': now - 3600},
+                    {'task': 'C', 'state': 'held', 'elapsed_seconds': day, 'started_at': now - day},  # held: the merge limit decides
+                    {'task': 'D', 'state': 'integrating', 'elapsed_seconds': day, 'started_at': now - day},
+                    {'task': 'E', 'state': 'running', 'elapsed_seconds': day, 'started_at': now - day}]
             with patch.object(coordinator.LOG, 'say', side_effect=said.append):
                 self.assertTrue(runner.set_aside_stale(rows))
                 self.assertFalse(runner.set_aside_stale(rows[3:4]))  # the refusal is said once
