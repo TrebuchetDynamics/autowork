@@ -1,12 +1,13 @@
 """`autowork tasks ...`: read and edit a repository's tasks/ store. Standard library only.
 
 Reads (list, show, why, validate) use a pinned commit, HEAD by default; validate
---worktree checks uncommitted edits. Writes (add, field, place, move, hold, release, done, supersede)
+--worktree checks uncommitted edits. Writes (add, field, place, move, hold, release, done, supersede, goal)
 change task files in the working tree and never commit; each refuses a file that
 changed since it was read, and the whole would-be store is validated before the
 write is kept. A written file grants no authority beyond its typed fields, and a
 declared check still needs the existing approval to run.
 """
+import argparse
 import hashlib
 import json
 import os
@@ -120,14 +121,14 @@ def place_between(ranked, position):
 
 
 def new_id(repo, store, prefix=None):
-    """Next number plus a two-hex hash, as goals.py allocates; the archive's IDs are taken too."""
+    """Next number plus a two-hex hash; IDs in the frozen TODO.archive.md history are taken too."""
     ids = set(store.tasks) | set(store.goals)
     archive = Path(repo) / 'TODO.archive.md'
     if archive.is_file():
         ids |= set(re.findall(r'\b[A-Za-z][A-Za-z0-9_]*-\d+(?:-[0-9a-f]{2})?\b', archive.read_text()))
     numbered = [m.groups() for m in (re.fullmatch(r'([A-Za-z][A-Za-z0-9_]*)-(\d+)(?:-[0-9a-f]{2})?', i)
                                      for i in ids) if m]
-    if prefix is None:  # the tasks' most common prefix, as goals.py chooses it; never a goal's
+    if prefix is None:  # the tasks' most common prefix; never a goal's
         own = [m.group(1) for m in (re.fullmatch(r'([A-Za-z][A-Za-z0-9_]*)-\d+(?:-[0-9a-f]{2})?', t)
                                     for t in store.tasks) if m]
         pool = own or [p for p, n in numbered if f'{p}-{n}' not in store.goals]
@@ -219,6 +220,48 @@ def cmd_add(repo, goal, title, short, section='Now', scope=None, acceptance=(), 
         fields['checks'] = list(checks)
     _write(repo, _path(repo, tid), None, task_store.render(fields, '\n'))
     return tid
+
+
+def cmd_goal(repo, gid, title=None, source=None, priority=None, status=None, focus=None, depends_on=None,
+             evidence=None):
+    """Add a goal, or change the given fields of an existing one. A met goal names its evidence
+    (an executed, passing check), kept as the goal's `Evidence:` note; focus moves to this goal
+    from any other. Returns 'added' or 'changed'."""
+    store = worktree_store(repo)
+    if gid in store.tasks:
+        raise CommandError(f'{gid} is a task, not a goal')
+    changes = {k: v for k, v in dict(title=title, source=source, priority=priority, status=status, focus=focus,
+                                      depends_on=list(depends_on) if depends_on is not None else None).items()
+               if v is not None}
+    if status == 'met' and not (evidence or '').strip():
+        raise CommandError('a met goal needs --evidence naming the executed, passing check')
+    for other in depends_on or ():
+        if other not in store.goals:
+            raise CommandError(f'unknown goal {other}')
+    note = ('Evidence', ' '.join(evidence.split())) if evidence else None
+    path = _path(repo, gid, goal=True)
+    if focus:
+        for other in store.goals.values():
+            if other.focus and other.id != gid:
+                other_path = _path(repo, other.id, goal=True)
+                before = other_path.read_bytes()
+                _write(repo, other_path, before, task_store.edit(before.decode(), {'focus': False}, goal=True))
+    if gid not in store.goals:
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', gid):
+            raise CommandError('a goal ID uses letters, digits, underscores or hyphens')
+        missing = [f'--{k}' for k in ('title', 'source', 'priority') if k not in changes]
+        if missing:
+            raise CommandError('a new goal needs ' + ', '.join(missing))
+        fields = dict(dict(schema=1, id=gid, status='unmet', focus=False, depends_on=[]), **changes)
+        text = task_store.render(fields, '\n', goal=True)
+        _write(repo, path, None, task_store.set_note(text, *note) if note else text)
+        return 'added'
+    if not changes and not note:
+        raise CommandError('nothing to change')
+    before = path.read_bytes()
+    text = task_store.edit(before.decode(), changes, goal=True) if changes else before.decode()
+    _write(repo, path, before, task_store.set_note(text, *note) if note else text)
+    return 'changed'
 
 
 TYPED = {'rank': int, 'depends_on': list, 'touches': list, 'resources': list, 'acceptance': list,
@@ -386,6 +429,15 @@ def add_parser(sub):
     p.add_argument('task'); p.add_argument('repo', nargs='?', default='.')
     p.add_argument('--by', action='append', required=True)
     p.add_argument('--reason', required=True)
+    p = verbs.add_parser('goal', help='add a goal, or change its title, source, priority, status, focus or dependencies')
+    p.add_argument('goal'); p.add_argument('repo', nargs='?', default='.')
+    p.add_argument('--title'); p.add_argument('--source', help='the accepted plan or spec it comes from, path#anchor')
+    p.add_argument('--priority', type=int, help='1 is first among goals')
+    p.add_argument('--status', choices=('unmet', 'partial', 'unverified', 'met'))
+    p.add_argument('--focus', action=argparse.BooleanOptionalAction, default=None,
+                   help='the one goal whose tasks go first')
+    p.add_argument('--depends-on', action='append', help='a goal that must be met first')
+    p.add_argument('--evidence', help='for --status met: the executed, passing check')
     return tasks
 
 
@@ -427,6 +479,8 @@ def run(args, repo):
         elif verb == 'supersede':
             cmd_supersede(repo, args.task, args.by, args.reason)
             out = f'ok {args.task} superseded'
+        elif verb == 'goal':
+            out = f'{cmd_goal(repo, args.goal, args.title, args.source, args.priority, args.status, args.focus, args.depends_on, args.evidence)} goal {args.goal}'
     except (CommandError, StoreError, WriteError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
