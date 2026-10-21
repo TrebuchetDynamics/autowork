@@ -241,7 +241,9 @@ Bare `autowork` opens the live TUI, where `d` browses directories and starts a
 service for a repository that has a `tasks/` store committed on its main branch:
 
 ```sh
-autowork start                 # from the repository: install (if needed) and start its service
+autowork start                 # install (if needed) and start; no automatic push without a grant
+# Optional one-time publication grant when installing a NEW repository's runner:
+PI_AUTOWORK_PUSH=1 autowork start /path/to/my-project
 autowork                       # the TUI: every runner, its workers, blockers and log
 autowork ls                    # one line per runner
 autowork logs -f my-project    # follow its journal
@@ -356,6 +358,28 @@ Per-repository settings live in `~/.config/pi-autowork/<repository>.env`
 the service, `autowork run` and a terminal; variables already set in the environment
 win. Disabling a service (`systemctl --user disable --now pi-autowork@<name>`) keeps it.
 
+Automatic push is **opt-in**: with no `PI_AUTOWORK_PUSH=1` grant, local commits and
+merges continue but neither normal publication nor upstream-sync publication runs.
+The new-runner grant command above saves `1` for that repository only and is reused
+on later launches/cycles without repeated approval. Existing saved `1`/`0` values
+are retained; loading settings or checking status does not rewrite them or migrate
+running services. A different repository cannot inherit the saved grant, even if it
+has the same directory name.
+
+For an already installed service, `PI_AUTOWORK_PUSH=1 autowork start` refuses a
+conflicting saved setting rather than silently changing it. To explicitly grant
+(or revoke with `0`), run the supported installer for that repository:
+
+```sh
+PI_AUTOWORK_PUSH=1 ~/.pi/agent/git/github.com/TrebuchetDynamics/autowork/scripts/pi-autowork.sh --install-service --repo /path/to/my-project
+```
+
+This explicit edit reloads/restarts the service. `autowork status my-project` shows
+the effective `Push:` setting without lifecycle changes, loading the saved file
+with shell overrides taking precedence. It describes settings for a launch, not
+the environment of a running process that has not reloaded them. An environment-only
+override on a foreground run applies to that run, not a persisted grant.
+
 The runner follows the plan, not a clock: while it waits (queue empty, everything
 blocked, or a failure pause), an edit under `tasks/` (committed or not, including an
 in-place edit of one task file), a change to `BLOCKERS.md` or a new commit on the main
@@ -449,11 +473,13 @@ How it works:
   main revision; otherwise, or when your uncommitted changes in the main checkout
   would be overwritten, the runner reports `Merge pending`, shows it as its blocker in
   `autowork` and keeps the branch for the next attempt.
-- **Push.** After a merge the runner pushes main to its upstream (`main@{u}`):
+- **Push (opt-in).** With an explicit `PI_AUTOWORK_PUSH=1` grant, after a merge the
+  runner pushes main to its upstream (`main@{u}`):
   fast-forward only, never forced. A rejected push fetches the upstream, merges it
   into the session, fast-forwards main and tries once more; a failure is logged once
   and the next merge retries. A main without an upstream is left local. Workers and
-  Pi tools still cannot push. `PI_AUTOWORK_PUSH=0` turns pushing off.
+  Pi tools still cannot push. Without a grant (the default), or with
+  `PI_AUTOWORK_PUSH=0`, main stays local and upstream synchronization does not run.
 - **Models.** `openai-codex/gpt-6.1-sol` first; the script switches to
   `openrouter/deepseek/deepseek-v4.1-flash` for 30 minutes when the primary is
   unauthenticated or a run ends on a provider error (read from Pi's JSON events, even
