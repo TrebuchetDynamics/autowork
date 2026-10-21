@@ -319,6 +319,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A day-old finished commit that still merges cleanly with the session is kept for its review
+  instead of set aside: its age was the runner's own review queue. One that no longer merges
+  (or cannot be checked) is set aside as before (`PI_AUTOWORK_STALE_HOURS`).
 - A fresh retry no longer starts while a task that must run alone drains the worker pool:
   `retry_held` now waits, as ordinary dispatch does, when an exclusive task ahead of it has
   waited past `drain_after`; a split task waited 46 minutes while a retry took the slot.
