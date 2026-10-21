@@ -658,6 +658,17 @@ class FleetViewTests(unittest.TestCase):
                          "3 on dependencies · 2 waiting for another reason · 1 waiting for another task's files")
         self.assertEqual(fleet_view.waiting_detail(fleet_view.Runner(name='b')), '')
 
+    def test_stopped_waits_are_blockers(self):
+        """TOOLSET-352-8337d438: a waiting task stopped behind a question or an outside condition is a
+        Blocker; the columns still add up to Total and the Blocker row names what stops them."""
+        runner = fleet_view.Runner(name='a', waiting=2, stopped=1, held=[('B', 'conflict'), ('E', 'overlap')],
+                                   stopped_groups=[{'label': 'Q-1 (outside condition or task not in Now/Next)',
+                                                    'count': 1, 'tasks': ['A']}])
+        self.assertEqual(fleet_view.task_counts(runner), (0, 0, 3, 2, 0, 5))
+        self.assertEqual(fleet_view.blocker_parts(runner),
+                         '2: B Conflict · Agent repair · 1 behind Q-1 (outside condition or task not in Now/Next)')
+        self.assertEqual(fleet_view.blocker_parts(fleet_view.Runner(name='b', held=[('E', 'overlap')])), '')
+
     def test_mergeable_needs_passed_gates(self):
         """Only an integrated commit (checks and review passed, on the session branch) is Mergeable;
         a commit being verified or merged is Active."""
