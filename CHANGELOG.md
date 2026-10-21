@@ -41,6 +41,17 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- **No more "Repository busy" pauses on the runner's own work** (TOOLSET-333-34). The
+  dispatch pass took `writer.lock` and `dispatch.lock` without waiting, so whenever the
+  runner's own background review, landing or a status read held one for its few seconds,
+  the whole cycle failed and the runner paused a full interval with a blocker. Those two
+  short-held locks are now waited for (30 s) by default; `integration.lock`, held through
+  whole reviews, still answers at once, and the sequential run that holds `writer.lock`
+  through its command still refuses at once. A lock records its holder's PID, so a BUSY
+  answer names the lock and holder: the runner retries its own job's lock within seconds,
+  silently, and names the job once only after 10 minutes
+  (`PI_AUTOWORK_OWN_LOCK_BOUND`); another process's lock is reported as before.
+
 - **Budgets removed (breaking).** Autowork enforces no token, cost or time budget:
   `PI_AUTOWORK_MAX_COST` and `PI_AUTOWORK_COST_WINDOW`, the runner's budget drain and
   status line, the engine's `--budget-seconds` command allowance (`LIMIT_REQUIRED`,

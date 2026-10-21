@@ -521,5 +521,56 @@ class SelectionCacheTests(unittest.TestCase):
             self.assertEqual(execution.select(repo, None, None)['fields']['Checks'], 'test b')
 
 
+class LockTests(unittest.TestCase):
+    """Short-held locks are waited for; a refusal names its holder; long-held ones answer at once."""
+
+    def setUp(self):
+        import task_execution
+        self.execution = task_execution
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = Path(self.tmp.name)
+
+    def hold(self, name, seconds):
+        """Another process takes ``name`` through lock() and keeps it ``seconds``."""
+        code = ('import sys, time\nsys.path.insert(0, sys.argv[1])\nimport task_execution\n'
+                'with task_execution.lock(__import__("pathlib").Path(sys.argv[2]), wait=0):\n'
+                '    print("held", flush=True)\n    time.sleep(float(sys.argv[3]))\n')
+        holder = subprocess.Popen([sys.executable, '-c', code, str(Path(__file__).parent), str(self.dir / name),
+                                   str(seconds)], stdout=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: holder.poll() is None and holder.kill())
+        self.assertEqual(holder.stdout.readline().strip(), 'held')
+        return holder
+
+    def test_a_short_held_writer_lock_is_waited_for_not_refused(self):
+        self.hold('writer.lock', 1.5)
+        started = time.monotonic()
+        with self.execution.lock(self.dir / 'writer.lock'):
+            waited = time.monotonic() - started
+        self.assertGreater(waited, 0.5)
+        self.assertLess(waited, 10)
+
+    def test_a_busy_lock_names_its_holder(self):
+        holder = self.hold('dispatch.lock', 30)
+        with self.assertRaises(self.execution.LockBusy) as caught:
+            with self.execution.lock(self.dir / 'dispatch.lock', wait=0):
+                pass
+        self.assertEqual((caught.exception.lock, caught.exception.holder), ('dispatch.lock', holder.pid))
+        self.assertIsInstance(caught.exception, BlockingIOError)
+
+    def test_the_integration_lock_still_answers_at_once(self):
+        self.hold('integration.lock', 30)
+        started = time.monotonic()
+        with self.assertRaises(BlockingIOError):
+            with self.execution.lock(self.dir / 'integration.lock'):
+                pass
+        self.assertLess(time.monotonic() - started, 2)
+
+    def test_a_released_lock_names_no_stale_holder(self):
+        holder = self.hold('writer.lock', 0.3)
+        holder.wait(timeout=10)
+        self.assertEqual((self.dir / 'writer.lock').read_text(), '')
+
+
 if __name__ == '__main__':
     unittest.main()
