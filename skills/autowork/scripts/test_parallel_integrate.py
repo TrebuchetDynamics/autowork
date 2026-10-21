@@ -1869,6 +1869,23 @@ finally:
         self.assertEqual(result['outcome'], 'HELD', result)
         self.assertIn('lineage', result['reason'])
 
+    def test_a_commit_that_higher_tasks_wait_on_integrates_with_their_priority(self):
+        """TOOLSET-261-15 ranked 36th waited a day behind higher-ranked commits while tasks ranked
+        6th to 35th depended on it. Z, ranked first, waits for B: B integrates before A."""
+        module = self.module()
+        todo = self.repo / 'TODO.md'
+        z = ('- [ ] Z — Task Z\n  Scope: Z.txt\n  Touches: Z.txt\n  Acceptance: fixture\n  Checks: true\n'
+             '  Dependencies: B.\n  Status: open\n\n')
+        todo.write_text(todo.read_text().replace('- [ ] A ', z + '- [ ] A ', 1))
+        self.git('commit', '-qam', 'Z waits for B')
+        self.baseline = self.git('rev-parse', 'HEAD')
+        self.assertEqual(module.inherited_ranks(self.repo), {'Z': 0, 'A': 1, 'B': 0})
+        for task in ('A', 'B'):
+            self.worker(task)
+        with self.assertRaisesRegex(ValueError, 'highest-priority reported task first: B'):
+            module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual(module.integrate(self.repo, self.owner, 'B', ['true'], 10)['outcome'], 'INTEGRATED')
+
     def test_reverified_candidates_follow_fresh_candidates_then_keep_task_priority(self):
         module = self.module()
         todo = self.repo / 'TODO.md'
