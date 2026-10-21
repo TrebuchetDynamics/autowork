@@ -10,20 +10,28 @@ test('Pi registers workflows and all 13 research commands; routes literal argume
   assert.equal(commands.size, 27);
   assert.equal(commands.has('autogoal'), false);
   assert.equal(commands.has('cron_autowork'), true);
+  const {readFile} = await import('node:fs/promises');
+  const {fileURLToPath} = await import('node:url');
+  const assertWorkflow = async (skill) => {
+    const source = new URL(`../adapters/skills/${skill}/SKILL.md`, import.meta.url);
+    const message = messages.at(-1)[0];
+    assert.equal(message.includes(`Source: ${fileURLToPath(source)}\n`), true, skill);
+    assert.equal(message.includes(await readFile(source, 'utf8')), true, skill);
+    assert.equal(message.includes('(../COMMON.md)'), true, skill);
+  };
   const raw = 'read-only\n$(literal); --no-push';
   await commands.get('ui_taste').handler(raw, {isIdle: () => true});
-  assert.match(messages.at(-1)[0], /UI Taste/);
+  await assertWorkflow('ui-taste');
   assert.equal(messages.at(-1)[0].endsWith(raw), true);
   messages.length = 0;
   await commands.get('plan_with_me').handler(raw, {isIdle: () => true});
-  assert.match(messages[0][0], /# Plan With Me/);
+  await assertWorkflow('plan-with-me');
   assert.equal(messages[0][0].endsWith(raw), true);
   assert.equal(messages[0][1], undefined);
   await commands.get('autoresearch_debug').handler(raw, {isIdle: () => false});
   assert.match(messages[1][0], /Selected subcommand: debug/);
   assert.deepEqual(messages[1][1], {deliverAs: 'followUp'});
   // The actual shared boundary is loaded, not just command registration/skill metadata.
-  const {readFile} = await import('node:fs/promises');
   const boundary = await readFile(new URL('../skills/shared/RESEARCH-PLAN.md', import.meta.url), 'utf8');
   for (const name of ['plan_with_me', 'plan_for_me', 'grill_me', 'autoresearch_plan']) {
     await commands.get(name).handler(raw, {isIdle: () => true});
@@ -34,7 +42,7 @@ test('Pi registers workflows and all 13 research commands; routes literal argume
   assert.equal(messages.at(-1)[0].includes(boundary), true);
   assert.equal(messages.at(-1)[0].endsWith(`plan ${raw}`), true);
   await commands.get('grill_me').handler(raw, {isIdle: () => false});
-  assert.match(messages.at(-1)[0], /# Plan With Me/);
+  await assertWorkflow('plan-with-me');
   assert.match(messages.at(-1)[0], /Selected mode: challenge/);
   assert.equal(messages.at(-1)[0].endsWith(raw), true);
   assert.deepEqual(messages.at(-1)[1], {deliverAs: 'followUp'});
@@ -47,9 +55,16 @@ test('Pi registers workflows and all 13 research commands; routes literal argume
     assert.deepEqual(messages.at(-1)[1], {deliverAs: 'followUp'});
     await readFile(new URL(`../skills/autoresearch/upstream/${selector}.md`, import.meta.url));
   }
-  for (const [name, handler] of commands) {
-    await handler.handler('questions only', {isIdle: () => true});
-    assert.match(messages.at(-1)[0], /host contract/);
+  for (const [name, skill] of Object.entries({
+    plan_with_me: 'plan-with-me', plan_for_me: 'plan-for-me', docs_sync: 'docs-sync',
+    cron_autowork: 'cron-autowork', autowork: 'autowork', autoresearch: 'autoresearch',
+    engineering: 'engineering', impeccable: 'impeccable', ui_taste: 'ui-taste',
+    beautify_github_readme: 'beautify-github-readme', grill_me: 'plan-with-me',
+    lgtm: 'lgtm', blockers: 'blockers', git_commit_push: 'git-commit-push',
+    ...Object.fromEntries(selectors.map(selector => [`autoresearch_${selector}`, 'autoresearch'])),
+  })) {
+    await commands.get(name).handler('questions only', {isIdle: () => true});
+    await assertWorkflow(skill);
   }
 });
 

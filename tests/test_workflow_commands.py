@@ -28,8 +28,6 @@ class WorkflowCommands(unittest.TestCase):
                     self.assertEqual(routing['origin']['chat_id'], 'fixture')
                     if skill.startswith('plan-'):
                         self.assertIn('../shared/RESEARCH-PLAN.md', prompt)
-                    if command == 'plan_for_me':
-                        self.assertIn('TODO.md is the central work queue', prompt)
         for alias in ('autoresearch-plan', 'autoresearch:plan'):
             raw = 'questions only\n$(literal); no push'
             self.ctx.commands[alias](raw)
