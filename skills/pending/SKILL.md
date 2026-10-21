@@ -26,4 +26,5 @@ Open work is `status: open` in Now and Next, in `position` order; Needs decision
 wait for a person. A verified close has a receipt in `tasks/evidence/<ID>.toml`. The
 queries write nothing and run nothing; eligibility is recorded dependency and priority
 evidence, not worker admission or liveness. A repository without `tasks/` is not
-converted yet: say so and name `autowork migrate <repo>`; do not read TODO.md instead.
+converted yet: say so and name `/docs_sync` (its `autowork tasks prepare` converts it,
+or defers to the runner while work is in flight); do not read TODO.md instead.

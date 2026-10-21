@@ -34,6 +34,8 @@
                                   first step; --check writes nothing)
     autowork migrate [target] [--dry-run] [--no-commit]
                                   convert a repository to the tasks/ store once (one local commit)
+    autowork capabilities         this executable's release, commands, task verbs and prepare
+                                  API as JSON (a skill checks it before writing anything)
     autowork scorecard [--days N] [--json] [target...]
                                   per runner: tasks closed, held share, start to merge, owner
                                   questions over the last N days (default 7)
@@ -406,6 +408,25 @@ def cmd_update(args, paths):
     return subprocess.run(['bash', str(installer), 'update', *args.extra], check=False).returncode
 
 
+def capabilities():
+    """What this executable can do, for a skill's handshake before it writes anything: the
+    resolved executable and release, every command and `tasks` verb, and the prepare API."""
+    from pi_autowork import task_prepare
+    top = parser()
+    commands = next(a for a in top._actions if isinstance(a, argparse._SubParsersAction)).choices
+    verbs = next(a for a in commands['tasks']._actions if isinstance(a, argparse._SubParsersAction)).choices
+    release = subprocess.run(['git', '-C', str(TOOLSET), 'rev-parse', 'HEAD'], capture_output=True,
+                             text=True).stdout.strip() or None
+    return dict(tool='autowork', executable=str(Path(sys.argv[0]).resolve()), toolset=str(TOOLSET),
+                release=release, commands=sorted(commands), tasks=sorted(verbs),
+                prepare_api=task_prepare.API, prepare_outcomes=list(task_prepare.OUTCOMES))
+
+
+def cmd_capabilities(args, paths):
+    print(json.dumps(capabilities(), indent=2))
+    return 0
+
+
 def cmd_blockers(args, paths):
     repo, _ = resolve(args.target, paths)
     agent = fleet_view.blockers_agent()
@@ -505,6 +526,7 @@ def parser():
     card.add_argument('target', nargs='*', help='runner names or repository paths (default: every runner)')
     task_commands.add_parser(sub)
     task_migrate.add_parser(sub)
+    sub.add_parser('capabilities', help="this executable's release, commands and prepare API, as JSON")
     sub.add_parser('help', help='this help')
     return top
 
@@ -515,6 +537,7 @@ COMMANDS = {'ls': cmd_ls, 'status': cmd_status, 'logs': cmd_logs, 'start': cmd_s
             'pause': cmd_pause, 'resume': lambda a, p: cmd_pause(a, p, resume=True),
             'model': cmd_model, 'models': cmd_models, 'scorecard': cmd_scorecard,
             'clear-held': cmd_clear_held, 'update': cmd_update, 'tasks': cmd_tasks,
+            'capabilities': cmd_capabilities,
             'migrate': lambda a, p: task_migrate.run(a, resolve(a.repo, p)[0])}
 
 
