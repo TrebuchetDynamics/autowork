@@ -89,11 +89,14 @@ class IdleClaimTests(unittest.TestCase):
 
     def test_a_hold_in_its_own_entry_holds_the_claim(self):
         todo = self.repo / 'TODO.md'
-        todo.write_text(todo.read_text().replace('- [ ] T-96 — Other\n',
-                                                 '- [ ] T-96 — Other\n  Ownership: unassigned. No worker dispatched by this entry.\n'))
-        self.git('add', '.')
-        self.commit('own note', when=1000)
-        self.assertEqual(self.idle('T-96'), {})
+        original = todo.read_text()
+        for note in ('Ownership: unassigned. No worker dispatched by this entry.',
+                     'Status remains in_progress to preserve the existing hold.',
+                     'Preserve hold.', 'Preserve the hold.', 'Preserve existing hold.',
+                     'Remains in_progress to await the decision.', 'Keep the hold.', 'Keeps the hold.'):
+            with self.subTest(note=note):
+                todo.write_text(original.replace('- [ ] T-96 — Other\n', f'- [ ] T-96 — Other\n  Note: {note}\n'))
+                self.assertEqual(self.idle('T-96'), {})
 
     def test_a_plain_mention_does_not_hold_a_claim(self):
         self.note('\n- [ ] T-5 — Later\n  Dependencies: TASK-038.\n  Status: open\n')

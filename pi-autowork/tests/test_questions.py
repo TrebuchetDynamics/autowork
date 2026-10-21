@@ -166,6 +166,25 @@ class QuestionTests(unittest.TestCase):
         self.assertEqual(first.count('### Q-T-1 '), 1)
         self.assertEqual(questions.update(first, found, now=NOW), first)
 
+    def test_claim_questions_quote_holds_or_name_the_adoption_hour(self):
+        note = 'canonical inclusion requires authority permitting canonical HEAD/index changes'
+        for evidence, expected in (({'held_by': note, 'adoptable_after': 0}, note),
+                                   ({'adoptable_after': 0}, None),
+                                   ({'adoptable_after': 7200}, '2026-10-16 22:00 UTC')):
+            with self.subTest(evidence=evidence):
+                status = {'roots': [dict(id='T-2', kind='claim', blocks=3, **evidence)]}
+                found = questions.build(status, TODO, goals, now=NOW.timestamp())
+                if expected is None:
+                    self.assertEqual(found, [])
+                    continue
+                self.assertEqual(len(found), 1)
+                self.assertIn(expected, found[0]['needs'])
+                self.assertNotIn('will not be adopted automatically', found[0]['needs'])
+                if 'held_by' in evidence:
+                    self.assertIn(f'"{note}"', found[0]['needs'])
+                    self.assertIn('answer the note', found[0]['answer'].lower())
+                    self.assertIn('Status: open', found[0]['answer'])
+
     def test_a_claim_answered_with_its_holder_is_not_asked_again(self):
         """TOOLSET-198-8f: the owner noted who holds a claimed task, as the question asks, and the
         runner kept asking: /blockers said 0 questions, the TUI said 2."""

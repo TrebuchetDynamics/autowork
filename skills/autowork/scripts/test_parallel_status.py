@@ -54,6 +54,44 @@ class StatusWaitTests(unittest.TestCase):
                                  ('awaiting dispatch', []) if obsolete else ('overlapping paths with A', ['A']))
                 self.assertEqual('overlapping paths with A' in status.render(value), not obsolete)
 
+    def test_claim_roots_show_hold_evidence_or_the_actual_adoption_window(self):
+        todo = self.todo.replace('Status: open', 'Status: in_progress', 1)
+        todo = todo.replace('Task B\n', 'Task B\n  Dependencies: A.\n').replace(
+            '  Checks: python3 -V\n  Dependencies: None.', '  Checks: python3 -V')
+        path = self.repo / 'TODO.md'
+        path.write_text(todo)
+        subprocess.run(['git', '-C', str(self.repo), 'add', '.'], check=True)
+        subprocess.run(['git', '-C', str(self.repo), '-c', 'user.name=Fixture',
+                        '-c', 'user.email=fixture@local', 'commit', '-qm', 'claim'], check=True,
+                       env={**os.environ, 'GIT_AUTHOR_DATE': '@1000 +0000', 'GIT_COMMITTER_DATE': '@1000 +0000'})
+        (self.common / 'journal.jsonl').write_text(json.dumps(dict(
+            timestamp=1000, event='dispatch_observed', waiting=[], adopt_idle_claims=21600)) + '\n')
+        note = 'canonical inclusion requires authority permitting canonical HEAD/index changes'
+        for now, extra, seconds in ((2000, '', 20600), (22600, '', 0),
+                                    (22600, f'  Evidence: {note}\n', None)):
+            with self.subTest(now=now, note=extra):
+                path.write_text(todo.replace('  Status: in_progress\n', '  Status: in_progress\n' + extra))
+                with patch.object(execution, 'external_workers', return_value=[]):
+                    root = status.snapshot(self.repo, now=now)['roots'][0]
+                self.assertEqual((root['id'], root['kind']), ('A', 'claim'))
+                if extra:
+                    self.assertIn(note, root['held_by'])
+                    self.assertNotIn('adoptable_after', root)
+                else:
+                    self.assertEqual(root['adoptable_after'], seconds)
+                    if seconds == 0:
+                        self.assertIn('adopted when a worker slot frees', root['reason'])
+        # A legacy observation does not prove that adoption was enabled.
+        path.write_text(todo)
+        (self.common / 'journal.jsonl').write_text(json.dumps(dict(
+            timestamp=1000, event='dispatch_observed', waiting=[])) + '\n')
+        with patch.object(execution, 'external_workers', return_value=[]):
+            value = status.snapshot(self.repo, now=22600)
+        self.assertIsNone(value['roots'][0]['adoptable_after'])
+        sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'pi-autowork'))
+        from pi_autowork import questions
+        self.assertEqual([q['id'] for q in questions.build(value, todo, execution.goals_module())], ['A'])
+
     def test_deferred_dependencies_are_named_in_status_without_new_question_kinds(self):
         todo = self.todo.replace('Dependencies: None.', 'Dependencies: D.', 1)
         todo = todo.replace('Dependencies: None.', 'Dependencies: A.', 1)
