@@ -87,6 +87,7 @@
         "TOOLSET-135-16",
         "TOOLSET-135-16-LIVE",
         "TOOLSET-136-0b",
+        "TOOLSET-136-0b-LIVE",
         "TOOLSET-137-cd",
         "TOOLSET-142-85",
         "TOOLSET-149-df",
@@ -890,7 +891,6 @@
       "TOOLSET-127-b1",
       "TOOLSET-128-69",
       "TOOLSET-134-ab",
-      "TOOLSET-136-0b",
       "TOOLSET-137-cd",
       "TOOLSET-143-62",
       "TOOLSET-122-27",
@@ -915,7 +915,8 @@
       "TOOLSET-117-cb-LIVE",
       "TOOLSET-172-92-LIVE",
       "TOOLSET-135-16-LIVE",
-      "TOOLSET-126-6b-LIVE"
+      "TOOLSET-126-6b-LIVE",
+      "TOOLSET-136-0b-LIVE"
     ]
   },
   "tasks": [
@@ -1316,16 +1317,6 @@
       "section": "Next",
       "status": "open",
       "title": "Expose test-optimization-suite across supported hosts"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-135-16"
-      ],
-      "goal": "BACKLOG",
-      "id": "TOOLSET-136-0b",
-      "section": "Next",
-      "status": "open",
-      "title": "Make Plan With Me questions resolve consequential uncertainty"
     },
     {
       "depends_on": [
@@ -1751,6 +1742,16 @@
       "section": "Needs decision",
       "status": "open",
       "title": "Live checks for TOOLSET-135-16"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-136-0b"
+      ],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-136-0b-LIVE",
+      "section": "Needs decision",
+      "status": "open",
+      "title": "Live checks for TOOLSET-136-0b"
     },
     {
       "depends_on": [
@@ -2661,6 +2662,16 @@
       "section": "Done",
       "status": "done",
       "title": "Keep bulk planning within its artifact and execution boundaries"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-135-16"
+      ],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-136-0b",
+      "section": "Done",
+      "status": "done",
+      "title": "Make Plan With Me questions resolve consequential uncertainty"
     },
     {
       "depends_on": [],

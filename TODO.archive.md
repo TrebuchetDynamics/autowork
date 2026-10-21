@@ -5560,3 +5560,26 @@ Source section: Next
 - Dependencies: TOOLSET-124-97, TOOLSET-135-16.
 - Ownership: Toolset coordinator; one writer per affected workspace.
 - Exclusions: No live/model runs, new test framework/dependency, publication, hidden test skips, weakened safety cases or changes outside the named batch.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-136-0b"></a>
+
+### TOOLSET-136-0b — Make Plan With Me questions resolve consequential uncertainty
+
+- [x] TOOLSET-136-0b — Make Plan With Me questions resolve consequential uncertainty
+- Short: Plan With Me asks what matters
+- Status: done
+- Goal: BACKLOG — Produce a usable repository backlog for Autowork.
+- Sources: [accepted planning handoff plan](docs/workflows.md#planning-only-bulk-handoff-and-skill-recommendations), [shared planning method](skills/shared/RESEARCH-PLAN.md), [handoff contract](skills/shared/PLAN-HANDOFF.md).
+- Touches: skills/plan-with-me/SKILL.md, adapters/skills/plan-with-me/SKILL.md, skills/shared/PLANNING-CRAFT.md, skills/shared/RESEARCH-PLAN.md, skills/plan-with-me/references/special-cases.md, tests/fixtures/planning/, docs/workflows.md
+- Skills: None beyond the applicable planning/skill-maintenance workflow; do not load unrelated methods.
+- Scope: Retain useful current interview guidance and replace blanket-yes and premature skip/finish behavior. Track relevant uncertainty by decision impact, investigate repository facts, ask contextual questions with meaningful tradeoffs, and continue after answers until material intent/acceptance is covered. Deduplicate shared questions across a bulk batch. No fixed question count; fully specified requests need no filler. Preserve user corrections, explicit stop/skip/delegation and independent ready tasks. Bring only unanswered consequential issues from builder review back to the user.
+- Acceptance: A two-decision scenario asks the next consequential question after the first answer; vague intent prompts a concrete example rather than an arbitrary option menu. Fully specified intent avoids filler. Plain yes cannot accept several separate recommendations; ambiguous answers keep affected choices open. Shared constraints are asked once across tasks; no repository-fact or routine-authority questions. Stop saves resolved planning without code edits or fabricated answers, and a resumed interview reuses accepted decisions. Assess decisions/artifacts and traces, not question totals or wording.
+- Checks: Bounded multi-turn fixture evaluation covering the accepted scenarios against native and portable entrypoints; source/reference validation; git diff --check. Record unexercised host/model cases honestly and reuse existing command tests if wrappers are unchanged.
+- Dependencies: TOOLSET-135-16.
+- Ownership: Toolset coordinator; preserve active worker contracts and unrelated planning batches.
+- Exclusions: No implementation in consumer repositories during planning, automatic plugin installation, external execution, paid evaluation, CI weakening, scheduler/service changes, publication, or new mandatory task schema. No dispatch from this planning invocation.
