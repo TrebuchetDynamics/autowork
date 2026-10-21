@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-331-be"
 title = "A held attempt keeps its temp tools and its restored work"
 short = "Held attempts keep their files"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 25000
@@ -16,6 +16,8 @@ scope = "2026-10-21: a research task held on an owner question lost the pinned t
 acceptance = ["A held slot's temp directory survives the stale-temp sweep; it is removed once the slot is set aside, closed or released.", "After a set-aside whose worktree kept uncommitted files, the next attempt's prompt names that worktree and its uncommitted paths."]
 checks = ["python3 scripts/check.py"]
 exclusions = []
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-331-be.toml"
 +++
 
 - Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20)
