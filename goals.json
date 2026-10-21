@@ -1271,7 +1271,9 @@
       "title": "Qualify the worktree runner live on a fleet repository"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-172-92"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-122-27",
       "section": "Next",
@@ -1298,7 +1300,8 @@
     },
     {
       "depends_on": [
-        "TOOLSET-124-97"
+        "TOOLSET-124-97",
+        "TOOLSET-135-16"
       ],
       "goal": "TEST-SUITE",
       "id": "TOOLSET-126-6b",
@@ -1360,7 +1363,9 @@
     },
     {
       "depends_on": [
-        "TOOLSET-133-f5"
+        "TOOLSET-133-f5",
+        "TOOLSET-135-16",
+        "TOOLSET-172-92"
       ],
       "goal": "TEST-SUITE",
       "id": "TOOLSET-134-ab",
@@ -1398,7 +1403,9 @@
     },
     {
       "depends_on": [
-        "TOOLSET-142-85"
+        "TOOLSET-135-16",
+        "TOOLSET-142-85",
+        "TOOLSET-172-92"
       ],
       "goal": "PORTABLE",
       "id": "TOOLSET-143-62",
@@ -1452,7 +1459,10 @@
       "title": "Recover verified managed Hermes checkouts when updates cannot fast-forward"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-129-c4",
+        "TOOLSET-172-92"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-178-47",
       "section": "Next",

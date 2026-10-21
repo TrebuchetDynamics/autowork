@@ -1195,6 +1195,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-178-47 — Keep TUI confirmations readable and stable through refresh and terminal resize
 
 - [ ] TOOLSET-178-47 — Keep TUI confirmations readable and stable through refresh and terminal resize
+- Scheduling: Wait for TOOLSET-129-c4 to land before editing tui.py, tui_pilot.py and test_fleet_view.py, and TOOLSET-172-92 before docs/cross-host.md. The live Needs worker owns the same refresh/pilot seams; the reported managed-checkout candidate owns the guide. Neither delivers modal geometry or terminal repaint proof. Keep the modal lifecycle, identity safety and controlled PTY proof together; a guide-only split still leaves the implementation and pilot overlapping 129-c4. Preserve the active prerequisite contracts and every existing acceptance item.
 - Short: Stable TUI confirmations on resize
 - Status: open
 - Goal: PI-RUNNER
@@ -1203,7 +1204,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Scope: Fix the existing TUI modal sizing and screen/refresh coordination as specified. Use viewport-bounded modal geometry, reachable Yes/No controls and lifecycle-aware background updates. Preserve runner/action identity through collection, resize and suspend/resume; no theme redesign or service policy change. Retain current pinned Textual unless evidence establishes an upstream defect.
 - Acceptance: Fake-runner pilot cases open confirmation while timers/log data update and resize across 40x20, 60x24, 80x24 and 150x45. Dialog/actions remain within the viewport and readable; default No/Escape/n and resize never execute a command; deliberate Yes executes exactly the bound fake action once after current preconditions are checked. Runner reordering/removal cannot retarget the command. Closing/suspending/resuming leaves no modal residue or duplicated frames and preserves selection/log position. View-only causes zero mutation. A controlled PTY/cell-render trace or equivalent validates repaint beyond headless state assertions. No real runner/service/model operation or private fleet fixture data.
 - Checks: Planned after implementation: `python3 -m unittest discover -s pi-autowork/tests -p test_fleet_view.py` with its pinned Textual pilot actually exercised; the added controlled terminal-render regression at its documented focused selector; `git diff --check`. Missing/skipped UI tooling is not a passing visual check; new cases are unrun. Reuse existing fixtures, not a second broad benchmark suite.
-- Dependencies: None.
+- Dependencies: TOOLSET-129-c4, TOOLSET-172-92.
 - Ownership: Assigned isolated Autowork worker and integration coordinator; serialize overlapping TUI edits with existing view/account tasks and preserve their acceptance.
 - Context: Successor to TOOLSET-122-27's implemented TUI slice; do not make this offline rendering fix wait on its unrelated live fleet migration. Stale question classification remains with existing status/question tasks.
 - Exclusions: No live service restart, profile/job changes, external commands from pasted evidence, model/provider requests, dependency installation during planning, publication, fresh dashboard or weakening confirmation/view-only safeguards.
@@ -1272,27 +1273,32 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-126-6b — Trim prose-only test assertions while retaining executable contracts
 
 - [ ] TOOLSET-126-6b — Trim prose-only test assertions while retaining executable contracts
+- Payoff: Optimize test suites without losing defect detection.
+- Scheduling: The audit-file write moves to existing TOOLSET-128-69, which already depends on this task and TOOLSET-125-e6; do not add a dependency on inherited-execution thinning for otherwise disjoint test edits. Wait for reported TOOLSET-135-16 to land before touching test_workflow_commands.py, test_portable_package.py and portable_pi.test.mjs; retain its new unique boundary regressions while thinning only the accepted editorial predicates. No active prerequisite contract is changed.
+- Evidence handoff: Keep the per-removal rationale, retained detector/non-executable obligation, exact surviving assertions, source revision and actual commands/results in the worker report; include before/after focused timings where required by this task. TOOLSET-128-69 imports this evidence into docs/test-suite-audit.md after all three implementation batches land. This batch reads the accepted audit map but does not edit that shared file. All existing Acceptance and Checks remain required; the report is not proof until its results are verified.
 - Short: Trim prose-only test assertions
 - Status: open
-- Goal: TEST-SUITE — Optimize test suites without losing defect detection.
+- Goal: TEST-SUITE
 - Sources: [accepted thinning plan](docs/test-suite-audit.md#suite-thinning-plan-2026-10-16), [test budget](skills/shared/ENGINEERING-CYCLE.md#test-budget).
-- Touches: tests/test_blockers.py, tests/test_skill_descriptions.py, tests/test_workflow_contract.py, tests/test_workflow_commands.py, tests/test_portable_package.py, tests/portable_pi.test.mjs, docs/test-suite-audit.md
+- Touches: tests/test_blockers.py, tests/test_skill_descriptions.py, tests/test_workflow_contract.py, tests/test_workflow_commands.py, tests/test_portable_package.py, tests/portable_pi.test.mjs
 - Scope: Use the audit disposition map to remove or consolidate wording-only assertions, starting with BlockersContract. Keep BlockersRouting, archive-extracted helper execution, command routing, required manifest/link/index compatibility and security/authority contracts. Classify each assertion before removal: a document mentions a rule is not proof the agent follows it. Map instruction-behavior obligations to explicit bounded behavioral evaluation; do not replace them with another large phrase list or add an always-on model dependency.
 - Acceptance: Each removed assertion has a specific rationale and retained detection seam or explicit non-executable obligation; executable routing/packaging cases and named safety regressions remain; edits to equivalent prose no longer fail tests; broken registration, skill paths or package references still fail. No unproven coverage-equivalence claim from text tests.
 - Checks: python3 -m unittest discover -s tests -p test_blockers.py; python3 -m unittest discover -s tests -p test_workflow_contract.py; python3 -m unittest discover -s tests -p test_portable_package.py; node --test tests/portable_pi.test.mjs; python3 scripts/check.py; git diff --check
-- Dependencies: TOOLSET-124-97
+- Dependencies: TOOLSET-124-97, TOOLSET-135-16.
 - Ownership: Toolset coordinator; one writer per affected workspace.
 - Exclusions: No live/model runs, new test framework/dependency, publication, hidden test skips, weakened safety cases or changes outside the named batch.
 
 ### TOOLSET-127-b1 — Thin repeated Pi lifecycle fixtures and fixed waits
 
 - [ ] TOOLSET-127-b1 — Thin repeated Pi lifecycle fixtures and fixed waits
+- Scheduling: The audit-file write moves to existing TOOLSET-128-69, which already depends on this task and TOOLSET-125-e6. The remaining legacy/component lifecycle fixtures do not touch 125-e6's task-execution test file, so retain only the existing TOOLSET-124-97 prerequisite. Preserve original lifecycle/composed proof and process cleanup; no duplicate audit or new qualification task.
+- Evidence handoff: Keep the per-removal rationale, retained detector/non-executable obligation, exact surviving assertions, source revision and actual commands/results in the worker report; include before/after focused timings where required by this task. TOOLSET-128-69 imports this evidence into docs/test-suite-audit.md after all three implementation batches land. This batch reads the accepted audit map but does not edit that shared file. All existing Acceptance and Checks remain required; the report is not proof until its results are verified.
 - Short: Thin Pi lifecycle fixtures and waits
 - Status: open
 - Goal: TEST-SUITE
 - Payoff: Optimize test suites without losing defect detection.
 - Sources: [accepted thinning plan](docs/test-suite-audit.md#suite-thinning-plan-2026-10-16), [test budget](skills/shared/ENGINEERING-CYCLE.md#test-budget).; [completion-first delivery](docs/plans/2026-10-16-pi-autowork-coordinator.md#completion-first-delivery-and-recoverable-handoffs).
-- Touches: tests/test_pi_autowork.py, pi-autowork/tests/, docs/test-suite-audit.md
+- Touches: tests/test_pi_autowork.py, pi-autowork/tests/
 - Scope: Start with the service pause, one-time stall notice and idle-claim adoption cases. Remove unrelated task warm-ups and replace elapsed sleeping with observable cycle/event milestones or controlled time at an existing component seam. Keep real process/Git journeys for cancellation, duplicate ownership, worker-push refusal, integration and update/restart boundaries. Keep fixtures fresh for mutation cases; share only immutable setup. Use the audit map to assign one owning suite per behavior across the legacy runner test and component tests; splitting a file alone is not thinning.
 - Acceptance: Preserve every named lifecycle regression and negative case. Reduced fixture/setup work and fixed waits are evidenced by before/after focused timings and the exact surviving assertions; no global clock mocking in race tests, hidden skips, reduced cycle proof or production test-only hooks. Focused component tests, original composed journeys and normal gate pass; process fixtures are reaped.
 - Checks: python3 scripts/check.py tests/test_pi_autowork.py; python3 -m unittest discover -s pi-autowork/tests; python3 scripts/check.py; git diff --check
@@ -1304,9 +1310,11 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-128-69 — Qualify suite thinning and reconcile the test budget
 
 - [ ] TOOLSET-128-69 — Qualify suite thinning and reconcile the test budget
+- Payoff: Optimize test suites without losing defect detection.
+- Evidence handoff: Own the deferred docs/test-suite-audit.md writes for TOOLSET-126-6b and TOOLSET-127-b1 after their existing dependencies complete. Import their verified per-removal rationale, retained detector/non-executable obligation, exact surviving assertion mapping, source revisions, actual commands/results and required before/after focused timings from the saved worker reports. Reconcile with TOOLSET-125-e6's landed audit additions without overwriting them. This is the existing final disposition/report scope, not a new acceptance waiver; missing or nonpassing evidence stays explicit and prevents an unsupported qualification claim.
 - Short: Qualify suite thinning and test budget
 - Status: open
-- Goal: TEST-SUITE — Optimize test suites without losing defect detection.
+- Goal: TEST-SUITE
 - Sources: [accepted thinning plan](docs/test-suite-audit.md#suite-thinning-plan-2026-10-16), [test budget](skills/shared/ENGINEERING-CYCLE.md#test-budget).
 - Touches: docs/test-suite-audit.md, docs/testing.md
 - Scope: Reconcile the final full-suite disposition map and retained test IDs after the three implementation batches. Record modules, test lines, unique cases, collected executions, focused timings and all normal-gate results. Preserve the eight live/native exclusions and JavaScript CI coverage. Carry forward unmeasured or unproven leads instead of declaring the whole suite minimized; create a bounded follow-up only for newly proven value.
@@ -1319,15 +1327,17 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-134-ab — Expose test-optimization-suite across supported hosts
 
 - [ ] TOOLSET-134-ab — Expose test-optimization-suite across supported hosts
+- Payoff: Keep test execution efficient without losing regression protection.
+- Scheduling: Wait for reported TOOLSET-135-16 before adapters/pi.mjs and the shared portable package/command fixtures, and TOOLSET-172-92 before README.md, docs/installation.md and docs/cross-host.md. Planning boundary injection and managed-checkout recovery do not expose test-optimization-suite. Keep native/portable registration, installed reference closure and actual-entrypoint evaluation together: a registry-only follow-up would leave the remaining package tests and usage docs overlapping those candidates. Preserve their changes and all original acceptance; do not edit reported prerequisites.
 - Short: Expose test-optimization-suite on hosts
 - Status: open
-- Goal: TEST-SUITE — Keep test execution efficient without losing regression protection.
+- Goal: TEST-SUITE
 - Sources: [accepted skill plan](docs/project.md#discoverable-test-optimization-suite-skill), [native discovery](__init__.py), [portable registry](adapters/pi.mjs), [package checks](tests/test_portable_package.py).
 - Touches: skills/test-optimization-suite/, adapters/skills/test-optimization-suite/, adapters/pi.mjs, tests/test_portable_package.py, tests/portable_pi.test.mjs, tests/test_engineering_vendor.py, tests/test_plugin.py, install_skills.py, README.md, docs/cross-host.md, docs/installation.md
 - Scope: Add concise native and portable test-optimization-suite entrypoints delegating to the canonical engineering protocol, with inherited host restrictions and explicit-only portable metadata. Register Pi test_optimization_suite. Reuse directory-based package/install discovery; change install closure only if isolated installation proves a missing referenced dependency. Document usage and audit/apply boundaries. Extend existing registration/archive cases, and evaluate the compact risk fixture against the actual installed entrypoint. Keep existing test-suite-optimization routing compatible.
 - Acceptance: Hermes discovers the new root skill; Codex/Claude/Pi packages expose the requested name with matching host policy; the Pi command forwards arguments without permission or process side effects. A scratch installed archive resolves the shared method and required references without checkout-only paths. Behavioral evaluation preserves unique security/boundary cases, proposes justified duplication removal, records unknown metrics, retains critical flaky protection, and respects read-only versus authorized apply. A real invocation receives a compact risk/disposition map and repository-specific budget proposal, not automatic fleet-wide deletion. Packaging success alone is not reported as behavioral qualification.
 - Checks: python3 -m unittest discover -s tests -p test_portable_package.py; python3 -m unittest discover -s tests -p test_engineering_vendor.py; python3 -m unittest discover -s tests -p test_plugin.py; node --test tests/portable_pi.test.mjs; bounded installed-skill fixture evaluation with outcomes recorded; git diff --check. Run the normal offline gate only if runtime/install behavior changes.
-- Dependencies: TOOLSET-133-f5.
+- Dependencies: TOOLSET-133-f5, TOOLSET-135-16, TOOLSET-172-92.
 - Ownership: Toolset coordinator; one writer per affected workspace.
 - Exclusions: No model/live calls in normal package tests, additional test framework, automatic installation/restart across user profiles, menu-policy expansion, service deployment, consumer test deletion, or push.
 
@@ -1382,6 +1392,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-143-62 — Add the conversational tasks skill and host commands
 
 - [ ] TOOLSET-143-62 — Add the conversational tasks skill and host commands
+- Scheduling: Wait for reported TOOLSET-135-16 before adapters/pi.mjs, portable_pi.test.mjs, test_portable_package.py and docs/workflows.md, and TOOLSET-172-92 before README.md and docs/cross-host.md. Neither candidate supplies pending/done discovery, menu policy or conversational qualification. Keep helper closure, collision protection, dispatch and installed conversational evidence together: a Pi-registry-only follow-up would leave shared package fixtures/docs in the remaining slice. Preserve original acceptance and prerequisite contracts; no registration pass substitutes for behavioral proof.
 - Short: Conversational tasks skill and commands
 - Status: open
 - Goal: PORTABLE
@@ -1391,7 +1402,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Scope: Create native and portable pending and done skills and Pi /pending and /done dispatch using TOOLSET-142-85's bundled query helper. No args gives a casual priority summary; task ID gives detail; descriptions and time requests search history with honest date/source labels. Follow the user's language, lead with outcomes and keep IDs accessible. Pass query text as data and preserve explicit-invocation policies. Reuse native discovery/collision protection, package link closure and Telegram menu capacity/exclusions; do not register /tasks or an Autowork tasks alias, leaving Hermes' handler untouched. Preserve other native collisions with host-qualified pending/done fallback. Ship concise examples and read-only boundaries without treating query requests as authorization to execute.
 - Acceptance: Native discovery and installed portable package fixtures resolve the helper and expose the appropriate pending and done entrypoints; Pi forwards arguments safely, existing host commands win collisions, and Telegram preferences/capacity remain intact. Disposable conversational examples cover default, ID, descriptive past-work and dated lookup with truthful partial/unknown evidence and no filesystem/Git mutation. Outputs explain why a blocked priority item differs from next eligible, and do not equate marked in progress, done, integrated and published. Unsupported model/host qualification is reported explicitly, not inferred from forwarding tests.
 - Checks: python3 -m unittest discover -s tests -p test_plugin.py; python3 -m unittest discover -s tests -p test_portable_package.py; node --test tests/portable_pi.test.mjs; python3 -m unittest discover -s tests -p test_telegram_menu_policy.py; compact disposable conversational evaluation from the accepted plan (new, unrun); git diff --check. Extend existing behavioral fixtures rather than duplicating their coverage.
-- Dependencies: TOOLSET-142-85.
+- Dependencies: TOOLSET-142-85, TOOLSET-135-16, TOOLSET-172-92.
 - Ownership: Toolset coordinator; serialize overlapping adapter/menu/doc integration with other command tasks, preserving their accepted changes.
 - Exclusions: No runtime task control, automatic installation/reload, network history fetch, new dashboard, model-policy changes, real-profile messaging, paid evaluation or publication. Source/package validation alone does not establish live activation.
 - Planner's call: Qualified pending/done skills are the collision fallback; no host handler replacement. This is a conversational command with a small deterministic helper, not a new standalone task manager.
@@ -1401,15 +1412,18 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-122-27 — An autowork command: the TUI home, service runners by default, no tmux
 
 - [ ] TOOLSET-122-27 — An autowork command: the TUI home, service runners by default, no tmux
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Scheduling: Wait for reported TOOLSET-172-92 to land before docs/cross-host.md and README.md reconciliation. Its reported managed-checkout recovery does not deliver or authorize the remaining live service migration. Retain this task's already-implemented offline slice, historical acceptance/checks, Next placement and owner go-ahead gate verbatim; do not rerun offline implementation or infer live completion from either candidate. A guide-only split would not make the remaining owner-gated migration runnable, so keep the existing aggregate contract and explicit order.
+- Readiness: offline implementation done (the `autowork` command, TUI browser, log view, pause and per-service models, `tx autowork` removed; owner additions 2026-10-16: pause services and choose each service's model from Pi's list). Remaining: the live move of runner C, runner B and runner A (stopped since 17:22; runner D already runs as a service) waits for the owner.
 - Short: autowork command: TUI home, services
-- Status: open; offline implementation done (the `autowork` command, TUI browser, log view, pause and per-service models, `tx autowork` removed; owner additions 2026-10-16: pause services and choose each service's model from Pi's list). Remaining: the live move of runner C, runner B and runner A (stopped since 17:22; runner D already runs as a service) waits for the owner.
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: owner direction (2026-10-16), [TUI](pi-autowork/pi_autowork/tui.py), [fleet view](pi-autowork/pi_autowork/fleet_view.py), [runner guide](docs/cross-host.md#run-autowork-continuously), [tx](tmux/README.md).
+- Status: open
+- Goal: PI-RUNNER
+- Sources: owner direction (2026-10-16), [TUI](pi-autowork/pi_autowork/tui.py), [fleet view](pi-autowork/pi_autowork/fleet_view.py), [runner guide](docs/cross-host.md#run-autowork-continuously), [tx](tmux/README.md); [accepted continuous runner scope](docs/project.md#continuous-pi-runner-2026-10-15).
 - Touches: pi-autowork/, package.json, tmux/tx, tmux/README.md, tests/test_tx_autowork.py, tests/test_autowork_command.py, README.md, docs/cross-host.md
 - Scope: Owner direction (2026-10-16): "TUI autowork is so cool; we don't need tmux for that; an autowork binary instead; service is the default method; the main autowork UI navigates directories to start services and validates the directory has TODO.md and goals.json; tx autowork not needed, but keep the traditional tx." (1) An `autowork` command (package `bin`, standard-library Python on `fleet_view`, so the logic exists once): bare `autowork` opens the TUI on a terminal (help otherwise); `autowork start [dir]` installs (if needed) and starts the repository's `pi-autowork@<name>` systemd service, idempotently; `stop`, `restart`, `remove [dir]`; `ls [--long]`, `status`, `logs [-f]`; `web [--port] [--host] [--view-only]`; `blockers [dir]` opens `/autowork blockers` in an agent; `run [dir]` runs the runner in the foreground in the current terminal for debugging. A target is a runner name, a path, or `.`. (2) The TUI home: the runner list, plus a directory navigator (start at `~/git`, arrows/Enter to descend, Backspace up) that marks each directory as a Git repository with `TODO.md` and `goals.json` (ready), one missing either (not ready: say which, and how to create goals.json with Docs Sync `goals.py init`), or not a repository; `s` on a ready directory starts its service (with a confirmation), and the new runner appears in the list. Enter on a runner opens a full-screen log view in the TUI instead of attaching tmux. (3) No tmux runners: remove `tx autowork` and the `pi-autowork-<name>` tmux runner and journal-view sessions from `tx`, which stays the traditional alias-based tmux launcher (`tx autowork` prints one line pointing to `autowork` for one release). The owner's four tmux runners (runner C, runner B, runner D, runner A) move to services through `autowork start`, each paused cleanly first (Ctrl+C; workers resume on the same attempt). (4) Docs present the service as the default and `autowork` as the interface (README, cross-host, tmux/README, pi-autowork/README); this replaces the 2026-10-16 "tx/tmux is the default" wording.
 - Acceptance: `autowork` subcommands run against fakes (systemctl, journalctl, a state root) without tmux; `autowork start` on a ready fixture writes the unit and env file through the existing `--install-service` path and is idempotent, and on a directory without TODO.md or goals.json refuses with the missing file named; the headless TUI pilot navigates a fixture tree, shows ready/not-ready marks, starts a service on a ready directory after confirming, and opens a runner's log view; `tx autowork` no longer starts or lists runners and `tx` alias commands are unchanged; no model call anywhere.
 - Checks: `python3 scripts/check.py`; `python3 -m unittest pi-autowork/tests/test_fleet_view.py tests/test_autowork_command.py tests/test_tx_autowork.py`; `shellcheck tmux/tx`.
-- Dependencies: None.
+- Dependencies: TOOLSET-172-92.
 - Context: Coordinate with TOOLSET-121-3d (the project rename to autowork) and TOOLSET-120-fc, whose part 5 this supersedes.
 - Ownership: Toolset coordinator under the owner's request.
 - Owner decision (2026-10-16): Keep this task in Next; align goals.json with TODO.md. Preserve the live-migration authorization gate; this decision starts or migrates no services.
