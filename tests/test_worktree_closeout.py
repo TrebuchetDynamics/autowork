@@ -58,7 +58,7 @@ class WorktreeCloseoutTests(unittest.TestCase):
 
     def test_documented_closeout_command_on_main_and_master(self):
         command = re.findall(r'```sh\n(.*?)```', self.reference(), re.S)[0]
-        command = command.replace('python3 <this-skill-directory>', f'"{sys.executable}" "{ROOT}/skills/autowork"')
+        command = command.replace('python3 <toolset>', f'"{sys.executable}" "{ROOT}"')
         for branch in ('main', 'master'):
             for state in ('merged', 'unmerged', 'dirty', 'ignored', 'locked', 'wrong-target', 'moved-head'):
                 with self.subTest(branch=branch, state=state), tempfile.TemporaryDirectory() as folder:

@@ -1768,8 +1768,9 @@ def retire_closed(args):
         slots = [s for s in state.slots(common) if s['state'] in RETIRABLE]
         if not slots:
             return [], []
-        closed = dispatch.retired(repo, base) | dispatch.removed(repo)
-        doomed = [s for s in slots if s['task_id'] in closed]
+        closed, gone = dispatch.retired(repo, base), dispatch.removed(repo)
+        # A held slot of a deleted task keeps its own path (retry_held sets it aside, not requeued).
+        doomed = [s for s in slots if s['task_id'] in closed or (s['task_id'] in gone and s['state'] != 'held')]
         for slot in doomed:
             if state.worker_live(slot):
                 dispatch.stop(slot.get('worker'), slot.get('worktree'))

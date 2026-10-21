@@ -27,7 +27,7 @@ NAMES = ['cancellation', 'restart_adoption', 'stale_results', 'out_of_order', 'c
 def source_hashes():
     paths = [*Path(__file__).parent.glob('*.py'), *Path(__file__).parent.glob('*.mjs'),
              REPO / 'pi-autowork/pi_autowork/pi_runtime.py',
-             *(REPO / 'skills/autowork/scripts' / f'{name}.py'
+             *(REPO / 'pi-autowork/engine' / f'{name}.py'
                for name in ['parallel_state', 'task_execution'])]
     return {str(p.relative_to(REPO)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(paths)}
 

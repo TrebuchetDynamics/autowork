@@ -99,7 +99,7 @@ review step. Keep Hermes Agent unchanged.
    explicit scoped authorization. Report actual commit/review/integration separately.
    For worktree-backed work, finish [worktree closeout](references/worktree-closeout.md):
    verify integration on the canonical `main` or `master`, then remove the task's
-   worktree with `scripts/worktree_closeout.py CANONICAL --worktree PATH --apply`.
+   worktree with `<toolset>/pi-autowork/engine/worktree_closeout.py CANONICAL --worktree PATH --apply`.
    Every `--apply` task claim also removes earlier integrated, clean, unused
    worktrees and reports the rest under `worktree_cleanup`. Preserve active, dirty,
    unmerged or recovery-bearing worktrees; report integration/cleanup pending.

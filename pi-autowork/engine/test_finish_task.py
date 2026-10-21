@@ -84,7 +84,7 @@ class FinishTaskTests(unittest.TestCase):
     def test_direct_script_cannot_be_routed_to_foreign_repository(self):
         other, env = self.routed_repository()
         before = self.foreign_snapshot(other)
-        result = subprocess.run(['bash', str(Path(__file__).resolve().parents[2] / 'skills/git-commit-push/scripts/agent_commit.sh'),
+        result = subprocess.run(['bash', str(Path(__file__).with_name('agent_commit.sh')),
             str(self.root), 'fixture', 'one', 'Implement task', 'owned'],
             env=env, text=True, capture_output=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -98,7 +98,7 @@ class FinishTaskTests(unittest.TestCase):
         foreign = self.git('commit-tree', self.git('write-tree'), '-p', self.base, '-m', 'Foreign parent')
         self.git('update-ref', 'refs/heads/agent/fixture/inputs', foreign)
         self.index = (self.root / '.git/index').read_bytes()  # write-tree refreshes its cache
-        result = subprocess.run(['bash', str(Path(__file__).resolve().parents[2] / 'skills/git-commit-push/scripts/agent_commit.sh'),
+        result = subprocess.run(['bash', str(Path(__file__).with_name('agent_commit.sh')),
             str(self.root), 'fixture', 'inputs', 'Prepare pinned inputs', 'owned'],
             env={**os.environ, 'AGENT_COMMIT_EXPECTED_BASE': self.base},
             capture_output=True, text=True, timeout=30)
