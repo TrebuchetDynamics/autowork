@@ -266,12 +266,12 @@
       "TOOLSET-295-57",
       "TOOLSET-296-9f",
       "TOOLSET-297-41",
+      "TOOLSET-303-24",
       "TOOLSET-298-c2",
       "TOOLSET-302-33",
       "TOOLSET-299-d9",
       "TOOLSET-300-68",
-      "TOOLSET-301-32",
-      "TOOLSET-303-24"
+      "TOOLSET-301-32"
     ]
   },
   "tasks": [
@@ -316,12 +316,20 @@
       "title": "autowork migrate converts a repository to tasks/ once"
     },
     {
+      "depends_on": [],
+      "goal": "RELIABILITY-2026-10",
+      "id": "TOOLSET-303-24",
+      "section": "Next",
+      "status": "open",
+      "title": "Harden managed-recovery interruption test isolation"
+    },
+    {
       "depends_on": [
         "TOOLSET-297-41"
       ],
       "goal": "TASK-STORE",
       "id": "TOOLSET-298-c2",
-      "section": "Now",
+      "section": "Needs decision",
       "status": "open",
       "title": "The engine reads only tasks/"
     },
@@ -332,7 +340,7 @@
       ],
       "goal": "TASK-STORE",
       "id": "TOOLSET-299-d9",
-      "section": "Now",
+      "section": "Needs decision",
       "status": "open",
       "title": "The runner and the fleet view read only tasks/"
     },
@@ -342,7 +350,7 @@
       ],
       "goal": "TASK-STORE",
       "id": "TOOLSET-300-68",
-      "section": "Now",
+      "section": "Needs decision",
       "status": "open",
       "title": "Closing a task publishes one receipt and status commit exactly once"
     },
@@ -355,7 +363,7 @@
       ],
       "goal": "TASK-STORE",
       "id": "TOOLSET-301-32",
-      "section": "Now",
+      "section": "Needs decision",
       "status": "open",
       "title": "Planning skills use the autowork CLI and this repository converts to tasks/"
     },
@@ -365,17 +373,9 @@
       ],
       "goal": "TASK-STORE",
       "id": "TOOLSET-302-33",
-      "section": "Now",
+      "section": "Needs decision",
       "status": "open",
       "title": "Integration judges task edits by contract hash, not by path"
-    },
-    {
-      "depends_on": [],
-      "goal": "RELIABILITY-2026-10",
-      "id": "TOOLSET-303-24",
-      "section": "Next",
-      "status": "open",
-      "title": "Harden managed-recovery interruption test isolation"
     },
     {
       "depends_on": [],

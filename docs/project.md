@@ -1972,3 +1972,11 @@ converted by their owner, one at a time; this repository converts first, at no c
 with its queue empty.
 
 Implementation: goal TASK-STORE, tasks TOOLSET-294-f6 through TOOLSET-302-33.
+
+Delivery (owner, 2026-10-20): the read-only store, selector, writer and CLI, and the
+converter (TOOLSET-294-f6 to 297-41) land on main one by one; nothing the runner calls
+uses them yet. The cutover tasks (TOOLSET-298-c2, 302-33, 299-d9, 300-68 and 301-32) are
+built on the branch `task-store-v2` by an interactive session and land on main in one
+merge together with this repository's conversion: any one of them alone on main would
+stop every unconverted repository's runner, this one's included. They stay in Needs
+decision so the runner never dispatches them.

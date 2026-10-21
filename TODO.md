@@ -79,91 +79,6 @@ admission or live qualification.
 - Ownership: Toolset coordinator.
 - Exclusions: Does not convert any repository itself and never pushes; no reverse migration.
 
-### TOOLSET-298-c2 — The engine reads only tasks/
-
-- [ ] TOOLSET-298-c2 — The engine reads only tasks/
-- Short: Engine cutover to tasks/
-- Status: open
-- Goal: TASK-STORE
-- Payoff: Remove the second parse of TODO.md and goals.json from selection, dispatch and integration.
-- Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20); [selector](pi-autowork/engine/task_execution.py); [dispatch](pi-autowork/engine/parallel_dispatch.py); [integration](pi-autowork/engine/parallel_integrate.py) (`PLANNING_FILES`, `planning_only`); [claims](pi-autowork/engine/parallel_claims.py); [state](pi-autowork/engine/parallel_state.py); [status](pi-autowork/engine/parallel_status.py); [retry](pi-autowork/engine/retry_selection.py).
-- Evidence: these modules read TODO.md or goals.json directly and detect task changes by file bytes, so a rank edit can invalidate admitted work.
-- Touches: pi-autowork/engine/task_execution.py, pi-autowork/engine/parallel_dispatch.py, pi-autowork/engine/parallel_claims.py, pi-autowork/engine/retry_selection.py, pi-autowork/engine/test_task_execution.py
-- Scope: (1) Selection, dispatch, claims and retry take records from TaskStore at the base commit and use `task_select`; parallel_state and parallel_status follow only where they read the queue. (2) Dispatch admits work against a record's contract hash; a rank or title edit keeps an admitted slot, a contract change sets it aside. (3) Retired, closed and removed tasks are judged by TaskStore at the base revision (`parallel_dispatch`'s closed-on lookup), so a task closed on the base branch is never redispatched from an older session. (4) A repository without `tasks/` stops with "run autowork migrate <repo>" and selects nothing. Engine tests move their fixtures to `tasks/`.
-- Acceptance: a rank or title edit to an admitted task keeps its slot (`test_rank_edit_keeps_admitted_work`); an acceptance edit sets it aside (`test_contract_edit_invalidates_admitted_work`); a task closed at the base revision is not redispatched and an unconverted repo returns the migrate instruction (`test_closed_at_base_is_not_redispatched`, `test_unconverted_repo_names_migrate`).
-- Checks: python3 -m unittest discover -s pi-autowork/engine; python3 scripts/check.py
-- Dependencies: TOOLSET-297-41.
-- Ownership: Toolset coordinator.
-- Exclusions: Integration's change classification is TOOLSET-302-33; the runner service, fleet view and TUI are TOOLSET-299-d9; no fallback reader for TODO.md.
-
-### TOOLSET-302-33 — Integration judges task edits by contract hash, not by path
-
-- [ ] TOOLSET-302-33 — Integration judges task edits by contract hash, not by path
-- Short: Contract-hash change classification
-- Status: open
-- Goal: TASK-STORE
-- Payoff: Stop a clean Git merge from closing a task under acceptance nobody verified.
-- Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20); [integration](pi-autowork/engine/parallel_integrate.py) (`PLANNING_FILES`, `planning_only`, the remerge shortcut, the post-verification contract recheck).
-- Evidence: `planning_only` treats `docs/` and the planning files as safe to remerge without rerunning checks; simply adding `tasks/` there would let an acceptance or check edit ride through as "planning only". File-per-task also allows clean textual merges of one task's acceptance edit and another branch's `status = "done"`.
-- Touches: pi-autowork/engine/parallel_integrate.py, pi-autowork/engine/task_store.py, pi-autowork/engine/test_parallel_integrate.py
-- Scope: (1) Classify a `tasks/` change by comparing records at base, incoming and current: rank, title, short, notes, Now/Next and an unrelated new task are bookkeeping; a contract-hash change to the task being integrated (acceptance, checks, dependencies, Touches, authority fields, Needs decision, superseded) requires revalidation or a hold. (2) `done` survives a merge only if the contract hash equals the one that was verified; otherwise the task returns to open with the reason. (3) BLOCKERS.md and TODO.archive.md stay path-classified planning files.
-- Acceptance: `test_rank_edit_on_base_keeps_the_remerge_shortcut`, `test_acceptance_edit_on_base_requires_revalidation` and `test_done_with_a_changed_contract_is_reopened` pass.
-- Checks: python3 -m unittest discover -s pi-autowork/engine -p test_parallel_integrate.py; python3 scripts/check.py
-- Dependencies: TOOLSET-298-c2.
-- Ownership: Toolset coordinator.
-- Exclusions: No distributed leases; one integration coordinator per repository.
-
-### TOOLSET-299-d9 — The runner and the fleet view read only tasks/
-
-- [ ] TOOLSET-299-d9 — The runner and the fleet view read only tasks/
-- Short: Runner and fleet view cutover
-- Status: open
-- Goal: TASK-STORE
-- Payoff: Keep the runner, readiness checks and the TUI consistent with the engine's single store.
-- Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20); [coordinator](pi-autowork/pi_autowork/coordinator.py) (plan-file change detection); [worker](pi-autowork/pi_autowork/worker.py) (`PLANNING_FILES`); [maintainer](pi-autowork/pi_autowork/maintainer.py); [fleet view](pi-autowork/pi_autowork/fleet_view.py) (`REQUIRED`); [questions](pi-autowork/pi_autowork/questions.py); [TUI](pi-autowork/pi_autowork/tui.py); [Touches inference](pi-autowork/pi_autowork/touches_inference.py); [service](pi-autowork/pi_autowork/service.py).
-- Evidence: these modules name TODO.md and goals.json for readiness, planning-only detection, plan-change wakeups and task counts.
-- Touches: pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/worker.py, pi-autowork/pi_autowork/maintainer.py, pi-autowork/pi_autowork/fleet_view.py, pi-autowork/pi_autowork/questions.py, pi-autowork/pi_autowork/tui.py, pi-autowork/pi_autowork/touches_inference.py, pi-autowork/pi_autowork/service.py, pi-autowork/pi_autowork/command.py, tests/
-- Scope: (1) Readiness requires `tasks/`; an unconverted repository shows "run autowork migrate" in `autowork status` and the TUI and its runner idles at zero tokens. (2) Plan-change wakeups use a task-tree signature (the `tasks/` tree hash at HEAD plus `git status` of `tasks/`), not file or directory mtimes, since editing a nested file need not change its directory's timestamp. Worker and maintainer planning-only checks follow TOOLSET-302-33's classification. (3) Task counts, statuses and questions come from TaskStore; the TUI shows pending uncommitted task edits as pending. (4) The docs maintainer writes through the TaskStore writer.
-- Acceptance: tests cover: an unconverted repo reports the migrate instruction and starts no worker (`test_unconverted_repo_idles_with_migrate_hint`); an in-place edit of an existing task file wakes the coordinator (`test_nested_task_edit_wakes_coordinator`); fleet view counts match TaskStore on a fixture (`test_fleet_counts_match_store`).
-- Checks: python3 -m unittest discover -s tests; python3 scripts/check.py
-- Dependencies: TOOLSET-298-c2, TOOLSET-302-33.
-- Ownership: Toolset coordinator.
-- Exclusions: No change to which fleet repositories run; converting them is the owner's step.
-
-### TOOLSET-300-68 — Closing a task publishes one receipt and status commit exactly once
-
-- [ ] TOOLSET-300-68 — Closing a task publishes one receipt and status commit exactly once
-- Short: Idempotent closure receipts
-- Status: open
-- Goal: TASK-STORE
-- Payoff: Make closure replay-safe, so a crash or retry never double-closes or loses a receipt.
-- Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20); [closure](pi-autowork/engine/finish_task.py); [integration journal](pi-autowork/engine/parallel_integrate.py); [check receipts](pi-autowork/engine/check_receipt.py).
-- Evidence: closure currently edits TODO.md, goals.json and the archive in separate writes; the decision requires one bookkeeping-only commit holding status and a sanitized receipt.
-- Touches: pi-autowork/engine/finish_task.py, pi-autowork/engine/parallel_integrate.py, pi-autowork/engine/task_store.py, pi-autowork/engine/test_finish_task.py, pi-autowork/engine/test_parallel_integrate.py
-- Scope: (1) Closure writes `status = "done"` plus `tasks/evidence/<ID>.toml` (check commands, results, commit, review, no private paths or names) in one commit through the existing journal. (2) Replaying a closure whose commit already exists is a no-op; a crash between journal steps resumes to exactly one commit. (3) Receipts are sanitized by the same rules as the public changelog. (4) The receipt names the exact candidate commit and tree that passed verification; the closure commit may change only that task's file and its receipt, and delivery to the default branch is recorded separately from closure.
-- Acceptance: `test_closure_is_one_commit`, `test_replayed_closure_is_a_noop`, `test_crash_mid_closure_resumes_once` and `test_receipt_has_no_private_paths` pass.
-- Checks: python3 -m unittest discover -s pi-autowork/engine -p test_finish_task.py; python3 -m unittest discover -s pi-autowork/engine -p test_parallel_integrate.py; python3 scripts/check.py
-- Dependencies: TOOLSET-302-33.
-- Ownership: Toolset coordinator.
-- Exclusions: TODO.archive.md is not written by closure on a converted repository.
-
-### TOOLSET-301-32 — Planning skills use the autowork CLI and this repository converts to tasks/
-
-- [ ] TOOLSET-301-32 — Planning skills use the autowork CLI and this repository converts to tasks/
-- Short: Skills, docs and this repo's conversion
-- Status: open
-- Goal: TASK-STORE
-- Payoff: Finish the cut: skills and docs describe one store, and this repository runs on it.
-- Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20); [Autowork skill](skills/autowork/SKILL.md); [Docs Sync](skills/docs-sync/SKILL.md); [Plan For Me](skills/plan-for-me/SKILL.md); [Blockers](skills/blockers/SKILL.md); [TODO rules](skills/shared/TODO-WORKCENTER.md).
-- Evidence: the skills tell agents to edit TODO.md and run goals.py; after the cutover those files are no longer read on converted repositories.
-- Touches: skills/autowork/, skills/docs-sync/, skills/plan-for-me/, skills/blockers/, skills/shared/TODO-WORKCENTER.md, docs/, README.md, tasks/
-- Scope: (1) Skills and docs name `autowork tasks ...` for every task edit and drop goals.py instructions; goals.py's task-editing commands are removed (clean cut). (2) Run `autowork migrate` on this repository and commit the result. (3) Qualify on a disposable fixture repository: a runner converts nothing on its own, refuses before migration, and after migration selects, runs and closes one task with one receipt commit.
-- Acceptance: skill tests pass with the new wording; this repository's `autowork tasks validate .` passes and `autowork tasks list .` shows the remaining TASK-STORE work; the fixture qualification (`tests/test_task_store_qualification.py`) records its commands and results (offline, not a live fleet claim).
-- Checks: python3 scripts/check.py; autowork tasks validate .
-- Dependencies: TOOLSET-297-41, TOOLSET-299-d9, TOOLSET-300-68, TOOLSET-302-33.
-- Ownership: Toolset coordinator.
-- Exclusions: No conversion of fleet repositories; their owner runs `autowork migrate` one at a time.
-
 ## Next
 
 ### TOOLSET-303-24 — Harden managed-recovery interruption test isolation
@@ -186,6 +101,96 @@ admission or live qualification.
 - Dependencies: None.
 
 ## Needs decision
+
+### TOOLSET-298-c2 — The engine reads only tasks/
+
+- [ ] TOOLSET-298-c2 — The engine reads only tasks/
+- Owner decision: 2026-10-20: built on branch task-store-v2 by an interactive session, never by the runner; it lands on main only inside TOOLSET-301-32's single merge with this repository's conversion, because any one cutover task on main stops every unconverted repository's runner, this one's included
+- Short: Engine cutover to tasks/
+- Status: open
+- Goal: TASK-STORE
+- Payoff: Remove the second parse of TODO.md and goals.json from selection, dispatch and integration.
+- Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20); [selector](pi-autowork/engine/task_execution.py); [dispatch](pi-autowork/engine/parallel_dispatch.py); [integration](pi-autowork/engine/parallel_integrate.py) (`PLANNING_FILES`, `planning_only`); [claims](pi-autowork/engine/parallel_claims.py); [state](pi-autowork/engine/parallel_state.py); [status](pi-autowork/engine/parallel_status.py); [retry](pi-autowork/engine/retry_selection.py).
+- Evidence: these modules read TODO.md or goals.json directly and detect task changes by file bytes, so a rank edit can invalidate admitted work.
+- Touches: pi-autowork/engine/task_execution.py, pi-autowork/engine/parallel_dispatch.py, pi-autowork/engine/parallel_claims.py, pi-autowork/engine/retry_selection.py, pi-autowork/engine/test_task_execution.py
+- Scope: (1) Selection, dispatch, claims and retry take records from TaskStore at the base commit and use `task_select`; parallel_state and parallel_status follow only where they read the queue. (2) Dispatch admits work against a record's contract hash; a rank or title edit keeps an admitted slot, a contract change sets it aside. (3) Retired, closed and removed tasks are judged by TaskStore at the base revision (`parallel_dispatch`'s closed-on lookup), so a task closed on the base branch is never redispatched from an older session. (4) A repository without `tasks/` stops with "run autowork migrate <repo>" and selects nothing. Engine tests move their fixtures to `tasks/`.
+- Acceptance: a rank or title edit to an admitted task keeps its slot (`test_rank_edit_keeps_admitted_work`); an acceptance edit sets it aside (`test_contract_edit_invalidates_admitted_work`); a task closed at the base revision is not redispatched and an unconverted repo returns the migrate instruction (`test_closed_at_base_is_not_redispatched`, `test_unconverted_repo_names_migrate`).
+- Checks: python3 -m unittest discover -s pi-autowork/engine; python3 scripts/check.py
+- Dependencies: TOOLSET-297-41.
+- Ownership: Toolset coordinator.
+- Exclusions: Integration's change classification is TOOLSET-302-33; the runner service, fleet view and TUI are TOOLSET-299-d9; no fallback reader for TODO.md.
+
+### TOOLSET-302-33 — Integration judges task edits by contract hash, not by path
+
+- [ ] TOOLSET-302-33 — Integration judges task edits by contract hash, not by path
+- Owner decision: 2026-10-20: built on branch task-store-v2 by an interactive session, never by the runner; it lands on main only inside TOOLSET-301-32's single merge with this repository's conversion, because any one cutover task on main stops every unconverted repository's runner, this one's included
+- Short: Contract-hash change classification
+- Status: open
+- Goal: TASK-STORE
+- Payoff: Stop a clean Git merge from closing a task under acceptance nobody verified.
+- Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20); [integration](pi-autowork/engine/parallel_integrate.py) (`PLANNING_FILES`, `planning_only`, the remerge shortcut, the post-verification contract recheck).
+- Evidence: `planning_only` treats `docs/` and the planning files as safe to remerge without rerunning checks; simply adding `tasks/` there would let an acceptance or check edit ride through as "planning only". File-per-task also allows clean textual merges of one task's acceptance edit and another branch's `status = "done"`.
+- Touches: pi-autowork/engine/parallel_integrate.py, pi-autowork/engine/task_store.py, pi-autowork/engine/test_parallel_integrate.py
+- Scope: (1) Classify a `tasks/` change by comparing records at base, incoming and current: rank, title, short, notes, Now/Next and an unrelated new task are bookkeeping; a contract-hash change to the task being integrated (acceptance, checks, dependencies, Touches, authority fields, Needs decision, superseded) requires revalidation or a hold. (2) `done` survives a merge only if the contract hash equals the one that was verified; otherwise the task returns to open with the reason. (3) BLOCKERS.md and TODO.archive.md stay path-classified planning files.
+- Acceptance: `test_rank_edit_on_base_keeps_the_remerge_shortcut`, `test_acceptance_edit_on_base_requires_revalidation` and `test_done_with_a_changed_contract_is_reopened` pass.
+- Checks: python3 -m unittest discover -s pi-autowork/engine -p test_parallel_integrate.py; python3 scripts/check.py
+- Dependencies: TOOLSET-298-c2.
+- Ownership: Toolset coordinator.
+- Exclusions: No distributed leases; one integration coordinator per repository.
+
+### TOOLSET-299-d9 — The runner and the fleet view read only tasks/
+
+- [ ] TOOLSET-299-d9 — The runner and the fleet view read only tasks/
+- Owner decision: 2026-10-20: built on branch task-store-v2 by an interactive session, never by the runner; it lands on main only inside TOOLSET-301-32's single merge with this repository's conversion, because any one cutover task on main stops every unconverted repository's runner, this one's included
+- Short: Runner and fleet view cutover
+- Status: open
+- Goal: TASK-STORE
+- Payoff: Keep the runner, readiness checks and the TUI consistent with the engine's single store.
+- Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20); [coordinator](pi-autowork/pi_autowork/coordinator.py) (plan-file change detection); [worker](pi-autowork/pi_autowork/worker.py) (`PLANNING_FILES`); [maintainer](pi-autowork/pi_autowork/maintainer.py); [fleet view](pi-autowork/pi_autowork/fleet_view.py) (`REQUIRED`); [questions](pi-autowork/pi_autowork/questions.py); [TUI](pi-autowork/pi_autowork/tui.py); [Touches inference](pi-autowork/pi_autowork/touches_inference.py); [service](pi-autowork/pi_autowork/service.py).
+- Evidence: these modules name TODO.md and goals.json for readiness, planning-only detection, plan-change wakeups and task counts.
+- Touches: pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/worker.py, pi-autowork/pi_autowork/maintainer.py, pi-autowork/pi_autowork/fleet_view.py, pi-autowork/pi_autowork/questions.py, pi-autowork/pi_autowork/tui.py, pi-autowork/pi_autowork/touches_inference.py, pi-autowork/pi_autowork/service.py, pi-autowork/pi_autowork/command.py, tests/
+- Scope: (1) Readiness requires `tasks/`; an unconverted repository shows "run autowork migrate" in `autowork status` and the TUI and its runner idles at zero tokens. (2) Plan-change wakeups use a task-tree signature (the `tasks/` tree hash at HEAD plus `git status` of `tasks/`), not file or directory mtimes, since editing a nested file need not change its directory's timestamp. Worker and maintainer planning-only checks follow TOOLSET-302-33's classification. (3) Task counts, statuses and questions come from TaskStore; the TUI shows pending uncommitted task edits as pending. (4) The docs maintainer writes through the TaskStore writer.
+- Acceptance: tests cover: an unconverted repo reports the migrate instruction and starts no worker (`test_unconverted_repo_idles_with_migrate_hint`); an in-place edit of an existing task file wakes the coordinator (`test_nested_task_edit_wakes_coordinator`); fleet view counts match TaskStore on a fixture (`test_fleet_counts_match_store`).
+- Checks: python3 -m unittest discover -s tests; python3 scripts/check.py
+- Dependencies: TOOLSET-298-c2, TOOLSET-302-33.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to which fleet repositories run; converting them is the owner's step.
+
+### TOOLSET-300-68 — Closing a task publishes one receipt and status commit exactly once
+
+- [ ] TOOLSET-300-68 — Closing a task publishes one receipt and status commit exactly once
+- Owner decision: 2026-10-20: built on branch task-store-v2 by an interactive session, never by the runner; it lands on main only inside TOOLSET-301-32's single merge with this repository's conversion, because any one cutover task on main stops every unconverted repository's runner, this one's included
+- Short: Idempotent closure receipts
+- Status: open
+- Goal: TASK-STORE
+- Payoff: Make closure replay-safe, so a crash or retry never double-closes or loses a receipt.
+- Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20); [closure](pi-autowork/engine/finish_task.py); [integration journal](pi-autowork/engine/parallel_integrate.py); [check receipts](pi-autowork/engine/check_receipt.py).
+- Evidence: closure currently edits TODO.md, goals.json and the archive in separate writes; the decision requires one bookkeeping-only commit holding status and a sanitized receipt.
+- Touches: pi-autowork/engine/finish_task.py, pi-autowork/engine/parallel_integrate.py, pi-autowork/engine/task_store.py, pi-autowork/engine/test_finish_task.py, pi-autowork/engine/test_parallel_integrate.py
+- Scope: (1) Closure writes `status = "done"` plus `tasks/evidence/<ID>.toml` (check commands, results, commit, review, no private paths or names) in one commit through the existing journal. (2) Replaying a closure whose commit already exists is a no-op; a crash between journal steps resumes to exactly one commit. (3) Receipts are sanitized by the same rules as the public changelog. (4) The receipt names the exact candidate commit and tree that passed verification; the closure commit may change only that task's file and its receipt, and delivery to the default branch is recorded separately from closure.
+- Acceptance: `test_closure_is_one_commit`, `test_replayed_closure_is_a_noop`, `test_crash_mid_closure_resumes_once` and `test_receipt_has_no_private_paths` pass.
+- Checks: python3 -m unittest discover -s pi-autowork/engine -p test_finish_task.py; python3 -m unittest discover -s pi-autowork/engine -p test_parallel_integrate.py; python3 scripts/check.py
+- Dependencies: TOOLSET-302-33.
+- Ownership: Toolset coordinator.
+- Exclusions: TODO.archive.md is not written by closure on a converted repository.
+
+### TOOLSET-301-32 — Planning skills use the autowork CLI and this repository converts to tasks/
+
+- [ ] TOOLSET-301-32 — Planning skills use the autowork CLI and this repository converts to tasks/
+- Owner decision: 2026-10-20: built on branch task-store-v2 by an interactive session, never by the runner; it lands on main only inside TOOLSET-301-32's single merge with this repository's conversion, because any one cutover task on main stops every unconverted repository's runner, this one's included
+- Short: Skills, docs and this repo's conversion
+- Status: open
+- Goal: TASK-STORE
+- Payoff: Finish the cut: skills and docs describe one store, and this repository runs on it.
+- Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20); [Autowork skill](skills/autowork/SKILL.md); [Docs Sync](skills/docs-sync/SKILL.md); [Plan For Me](skills/plan-for-me/SKILL.md); [Blockers](skills/blockers/SKILL.md); [TODO rules](skills/shared/TODO-WORKCENTER.md).
+- Evidence: the skills tell agents to edit TODO.md and run goals.py; after the cutover those files are no longer read on converted repositories.
+- Touches: skills/autowork/, skills/docs-sync/, skills/plan-for-me/, skills/blockers/, skills/shared/TODO-WORKCENTER.md, docs/, README.md, tasks/
+- Scope: (1) Skills and docs name `autowork tasks ...` for every task edit and drop goals.py instructions; goals.py's task-editing commands are removed (clean cut). (2) Run `autowork migrate` on this repository and commit the result. (3) Qualify on a disposable fixture repository: a runner converts nothing on its own, refuses before migration, and after migration selects, runs and closes one task with one receipt commit.
+- Acceptance: skill tests pass with the new wording; this repository's `autowork tasks validate .` passes and `autowork tasks list .` shows the remaining TASK-STORE work; the fixture qualification (`tests/test_task_store_qualification.py`) records its commands and results (offline, not a live fleet claim).
+- Checks: python3 scripts/check.py; autowork tasks validate .
+- Dependencies: TOOLSET-297-41, TOOLSET-299-d9, TOOLSET-300-68, TOOLSET-302-33.
+- Ownership: Toolset coordinator.
+- Exclusions: No conversion of fleet repositories; their owner runs `autowork migrate` one at a time.
 
 ## Goal coverage
 
