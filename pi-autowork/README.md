@@ -77,20 +77,29 @@ or tmux intercepts selection. The browser view retains mouse controls.
 The main-check line in runner status and the TUI reads the current check receipt,
 not just the runner's cached health snapshot. A missing process or a reused PID
 (with different process start ticks) reads `main check interrupted`, even if the
-runner stopped before recording a result. A live check past its execution budget
-reads `past timeout`; waiting for a check slot does not consume that budget. New
-slot receipts carry the command's configured timeout; older receipts fall back to
-3600 seconds. A check of an older revision reads `superseded by main at REV`.
-These are read-only status warnings, not a passing check, cancellation or restart.
+runner stopped before recording a result. A process without recorded start ticks
+cannot be verified live and also reads `interrupted`. A verified live check reads
+`running`; one queued for admission reads `waiting for a check slot`. A live check
+past its execution budget reads `overdue` and `past timeout`; waiting does not
+consume that budget. New slot receipts carry the command's configured timeout;
+older receipts fall back to 3600 seconds. Each line names the checked revision;
+a check of an older revision also reads `superseded by main at REV`.
+A green result reads `main check passed at REV` for that revision only. If HEAD
+has advanced, it reads `Last green: OLD · HEAD: NEW · verification pending`.
+These are read-only displays: rendering never signals, cancels or restarts a check.
 
 A task someone works on outside the runner carries a `Held by:` note
 (`autowork tasks hold TASK --by WHO [--until DATE]`); the runner never starts it and asks
 nothing about it. `autowork tasks release TASK` lifts the hold; a dated hold ends by itself.
 
-The fleet lists runners with open owner questions or missing `tasks/` setup first,
+The fleet lists runners with open owner questions or task-store setup/repair first,
 then other runners; each group is alphabetical. An idle runner with open questions
-reads `Waiting on you`, not `Idle`. An existing repository without `tasks/` reads
-`Setup required — run autowork migrate` in its headline and Needs field.
+reads `Waiting on you`, not `Idle`. The headline and Needs field follow the
+read-only `autowork tasks prepare --check` result: no store reads
+`Setup required — run /docs_sync`; a legacy TODO.md + goals.json
+queue reads `Migration required — run /docs_sync`; an invalid store or interrupted
+conversion reads `Task store needs repair`. Docs Sync prepares and reconciles the
+store; `autowork migrate` remains available as direct CLI conversion recovery.
 
 The TUI and web view run Textual 8.2.8 (and textual-serve 1.1.3) through `uv`.
 

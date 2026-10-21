@@ -496,7 +496,7 @@ def status_view(repo, base, toolset, state):
             line += '; blocked by ' + '; '.join(
                 f"{' '.join(str(r['id']).split())[:60]} ({r['kind']}, holds {r['blocks']})" for r in roots)
         print(line)
-        checked = main_check.line(main_check.read(state, repo, base) or record.get('main_check') or {})
+        checked = main_check.line(main_check.read(state, repo, base, fallback=record.get('main_check')))
         if checked:
             print(f'Main:       {checked}')
         run = record.get('maintainer') or {}

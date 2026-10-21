@@ -500,18 +500,33 @@ class MainCheckTests(unittest.TestCase):
                 ({'state': 'waiting', 'ahead': 1}, False),
                 ({'state': 'finished'}, False)):
             with self.subTest(progress=progress):
-                text = main_check.line(dict(record, check_slot=progress), now=3601)
+                with patch.object(os, 'kill', side_effect=AssertionError('render sent a signal')), \
+                        patch.object(os, 'killpg', side_effect=AssertionError('render sent a group signal')):
+                    text = main_check.line(dict(record, check_slot=progress), now=3601)
+                self.assertEqual('overdue' in text, overdue, text)
                 self.assertEqual('past timeout' in text, overdue, text)
 
     def test_the_status_line(self):
         self.assertEqual(main_check.line({'state': 'red', 'rev': 'abcdef123', 'failures': ['a', 'b']}),
                          'main red since abcdef1: 2 failing')
-        self.assertEqual(main_check.line({'state': 'green', 'rev': 'abcdef123'}), 'main green at abcdef1')
-        self.assertEqual(main_check.line({'state': 'green', 'rev': 'abcdef123', 'flaky': ['a']}),
-                         'main green at abcdef1 (1 flaky)')
-        self.assertEqual(main_check.line({'state': 'running', 'rev': 'abcdef123', 'started': 0,
-                                          'pid': os.getpid(), 'start_time': main_check.start_time(os.getpid())}, now=600),
-                         'main check running on abcdef1 (10m)')
+        running = dict(state='running', rev='abcdef123', started=0,
+                       pid=os.getpid(), start_time=main_check.start_time(os.getpid()))
+        for record, want in (
+                (running, 'main check running on abcdef1 (10m)'),
+                (dict(running, check_slot={'state': 'waiting', 'ahead': 2}),
+                 'main check waiting for a check slot, 2 ahead on abcdef1'),
+                (dict(running, start_time='wrong-process'), 'main check interrupted on abcdef1'),
+                (dict(running, start_time=None), 'main check interrupted on abcdef1'),
+                (dict(running, check_slot={'state': 'running', 'started': 0, 'timeout': 60}),
+                 'main check overdue on abcdef1 (10m); past timeout'),
+                (dict(running, main_head='123456789'),
+                 'main check running on abcdef1 (10m); superseded by main at 1234567'),
+                ({'state': 'green', 'rev': 'abcdef123', 'main_head': 'abcdef123'},
+                 'main check passed at abcdef1'),
+                ({'state': 'green', 'rev': 'abcdef123', 'flaky': ['a']},
+                 'main check passed at abcdef1 (1 flaky)')):
+            with self.subTest(record=record):
+                self.assertEqual(main_check.line(record, now=600), want)
         self.assertEqual(main_check.line({}), '')
         self.assertEqual(main_check.command({'PI_AUTOWORK_MAIN_CHECK': ' python3 scripts/check.py '}),
                          'python3 scripts/check.py')
