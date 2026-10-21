@@ -62,6 +62,8 @@ Goal fields are all mandatory: `id`, `title`, `source` are nonempty strings;
 (an unknown ID is refused). The reader preserves declared goal status; it does
 not infer goal completion or qualify evidence.
 
+A later task can explicitly attribute a regression with the body note `- Regression of: <ID>; commit <sha>; severity low|medium|high; found by owner|check`, where `<sha>` is the original task receipt's full integration SHA and discovery is the note's first commit, never file overlap.
+
 ## Authority and runnable boundary
 
 `Kind`, `Ownership` and `LiveAuthorization` are enums. Missing kind/ownership map
