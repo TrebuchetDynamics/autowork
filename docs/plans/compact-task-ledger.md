@@ -1,6 +1,6 @@
 # Compact task ledger
 
-Status: Accepted
+Status: Superseded by [Task Store v2](../project.md#task-store-v2-2026-10-20) (2026-10-20)
 
 The owner requests a plan for smaller `TODO.md`, `TODO.archive.md` and `goals.json`,
 with detailed per-task files as a candidate, and authorizes auditing this repository.
