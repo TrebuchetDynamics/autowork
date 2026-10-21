@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-323-c7"
 title = "The stuck-command test decides waiting vs running from injected state, not wall time"
 short = "Stuck-command timing flake"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 19000
@@ -16,5 +16,7 @@ scope = "pi-autowork/engine/test_parallel_dispatch.py DispatchTests.test_slot_wa
 acceptance = ["tests cover: the stuck-vs-waiting decision comes from an injected clock and slot state, never wall time or host load; the test passes 50 repeated runs under parallel load (for example beside a full check); no assertion is weakened."]
 checks = ["python3 scripts/check.py pi-autowork/engine/test_parallel_dispatch.py; python3 scripts/check.py"]
 exclusions = []
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-323-c7.toml"
 +++
 
