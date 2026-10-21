@@ -376,14 +376,15 @@ class RestartOutcomeTests(unittest.TestCase):
         self.assertEqual(json.loads((self.state / 'latest.json').read_text())['gateway_restart'], 'restart_failed')
 
     def test_a_draining_restart_is_not_finished_yet(self):
-        drain = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)', 'gateway', 'restart'])
-        self.addCleanup(drain.wait)
-        self.addCleanup(drain.kill)
-        self.scenario(os.getpid())
+        self.scenario(200)
         marker = json.loads((self.state / 'restart.json').read_text())
-        marker['pid'] = drain.pid
+        marker['pid'] = 4242
         (self.state / 'restart.json').write_text(json.dumps(marker))
-        self.assertIsNone(self.mod.finish_restart(self.root, self.state))
+        # Inject process observations: a just-spawned child's argv can precede exec.
+        processes = {4242: [b'hermes', b'gateway', b'restart']}
+        with patch.object(self.mod, '_process_argv', side_effect=processes.__getitem__), \
+             patch.object(self.mod, 'gateway_pid', side_effect=AssertionError('draining must not inspect the gateway')):
+            self.assertIsNone(self.mod.finish_restart(self.root, self.state))
         self.assertEqual(json.loads((self.state / 'latest.json').read_text())['gateway_restart'], 'requested')
 
     def test_receipt_of_an_uncovered_update_is_left_alone(self):

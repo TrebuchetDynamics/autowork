@@ -105,6 +105,21 @@ successful read clears the failure episode without resetting an unchanged state'
 stall clock. In `autowork status`, an unavailable Health line shows when reads
 began failing, not when the previous healthy or blocked state began.
 
+## Session merge recovery
+
+Before merging main, the coordinator tries to commit edits left in its own session.
+If Git refuses a bookkeeping commit, the warning includes Git's output (including
+hook diagnostics). When all staged paths are runner bookkeeping (`BLOCKERS.md`,
+task-store files or frozen history), it unstages those paths without changing their
+working contents so unrelated main fixes can merge. The edits stay in the session
+for a later commit; they are not landed uncommitted. A refused work commit still
+holds the landing. Repository hooks are never disabled for this recovery.
+
+A merge refusal without unmerged paths is reported as `Merge pending` with Git's
+message, not as an unknown-file conflict. Only actual unmerged paths trigger the
+Pi conflict resolver. Overlapping uncommitted bookkeeping can still prevent the
+merge; its contents and session worktree are kept for retry.
+
 ## Isolated runtime comparison
 
 The [TOOLSET-117-cb spike](spikes/runtime-comparison/README.md) compares the current
