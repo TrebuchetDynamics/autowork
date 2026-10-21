@@ -85,6 +85,7 @@
         "TOOLSET-002",
         "TOOLSET-024",
         "TOOLSET-135-16",
+        "TOOLSET-135-16-LIVE",
         "TOOLSET-136-0b",
         "TOOLSET-137-cd",
         "TOOLSET-142-85",
@@ -889,12 +890,10 @@
       "TOOLSET-131-ac",
       "TOOLSET-132-af",
       "TOOLSET-127-8f",
-      "TOOLSET-125-e6",
       "TOOLSET-126-6b",
       "TOOLSET-127-b1",
       "TOOLSET-128-69",
       "TOOLSET-134-ab",
-      "TOOLSET-135-16",
       "TOOLSET-136-0b",
       "TOOLSET-137-cd",
       "TOOLSET-143-62",
@@ -919,7 +918,8 @@
       "TOOLSET-215-91",
       "TOOLSET-146-bc-LIVE",
       "TOOLSET-117-cb-LIVE",
-      "TOOLSET-172-92-LIVE"
+      "TOOLSET-172-92-LIVE",
+      "TOOLSET-135-16-LIVE"
     ]
   },
   "tasks": [
@@ -1359,14 +1359,6 @@
       "title": "Expose test-optimization-suite across supported hosts"
     },
     {
-      "depends_on": [],
-      "goal": "BACKLOG",
-      "id": "TOOLSET-135-16",
-      "section": "Next",
-      "status": "open",
-      "title": "Keep bulk planning within its artifact and execution boundaries"
-    },
-    {
       "depends_on": [
         "TOOLSET-135-16"
       ],
@@ -1796,6 +1788,16 @@
       "section": "Needs decision",
       "status": "open",
       "title": "Qualify landing, push and worktree placement on the live fleet"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-135-16"
+      ],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-135-16-LIVE",
+      "section": "Needs decision",
+      "status": "open",
+      "title": "Live checks for TOOLSET-135-16"
     },
     {
       "depends_on": [
@@ -2677,6 +2679,14 @@
       "section": "Done",
       "status": "done",
       "title": "Define minimum-sufficient regression protection and test budgets"
+    },
+    {
+      "depends_on": [],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-135-16",
+      "section": "Done",
+      "status": "done",
+      "title": "Keep bulk planning within its artifact and execution boundaries"
     },
     {
       "depends_on": [],

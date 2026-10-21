@@ -5384,3 +5384,26 @@ Source section: Next
 - Dependencies: None.
 - Ownership: Toolset coordinator; one writer per affected workspace.
 - Exclusions: No live/model runs, new test framework/dependency, publication, hidden test skips, weakened safety cases or changes outside the named batch.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-135-16"></a>
+
+### TOOLSET-135-16 — Keep bulk planning within its artifact and execution boundaries
+
+- [x] TOOLSET-135-16 — Keep bulk planning within its artifact and execution boundaries
+- Short: Keep bulk planning within its bounds
+- Status: done
+- Goal: BACKLOG — Produce a usable repository backlog for Autowork.
+- Sources: [accepted planning handoff plan](docs/workflows.md#planning-only-bulk-handoff-and-skill-recommendations), [shared planning method](skills/shared/RESEARCH-PLAN.md), [handoff contract](skills/shared/PLAN-HANDOFF.md).
+- Touches: skills/plan-for-me/SKILL.md, skills/plan-with-me/SKILL.md, adapters/skills/plan-for-me/SKILL.md, adapters/skills/plan-with-me/SKILL.md, skills/shared/RESEARCH-PLAN.md, skills/shared/PLAN-HANDOFF.md, skills/shared/PLANNING-CRAFT.md, __init__.py, adapters/pi.mjs, tests/test_workflow_commands.py, tests/test_portable_package.py, tests/portable_pi.test.mjs, tests/fixtures/planning/, docs/workflows.md
+- Skills: None beyond the applicable planning/skill-maintenance workflow; do not load unrelated methods.
+- Scope: Make all planner routes load one unambiguous planning artifact/authority contract and produce the full requested batch. Explicit standalone planning narrows the current request despite earlier unrelated implementation authority; an Autowork-owned planning substep returns to its same coordinator. Classify writes by artifact role, including executable Markdown skills. Preserve no-write scopes. Keep complete TODO task bodies, real dependencies, bounded Touches and independent ready lanes; do not start execution when the first task becomes clear. Add the scoped Skills convention reference for later handoff without a new required field. Fix wrapper inconsistencies where inspection demonstrates them; do not claim a hard tool sandbox where the host supplies only instructions.
+- Acceptance: Native/portable/compatibility routes preserve request and mode. Disposable behavioral runs for easy fix, bulk request, old unrelated implementation authorization, supporting skill urging coding, questions-only and explicit later execution distinguish their allowed actions. Planning modifies only authorized docs/queue artifacts, represents every requested outcome and leaves unresolved choices scoped. Autowork-owned planning returns without competing workers. Evaluate actual loaded source and tool/change traces; command registration alone cannot close behavior acceptance.
+- Checks: python3 -m unittest discover -s tests -p test_workflow_commands.py; python3 -m unittest discover -s tests -p test_portable_package.py; node --test tests/portable_pi.test.mjs; bounded planning behavioral scenarios from the source plan (new, unrun); git diff --check. Use existing fixture cases, no rule-per-phrase tests.
+- Dependencies: None.
+- Ownership: Toolset coordinator; preserve active worker contracts and unrelated planning batches.
+- Exclusions: No implementation in consumer repositories during planning, automatic plugin installation, external execution, paid evaluation, CI weakening, scheduler/service changes, publication, or new mandatory task schema. No dispatch from this planning invocation.
