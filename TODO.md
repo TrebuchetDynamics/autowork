@@ -110,6 +110,24 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No test rewrites, deletions or new assertions; tests that need changing are reported, not changed.
 - Planner's call: after TOOLSET-291-ae, which changes this module's patch targets, and the Now tasks still editing it (2026-10-20: 269-f2 and 273-e0 have landed); the shared-file rule also holds it until unlanded commits naming the module land. Plan lint: the `tests/test_pi_autowork_*.py` glob is a serial path on purpose, and Acceptance is test-ID parity rather than a new test.
 
+### TOOLSET-301-d1 — A worker's commit runs the tests that import what it changed before it reports
+
+- [ ] TOOLSET-301-d1 — A worker's commit runs the tests that import what it changed before it reports
+- Short: Workers run affected tests first
+- Status: open
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [worker](pi-autowork/pi_autowork/worker.py) (`worker`: one Pi job, then the APPROVAL resume when it asked instead of implementing; `imported_files`, the transitive import index the batch blame already uses).
+- Evidence (2026-10-20): three commits passed their own Checks and broke tests elsewhere, found only by the full check at integration after hours in the queue: TOOLSET-126-02 (`test_maintainer`, a fixture without `base`), TOOLSET-230-bf (newer `test_maintainer` fixtures without `integ_branch`) and TOOLSET-274-f0 (`require_repository()` in `maintain()`: seven errors across `test_maintainer`, `test_main_check` and `test_worker_tmp`). Each cost a batch failure, a review slot and a fresh attempt. A Graphify code map of the repository (`graphify affected` on `maintain()`) lists exactly the three modules that broke for 274-f0.
+- Touches: pi-autowork/pi_autowork/affected_tests.py, pi-autowork/pi_autowork/worker.py, pi-autowork/tests/test_affected_tests.py
+- Scope: (1) `affected_tests.modules(worktree, baseline, commit)`: the repository's tracked test modules whose transitive imports include a Python file the commit changed, or that name a changed non-Python file, using the same index as the batch blame; at most PI_AUTOWORK_AFFECTED_MAX modules (default 12), nearest first. (2) After the worker's Pi job ends with a report and commit, the worker runs those modules (`python3 -m unittest` per module, from its directory) within PI_AUTOWORK_AFFECTED_BUDGET seconds (default 600); modules the task's own Checks already ran are skipped. (3) Failures resume the worker's session once with the failing test IDs and their tracebacks, as the APPROVAL resume does; the rerun's result, pass or fail, goes in the report (`affected_tests`), and the runner's gate still decides. (4) No affected modules, or the budget spent, reports as today and says so.
+- Acceptance: Given TOOLSET-274-f0's commit 0dcd53c8, the modules include `test_maintainer`, `test_main_check` and `test_worker_tmp` (`pi-autowork/tests/test_affected_tests.py::test_a_coordinator_change_finds_the_tests_that_import_it`); a failing affected test resumes the session once with its ID and traceback in the prompt, and a second failure is reported, not resumed again (`test_a_failure_resumes_the_worker_once`); a change to a file no test imports runs nothing (`test_an_untested_change_runs_nothing`).
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_affected_tests.py; python3 -m unittest discover -s pi-autowork/tests -p test_worker_tmp.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No Graphify dependency at run time (the map is the evidence, the engine keeps its own index); no change to the full-check gate, which still runs on the merged tree.
+- Planner's call: run in the worker, where a failure costs one resume instead of a batch and a fresh attempt; bounded by module count and time so a broad change cannot turn into a full check per worker.
+
 ### TOOLSET-295-c8 — Every runner stop or restart names who asked, and a burst of restarts reloads instead
 
 - [ ] TOOLSET-295-c8 — Every runner stop or restart names who asked, and a burst of restarts reloads instead
