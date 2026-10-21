@@ -1177,7 +1177,8 @@ def dispatch_locked(args, repo, common, count, template, host):
         pending_ids = {v['id'] for v in waiting}
         pending = waiting + [v for v in pending_tasks(repo, {s['task_id'] for s in state.slots(common)} | closed)
                              if v['id'] not in pending_ids]
-        state.event(common, 'dispatch_observed', waiting=pending, max_workers=count, merge_backlog=backlog)
+        state.event(common, 'dispatch_observed', waiting=pending, max_workers=count, merge_backlog=backlog,
+                    adopt_idle_claims=getattr(args, 'adopt_idle_claims', 0))
     return {'outcome': outcome, 'workspace': str(repo), 'host': host, 'max_workers': count,
             'active_workers': active, 'dispatched': started, 'waiting': waiting, 'merge_backlog': backlog,
             'adopted': [d['task'] for d in started if d['task'] in idle],

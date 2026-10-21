@@ -126,7 +126,11 @@ active out of the maximum, one row per task (state, slot, elapsed, blocked reaso
 chain ends: `held`, `claim`, `contract` (a TODO entry the engine will not run, with its
 reason), `outside`, `cycle`, or moving work, with how many tasks it holds),
 completed/failed/integration-queue counts, and journal metrics (wall, worker,
-integration and waiting time, peak workers, conflicts, retries).
+integration and waiting time, peak workers, conflicts, retries). A `claim` root
+carries `held_by` (the holding note excerpt) or `adoptable_after` (seconds until
+all quiet-time checks pass, 0 when already idle). `adoptable_after: null` means
+live activity, missing evidence or disabled adoption prevents a prediction. An
+idle claim's root says `adopted when a worker slot frees`; a note always wins.
 
 ## Documentation impact evidence
 
@@ -277,7 +281,9 @@ SDKs and package caches remain in `AUTOWORK_CACHE`, independently of temp cleanu
   A claim a note holds is never adopted: its own entry, or any TODO.md line naming
   it (table rows aside), says to keep it open or in progress, forbids dispatch
   ("do not dispatch", "no worker dispatched"), puts it on hold, or says it requires
-  or is missing an authority, authorization, approval or owner decision.
+  or is missing an authority, authorization, approval or owner decision. Stated
+  intent to preserve a hold also counts: "preserve the existing hold",
+  "remains in_progress to", or "keep the hold"/"keeps the hold".
   The worker's prompt names the earlier branches and worktrees to reuse; they are never
   modified. The journal records `claim_adopted` with that evidence and the dispatch
   result lists `adopted`. Only live workers count toward N.

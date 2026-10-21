@@ -17,6 +17,7 @@ only when every check passes:
 Prior work is never modified: adoption only lets a fresh worker start, and its
 prompt names the branches and worktrees to inspect and reuse.
 """
+import math
 import os
 from pathlib import Path
 import re
@@ -32,8 +33,11 @@ def _token(task):
 
 
 def _last_change(repo, task):
-    stamp = execution.git(repo, 'log', '-1', '--format=%ct', '-E', '-G', _token(task), '--',
-                          'TODO.md', 'goals.json')
+    try:
+        stamp = execution.git(repo, 'log', '-1', '--format=%ct', '-E', '-G', _token(task), '--',
+                              'TODO.md', 'goals.json')
+    except ValueError:
+        return None  # an initialized repository may not have a first commit yet
     return int(stamp) if stamp else None
 
 
@@ -83,6 +87,7 @@ def prior_work(repo, task, worktrees=None):
 HOLD_NOTE = re.compile(
     r'\b(retain|keep|leave)\b[^.;\n]{0,80}\b(open|in[_ ]progress|claimed)\b'
     r'|\bon hold\b|\bheld open\b|\bhold (it|this|the task|open)\b'
+    r'|\bpreserve (the )?(existing )?hold\b|\bremains in_progress to\b|\bkeeps? the hold\b'
     r'|\bdo not (adopt|dispatch|execute|run|start|integrate|merge|take over)\b'
     r'|\bno worker (is )?dispatched\b|\bmust not be dispatched\b'
     r'|\b(requires?|needs?|missing|without|until|awaiting)\b[^.;\n]{0,40}'
@@ -122,9 +127,14 @@ def attributable(todo, task, held):
     return bool(held) and len(parallel_plan.overlap(held, declared, [])['outside']) < len(held)
 
 
-def idle_claims(repo, claims, idle_after, *, now=None, workers=None):
-    """{task: evidence} for the claims in ``claims`` (task IDs) that are idle."""
-    if not claims or idle_after <= 0:
+def claim_status(repo, claims, idle_after, *, now=None, workers=None):
+    """Claim evidence shared by dispatch and status.
+
+    ``adoptable_after`` counts seconds until all quiet-time checks pass; None means
+    live activity, missing evidence or disabled adoption prevents a prediction.
+    A ``held_by`` note always wins over quiet time.
+    """
+    if not claims:
         return {}
     now = time.time() if now is None else now
     repo = Path(repo).resolve()
@@ -142,21 +152,39 @@ def idle_claims(repo, claims, idle_after, *, now=None, workers=None):
     try:
         todo = (repo / 'TODO.md').read_text()
     except OSError:
-        return {}  # without the backlog, no note can be ruled out
+        return {task: dict(adoptable_after=None, reason='claim backlog unavailable') for task in claims}
     result = {}
     for task in claims:
-        if hold_note(todo, task):
-            continue  # someone said to keep this claim as it is
+        if note := hold_note(todo, task):
+            result[task] = dict(held_by=note)
+            continue
+        row = result[task] = dict(adoptable_after=None)
+        if idle_after <= 0:
+            row['reason'] = 'automatic claim adoption is disabled'
+            continue
         if shared and attributable(todo, task, held):
-            continue  # a live session there may be working on it
+            row['reason'] = 'an active session may be working on this claim'
+            continue
         changed = _last_change(repo, task)
-        if changed is None or now - changed < idle_after:
+        if changed is None:
+            row['reason'] = 'claim change time is unknown'
             continue
         work = prior_work(repo, task, worktrees)
-        if any(now - item['committed'] < idle_after for item in work):
+        if any(item['worktree'] in busy for item in work if item['worktree']):
+            row['reason'] = 'an active session is working in a prior claim worktree'
             continue
-        if any(item['worktree'] and (item['worktree'] in busy
-                                     or now - _newest_change(item['worktree']) < idle_after) for item in work):
-            continue
-        result[task] = dict(claim_changed=changed, idle_seconds=int(now - changed), prior_work=work)
+        newest = max([changed, *(item['committed'] for item in work),
+                      *(_newest_change(item['worktree']) for item in work if item['worktree'])])
+        row['adoptable_after'] = max(0, math.ceil(newest + idle_after - now))
+        if row['adoptable_after'] == 0:
+            row['evidence'] = dict(claim_changed=changed, idle_seconds=int(now - changed), prior_work=work)
     return result
+
+
+def idle_claims(repo, claims, idle_after, *, now=None, workers=None):
+    """{task: evidence} for the claims in ``claims`` (task IDs) that are idle."""
+    if not claims or idle_after <= 0:
+        return {}
+    return {task: row['evidence'] for task, row in
+            claim_status(repo, claims, idle_after, now=now, workers=workers).items()
+            if row.get('adoptable_after') == 0}

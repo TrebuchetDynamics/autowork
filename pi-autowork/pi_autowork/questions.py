@@ -184,11 +184,24 @@ def build(snapshot, todo, goals, repairs=(), resolving=(), *, now=None):
                 continue  # answered: its entry names who holds it, and until when
             expired = (f'The recorded answer (Held by: {answered[0]}; until {answered[1]}) has expired. '
                        if answered else '')
-            add(qid, kind, 'quick', f'{expired}{qid} is marked in_progress by another session and will not be '
-                f'adopted automatically; {blocks} waiting task(s) depend on it.', (
-                    f"If no one is working on {qid}, set `Status: open` in its TODO.md entry (the runner then "
-                    f"runs it); otherwise add `Held by: <who>; until <YYYY-MM-DD>` to that entry, and the runner "
-                    "stops asking until that date."), line, blocks)
+            note, after = root.get('held_by'), root.get('adoptable_after')
+            answer = (f"If no one is working on {qid}, set `Status: open` in its TODO.md entry (the runner then "
+                      "runs it); otherwise add `Held by: <who>; until <YYYY-MM-DD>` to that entry, and the runner "
+                      "stops asking until that date.")
+            if note:
+                needs = f'{qid} is kept in_progress by the note: "{note}".'
+                answer = (f"Answer the note in {qid}'s TODO.md entry, or remove the hold and set `Status: open` "
+                          "when it is ready to run.")
+            elif after == 0:
+                continue  # the runner can adopt it without an owner answer
+            elif after is not None:
+                hour = datetime.fromtimestamp(now + after, timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+                needs = f'{qid} is inside the idle window; it becomes adoptable at {hour} if it stays idle.'
+            else:
+                needs = f'{qid} is marked in_progress by another session; ' + (
+                    root.get('reason') or 'automatic adoption has not been verified') + '.'
+            add(qid, kind, 'quick', f'{expired}{needs} {blocks} waiting task(s) depend on it.',
+                answer, line, blocks)
         elif kind == 'cycle':
             add(qid, kind, 'quick', f'{qid} is part of a dependency cycle.', (
                 f"Cut one dependency in the cycle: edit the `Dependencies:` line of {qid} or of the task it "

@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import time
 
+import parallel_claims
 import parallel_dispatch as dispatch
 import parallel_plan
 import parallel_state as state
@@ -293,7 +294,16 @@ def _snapshot(repo, common, now):
                          blocked_by=list(source.get('blocked_by', item['blocked_by'])),
                          **({'root_kind': item['root_kind']} if item.get('root_kind') else {})))
     root_rows = roots(rows)
+    claims = [root['id'] for root in root_rows if root['kind'] == 'claim']
+    # Legacy observations do not establish an adoption policy; the engine defaults to disabled.
+    idle_after = observed.get('adopt_idle_claims', 0)
+    evidence = parallel_claims.claim_status(repo, claims, idle_after, now=now)
     for root in root_rows:
+        if root['kind'] == 'claim':
+            detail = {key: value for key, value in evidence[root['id']].items() if key != 'evidence'}
+            root.update(detail)
+            if detail.get('adoptable_after') == 0:
+                root['reason'] = 'adopted when a worker slot frees'
         if root['kind'] == 'outside' and root['id'] in deferred:
             root['deferred'] = True  # same root kind, already answered by the owner
     deferred_roots = {r['id'] for r in root_rows if r.get('deferred')}

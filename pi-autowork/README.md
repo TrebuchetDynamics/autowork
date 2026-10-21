@@ -75,6 +75,13 @@ keyboard navigation and controls remain available. Use `autowork tui --mouse` to
 restore clickable rows/buttons instead; hold Shift while dragging if your terminal
 or tmux intercepts selection. The browser view retains mouse controls.
 
+Claim questions quote the TODO.md note that keeps a task `in_progress`; answer that
+note, or remove the hold and set `Status: open` when it is ready. Without a hold
+note, a claim still inside the configured idle window names the UTC hour when it
+becomes adoptable if it stays idle. A verified idle claim needs no owner question:
+its status root says `adopted when a worker slot frees`. Live activity or missing
+idle evidence is not a promise of adoption, and hold notes always take precedence.
+
 The TUI and web view run Textual 8.2.8 (and textual-serve 1.1.3) through `uv`.
 
 ## Isolated runtime comparison
