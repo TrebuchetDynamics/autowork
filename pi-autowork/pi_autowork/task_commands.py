@@ -12,6 +12,7 @@ its typed fields, and a declared check still needs the existing approval to run.
 import argparse
 from contextlib import contextmanager
 import fcntl
+from functools import wraps
 import hashlib
 import json
 import os
@@ -20,6 +21,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'engine'))
@@ -51,16 +53,41 @@ def _git(repo, *args, env=None):
     return result.stdout.strip()
 
 
+_task_locks = threading.local()
+
+
 @contextmanager
 def locked(repo):
-    """The repository's task lock: one task-store writer per checkout at a time."""
+    """One writer per checkout; nested helpers share this thread/process's lock.
+
+    Recover an interrupted batch before any locked reader or writer can use it.
+    """
     git_dir = Path(_git(repo, 'rev-parse', '--absolute-git-dir'))
+    key = (os.getpid(), git_dir)
+    if not hasattr(_task_locks, 'held'):
+        _task_locks.held = set()
+    if key in _task_locks.held:
+        yield
+        return
     with open(git_dir / 'autowork-tasks.lock', 'a') as handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
+        _task_locks.held.add(key)
         try:
+            conflicts = _undo(repo, git_dir / 'autowork-tasks.transaction')
+            if conflicts:
+                raise CommandError('interrupted task edit undone; external edits preserved: ' + ', '.join(conflicts))
             yield
         finally:
+            _task_locks.held.remove(key)
             fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+def _serialized(function):
+    @wraps(function)
+    def serialized(repo, *args, **kwargs):
+        with locked(repo):
+            return function(repo, *args, **kwargs)
+    return serialized
 
 
 def in_flight(repo, states=OCCUPYING):
@@ -109,6 +136,7 @@ def expect(repo, tid, rev, goal=False):
         raise CommandError(f'{tid} changed since revision {rev[:12]} was read; reread it; nothing written')
 
 
+@_serialized
 def worktree_store(repo):
     """The store as the working tree has it, read through a throwaway commit; the real
     index, HEAD and refs are untouched."""
@@ -132,24 +160,154 @@ def _path(repo, tid, goal=False):
     return Path(repo) / 'tasks' / ('goals' if goal else 'items') / f'{tid}.md'
 
 
-def _write(repo, path, before, after):
-    """Replace ``path`` only if it still holds ``before``; keep the change only if the
-    whole store still validates, else put the old bytes back."""
-    current = path.read_bytes() if path.exists() else None
-    if current != before:
-        raise CommandError(f'{path.relative_to(repo)} changed since it was read; nothing written')
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f'.{path.name}.{os.getpid()}.tmp')
-    tmp.write_bytes(after.encode())
-    os.replace(tmp, path)
+def _contents(path):
+    return path.read_bytes() if path.exists() else None
+
+
+def _sync_dir(path):
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
     try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _staged_path(path):
+    return path.with_name(f'.{path.name}.autowork-tasks.tmp')
+
+
+def _stage_bytes(path, content):
+    tmp = _staged_path(path)
+    # An interrupted restore may have linked this staging inode into the live
+    # record. Never truncate/reuse it: a later external edit can be on that inode.
+    tmp.unlink(missing_ok=True)
+    with tmp.open('xb') as handle:
+        handle.write(content)
+        handle.flush()
+        os.fsync(handle.fileno())
+    return tmp
+
+
+def _replace_bytes(path, content):
+    """Flush a same-filesystem replacement before advancing the transaction."""
+    tmp = _staged_path(path)
+    try:
+        _stage_bytes(path, content)
+        os.replace(tmp, path)
+        _sync_dir(path.parent)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _claimed_path(path):
+    return path.with_name(f'.{path.name}.autowork-tasks.undo')
+
+
+def _restore_missing(path, source):
+    """Publish a saved inode without replacing anything an external editor created."""
+    try:
+        os.link(source, path)
+    except FileExistsError:
+        return False
+    _sync_dir(path.parent)
+    return True
+
+
+def _undo_record(path, before, after):
+    """Claim the current inode before inspecting it, never overwrite on restore.
+
+    A crash can leave the claimed inode beside the record; the journal makes the
+    next undo resume it. If another editor creates a path while we undo, retain
+    both versions rather than replacing the editor's new path.
+    """
+    saved = _claimed_path(path)
+    if not saved.exists():
+        current = _contents(path)
+        if current == before:
+            return []
+        if current != after:
+            return [path]
+        try:
+            os.rename(path, saved)
+        except FileNotFoundError:
+            return [] if before is None else [path]  # preserve an external deletion
+        _sync_dir(path.parent)
+    if _contents(saved) != after:
+        # It changed after our read but before the atomic claim. Put it back only
+        # if the name is still vacant; otherwise keep its bytes at the saved path.
+        if _restore_missing(path, saved) or (path.exists() and os.path.samefile(path, saved)):
+            saved.unlink()
+            _sync_dir(path.parent)
+            return [path]
+        return [path, saved]
+    if before is not None:
+        tmp = _stage_bytes(path, before)
+        _restore_missing(path, tmp)
+        tmp.unlink()
+    conflicts = [] if _contents(path) == before else [path]
+    saved.unlink()
+    _sync_dir(path.parent)
+    return conflicts
+
+
+def _undo(repo, journal):
+    """Restartable undo: claim each path before deciding whether to restore it."""
+    if not journal.exists():
+        return []
+    try:
+        records = []
+        for name, before, after in json.loads(journal.read_text()):
+            if not re.fullmatch(r'tasks/(?:items|goals)/[A-Za-z0-9][A-Za-z0-9_-]*\.md', name):
+                raise ValueError('invalid record path')
+            records.append((Path(repo) / name, bytes.fromhex(before) if before is not None else None,
+                            bytes.fromhex(after)))
+    except (ValueError, TypeError) as exc:
+        raise CommandError(f'cannot recover {journal.name}: {exc}') from None
+    conflicts = []
+    for path, before, after in reversed(records):
+        conflicts.extend(str(p.relative_to(repo)) for p in _undo_record(path, before, after))
+        _staged_path(path).unlink(missing_ok=True)
+    journal.unlink()
+    _sync_dir(journal.parent)
+    return conflicts
+
+
+@_serialized
+def _write_many(repo, edits):
+    """Compare every input before writing, then apply and validate one recoverable set.
+
+    The journal is durable before the first replacement; its removal commits the
+    set. Exceptions undo immediately, process death on the next locked access.
+    Working-tree readers use the same lock and cannot observe half a batch.
+    """
+    edits = list(edits)
+    records = []
+    for path, before, after in edits:
+        if _claimed_path(path).exists():
+            raise CommandError(f'reconcile preserved external bytes at {_claimed_path(path)} before writing')
+        if _contents(path) != before:
+            raise CommandError(f'{path.relative_to(repo)} changed since it was read; nothing written')
+        records.append((str(path.relative_to(repo)), before.hex() if before is not None else None,
+                        after.encode().hex()))
+    journal = Path(_git(repo, 'rev-parse', '--absolute-git-dir')) / 'autowork-tasks.transaction'
+    _replace_bytes(journal, json.dumps(records).encode())
+    try:
+        for path, before, after in edits:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            _replace_bytes(path, after.encode())
         worktree_store(repo)
-    except StoreError as exc:
-        if before is None:
-            path.unlink()
-        else:
-            path.write_bytes(before)
-        raise CommandError(f'{exc}; nothing written') from None
+    except BaseException as exc:
+        conflicts = _undo(repo, journal)
+        if isinstance(exc, StoreError):
+            detail = 'external edits preserved: ' + ', '.join(conflicts) if conflicts else 'nothing written'
+            raise CommandError(f'{exc}; {detail}') from None
+        raise
+    journal.unlink()
+    _sync_dir(journal.parent)
+
+
+def _write(repo, path, before, after):
+    _write_many(repo, [(path, before, after)])
 
 
 def _section_ranks(store, section, without=None):
@@ -279,6 +437,7 @@ def _same_title(title):
     return ' '.join(title.lower().split())
 
 
+@_serialized
 def cmd_add(repo, goal, title, short, section='Now', scope=None, acceptance=(), checks=(), touches=(),
             depends_on=(), task_id=None, prefix=None, resources=(), exclusions=(), kind='implementation',
             ownership='worker', sources=None):
@@ -310,6 +469,7 @@ def cmd_add(repo, goal, title, short, section='Now', scope=None, acceptance=(), 
     return tid
 
 
+@_serialized
 def cmd_goal(repo, gid, title=None, source=None, priority=None, status=None, focus=None, depends_on=None,
              evidence=None):
     """Add a goal, or change the given fields of an existing one. A met goal names its evidence
@@ -335,12 +495,13 @@ def cmd_goal(repo, gid, title=None, source=None, priority=None, status=None, foc
             raise CommandError(f'unknown goal {other}')
     note = ('Evidence', ' '.join(evidence.split())) if evidence else None
     path = _path(repo, gid, goal=True)
+    edits = []
     if focus:
         for other in store.goals.values():
             if other.focus and other.id != gid:
                 other_path = _path(repo, other.id, goal=True)
                 before = other_path.read_bytes()
-                _write(repo, other_path, before, task_store.edit(before.decode(), {'focus': False}, goal=True))
+                edits.append((other_path, before, task_store.edit(before.decode(), {'focus': False}, goal=True)))
     if gid not in store.goals:
         if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', gid):
             raise CommandError('a goal ID uses letters, digits, underscores or hyphens')
@@ -349,13 +510,15 @@ def cmd_goal(repo, gid, title=None, source=None, priority=None, status=None, foc
             raise CommandError('a new goal needs ' + ', '.join(missing))
         fields = dict(dict(schema=1, id=gid, status='unmet', focus=False, depends_on=[]), **changes)
         text = task_store.render(fields, '\n', goal=True)
-        _write(repo, path, None, task_store.set_note(text, *note) if note else text)
+        edits.append((path, None, task_store.set_note(text, *note) if note else text))
+        _write_many(repo, edits)
         return 'added'
     if not changes and not note:
         raise CommandError('nothing to change')
     before = path.read_bytes()
     text = task_store.edit(before.decode(), changes, goal=True) if changes else before.decode()
-    _write(repo, path, before, task_store.set_note(text, *note) if note else text)
+    edits.append((path, before, task_store.set_note(text, *note) if note else text))
+    _write_many(repo, edits)
     return 'changed'
 
 
@@ -364,6 +527,7 @@ TYPED = {'rank': int, 'depends_on': list, 'touches': list, 'resources': list, 'a
          'kind': str, 'ownership': str, 'live': str}
 
 
+@_serialized
 def cmd_field(repo, tid, key, value):
     """A typed header field (rank, touches, ...) or, for any other label, a note line such as
     `Held by` or `Owner decision` in the task's body."""
@@ -388,6 +552,7 @@ def cmd_field(repo, tid, key, value):
         _set(repo, tid, {}, (key, ' '.join(value.split())))
 
 
+@_serialized
 def cmd_place(repo, tid, section, decision=None):
     """Move an open task to the bottom of a section; ``decision`` also records why, as its
     `Owner decision:` note."""
@@ -403,6 +568,7 @@ def cmd_place(repo, tid, section, decision=None):
     _set(repo, tid, {'section': section, 'rank': bottom_rank(store, section, without=tid)}, note)
 
 
+@_serialized
 def cmd_move(repo, tid, direction):
     """One place up or down within the task's section; returns {id: new rank} changed."""
     store = worktree_store(repo)
@@ -415,11 +581,16 @@ def cmd_move(repo, tid, direction):
     rest = [pair for pair in ranked if pair[1] != tid]
     changes = place_between(rest, target)
     changes[tid] = changes.pop(None)
+    edits = []
     for other, rank in sorted(changes.items(), key=lambda item: item[0] != tid):
-        _set(repo, other, {'rank': rank})
+        path = _path(repo, other)
+        before = path.read_bytes()
+        edits.append((path, before, task_store.edit(before.decode(), {'rank': rank})))
+    _write_many(repo, edits)
     return changes
 
 
+@_serialized
 def cmd_hold(repo, tid, by, until=None):
     """Keep the runner off an open task: its record's `Held by:` note, never its status. A
     held task is never selected or dispatched, and still blocks its dependents and tasks that
@@ -433,6 +604,7 @@ def cmd_hold(repo, tid, by, until=None):
     _set(repo, tid, {}, ('Held by', value))
 
 
+@_serialized
 def cmd_release(repo, tid):
     """Remove the task's `Held by:` note so the runner may select it again."""
     _task(worktree_store(repo), tid)
@@ -445,6 +617,7 @@ def cmd_release(repo, tid):
     _write(repo, path, before, after)
 
 
+@_serialized
 def cmd_done(repo, tid, evidence):
     """Close a task without the engine's verified closure: a planning task, or one whose
     acceptance the evidence shows already met. The evidence is kept as the task's note."""
@@ -457,6 +630,7 @@ def cmd_done(repo, tid, evidence):
     _set(repo, tid, {'status': 'done'}, ('Evidence', ' '.join(evidence.split())))
 
 
+@_serialized
 def reopen(repo, tid, reason):
     """Open a done task again, at the bottom of its section, with why as its `Reopened:` note:
     the runner's answer to a close whose receipt no longer matches the task's contract."""
@@ -469,6 +643,7 @@ def reopen(repo, tid, reason):
          ('Reopened', ' '.join(reason.split())))
 
 
+@_serialized
 def cmd_supersede(repo, tid, by, reason):
     store = worktree_store(repo)
     _task(store, tid)

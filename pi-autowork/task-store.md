@@ -134,8 +134,27 @@ index and refs alone) and edits the working tree (`add`, `field`, `place`, `move
 `release`, `done`, `supersede`, `goal`; `new-id` allocates an ID); it never commits. A write
 holds the repository's task lock (`<git dir>/autowork-tasks.lock`), so two writers never
 interleave; refuses a file that changed since it was read, or since the `record_revision`
-given as `--expect REV`; and is undone when the resulting store does not validate. A write
-to the contract (the hashed fields or the goal), the section, or the status (`done`,
+given as `--expect REV`; and is undone when the resulting store does not validate.
+The Python command entry points and working-tree reads share that lock too. A `move`
+that rebalances neighbours, or a `goal --focus` that clears another goal, compares all
+inputs before writing and validates the resulting set once. Rendering or validation
+failure, an I/O error or a Python interruption undoes the whole set.
+
+Before replacing any record, the writer flushes an undo journal at
+`<git dir>/autowork-tasks.transaction`. Removing that journal commits the set. If the
+process dies before then, the next locked command or working-tree read restores the
+old set before continuing; committed reads still use their pinned Git snapshot.
+Lock-aware readers therefore never consume a partial batch. This is not a filesystem
+snapshot for direct readers/editors that bypass the lock. Undo restores or deletes a
+path only when the inode it atomically claims still contains this batch's bytes;
+restoration never overwrites a path recreated by an external editor. Differing external
+bytes are preserved and reported. If two external versions race undo, the displaced one
+stays beside the record at `.<filename>.autowork-tasks.undo`, with both paths named in
+the error. Inspect and reconcile both versions, remove the saved copy from `tasks/`
+only after preserving its needed content, and validate before retrying. Do not delete
+a pending journal to skip recovery.
+
+A write to the contract (the hashed fields or the goal), the section, or the status (`done`,
 `supersede`) of a task whose attempt is live (a dispatched, running, reported, integrating
 or integrated slot, or the sequential lease) is refused: rank, title, short and notes stay
 open, and a held or interrupted attempt stays repairable. `add` writes a whole contract at once (`--resources`, `--exclusions`,
@@ -227,6 +246,12 @@ The public-seam tests use real temporary Git repositories. They cover pinned
 reads/immutability/replacement refs, pending edits/renames/index preservation,
 fingerprint boundaries, absent authority, corrupt-store refusal (including
 symlinked store directories and numeric conversion limits) and draft visibility.
+[`tests/test_task_transactions.py`](tests/test_task_transactions.py) covers concurrent
+command edits to one record, validation rollback preserving an external edit, and
+move/focus batches interrupted between records, during rollback or before the journal's
+removal (Python interruption and abrupt process exit), followed by recovery and successful
+whole-set writes. Run it with
+`python3 scripts/check.py pi-autowork/tests/test_task_transactions.py`.
 `tests/test_task_migrate.py`, `tests/test_task_commands.py`, `tests/test_task_prepare.py`
 (the Docs Sync lifecycle: bootstrap, conversion, staging, interruption, refusal, audit,
 repair, concurrency and repeat runs on disposable repositories), the engine's dispatch and
