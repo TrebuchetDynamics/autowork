@@ -24,6 +24,14 @@ that attempt aside, as `--parallel-set-aside` does (worktrees and branches kept 
 file changes; the task then dispatches fresh from its converted record, with whatever answer
 its entry now holds.
 
+Work in flight defers a conversion instead of ending it. `autowork tasks prepare` (Docs
+Sync) records the owner's request as an intent (convert-intent.json in the execution
+state); a runner on this release that finds a legacy repository with that intent drains it
+itself: it starts nothing, waits for live workers to stop, sets every remaining attempt
+aside as above (worktrees, branches and uncommitted files kept), and converts under its own
+coordinator lease, releasing the claims of the attempts it set aside (their tasks convert
+open and dispatch fresh). Nothing live is stopped, no lease is broken and no task is closed.
+
 Mapping (lossless; every other label becomes a `- Label: value` note in the body):
 rank = 1000 x the queue's human order; Dependencies -> depends_on (task IDs, or the
 whole prose clause when it names none, which keeps it waiting as before); Touches ->
@@ -33,6 +41,7 @@ recorded Live authorization -> ownership owner, otherwise worker; a Live authori
 -> live authorized. The original Ownership, Resources and Live authorization wording is
 kept as notes.
 """
+import argparse
 import hashlib
 import json
 import os
@@ -111,17 +120,33 @@ def awaiting_answer(repo):
             and not parallel_state.worker_live(s) and not parallel_state.quick_hold(common, s)]
 
 
-def busy(repo):
+def _own_lease(common, owner_pid):
+    """Whether ``owner_pid`` (the draining runner) holds the parallel coordinator lease."""
+    import parallel_state
+    if owner_pid is None:
+        return False
+    try:
+        current = parallel_state.lease(common)
+    except ValueError:
+        return False
+    return bool(current) and current.get('owner') == task_execution.owner_identity(owner_pid)
+
+
+def busy(repo, owner_pid=None):
     """What is in flight, as plain sentences: nothing may convert under it. A slot waiting on
-    an owner's answer is not in flight: conversion sets it aside."""
+    an owner's answer is not in flight: conversion sets it aside. The lease of ``owner_pid``,
+    the runner converting after its drain, is its own and not in flight."""
+    import parallel_state
     held, problems = task_commands.in_flight(repo)
+    if _own_lease(parallel_state.common_dir(Path(repo)), owner_pid):
+        problems = [p for p in problems if p != 'a live parallel coordinator lease']
     held -= {s['task_id'] for s in awaiting_answer(repo)}
     if held:
         problems.append('worker slots in flight or unfinished integration/closure: ' + ', '.join(sorted(held)))
     return problems
 
 
-def set_aside_waiting(repo):
+def set_aside_waiting(repo, owner_pid=None):
     """Set aside every slot waiting on an owner's answer, under the engine's own locks; the
     task dispatches fresh after conversion. Returns their task IDs."""
     import parallel_integrate
@@ -131,7 +156,7 @@ def set_aside_waiting(repo):
     try:
         with task_execution.lock(common / 'dispatch.lock', 5), task_execution.lock(common / 'integration.lock', 5), \
                 task_execution.lock(common / 'writer.lock', 5):
-            if parallel_state.live_coordinator(common):
+            if parallel_state.live_coordinator(common) and not _own_lease(common, owner_pid):
                 raise Refused('a live parallel coordinator lease')
             for slot in awaiting_answer(repo):  # reread under the locks
                 parallel_integrate._retire(repo, common, slot, True)
@@ -143,8 +168,18 @@ def set_aside_waiting(repo):
     return done
 
 
-def refusals(repo):
-    """Every reason conversion may not run now, as plain sentences."""
+def claimed(repo):
+    """Task IDs goals.json marks in_progress (a legacy runner's claims)."""
+    try:
+        ledger = json.loads((Path(repo) / 'goals.json').read_text())
+        return sorted(t['id'] for t in ledger.get('tasks', []) if t.get('status') == 'in_progress')
+    except (OSError, ValueError, AttributeError, TypeError):
+        return []
+
+
+def refusals(repo, owner_pid=None, released=()):
+    """Every reason conversion may not run now, as plain sentences. ``released``: claimed
+    tasks whose attempts a drain set aside; they convert open."""
     repo = Path(repo)
     found = []
     if committed(repo, 'HEAD', 'tasks'):
@@ -154,15 +189,136 @@ def refusals(repo):
     dirty = _git(repo, 'status', '--porcelain', '--', *PLANNING)
     if dirty:
         found.append('uncommitted planning files: ' + ', '.join(line[3:] for line in dirty.splitlines()))
-    found += busy(repo)
-    try:
-        ledger = json.loads((repo / 'goals.json').read_text())
-        claimed = sorted(t['id'] for t in ledger.get('tasks', []) if t.get('status') == 'in_progress')
-        if claimed:
-            found.append('claimed tasks (release them first): ' + ', '.join(claimed))
-    except (OSError, ValueError, AttributeError):
-        pass
+    found += busy(repo, owner_pid)
+    if held := [tid for tid in claimed(repo) if tid not in set(released)]:
+        found.append('claimed tasks (release them first): ' + ', '.join(held))
     return found
+
+
+def deferrable(found):
+    """Whether every refusal is work in flight a drain ends (not a decision or a defect)."""
+    kinds = ('worker slots in flight', 'a live parallel coordinator lease', 'a live sequential execution lease',
+             'claimed tasks', 'the engine is busy')
+    return bool(found) and all(problem.startswith(kinds) for problem in found)
+
+
+# --- deferred conversion ---------------------------------------------------------------
+
+def _intent_path(repo):
+    import parallel_state
+    return parallel_state.common_dir(Path(repo)) / 'convert-intent.json'
+
+
+def intent(repo):
+    """The recorded request to convert once work in flight ends, or None."""
+    try:
+        return json.loads(_intent_path(repo).read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def record_intent(repo, requested_by, reasons):
+    """Record (idempotently) that the owner asked for this conversion; the runner drains to it."""
+    path = _intent_path(repo)
+    current = intent(repo)
+    if current and current.get('requested_by') == requested_by:
+        return current
+    value = dict(schema=1, requested_by=requested_by, reasons=list(reasons),
+                 head=_ok(repo, 'rev-parse', 'HEAD'))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f'.{path.name}.{os.getpid()}.tmp')
+    temporary.write_text(json.dumps(value, indent=2) + '\n')
+    os.replace(temporary, path)
+    return value
+
+
+def clear_intent(repo):
+    try:
+        _intent_path(repo).unlink()
+    except FileNotFoundError:
+        pass
+
+
+def drain(repo, owner_pid):
+    """The runner's step towards a deferred conversion, under its coordinator lease and the
+    engine's locks: every attempt with no live worker is set aside (work kept). Returns
+    dict(live=[...], set_aside=[...], landed=[...], blocked=[...]); conversion may run once
+    live and blocked are empty. ``landed``: set-aside attempts whose merge is already in
+    main but whose task was never closed (it converts open; close it with its evidence). A
+    repeated quick hold without its Blocker resolution stays: it needs the owner's answer."""
+    import parallel_integrate
+    import parallel_state
+    common = parallel_state.common_dir(Path(repo))
+    result = dict(live=[], set_aside=[], landed=[], blocked=[], claimed=False)
+    if not _own_lease(common, owner_pid) or not parallel_state.live_coordinator(common):
+        # A dead runner's lease is taken over; a live one is never broken.
+        taken = parallel_state.claim(Path(repo), owner_pid, max_workers=16)
+        if taken['outcome'] != 'CLAIMED':
+            raise Refused(f"{taken.get('reason', 'the coordinator lease is held')}: {taken.get('owner')}")
+        result['claimed'] = True
+    try:
+        with task_execution.lock(common / 'dispatch.lock', 5), task_execution.lock(common / 'integration.lock', 5), \
+                task_execution.lock(common / 'writer.lock', 5):
+            parallel_state.require_owner(common, owner_pid)
+            slots = parallel_state.slots(common) if (common / 'slots').is_dir() else []
+            for slot in slots:
+                if slot['state'] not in task_commands.OCCUPYING:
+                    continue
+                if parallel_state.worker_live(slot):
+                    result['live'].append(slot['task_id'])
+                    continue
+                merged = slot['state'] in ('integrating', 'integrated') and parallel_integrate.landed(
+                    repo, (slot.get('integration') or {}).get('commit'))
+                try:
+                    parallel_integrate._retire(repo, common, slot, True)
+                    result['set_aside'].append(slot['task_id'])
+                    if merged:
+                        result['landed'].append(slot['task_id'])
+                except ValueError as exc:
+                    result['blocked'].append(f"{slot['task_id']}: {exc}")
+    except BlockingIOError:
+        if result['claimed']:
+            release_drain(repo, owner_pid)
+        raise Refused('the engine is busy (its dispatch, integration or writer lock is held)') from None
+    except ValueError as exc:
+        if result['claimed']:
+            release_drain(repo, owner_pid)
+        raise Refused(f'the drain could not read or retire a slot: {exc}') from None
+    return result
+
+
+def release_drain(repo, owner_pid):
+    """Release the lease a drain claimed, so the runner's engine claims its own workspace."""
+    import parallel_state
+    parallel_state.release(Path(repo), owner_pid)
+
+
+def convert_after_drain(repo, owner_pid):
+    """A runner's whole deferred-conversion step: dict(outcome=CONVERTED|WAITING|BLOCKED,
+    detail, set_aside). Writes only through drain() and convert(); idempotent."""
+    repo = Path(task_execution.git(Path(repo), 'rev-parse', '--show-toplevel')).resolve()
+    drained = drain(repo, owner_pid)
+    try:
+        if drained['live']:
+            return dict(outcome='WAITING', set_aside=drained['set_aside'],
+                        detail='conversion waits for running workers: ' + ', '.join(sorted(drained['live'])))
+        if drained['blocked']:
+            return dict(outcome='BLOCKED', set_aside=drained['set_aside'],
+                        detail='conversion needs an answer first: ' + '; '.join(drained['blocked']))
+        try:
+            with task_commands.locked(repo):
+                result = convert(repo, commit=True, owner_pid=owner_pid, released=claimed(repo))
+        except Refused as exc:
+            found = refusals(repo, owner_pid, claimed(repo))
+            return dict(outcome='WAITING' if deferrable(found) else 'BLOCKED', set_aside=drained['set_aside'],
+                        detail=f'conversion refused: {exc}')
+        clear_intent(repo)
+        return dict(result, outcome='CONVERTED', set_aside=drained['set_aside'] + result.get('set_aside', []),
+                    landed=drained['landed'],
+                    detail=f"converted {result.get('tasks')} tasks and {result.get('goals')} goals")
+    finally:
+        if drained['claimed']:
+            release_drain(repo, owner_pid)
 
 
 # --- mapping ---------------------------------------------------------------------------
@@ -189,7 +345,9 @@ def _task_record(tid, title, entry, fields, rank, known, listed=()):
                       'or remove the line, then convert')
     live = bool(grant)
     header = dict(schema=1, id=tid, title=title, short=fields.get('Short', '').strip() or title,
-                  status=entry['status'], goal=entry['goal'], section=entry['section'], rank=rank,
+                  # in_progress reaches here only as a claim a drain released: open again.
+                  status='open' if entry['status'] == 'in_progress' else entry['status'],
+                  goal=entry['goal'], section=entry['section'], rank=rank,
                   depends_on=list(deps), touches=list(touches), resources=resources,
                   kind='plan' if fields.get('Kind', '').strip().lower() == 'plan' else 'implementation',
                   ownership='owner' if owner_only and not live else 'worker', exclusions=[])
@@ -249,11 +407,15 @@ def _notes(tid, notes):
     return '\n' + ''.join(lines)
 
 
-def build(repo):
-    """{relative path: text} for the whole store, plus the legacy order it must reproduce."""
+def build(repo, released=()):
+    """{relative path: text} for the whole store, plus the legacy order it must reproduce.
+    ``released`` claims count as open in that order too: their attempts were set aside."""
     repo = Path(repo)
     try:
         inputs = reader.inputs(repo)
+        for task in inputs['ledger'].get('tasks', []):
+            if task.get('status') == 'in_progress' and task.get('id') in set(released):
+                task['status'] = 'open'
         legacy = reader.order(repo, inputs)
     except reader.Drift as exc:
         raise Refused(f'TODO.md order differs from the recorded priority ({exc}); reconcile it first') from None
@@ -458,24 +620,25 @@ def migrate(repo, dry_run=False, commit=True):
         return convert(repo, dry_run, commit)
 
 
-def convert(repo, dry_run=False, commit=True):
-    """Convert, or finish a recorded conversion; the caller holds the task lock."""
+def convert(repo, dry_run=False, commit=True, owner_pid=None, released=()):
+    """Convert, or finish a recorded conversion; the caller holds the task lock. A draining
+    runner passes its own pid (its lease is not in flight) and the claims it released."""
     candidate = pending(repo)
     if candidate and not dry_run and _stale(repo, candidate):
         candidate = None
     if candidate:
         if dry_run:
             return dict(outcome='PENDING', candidate=candidate)
-        if found := busy(repo):
+        if found := busy(repo, owner_pid):
             raise Refused('; '.join(found))
         outcome = finish(repo, candidate, commit)
         summary = dict(outcome=outcome, candidate=candidate, resumed=True)
         if outcome == 'CONVERTED':
             summary['commit'] = _git(repo, 'rev-parse', '--short', 'HEAD')
         return summary
-    if found := refusals(repo):
+    if found := refusals(repo, owner_pid, released):
         raise Refused('; '.join(found))
-    files, legacy, ids = build(repo)
+    files, legacy, ids = build(repo, released)
     tree = converted_tree(repo, files)
     store = prove(repo, tree, legacy, ids)
     summary = dict(outcome='DRY_RUN' if dry_run else 'CONVERTED', tasks=len(store.tasks), goals=len(store.goals),
@@ -486,7 +649,7 @@ def convert(repo, dry_run=False, commit=True):
             summary['would_set_aside'] = waiting
         return summary
     if waiting:
-        summary['set_aside'] = set_aside_waiting(repo)
+        summary['set_aside'] = set_aside_waiting(repo, owner_pid)
     head = _git(repo, 'rev-parse', 'HEAD')
     candidate = _git(repo, 'commit-tree', tree, '-p', head, '-m', SUBJECT, '-m',
                      f'{len(store.tasks)} tasks and {len(store.goals)} goals; selection order unchanged. '
@@ -495,6 +658,7 @@ def convert(repo, dry_run=False, commit=True):
     summary.update(outcome=finish(repo, candidate, commit), candidate=candidate)
     if summary['outcome'] == 'CONVERTED':
         summary['commit'] = _git(repo, 'rev-parse', '--short', 'HEAD')
+        clear_intent(repo)  # however it converted, nothing is left to defer
     return summary
 
 
@@ -503,10 +667,20 @@ def add_parser(sub):
     p.add_argument('repo', nargs='?', default='.')
     p.add_argument('--dry-run', action='store_true', help='check and show the result; write nothing')
     p.add_argument('--no-commit', action='store_true', help='stage the conversion; never move HEAD')
+    # The runner's deferred-conversion step, run as its helper (engine leases name an ancestor).
+    p.add_argument('--after-drain', action='store_true', help=argparse.SUPPRESS)
+    p.add_argument('--owner-pid', type=int, help=argparse.SUPPRESS)
     return p
 
 
 def run(args, repo):
+    if args.after_drain:
+        try:
+            step = convert_after_drain(repo, args.owner_pid)
+        except Refused as exc:
+            step = dict(outcome='BLOCKED', detail=str(exc), set_aside=[])
+        print(json.dumps(step, indent=2))
+        return 0
     try:
         result = migrate(repo, args.dry_run, not args.no_commit)
     except Refused as exc:

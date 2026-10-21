@@ -292,13 +292,40 @@ A record missing contract fields is a visible draft and is never selected. A
 questions; CHANGELOG.md keeps releases. Never recreate TODO.md or goals.json, and
 never hand-write records.
 
+### Check the toolchain first
+
+Before any task-store step, run `autowork capabilities` with the `autowork` this host
+will use. It prints the resolved `executable`, `toolset` and `release`, the `commands`
+and `tasks` verbs, and `prepare_api`. Continue only when it succeeds, lists `tasks`
+with `prepare`, and reports `prepare_api` 2 or higher. Otherwise the installed CLI is
+older than this skill: report `TOOLCHAIN_MISMATCH` with the executable (`command -v
+autowork`), what is missing, and the one fix, `autowork update` (then reload the host
+so it loads the matching skill). Run that update only when the owner's request allows
+installing; it can queue a gateway restart. Then continue document work, and do not
+touch tasks: never fall back to editing TODO.md or goals.json, and never report the
+store prepared.
+
 ### Prepare the store first
 
 Every authorized Bootstrap or Maintain begins, in the resolved consumer repository,
 with `autowork tasks prepare <consumer>` (Audit: `autowork tasks prepare --check
 <consumer>`, which writes no file, ref, index, lock or object). It reports the
-`state` and does the mechanical part itself, so the owner never converts or
-initializes anything by hand:
+`state` and one `outcome`, and does the mechanical part itself, so the owner never
+converts or initializes anything by hand:
+
+| `outcome` | Meaning | You do next |
+| --- | --- | --- |
+| `READY` | A valid store (working tree when task files are uncommitted) | Work the diagnostics, then reconcile |
+| `MIGRATED` | Converted TODO.md + goals.json now, one local commit | Reconcile; report the conversion commit |
+| `NO_STORE` | No store; `documents` and `accepted` headings listed | Bootstrap from accepted headings only |
+| `MIGRATION_DEFERRED` | Work was in flight; nothing was written to the repository, and the request is recorded. The repository's runner (on this release) starts nothing new, lets live workers finish, sets the remaining attempts aside with their work kept, and converts. Exit status 3 | Report it as pending, not done; continue document work; run prepare again later |
+| `MIGRATION_BLOCKED` | A refusal only a person resolves (uncommitted planning files, an invalid queue, a repeated hold), or a deferral without commit authority | Report the named refusal and its fix |
+| `INVALID_STORE` | Refused with `path:line` errors | Fix that line from its accepted source or Git history, then rerun |
+| `ACTIVATION_PENDING` | The store is ready, but `runner.reads_tasks` is false: the running runner's release predates `tasks/` | Report it; the owner restarts the runner on the current release (`autowork restart`) |
+
+Each report also has `runner` (`running`, `release`, `reads_tasks`). Never report a
+deferred, blocked or pending conversion, or a docs-only change, as prepared task work.
+The `state` values remain:
 
 | `state` | Prepare did | You do next |
 | --- | --- | --- |
@@ -310,10 +337,13 @@ initializes anything by hand:
 | `invalid` | Refused with `path:line` errors | Fix that line from its accepted source or Git history, then rerun |
 
 Without commit authority, run `prepare --no-commit`: a conversion is staged and HEAD
-does not move; report it as pending, not landed. A refusal (`ok: false`) writes
-nothing: a live worker, lease or claimed task, uncommitted planning files, or content
-that is neither the old nor the converted version. Report it and continue independent
-document work; never force, hand-convert or delete the recorded conversion ref.
+does not move; report it as pending, not landed (work in flight is then
+`MIGRATION_BLOCKED`, since the runner's later conversion commits). A refusal (`ok:
+false`) writes nothing to the repository: uncommitted planning files, or content that
+is neither the old nor the converted version, or work in flight (deferred as above).
+Report it and continue independent document work; never force, hand-convert, stop
+workers, break a lease, close a task or delete the recorded conversion ref to get past
+one.
 
 Then work its `diagnostics`, each with the command that repairs it: `DRAFT`,
 `NOT_RUNNABLE`, `LIVE_NOT_AUTHORIZED`, `UNKNOWN_DEPENDENCY`, `SUPERSEDED_DEPENDENCY`,

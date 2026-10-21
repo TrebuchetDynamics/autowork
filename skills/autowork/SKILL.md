@@ -52,7 +52,8 @@ review step. Keep Hermes Agent unchanged.
    repairs carries `touches` from the inspected seam
    ([task rules](../shared/TODO-WORKCENTER.md)), so parallel workers can run it beside
    others. Do not create a second board. A repository without `tasks/` selects nothing;
-   the runner says to run `autowork migrate` once.
+   `autowork tasks prepare` (Docs Sync) converts it, or records the request so the
+   runner drains in-flight work and converts it itself.
 3. **Prepare only missing inputs, then implement.** Derive a short contract from
    the task's objective, scope/exclusions, acceptance/checks, dependencies and sources.
    Keep source/candidate identity, actual owner/session, explicit limits and known

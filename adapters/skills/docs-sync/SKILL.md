@@ -17,11 +17,20 @@ Separate current architecture from planned changes. Maintain README, requirement
 architecture/spec, test plan, runbook and changelog as applicable; add conditional
 roles only when useful. Fix supported doc issues now.
 
-Before task work, run `autowork tasks prepare .` in the consumer repository (Audit:
-`--check`, which writes nothing; without commit authority: `--no-commit`). It converts
-a TODO.md + goals.json repository itself, finishes an interrupted conversion, or
-refuses, writing nothing, while a worker or lease is in flight; report a refusal and
-continue document work. Its `state` is `none` for a new repository (bootstrap goals
+Before task work, run `autowork capabilities`: it must succeed, list `tasks` with
+`prepare`, and report `prepare_api` 2 or higher. If not, the installed CLI is older
+than this skill: report `TOOLCHAIN_MISMATCH` (executable, what is missing, fix:
+`autowork update` when the owner allows installing, then reload the host), keep to
+document work, and never fall back to editing TODO.md or goals.json.
+
+Then run `autowork tasks prepare .` in the consumer repository (Audit: `--check`,
+which writes nothing; without commit authority: `--no-commit`) and act on its
+`outcome`: `READY`, `MIGRATED` (converted a TODO.md + goals.json repository now),
+`NO_STORE`, `MIGRATION_DEFERRED` (work in flight: the request is recorded and the
+repository's runner drains and converts it; report pending, not done),
+`MIGRATION_BLOCKED` (report the named refusal), `INVALID_STORE` or
+`ACTIVATION_PENDING` (the running runner's release cannot read `tasks/`; the owner
+restarts it). Its `state` is `none` for a new repository (bootstrap goals
 from its `accepted` headings only, else report the missing intent and create no
 queue), and its `diagnostics` name defects with the `autowork tasks` command that
 repairs each: repair only from accepted evidence, never grant ownership, `live` or

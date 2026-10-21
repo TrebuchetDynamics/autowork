@@ -18,6 +18,19 @@ claim of a tagged release, completed installation or live workflow qualification
   diagnostics (drafts, unauthorized live work, broken sources, duplicates, goals without
   work, in-flight tasks), each with its repair command. Docs Sync no longer asks the owner
   to run `autowork migrate`.
+- **Deferred conversion.** Work in flight no longer leaves a legacy repository unconverted:
+  `autowork tasks prepare` records the request (`MIGRATION_DEFERRED`, exit status 3,
+  nothing written to the repository), and the repository's runner drains it itself. It
+  starts nothing, waits for live workers to finish, sets every other attempt aside with its
+  worktree, branch and uncommitted files kept, releases their claims (the tasks convert
+  open and dispatch fresh), converts under its own coordinator lease, and plans from
+  `tasks/`. A live worker is never stopped, a live lease never broken and no task closed.
+- `autowork capabilities`: the executable's release, commands, `tasks` verbs and prepare
+  API as JSON. Docs Sync checks it first and reports `TOOLCHAIN_MISMATCH` (with `autowork
+  update` as the fix) instead of falling back to TODO.md when the installed CLI is older
+  than the skill. `prepare` reports one `outcome` (READY, MIGRATED, NO_STORE,
+  MIGRATION_DEFERRED, MIGRATION_BLOCKED, INVALID_STORE, ACTIVATION_PENDING) and whether
+  this repository's running runner can read `tasks/`.
 
 ### Changed
 

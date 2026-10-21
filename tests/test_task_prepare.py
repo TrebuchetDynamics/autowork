@@ -8,6 +8,7 @@ for naming this lifecycle (DocsSyncInstructionTests), not for model adherence.
 import fcntl
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -215,16 +216,54 @@ class LegacyTests(Repo):
         self.assertEqual((report['actions'][0]['outcome'], report['state']), ('ALREADY_CONVERTED', 'converted'))
         self.assertEqual(self.git('for-each-ref', 'refs/autowork'), '')
 
-    def test_an_active_worker_refuses_without_changing_anything(self):
+    def slot(self, tid='T-001', state='running'):
         folder = self.repo / '.git/autowork-execution/slots'
-        folder.mkdir(parents=True)
-        (folder / 'T-001.json').write_text(json.dumps({'task_id': 'T-001', 'state': 'running', 'attempt': 1}))
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / f'{tid}.json').write_text(json.dumps({'task_id': tid, 'state': state, 'attempt': 1}))
+
+    def without_intent(self, snapshot):
+        files, refs, head = snapshot
+        return {k: v for k, v in files.items() if not k.endswith('convert-intent.json')}, refs, head
+
+    def test_an_active_worker_defers_the_conversion_to_the_runner(self):
+        self.slot()
         before = self.snapshot(lock=False)
-        report = self.prepare(ok=False)
+        result = self.tasks('prepare', ok=False)
+        report = json.loads(result.stdout)
+        self.assertEqual((result.returncode, report['ok'], report['outcome']), (3, False, 'MIGRATION_DEFERRED'))
         self.assertEqual(report['state'], 'legacy')
         self.assertIn('worker slots in flight', report['refusals'][0])
-        self.assertIn('nothing was written', report['next'])
+        self.assertIn('conversion deferred', report['next'])
+        # Only the request is recorded, in the execution state: no file, ref, index or HEAD.
+        self.assertEqual(self.without_intent(self.snapshot(lock=False)), self.without_intent(before))
+        self.assertEqual(task_migrate.intent(self.repo)['requested_by'], 'autowork tasks prepare')
+        # Repeating it records nothing new.
+        recorded = (self.repo / '.git/autowork-execution/convert-intent.json').read_bytes()
+        self.tasks('prepare', ok=False)
+        self.assertEqual((self.repo / '.git/autowork-execution/convert-intent.json').read_bytes(), recorded)
+
+    def test_without_commit_authority_work_in_flight_blocks_and_records_nothing(self):
+        self.slot()
+        before = self.snapshot(lock=False)
+        report = self.prepare('--no-commit', ok=False)
+        self.assertEqual(report['outcome'], 'MIGRATION_BLOCKED')
+        self.assertIsNone(task_migrate.intent(self.repo))
         self.assertEqual(self.snapshot(lock=False), before)
+
+    def test_audit_reports_a_deferral_without_recording_it(self):
+        self.slot()
+        before = self.snapshot()
+        report = self.prepare('--check', ok=False)
+        self.assertEqual(report['outcome'], 'MIGRATION_DEFERRED')
+        self.assertNotIn('deferred', report)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_uncommitted_planning_blocks_rather_than_defers(self):
+        self.slot()
+        (self.repo / 'TODO.md').write_text((self.repo / 'TODO.md').read_text() + '\n')
+        report = self.prepare(ok=False)
+        self.assertEqual(report['outcome'], 'MIGRATION_BLOCKED')
+        self.assertIsNone(task_migrate.intent(self.repo))
 
     def test_an_interrupted_conversion_resumes(self):
         head = self.git('rev-parse', 'HEAD')
@@ -258,6 +297,172 @@ class LegacyTests(Repo):
         report = self.prepare('--check')
         self.assertEqual((report['state'], report['would']['convert']), ('legacy', 7))
         self.assertEqual(self.snapshot(), before)
+
+
+class DeferredConversionTests(Repo):
+    """A legacy repository a dead runner left with an attempt in flight and a claim: prepare
+    defers, and the runner (task_migrate.convert_after_drain) drains and converts it."""
+
+    def setUp(self):
+        super().setUp()
+        for name in ('TODO.md', 'TODO.archive.md', 'goals.json'):
+            (self.repo / name).write_bytes((LEGACY / name).read_bytes())
+        self.unclaimed = reader.order(self.repo)  # the queue before the legacy runner's claim
+        ledger = json.loads((self.repo / 'goals.json').read_text())
+        for task in ledger['tasks']:
+            if task['id'] == 'T-001':
+                task['status'] = 'in_progress'  # the legacy runner's claim
+        (self.repo / 'goals.json').write_text(json.dumps(ledger, indent=2) + '\n')
+        self.commit('the legacy runner claims T-001')
+        (self.repo / '.git/info/exclude').write_text('/.worktrees/\n')  # as every runner repository
+        self.worktree = self.repo / '.worktrees/autowork-T-001'
+        self.git('worktree', 'add', '-q', '-b', 'autowork/T-001', str(self.worktree))
+        (self.worktree / 'work.txt').write_text('committed work\n')
+        subprocess.run(['git', '-C', str(self.worktree), 'add', 'work.txt'], check=True)
+        subprocess.run(['git', '-C', str(self.worktree), 'commit', '-qm', 'T-001 work'], check=True)
+        self.work = subprocess.run(['git', '-C', str(self.worktree), 'rev-parse', 'HEAD'], check=True,
+                                   capture_output=True, text=True).stdout.strip()
+        (self.worktree / 'draft.txt').write_text('uncommitted work\n')
+        folder = self.repo / '.git/autowork-execution/slots'
+        folder.mkdir(parents=True)
+        (folder / 'T-001.json').write_text(json.dumps({
+            'task_id': 'T-001', 'state': 'running', 'attempt': 1, 'worktree': str(self.worktree),
+            'branch': 'autowork/T-001', 'baseline': self.git('rev-parse', 'HEAD')}))
+        self.assertEqual(self.prepare(ok=False)['outcome'], 'MIGRATION_DEFERRED')
+
+    def after_drain(self):
+        """The runner's step, as it runs it: a helper whose lease owner is its parent (us)."""
+        result = subprocess.run([sys.executable, str(COMMAND), 'migrate', str(self.repo), '--after-drain',
+                                 '--owner-pid', str(os.getpid())], capture_output=True, text=True, timeout=300)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def test_the_runner_drains_and_converts_keeping_the_work(self):
+        step = self.after_drain()
+        self.assertEqual((step['outcome'], step['set_aside']), ('CONVERTED', ['T-001']), step)
+        store = TaskStore.at(self.repo, 'HEAD')
+        self.assertEqual(store.tasks['T-001'].status, 'open', 'the released claim converts open')
+        # Its task is selectable again, where it was before the claim.
+        self.assertEqual([t.id for t in __import__('task_select').order(store)], self.unclaimed)
+        self.assertFalse((self.repo / 'TODO.md').exists())
+        # The attempt's work is kept under its -set-aside name, committed and uncommitted.
+        self.assertEqual(self.git('rev-parse', 'autowork/T-001-set-aside-1'), self.work)
+        kept = Path(str(self.worktree) + '-set-aside-1')
+        self.assertEqual((kept / 'draft.txt').read_text(), 'uncommitted work\n')
+        self.assertFalse((self.repo / '.git/autowork-execution/slots/T-001.json').exists())
+        self.assertIsNone(task_migrate.intent(self.repo))
+        self.assertEqual(self.git('status', '--porcelain'), '')
+        # The lease the drain took is released, so the runner's engine claims its own.
+        import parallel_state
+        self.assertIsNone(parallel_state.live_coordinator(parallel_state.common_dir(self.repo)))
+        self.assertEqual(self.prepare()['outcome'], 'READY')
+
+    def test_a_merge_already_in_main_is_named_not_silently_redone(self):
+        record = self.repo / '.git/autowork-execution/slots/T-001.json'
+        slot = json.loads(record.read_text())
+        record.write_text(json.dumps(dict(slot, state='integrated',
+                                          integration={'commit': self.git('rev-parse', 'HEAD')})))
+        step = self.after_drain()
+        self.assertEqual((step['outcome'], step['set_aside'], step['landed']), ('CONVERTED', ['T-001'], ['T-001']))
+
+    def test_a_finished_slot_is_left_alone(self):
+        record = self.repo / '.git/autowork-execution/slots/T-001.json'
+        record.write_text(json.dumps(dict(json.loads(record.read_text()), state='released')))
+        step = self.after_drain()
+        self.assertEqual((step['outcome'], step['set_aside']), ('CONVERTED', []), step)
+        self.assertTrue(record.exists())
+
+    def test_a_live_worker_is_waited_for_never_stopped(self):
+        import task_execution
+        worker = subprocess.Popen(['sleep', '60'])
+        self.addCleanup(worker.kill)
+        record = self.repo / '.git/autowork-execution/slots/T-001.json'
+        slot = json.loads(record.read_text())
+        record.write_text(json.dumps(dict(slot, worker=task_execution.identity(worker.pid))))
+        head = self.git('rev-parse', 'HEAD')
+        step = self.after_drain()
+        self.assertEqual((step['outcome'], step['set_aside']), ('WAITING', []), step)
+        self.assertIn('T-001', step['detail'])
+        self.assertEqual(self.git('rev-parse', 'HEAD'), head)
+        self.assertTrue(record.exists())
+        self.assertTrue(worker.poll() is None, 'the worker keeps running')
+        self.assertTrue(task_migrate.intent(self.repo), 'the request stays until it is done')
+        # Once the worker has finished, the next cycle converts.
+        worker.kill()
+        worker.wait()
+        self.assertEqual(self.after_drain()['outcome'], 'CONVERTED')
+
+    def test_another_live_coordinator_is_never_broken(self):
+        import parallel_state
+        import task_execution
+        other = subprocess.Popen(['sleep', '60'])
+        self.addCleanup(other.kill)
+        common = parallel_state.common_dir(self.repo)
+        task_execution.save(common / 'coordinator.json', dict(
+            owner=task_execution.identity(other.pid), workspace=str(self.repo.resolve()), profile='',
+            max_workers=2, started_at=time.time()))
+        head = self.git('rev-parse', 'HEAD')
+        step = self.after_drain()
+        self.assertEqual(step['outcome'], 'BLOCKED', step)
+        self.assertIn('Live parallel coordinator', step['detail'])
+        self.assertEqual(self.git('rev-parse', 'HEAD'), head)
+        self.assertTrue((self.repo / '.git/autowork-execution/slots/T-001.json').exists())
+
+
+class ActivationTests(Repo):
+    """A ready store under a runner whose release predates tasks/ is not executable yet."""
+
+    def runner_on(self, release):
+        """Fake this repository's running runner: its state lock held and the release it runs."""
+        common = self.git('rev-parse', '--path-format=absolute', '--git-common-dir')
+        state_root = Path(self.tmp.name) / f'state-{release[:12]}'
+        state = state_root / hashlib.sha256(common.encode()).hexdigest()[:16]
+        state.mkdir(parents=True)
+        (state / 'runner.json').write_text(json.dumps({'pid': '1', 'toolset_rev': release}))
+        holder = subprocess.Popen([sys.executable, '-c', 'import fcntl,sys,time\n'
+                                   'h=open(sys.argv[1],"a");fcntl.flock(h,fcntl.LOCK_EX);print(1,flush=True);'
+                                   'time.sleep(60)', str(state / 'lock')], stdout=subprocess.PIPE, text=True)
+        self.addCleanup(holder.kill)
+        holder.stdout.readline()
+        return state_root
+
+    def test_a_runner_on_a_release_before_the_task_store_is_activation_pending(self):
+        self.bootstrap()
+        self.git('add', '-A')
+        self.commit('store')
+        old = subprocess.run(['git', '-C', str(ROOT), 'rev-parse', '71e1a385^'], capture_output=True,
+                             text=True).stdout.strip()
+        if not old:
+            self.skipTest('the toolset history before the task store is not available here')
+        with mock.patch.dict(os.environ, {'PI_AUTOWORK_STATE_DIR': str(self.runner_on(old))}):
+            report = self.prepare()
+            self.assertEqual((report['runner']['running'], report['runner']['reads_tasks']), (True, False))
+            self.assertEqual(report['outcome'], 'ACTIVATION_PENDING')
+        current = subprocess.run(['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], capture_output=True,
+                                 text=True).stdout.strip()
+        with mock.patch.dict(os.environ, {'PI_AUTOWORK_STATE_DIR': str(self.runner_on(current))}):
+            self.assertEqual(self.prepare()['outcome'], 'READY')
+
+
+class CapabilityTests(unittest.TestCase):
+    """The handshake a skill runs before it writes: this executable's commands and prepare API."""
+
+    def test_capabilities_name_the_release_tasks_verbs_and_prepare_api(self):
+        result = subprocess.run([sys.executable, str(COMMAND), 'capabilities'], capture_output=True, text=True,
+                                timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        found = json.loads(result.stdout)
+        self.assertIn('tasks', found['commands'])
+        self.assertTrue({'prepare', 'add', 'goal', 'validate'} <= set(found['tasks']))
+        self.assertGreaterEqual(found['prepare_api'], 2)
+        self.assertIn('MIGRATION_DEFERRED', found['prepare_outcomes'])
+        self.assertEqual(Path(found['toolset']), ROOT)
+
+    def test_an_older_cli_fails_the_handshake_instead_of_being_used(self):
+        """A release without the handshake exits non-zero on it; the skill stops there."""
+        result = subprocess.run([sys.executable, str(COMMAND), 'no-such-capability'], capture_output=True,
+                                text=True, timeout=60)
+        self.assertNotEqual(result.returncode, 0)
 
 
 class MaintainTests(Repo):
@@ -424,6 +629,12 @@ class DocsSyncInstructionTests(unittest.TestCase):
             text = (ROOT / path).read_text()
             with self.subTest(path=path):
                 self.assertIn('autowork tasks prepare', text)
+                if path.startswith(('skills/docs-sync/SKILL', 'adapters/')):
+                    # The handshake comes first, and a mismatch never falls back to TODO.md.
+                    self.assertLess(text.index('autowork capabilities'), text.index('autowork tasks prepare .')
+                                    if 'autowork tasks prepare .' in text else text.index('### Prepare the store'))
+                    self.assertIn('TOOLCHAIN_MISMATCH', text)
+                    self.assertIn('MIGRATION_DEFERRED', text)
                 self.assertNotIn("owner's `autowork migrate`", text)
                 self.assertNotIn('until the owner runs `autowork migrate', text)
                 self.assertNotIn('do not convert it yourself', text)
