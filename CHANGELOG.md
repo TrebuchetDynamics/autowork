@@ -41,6 +41,14 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- **Review gate: no second suite to confirm a hold, and its stages are visible.** When a
+  merged tree fails, the base comparison takes main's own green check when main's latest record
+  is green for the same command on the base's code (planning files aside), with main's excused
+  flaky tests as the base's failures, instead of running the whole suite again (about ten
+  minutes per failing candidate). The gate records each stage (merged tree started and its
+  result, reruns, the base comparison and where it came from, the verdict) in
+  `full-check/<task>.gate.jsonl`, and the TUI's task and worker views show them as `runner:`
+  lines between the worker's last action and the review, where they were silent.
 - **A menu bar on top, and a laid-out runner pane.** Every TUI screen now shows its keys on
   one line at the very top, under the title, like a GUI app's "File Edit View" menu: the
   runner keys (Log, Pause, Stop, Restart, Model, Fallback, Tasks, New, Quit), the task list's

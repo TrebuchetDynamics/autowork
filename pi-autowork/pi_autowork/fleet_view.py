@@ -17,6 +17,7 @@ import sys
 import time
 
 from pi_autowork import health, main_check, questions as owner_questions, task_prepare
+from pi_autowork.common import safe_name
 
 KINDS = {'runner': 'runner', 'cycle': 'dependency cycle', 'held': 'blocker', 'contract': 'not runnable',
          'claim': 'claimed elsewhere', 'outside': 'outside Now/Next'}
@@ -259,7 +260,28 @@ def action_log(runner, task, n=500, now=None, size=2097152):
         out.append((doing_text(text), age, at))
         if len(out) >= n:
             break
-    return out[::-1]
+    # The runner's own stages in between, which no transcript records: its full check on the
+    # merged tree, the reruns and the base comparison ran for 15 minutes behind a quiet view.
+    merged = out[::-1] + gate_stages(runner, task, now)
+    merged.sort(key=lambda item: item[2] if item[2] is not None else float('-inf'))
+    return merged[-n:]
+
+
+def gate_stages(runner, task, now=None):
+    """The review gate's recorded stages for ``task`` (worker.gate_events): [(text, seconds ago, at)]."""
+    now = time.time() if now is None else now
+    if not runner.state_dir:
+        return []
+    path = Path(runner.state_dir) / 'full-check' / f'{safe_name(task)}.gate.jsonl'
+    stages = []
+    for line in _tail(path, 65536):
+        try:
+            event = json.loads(line)
+            at = float(event['at'])
+            stages.append((f'runner: {event["text"]}', int(now - at), at))
+        except (ValueError, KeyError, TypeError):
+            continue
+    return stages
 
 
 TESTS = re.compile(r'\b(unittest|pytest|check\.py|go test|cargo test|npm (run )?test|flutter test|dart test|'

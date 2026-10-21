@@ -181,6 +181,27 @@ class WorkerTmpTests(unittest.TestCase):
         self.assertEqual(runs.read_text().count('run'), 1,
                          'the base suite is not worth running: no verdict can use it')
 
+    def test_the_gate_records_its_stages_for_the_task_view(self):
+        """After a worker's last action the TUI showed nothing for the 15 minutes the merged and base
+        suites ran: the gate now records each stage where the task view reads it."""
+        from pi_autowork import fleet_view
+        self.committed_repo()
+        state = self.elsewhere() / 'state'
+        command = 'echo "FAIL: test_x (m.T.test_x)"; exit 1'  # fails on the base too: excused
+        self.assertEqual(worker.run_gate(state, 'T-1', str(self.repo), command), (True, ''))
+        texts = [json.loads(line)['text'] for line in worker.gate_events(state, 'T-1').read_text().splitlines()]
+        self.assertEqual(texts[0], 'full check on the merged tree started')
+        self.assertIn('merged tree: 1 test(s) failed', texts)
+        self.assertIn('rerunning the 1 failure(s) alone', texts)
+        self.assertIn('base: 1 failing', texts)
+        self.assertEqual(texts[-1], 'full check passed')
+        runner = fleet_view.Runner(name='r', state_dir=str(state))
+        shown = [text for text, _, _ in fleet_view.action_log(runner, 'T-1')]
+        self.assertEqual(shown, ['runner: ' + t for t in texts])  # in order, beside any transcript
+        worker.run_gate(state, 'T-1', str(self.repo), 'true')  # a new review starts a fresh record
+        self.assertEqual([json.loads(l)['text'] for l in worker.gate_events(state, 'T-1').read_text().splitlines()],
+                         ['full check on the merged tree started', 'merged tree: all tests passed', 'full check passed'])
+
     def test_the_base_suite_runs_in_a_short_directory_and_not_under_the_state_dir(self):
         """Under the state directory this worktree path reached 87 characters before the suite
         added its own, past the 108-byte AF_UNIX limit that already moved review scratch."""
@@ -371,6 +392,49 @@ class WorkerTmpTests(unittest.TestCase):
                 saved = json.loads((state / 'full-check' / f'base-{rev}.json').read_text())
                 self.assertEqual(saved['tree'], value['tree'])
         worker.base_result(state, self.repo, command + '; true', rev, 10)
+        self.assertEqual(runs.read_text().count('ran'), 3)
+
+    def test_a_base_main_just_proved_green_is_not_run_again(self):
+        """A candidate that failed 21 tests ran the whole suite again on a base main had just
+        checked green: ten minutes to confirm a hold. Main's record stands in for the same code."""
+        from pi_autowork import main_check
+        git = lambda *a: subprocess.run(['git', '-C', str(self.repo), '-c', 'user.email=t@example.invalid',
+                                         '-c', 'user.name=T', *a], check=True, capture_output=True,
+                                        text=True).stdout.strip()
+        (self.repo / 'source.py').write_text('v1\n')
+        git('add', '-A')
+        git('commit', '-qm', 'main checked green')
+        green = git('rev-parse', 'HEAD')
+        (self.repo / 'tasks/items').mkdir(parents=True)
+        (self.repo / 'tasks/items/T.md').write_text('a close since\n')
+        git('add', '-A')
+        git('commit', '-qm', 'planning only')
+        base = git('rev-parse', 'HEAD')
+        state, runs = self.repo / '.git' / 'state', self.repo / '.git' / 'runs'
+        state.mkdir()
+        command = f'echo ran >> {runs}'
+        main_check.write(state, {'state': 'green', 'rev': green, 'green': green, 'flaky': ['t.T.test_flaky']})
+        with patch.dict(os.environ, PI_AUTOWORK_MAIN_CHECK=command):
+            value = worker.base_result(state, self.repo, command, base, 10)
+            self.assertFalse(runs.exists())  # no base suite
+            self.assertEqual((value['code'], value['failures'], value['from_main']), (1, ['t.T.test_flaky'], green))
+            (self.repo / 'source.py').write_text('v2\n')  # code main never checked
+            git('add', '-A')
+            git('commit', '-qm', 'code')
+            changed = git('rev-parse', 'HEAD')
+            self.assertNotIn('from_main', worker.base_result(state, self.repo, command, changed, 10))
+            self.assertEqual(runs.read_text().count('ran'), 1)
+            main_check.write(state, {'state': 'red', 'rev': green, 'green': green})
+            fresh = self.repo / '.git' / 'fresh-state'
+            fresh.mkdir()
+            main_check.write(fresh, {'state': 'red', 'rev': green, 'green': green})
+            self.assertNotIn('from_main', worker.base_result(fresh, self.repo, command, base, 10))  # not green now
+        main_check.write(fresh, {'state': 'green', 'rev': green, 'green': green})
+        other = self.repo / '.git' / 'other-state'
+        other.mkdir()
+        main_check.write(other, {'state': 'green', 'rev': green, 'green': green})
+        with patch.dict(os.environ, PI_AUTOWORK_MAIN_CHECK='python3 other-check.py'):
+            self.assertNotIn('from_main', worker.base_result(other, self.repo, command, base, 10))  # another command
         self.assertEqual(runs.read_text().count('ran'), 3)
 
     def test_failures_that_pass_alone_need_no_base_suite(self):

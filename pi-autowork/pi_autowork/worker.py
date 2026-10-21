@@ -301,6 +301,26 @@ def conclusive(value):
             and not timed_out_failures(value['failures']))
 
 
+def main_green_base(state, checkout, command, rev, tree):
+    """The base result main's own check already proved, or None: main's latest record is green
+    for the same command, on a revision whose planning-stripped tree is the base's. A candidate
+    whose merged tree failed 21 tests then ran the whole suite again on a base main had just
+    checked, about ten minutes to confirm a hold. Tests main's check excused as flaky are the
+    base's failures, so they are not blamed on the candidate."""
+    record = main_check.read(state)
+    green = record.get('green') if record.get('state') == 'green' else None
+    if not green or main_check.command(repo=checkout) != command:
+        return None
+    try:
+        if green != rev and base_tree(checkout, green) != tree:
+            return None
+    except (OSError, subprocess.CalledProcessError):
+        return None  # main's revision is not in this checkout: no proof
+    flaky = [f for f in record.get('flaky') or [] if isinstance(f, str)]
+    return {'code': 1 if flaky else 0, 'failures': flaky, 'timed_out': False, 'skips': None, 'resource_skips': 0,
+            'command': command, 'rev': rev, 'tree': tree, 'from_main': green}
+
+
 def base_result(state, checkout, command, rev, limit, progress=None):
     """Cache a base check by revision and planning-stripped tree, for the same command only."""
     if not rev:
@@ -318,6 +338,8 @@ def base_result(state, checkout, command, rev, limit, progress=None):
         except (OSError, ValueError, AttributeError, KeyError):
             pass
     if value is None:
+        value = main_green_base(state, checkout, command, rev, tree)
+    if value is None:
         # A short directory on disk, like a review's scratch: under the state directory this path
         # reached 87 characters before the suite added its own, past the 108-byte AF_UNIX limit.
         # The `aw-r-<pid>-*` name keeps a killed review's copy where drop_dead_scratch sweeps it.
@@ -334,6 +356,7 @@ def base_result(state, checkout, command, rev, limit, progress=None):
     if conclusive(value):
         # A crash or a timeout may be the host's: run it again next time. A cached timeout named
         # only the tests before its cut-off, so later ones read as new failures on every tree.
+        cache.parent.mkdir(parents=True, exist_ok=True)  # main's record ran no suite to create it
         cache.write_text(json.dumps(value))
         tree_cache.write_text(json.dumps(value))
     return value
@@ -384,6 +407,8 @@ def full_suite_gate(state, task, checkout, base=None):
         cached = json.loads(cache.read_text())
         if tree and cached.get('command') == command:
             replay_gate_log(state, task, cached)
+            gate_event(state, task, "full check: this tree's earlier result reused ("
+                       + ('passed' if cached['ok'] else 'failed') + ')', fresh=True)
             return cached['ok'], cached['reason']
     except (OSError, ValueError, KeyError, AttributeError, TypeError):
         pass
@@ -472,10 +497,34 @@ def quiet_reruns(state, task, log, checkout, rev, tests, limit):
         return []
 
 
+def gate_events(state, task):
+    """Where a review's gate records its stages, one JSON line each ({at, text}), for the TUI's
+    task view: after the worker's last action it showed nothing for the 15 minutes the merged
+    and base suites ran."""
+    return Path(state) / 'full-check' / f'{safe_name(task)}.gate.jsonl'
+
+
+def gate_event(state, task, text, *, fresh=False):
+    path = gate_events(state, task)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open('w' if fresh else 'a') as stream:
+            stream.write(json.dumps({'at': time.time(), 'text': text}) + '\n')
+    except OSError:
+        pass  # a view's record; the gate's verdict never depends on it
+
+
 def run_gate(state, task, checkout, command, base_rev=None, *, evidence=None):
     """(ok, reason) of ``command`` on the merged tree (TOOLSET-180-72): a reviewer-approved commit
     landed while breaking 44 tests its own checks never ran. Only what the base does not already
     fail rejects a candidate; a test that passes when rerun alone is flaky, not new."""
+    gate_event(state, task, 'full check on the merged tree started', fresh=True)
+    ok, reason = _run_gate(state, task, checkout, command, base_rev, evidence=evidence)
+    gate_event(state, task, 'full check passed' if ok else f'full check failed: {reason}')
+    return ok, reason
+
+
+def _run_gate(state, task, checkout, command, base_rev=None, *, evidence=None):
     limit = setting('PI_AUTOWORK_VALIDATE_TIMEOUT', 3600, float)
     log = gate_log(state, task)
     progress = log.with_name(f'{safe_name(task)}.status.json')
@@ -483,6 +532,9 @@ def run_gate(state, task, checkout, command, base_rev=None, *, evidence=None):
     evidence.update(isolated_rerun=[], baseline_equivalent=[])
     merged = run_suite(command, checkout, limit, log, progress)
     evidence['result'] = merged
+    gate_event(state, task, 'merged tree: ' + ('all tests passed' if merged['code'] == 0 else
+                                               f'{len(merged["failures"])} test(s) failed' if merged['failures']
+                                               else f'exit {merged["code"]} before any test result'))
     if merged['code'] == 0:
         return True, ''
     if merged['timed_out']:
@@ -504,6 +556,7 @@ def run_gate(state, task, checkout, command, base_rev=None, *, evidence=None):
         receipt.unlink(missing_ok=True)
         rev = git(checkout, 'rev-parse', 'HEAD') or ''
         check_stop()
+        gate_event(state, task, f'rerunning the {len(failures)} failure(s) alone')
         try:
             main_check.rerun_failures(str(log), checkout, str(receipt), rev)
             reruns = json.loads(receipt.read_text())
@@ -516,6 +569,7 @@ def run_gate(state, task, checkout, command, base_rev=None, *, evidence=None):
         if failures and reruns:
             failures = [f for f in failures if f not in quiet_reruns(state, task, log, checkout, rev, failures, limit)]
         evidence['isolated_rerun'] = [f for f in merged['failures'] if f not in failures]
+        gate_event(state, task, f'{len(evidence["isolated_rerun"])} passed alone; {len(failures)} still fail')
         # The coordinator's rule for main: signals and shell errors are not ordinary unittest
         # failures, and the receipt says when the log has no complete summary.
         if not failures and (merged['code'] != 1 or reruns.get('incomplete')):
@@ -529,9 +583,12 @@ def run_gate(state, task, checkout, command, base_rev=None, *, evidence=None):
     incomplete = timed_out_failures(merged['failures'])
     if incomplete:
         return False, 'the full check did not complete ' + first_ten(incomplete)
+    gate_event(state, task, 'comparing with the base (its full check, unless one is on record)')
     try:
         base = base_result(state, checkout, command, base_rev or git(checkout, 'rev-parse', 'HEAD^1'),
                            limit, progress)
+        gate_event(state, task, 'base: ' + ('all tests pass' if base['code'] == 0 else f'{len(base["failures"])} failing')
+                   + (f" (main's check of {base['from_main'][:7]}, not run again)" if base.get('from_main') else ''))
     except (OSError, ValueError, TypeError, subprocess.SubprocessError) as error:
         # Without a base there is no verdict, and never a pass for want of evidence.
         return False, f'the full check has no base to compare with: {error}'
