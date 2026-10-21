@@ -1503,6 +1503,8 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 ### TOOLSET-145-6d — Qualify Pi API-key and subscription login locally with owner credentials
 
 - [ ] TOOLSET-145-6d — Qualify Pi API-key and subscription login locally with owner credentials
+- Qualification context: Use a newly created private isolated Pi agent directory for this qualification, not an existing production context. No automatic credential import; the owner completes supported prompts locally. Context creation and logins have not been performed by this /blockers pass.
+- Qualification providers: Owner-selected on 2026-10-20: OpenRouter API key and OpenAI Codex OAuth, subject to installed Pi support. Provider choice does not prove either method works or confer subscription entitlement.
 - Live authorization: Owner approved a separate isolated Pi account qualification context on 2026-10-20 with locally completed credential prompts. Provider/context selection and actual local attendance remain prerequisites; no credentials have been requested or entered.
 - Owner decision: 2026-10-20: Authorize an isolated context; the owner will complete credential prompts locally. No production credential import, secrets in chat/logs, paid validation, service or profile migration is authorized.
 - Short: Qualify Pi API-key and subscription
@@ -1515,7 +1517,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Checks: Owner-performed native `autowork` TUI flows: select isolated Pi context and disposable repositories; Connect account with an API key, then a Pi-supported subscription login, using distinct providers/contexts when needed to avoid replacing the first account; reopen and inspect sanitized account/model state; exercise pre-commit cancel; verify absence of service/job/model activity. Use the implemented metadata view, not a token-printing auth command. These are pending live observations, not automated passes.
 - Dependencies: TOOLSET-144-c0.
 - Ownership: Toolset coordinator with the owner at the local terminal; preserve review/source binding to the delivered offline candidate.
-- Gate: USER_INPUT — isolated-context authority is supplied; choose provider(s) and the disposable Pi context, then the owner completes supported account prompts locally. Availability and successful login are not inferred.
+- Gate: LOCAL_INPUT — isolated-context authority and provider selection are supplied. Verify installed Pi method support, arrange actual local owner attendance and complete account prompts locally. No keys or codes in chat/logs; no paid model validation or service/job operation.
 - Exclusions: No production credential import, provider purchase, paid model validation, service migration, gateway/profile changes, remote web credential entry or scheduling. Do not mark done from mocks.
 
 ### TOOLSET-215-91 — Bundle skills load read-only from the plugin, so the skill review never edits them
