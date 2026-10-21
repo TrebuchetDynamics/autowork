@@ -107,6 +107,7 @@ class Runner:
     model: str = ''
     fallback: str = ''
     questions: list = field(default_factory=list)  # the owner's open questions in BLOCKERS.md
+    decisions: int = 0  # open tasks in Needs decision: never dispatched, so not in the engine's status
     toolset: str = ''         # PI_AUTOWORK_TOOLSET: the service runs this checkout, not the Pi package
     waiting_groups: list = field(default_factory=list)  # why tasks wait, grouped (status.json)
     blocker: str = ''         # what keeps the runner itself from dispatching (status.json)
@@ -588,7 +589,8 @@ def task_counts(runner):
     mergeable = heads.count(MERGEABLE)
     blocker = len(blocking(runner.held))
     waiting = heads.count(WAITING) + runner.waiting + len(runner.held) - blocker
-    return active, mergeable, waiting, blocker, active + mergeable + waiting + blocker
+    # Total is every open task: the Needs-decision ones wait for the owner, outside the columns.
+    return active, mergeable, waiting, blocker, active + mergeable + waiting + blocker + runner.decisions
 
 
 def reviews(state_dir, proc='/proc'):
@@ -748,6 +750,8 @@ def needs(runner):
     if groups:
         kind, items = groups[0]
         return f'{kind}: {items}'
+    if runner.decisions:
+        return f"{runner.decisions} task{'s' if runner.decisions > 1 else ''} need your decision"
     return ''
 
 
@@ -920,7 +924,9 @@ def collect(state_root, env_dir, *, systemctl='systemctl', now=None, strict=Fals
             runner.minutes = int((now - runner.job['started']) // 60)
     for runner in found.values():
         if runner.repo and Path(runner.repo).is_dir():
-            runner.prepare_state = task_prepare.prepare(runner.repo, mode='check').get('state')
+            report = task_prepare.prepare(runner.repo, mode='check')
+            runner.prepare_state = report.get('state')
+            runner.decisions = (report.get('counts') or {}).get('open:Needs decision', 0)
         runner.lanes = lanes(runner, now)
         runner.restarting, runner.gate = recent_events(runner, now)
         # The runner refreshes its status between cycles, not during a long verification it
