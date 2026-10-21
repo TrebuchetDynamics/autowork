@@ -22,7 +22,7 @@ import sys
 import tempfile
 import time
 
-from . import fleet_view, health, janitor, main_check, maintainer, pi_runtime, questions, release, task_commands, worker, workspaces
+from . import fleet_view, health, janitor, main_check, maintainer, pi_runtime, questions, release, task_commands, telemetry, worker, workspaces
 from .common import LOG, dirty, git, git_ok, lifecycle, open_for_writing, safe_name, summary_list
 
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
@@ -960,12 +960,17 @@ class Coordinator:
             owned = [p for p in overlap if not planning(p)]
             if owned:
                 return 'uncommitted changes overlap the landing: ' + ', '.join(owned)
-            return self.land_around_edits(old, new)
+            reason = self.land_around_edits(old, new)
+            if not reason:
+                telemetry.observe(self.repo, self.base)
+            return reason
         held = open_for_writing([Path(self.repo) / p for p in changed if p])
         if held:
             return f'{os.path.relpath(sorted(held)[0], self.repo)} is open for writing'
         result = subprocess.run(['git', '-C', str(self.repo), 'merge', '--ff-only', new],
                                 capture_output=True, text=True)
+        if result.returncode == 0:
+            telemetry.observe(self.repo, self.base)
         return '' if result.returncode == 0 else (result.stdout + result.stderr).strip()
 
     def land_around_edits(self, old, new):
@@ -1194,6 +1199,7 @@ class Coordinator:
         if result.returncode == 0:
             self.seen.pop('push-note', None)
             LOG.say(f'Pushed {self.base} to {upstream}')
+            telemetry.observe(self.repo, self.base)
             return
         text = (result.stdout + result.stderr).strip()
         if retry and re.search(r'rejected|non-fast-forward|fetch first', text):
@@ -2782,6 +2788,7 @@ class Coordinator:
             self.seen['synced-at-start'] = True
             self.sync_upstream()  # publish a backlog left by a run that could not push
         self.follow_base()
+        telemetry.observe(self.integ or self.repo, getattr(self, 'base', None))
         if self.integ and not self.session_busy() and not dirty(self.integ):
             self.reopen_stale_closures()  # also a close an owner commit changed the contract of
         self.sweep_tmp()
@@ -2826,6 +2833,7 @@ class Coordinator:
         elif not self.draining or resumes:
             # Workers leave the full check to the gate the runner runs on the merged tree (TOOLSET-227-a8).
             os.environ['AUTOWORK_RUNNER_FULL_CHECK'] = main_check.full_check(self.integ) if self.integ else ''
+            os.environ.update(AUTOWORK_TELEMETRY_HOST='pi', AUTOWORK_TELEMETRY_MODEL=chosen)
             result = self.engine('--apply', '--parallel', str(self.workers), '--max-workers', '16',
                                  '--worker-command', self.worker_command, '--worker-timeout', self.task_timeout,
                                  '--min-free-mem-mb', self.min_free_mb,

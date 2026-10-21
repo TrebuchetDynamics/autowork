@@ -53,6 +53,8 @@ class RuntimeTests(unittest.TestCase):
         pi.chmod(pi.stat().st_mode | stat.S_IEXEC)
         self.plan, self.log = root / 'plan.json', root / 'log.jsonl'
         self.env = {'PI_BIN': str(pi), 'PI_AUTOWORK_BACKOFF': '0', 'PI_AUTOWORK_MAX_RETRIES': '2',
+                    'PI_AUTOWORK_PRIMARY': 'openai-codex/gpt-6.1-sol',
+                    'PI_AUTOWORK_FALLBACK': 'openrouter/deepseek/deepseek-v4.1-flash',
                     'FAKE_PLAN': str(self.plan), 'FAKE_LOG': str(self.log)}
         self.patch = dict(os.environ)
         os.environ.update(self.env)
@@ -83,6 +85,14 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(list((self.state / 'runs').iterdir()), [])  # the raw stream is gone
 
     def test_a_provider_failure_cools_the_primary_and_the_fallback_finishes(self):
+        import subprocess
+        from pi_autowork import telemetry
+        root = Path(self.temp.name)
+        subprocess.run(['git', 'init', '-q', str(root)], check=True)
+        engine = telemetry.engine()
+        common = engine.common_dir(root)
+        engine.execution.save(engine.slot_path(common, 'T-1'), dict(
+            task_id='T-1', state='running', attempt=1, attempt_id='fixture', host='pi', model='unknown'))
         self.set_plan(['rate_limit', 'finish'])
         result = self.job()
         self.assertTrue(result['ok'])
@@ -91,6 +101,12 @@ class RuntimeTests(unittest.TestCase):
         self.assertNotIn('secret123', json.dumps(self.records()))
         self.assertTrue(runtime.primary_cooling(runtime.Settings(self.state)))
         self.assertIn('reconcile its partial work', self.calls()[1]['message'])
+        events = engine.lifecycle_events(common)['events']
+        self.assertEqual([e['event'] for e in events],
+                         ['model_selected', 'model_retry', 'model_selected', 'model_finished'])
+        self.assertEqual(events[-1]['model'], 'openrouter/deepseek/deepseek-v4.1-flash')
+        self.assertEqual({e['attempt_id'] for e in events}, {'fixture'})
+        self.assertNotIn('secret123', json.dumps(events))
 
     def test_crashes_are_retried_then_given_up(self):
         self.set_plan(['crash', 'crash', 'crash'])

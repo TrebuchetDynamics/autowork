@@ -4,8 +4,6 @@ Durations are observed state durations, not provider billing or CPU time. Worker
 integration and waiting time sum task intervals (so overlapping time is counted
 per task); wall time is elapsed coordinator-run time, excluding released gaps.
 """
-import json
-import math
 from pathlib import Path
 import re
 import time
@@ -23,19 +21,7 @@ WAITING = {'dispatched', 'reported', 'integrated', 'held', 'interrupted', 'relea
 
 
 def journal(common):
-    path = execution.safe_path(common / 'journal.jsonl')
-    if not path.exists():
-        return []
-    events = []
-    for line in path.read_text().splitlines():
-        value = json.loads(line, object_pairs_hook=execution.unique)
-        if (not isinstance(value, dict) or type(value.get('timestamp')) not in (float, int)
-                or not math.isfinite(value['timestamp']) or not isinstance(value.get('event'), str)):
-            raise ValueError('malformed parallel journal event')
-        if events and value['timestamp'] < events[-1]['timestamp']:
-            raise ValueError('parallel journal timestamps moved backwards')
-        events.append(value)
-    return events
+    return state.journal.read(common, ordered=True)['events']
 
 
 def metrics(events, now):
@@ -181,7 +167,8 @@ def roots(rows):
 
 
 def _snapshot(repo, common, now):
-    events = journal(common)
+    history = state.journal.read(common, ordered=True)
+    events = history['events']
     coordinator = state.lease(common)
     last_coordinator = next((e['coordinator'] for e in reversed(events) if e['event'] == 'coordinator_claimed'), {})
     capacity = (coordinator or last_coordinator).get('max_workers', 0)
@@ -293,6 +280,7 @@ def _snapshot(repo, common, now):
                                                   and not r.get('paused')) for r in rows),
                 integration_queue=sum(r['state'] in ('reported', 'integrating') for r in rows),
                 metrics=metrics(events, now),
+                **({'journal_skipped': history['skipped']} if any(history['skipped'].values()) else {}),
                 **({'merge_backlog': observed['merge_backlog']} if 'merge_backlog' in observed else {}))
 
 

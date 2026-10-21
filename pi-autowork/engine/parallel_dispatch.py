@@ -392,7 +392,7 @@ def created_by_autowork(common, path, branch):
     journal = common / 'journal.jsonl'
     return journal.exists() and any(
         e.get('event') == 'worktree_created' and e.get('worktree') == str(path) and e.get('branch') == branch
-        for e in map(json.loads, journal.read_text().splitlines()))
+        for e in state.journal.read(common)['events'])
 
 
 def set_aside_number(repo, pairs, start=1):
@@ -973,22 +973,15 @@ def merge_backlog(common, current, *, workers, now=None, env=os.environ):
     if not threshold or len(queued) < threshold:
         return result
     since, paused = {}, False
-    try:
-        with (common / 'journal.jsonl').open() as stream:
-            for line in stream:
-                if '"slot_changed"' not in line and '"dispatch_observed"' not in line:
-                    continue
-                event = json.loads(line)
-                if event.get('event') == 'dispatch_observed':
-                    paused = bool((event.get('merge_backlog') or {}).get('paused'))
-                elif event.get('event') == 'slot_changed' and event.get('task_id') in queued:
-                    tid = event['task_id']
-                    if event.get('state') in ('reported', 'integrating'):
-                        since.setdefault(tid, event['timestamp'])
-                    else:
-                        since.pop(tid, None)
-    except FileNotFoundError:
-        pass
+    for event in state.journal.read(common)['events']:
+        if event.get('event') == 'dispatch_observed':
+            paused = bool((event.get('merge_backlog') or {}).get('paused'))
+        elif event.get('event') == 'slot_changed' and event.get('task_id') in queued:
+            tid = event['task_id']
+            if event.get('state') in ('reported', 'integrating'):
+                since.setdefault(tid, event['timestamp'])
+            else:
+                since.pop(tid, None)
     now = time.time() if now is None else now
     age = max(0, now - min(since.values())) if since else 0
     result.update(paused=paused or bool(since and age >= limits['MERGE_BACKLOG_AFTER']), oldest_seconds=age)
@@ -1094,7 +1087,7 @@ def dispatch_locked(args, repo, common, count, template, host):
                 waiting.append({'id': task['id'], 'reason': str(exc), 'blocked_by': []})
                 continue  # An unsafe leftover holds this task, not the rest of the queue.
             state.create_slot(repo, args.owner_pid, task['id'], worktree=str(worktree), branch=branch,
-                              baseline=base)
+                              baseline=base, host=os.environ.get('AUTOWORK_TELEMETRY_HOST') or host)
         slot = next(s for s in state.slots(common) if s['task_id'] == task['id'])
         attempt = slot['attempt'] + (1 if previous and not previous.get('paused') else 0)
         data = execution.safe_path(common / 'slot-data' / task['id'] / f'attempt-{attempt}')
