@@ -214,7 +214,7 @@ class MainCheckTests(unittest.TestCase):
                 runner.state, runner.repo, runner.integ, runner.stop = Path(tmp), tmp, tmp, False
                 runner.in_flight = runner.session_busy = lambda: False
                 runner.scratch_checkout, runner.drop_scratch = lambda _: tmp, lambda _: None
-                runner.goals, runner.verify_timeout = 'goals.py', 1
+                runner.toolset, runner.tasks_cli, runner.verify_timeout = Path(__file__).resolve().parents[2], 'autowork tasks', 1
                 prompts = []
                 runner.pi_job = lambda *args: (not prompts.append(args[3]), '')
                 history = {f'test_sample.Sample.test_{i:02}': ['a', 'b', 'c'] for i in range(count)}
@@ -408,7 +408,7 @@ class MainCheckTests(unittest.TestCase):
             runner.tasks = lambda: []
             started = []
             runner.scratch_checkout = lambda *args: started.append(args) and None
-            for changed, carried in (('BLOCKERS.md\nTODO.md\ngoals.json', True), ('TODO.md\nREADME.md', False)):
+            for changed, carried in (('BLOCKERS.md\ntasks/items/T.md\ntasks/goals/G.md', True), ('tasks/items/T.md\nREADME.md', False)):
                 with self.subTest(changed=changed):
                     started.clear()
                     main_check.write(runner.state, {'state': 'green', 'rev': 'old', 'green': 'old', 'finished': 0})
@@ -421,7 +421,7 @@ class MainCheckTests(unittest.TestCase):
             # A red main is checked again: its repair may be the planning change.
             started.clear()
             main_check.write(runner.state, {'state': 'red', 'rev': 'old', 'green': 'older', 'finished': 0})
-            with patch('pi_autowork.coordinator.git', side_effect=lambda *a: 'TODO.md' if a[1] == 'diff' else 'new'):
+            with patch('pi_autowork.coordinator.git', side_effect=lambda *a: 'tasks/items/T.md' if a[1] == 'diff' else 'new'):
                 runner.check_main()
             self.assertTrue(started)
 

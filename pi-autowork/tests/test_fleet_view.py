@@ -12,7 +12,9 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'engine'))
 from pi_autowork import fleet_view  # noqa: E402
+import store_fixture  # noqa: E402
 
 PILOT = Path(__file__).with_name('tui_pilot.py')
 
@@ -109,8 +111,8 @@ class FleetViewTests(unittest.TestCase):
         # A task's own actions, in the Tasks window.
         held = fleet_view.TaskRow('T-9', 'Short', 'Now', 'held: conflict', 'held', question=True)
         task = {a.key: a for a in fleet_view.task_actions(india, held, command='aw', script='pa.sh', agent=['claude'])}
-        self.assertEqual(task['u'].argv, ['aw', 'move', 'T-9', 'up', 'india'])
-        self.assertEqual(task['d'].argv, ['aw', 'move', 'T-9', 'down', 'india'])
+        self.assertEqual(task['u'].argv, ['aw', 'tasks', 'move', 'T-9', 'up', 'india'])
+        self.assertEqual(task['d'].argv, ['aw', 'tasks', 'move', 'T-9', 'down', 'india'])
         self.assertEqual(task['c'].argv, ['aw', 'clear-held', 'india', 'T-9'])
         self.assertEqual(task['a'].argv, ['pa.sh', '--repo', '/git/india', '--set-aside', 'T-9'])
         self.assertEqual(task['b'].argv, ['aw', 'blockers', '/git/india'])
@@ -121,20 +123,17 @@ class FleetViewTests(unittest.TestCase):
                          ['d', 's', 'u'])  # nothing held, no agent: re-sort and re-section only
 
     def test_questions_are_answered_where_the_runner_reads_them(self):
-        """From the TUI: each answer writes a field of the task's TODO.md entry, or moves it."""
+        """From the TUI: each answer writes a note in the task's record, or moves it."""
         import datetime
         india = fleet_view.Runner(name='india', repo='/git/india')
         day = datetime.date(2026, 10, 20)
         def keys(question):
             return {a.key: a for a in fleet_view.answers(india, question, command='aw', today=day)}
-        claim = keys(fleet_view.Question('T-1', 'quick', 2, 'claimed', kind='claim'))
-        self.assertEqual(claim['o'].argv, ['aw', 'field', 'T-1', 'Status', 'open', 'india'])
-        self.assertEqual(claim['h'].argv, ['aw', 'field', 'T-1', 'Held by', 'the owner; until 2026-10-27', 'india'])
         held = keys(fleet_view.Question('T-2', 'input', 1, 'quick hold', kind='quick_hold',
                                         answer='To rerun, add `Blocker resolution: ab12cd; <producer>` to it.'))
-        self.assertEqual(held['r'].argv, ['aw', 'field', 'T-2', 'Blocker resolution', 'ab12cd; {text}', 'india'])
-        self.assertEqual(held['w'].argv, ['aw', 'field', 'T-2', 'Owner decision', '2026-10-20: {text}', 'india'])
-        self.assertEqual(held['d'].argv, ['aw', 'place', 'T-2', 'Needs decision', 'india',
+        self.assertEqual(held['r'].argv, ['aw', 'tasks', 'field', 'T-2', 'Blocker resolution', 'ab12cd; {text}', 'india'])
+        self.assertEqual(held['w'].argv, ['aw', 'tasks', 'field', 'T-2', 'Owner decision', '2026-10-20: {text}', 'india'])
+        self.assertEqual(held['d'].argv, ['aw', 'tasks', 'place', 'T-2', 'Needs decision', 'india',
                                           '--decision', '2026-10-20: deferred: {text}'])
         self.assertNotIn('o', held)
         for answer in held.values():
@@ -150,7 +149,7 @@ class FleetViewTests(unittest.TestCase):
     def test_tasks_list_every_open_task_in_order_with_what_the_runner_says(self):
         repo = self.base / 'repo'
         repo.mkdir()
-        (repo / 'TODO.md').write_text(
+        store_fixture.write_todo(repo,
             '# TODO\n\n## Now\n\n- [ ] T-1 — A first task whose title runs well past forty characters\n'
             '- Short: First task\n\n- [ ] T-2 — Second task\n\n- [x] T-0 — Done task\n\n'
             '## Next\n\n- [ ] T-3 — Third task with a title longer than forty characters\n\n'
@@ -172,18 +171,17 @@ class FleetViewTests(unittest.TestCase):
         self.assertEqual([r.task for r in fleet_view.task_view(rows, 'questions')], ['T-4'])
         self.assertEqual([r.task for r in fleet_view.task_view(rows, 'held')], ['T-2'])
 
-    def test_readiness_needs_todo_goals_and_main(self):
+    def test_readiness_needs_a_committed_task_store_and_main(self):
         repo = self.base / 'repo'
         subprocess.run(['git', 'init', '-q', '-b', 'main', str(repo)], check=True)
         ready = fleet_view.readiness(repo)
-        self.assertEqual((ready.ready, ready.problems), (False, ['TODO.md', 'goals.json']))
-        self.assertIn('Create goals.json from TODO.md', ' '.join(fleet_view.how_to_fix(ready)))
-        (repo / 'TODO.md').write_text('# TODO\n')
-        (repo / 'goals.json').write_text('{}\n')
+        self.assertEqual((ready.ready, ready.problems), (False, ['tasks']))
+        self.assertIn(f'autowork migrate {repo}', ' '.join(fleet_view.how_to_fix(ready)))
+        store_fixture.write_todo(repo, '- [ ] T-1 — First\n', commit=False)
         ready = fleet_view.readiness(repo)
         self.assertFalse(ready.ready)
-        self.assertIn('commit TODO.md and goals.json on main first', ' '.join(fleet_view.how_to_fix(ready)))
-        subprocess.run(['git', '-C', str(repo), 'add', 'TODO.md', 'goals.json'], check=True)
+        self.assertIn('commit tasks/ on main first', ' '.join(fleet_view.how_to_fix(ready)))
+        subprocess.run(['git', '-C', str(repo), 'add', 'tasks'], check=True)
         subprocess.run(['git', '-C', str(repo), '-c', 'user.name=T', '-c', 'user.email=t@example.invalid',
                         'commit', '-qm', 'planning'], check=True)
         self.assertTrue(fleet_view.readiness(repo).ready)

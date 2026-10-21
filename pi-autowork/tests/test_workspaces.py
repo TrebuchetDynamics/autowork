@@ -42,10 +42,9 @@ class LinkTests(unittest.TestCase):
         runner.state = Path(self.temp.name) / 'state'
         runner.state.mkdir()
         runner.integ = runner.integ_branch = None
-        # This fixture only supplies workspace fields; startup/merge-driver
-        # registration has its own complete runner journey in test_pi_autowork.
-        with patch.object(runner, 'setup_planning_merges'):
-            runner.ensure_session()
+        # This fixture only supplies workspace fields; startup has its own complete
+        # runner journey in test_pi_autowork.
+        runner.ensure_session()
         self.assertEqual(Path(runner.integ).parent, self.main / '.worktrees')
         scratch = runner.scratch_checkout('probe')
         self.assertEqual(Path(scratch).parent, self.main / '.worktrees')

@@ -2043,8 +2043,8 @@ class Coordinator:
         dispatch = dispatch_module(self.toolset)
         try:
             dispatch.task_queue.store(Path(self.integ))
-        except dispatch.task_queue.Unconverted as exc:
-            return [str(exc)]
+        except dispatch.task_queue.Unconverted:
+            return []  # nothing to repair: the runner waits for `autowork migrate` (planning_ready)
         except ValueError as exc:
             return [' '.join(str(exc).split())]
         return []

@@ -922,7 +922,6 @@ def task_rows(runner):
     store = task_store(runner.repo) if runner.repo else None
     if store is None:
         return []
-    import task_select
     try:
         states = json.loads(Path(runner.state_dir, 'status.json').read_text()).get('tasks') or []
     except (OSError, TypeError, ValueError, AttributeError):
@@ -934,8 +933,9 @@ def task_rows(runner):
     lanes = {lane.task: lane for lane in runner.lanes}
     asked = {q.id: q for q in runner.questions}
     rows = []
-    records = sorted((t for t in store.tasks.values() if t.status == 'open' and t.section in task_select.SECTION_RANK),
-                     key=lambda t: (task_select.SECTION_RANK[t.section], t.rank or 0, t.id))
+    sections = {'Now': 0, 'Next': 1, 'Needs decision': 2}
+    records = sorted((t for t in store.tasks.values() if t.status == 'open' and t.section in sections),
+                     key=lambda t: (sections[t.section], t.rank or 0, t.id))
     for record in records:
         task, section = record.id, record.section
         short = ' '.join(record.short.split()) or ' '.join(record.title.split())

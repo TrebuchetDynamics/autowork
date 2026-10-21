@@ -219,7 +219,7 @@ class InstalledToolsetTests(unittest.TestCase):
             base = Path(folder).resolve()
             old, new = base / 'old-toolset', base / 'autowork'
             for copy in (old, new):
-                for name in ('pi-autowork/engine/owner_cycle.py', 'skills/docs-sync/scripts/goals.py'):
+                for name in ('pi-autowork/engine/owner_cycle.py', 'pi-autowork/engine/task_store.py'):
                     (copy / name).parent.mkdir(parents=True, exist_ok=True)
                     (copy / name).touch()
             pi = base / 'pi'
