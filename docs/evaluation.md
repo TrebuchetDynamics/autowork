@@ -74,6 +74,39 @@ it outperforms the alternatives.
 
 ## 30-day evaluation
 
+Status: Accepted
+
+Owner decision, 2026-10-21: make `autowork scorecard` answer whether Autowork produces
+more verified software per dollar and per hour of owner attention than manually
+supervising coding agents. Success is enough trustworthy data to decide whether
+Autowork is worth operating and improving, not a better dashboard. The targets below
+are proposals to judge the result by, not acceptance criteria for the instrumentation.
+The work is goal `EVALUATION` in [`tasks/`](../tasks/), in four bounded tasks plus the run:
+
+1. Lifecycle telemetry in the existing engine journal and receipts (TOOLSET-307-5a).
+2. Per-task cost and owner attention (TOOLSET-309-05).
+3. Regression attribution through explicit links only (TOOLSET-308-f9).
+4. The evaluation scorecard, with a 30-day window, JSON and CSV export and an
+   optional baseline (TOOLSET-310-50).
+5. The owner's 30-day run on at least two other repositories (TOOLSET-311-d7).
+
+Rules for every measurement:
+
+- Unavailable billing or attention data is **unknown, never zero**. Subscription usage
+  gets no invented price. Each value is labelled measured, estimate or missing.
+- Telemetry stays local and private: no credentials, prompts, usage records or
+  sensitive logs are committed. Writes are cheap, nonblocking and crash-safe, with no
+  new dependency or background service.
+- Per-attempt data stays separate from per-task aggregates; retries never
+  double-count completions or cost. Telemetry observes; it never changes execution or
+  authority decisions.
+
+Scheduling: the remaining TOOLSET-304-2c atomic-write fixes come before any broadening
+of concurrent task-store writes, and this instrumentation must not dominate the next
+cycle, whose main purpose is to use Autowork on other products. Measure at least two
+other repositories, preferably on different stacks, before any major new architectural
+change.
+
 Run Autowork for 30 days on real development repositories with controlled
 permissions. Measure:
 
