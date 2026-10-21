@@ -34,6 +34,7 @@ GATE_WINDOW = 300
 DEFAULT_MODEL = 'openai-codex/gpt-6.1-sol'           # pi_runtime's defaults
 DEFAULT_FALLBACK = 'openrouter/deepseek/deepseek-v4.1-flash'
 MODEL_KEYS = {'model': 'PI_AUTOWORK_PRIMARY', 'fallback': 'PI_AUTOWORK_FALLBACK'}
+SETUP_REQUIRED = 'Setup required — run autowork migrate'
 
 
 def read_env(path):
@@ -115,6 +116,11 @@ class Runner:
     @property
     def has_service(self):
         return bool(self.service)
+
+    @property
+    def setup_required(self):
+        """An existing repository without the tasks/ store cannot run the queue."""
+        return bool(self.repo) and Path(self.repo).is_dir() and not (Path(self.repo) / 'tasks').is_dir()
 
 
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
@@ -340,6 +346,8 @@ def verdict(runner):
     """(sentence, style): whether this runner is stuck, and why, in one line."""
     count = len(runner.questions)
     asks = f"{count} question{'s' if count > 1 else ''}" if count else ''
+    if runner.setup_required:
+        return SETUP_REQUIRED, 'bold yellow'
     if runner.state == 'restarting':
         return (f"Restarting {runner.restarting}" if runner.restarting.startswith('onto') else 'Restarting', 'bold cyan')
     if runner.state == 'paused':
@@ -365,6 +373,10 @@ def verdict(runner):
         if asks:
             text += f'; {asks} for you'
         return text, 'bold green'
+    if runner.questions:
+        first = runner.questions[0]
+        return (f'Waiting on you — {asks}, easiest {first.id} (unblocks {first.unblocks}): {first.needs}',
+                'bold yellow')
     if runner.state == 'idle':
         return 'Idle — nothing left to run in Now/Next', 'bold green'
     if runner.state == health.HOST_WAIT:
@@ -372,10 +384,6 @@ def verdict(runner):
         return text, 'bold yellow'
     if runner.gate and not runner.lanes:
         return f'Host busy — {runner.gate}', 'bold yellow'
-    if runner.questions:
-        first = runner.questions[0]
-        return (f'Waiting on you — {asks}, easiest {first.id} (unblocks {first.unblocks}): {first.needs}',
-                'bold yellow')
     age = duration(runner.minutes)
     head = ('Stuck ' + age).strip() if runner.state in ('stalled', 'blocked', 'not cycling') else runner.state
     if runner.blocker:
@@ -624,7 +632,9 @@ def read_questions(repo, state_dir=''):
 
 
 def needs(runner):
-    """What would move this runner, in a few words: the owner's questions, else its first blocker."""
+    """What would move this runner, in a few words: setup, owner questions, else its first blocker."""
+    if runner.setup_required:
+        return SETUP_REQUIRED
     if runner.state == 'restarting':
         return ('restarting ' + runner.restarting).strip() if runner.restarting != 'service' else 'restarting'
     if runner.state in ('paused', 'not running'):
@@ -826,7 +836,8 @@ def collect(state_root, env_dir, *, systemctl='systemctl', now=None, strict=Fals
                 runner.state, runner.minutes = 'restarting', None  # its own update, not a stop
             else:
                 runner.state, runner.minutes = 'not running', None  # its records may say otherwise
-    return sorted(found.values(), key=lambda r: r.name)
+    # Put the owner's decisions and setup work first; keep each group alphabetical.
+    return sorted(found.values(), key=lambda r: (not (r.questions or r.setup_required), r.name))
 
 
 def summary(runners):

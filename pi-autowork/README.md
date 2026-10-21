@@ -78,6 +78,11 @@ A task someone works on outside the runner carries a `Held by:` note
 (`autowork tasks hold TASK --by WHO [--until DATE]`); the runner never starts it and asks
 nothing about it. `autowork tasks release TASK` lifts the hold; a dated hold ends by itself.
 
+The fleet lists runners with open owner questions or missing `tasks/` setup first,
+then other runners; each group is alphabetical. An idle runner with open questions
+reads `Waiting on you`, not `Idle`. An existing repository without `tasks/` reads
+`Setup required — run autowork migrate` in its headline and Needs field.
+
 The TUI and web view run Textual 8.2.8 (and textual-serve 1.1.3) through `uv`.
 
 ## Isolated runtime comparison

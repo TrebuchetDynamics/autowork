@@ -68,6 +68,32 @@ class FleetViewTests(unittest.TestCase):
         self.assertEqual(fleet_view.blockers(sierra), [('blocker', 'TASK-023 blocker (2)')])
         self.assertEqual(fleet_view.summary(found.values()), [('working', 1), ('stalled', 1)])
 
+    def test_fleet_puts_owner_questions_and_setup_before_idle_and_working(self):
+        for name, state in (('a-idle', 'idle'), ('b-working', 'working'),
+                            ('y-setup', 'idle'), ('z-question', 'idle')):
+            repo = self.base / name
+            repo.mkdir()
+            if name != 'y-setup':
+                (repo / 'tasks').mkdir()
+            (self.env / f'{name}.env').write_text(f'PI_AUTOWORK_REPO={repo}\n')
+            self.runner_state(str(repo), state=state)
+        (self.base / 'z-question' / 'BLOCKERS.md').write_text(
+            '<!-- pi-autowork:questions:start -->\n'
+            '### Q-T-1 — USER_DECISION — effort decision — unblocks 1\n'
+            '- Needs: choose a target\n<!-- pi-autowork:questions:end -->\n')
+        units = '\n'.join(f'pi-autowork@{name}.service loaded active running x'
+                          for name in ('a-idle', 'b-working', 'y-setup', 'z-question'))
+        self.assertEqual(list(self.collect(units)), ['y-setup', 'z-question', 'a-idle', 'b-working'])
+
+    def test_unconverted_repository_needs_setup_not_idle(self):
+        runner = fleet_view.Runner('legacy', repo=str(self.base), state='idle')
+        self.assertEqual(fleet_view.verdict(runner),
+                         ('Setup required — run autowork migrate', 'bold yellow'))
+        self.assertEqual(fleet_view.needs(runner), 'Setup required — run autowork migrate')
+        (self.base / 'tasks').mkdir()
+        self.assertEqual(fleet_view.verdict(runner)[0], 'Idle — nothing left to run in Now/Next')
+        self.assertEqual(fleet_view.needs(runner), '')
+
     def test_state_without_a_service_is_history_not_a_runner(self):
         self.runner_state('/git/gone', state='working', since=time.time())
         self.assertEqual(self.collect(), {})
@@ -361,6 +387,8 @@ class FleetViewTests(unittest.TestCase):
             (R('a', state='restarting', restarting='service'), 'Restarting'),
             (R('a', state='paused'), 'Paused — p resumes it'),
             (R('a', state='not running'), 'Not running — a starts its service'),
+            (R('a', state='idle', questions=[Q('T-1', 'decision', 1, 'choose a target')]),
+             'Waiting on you — 1 question, easiest T-1 (unblocks 1): choose a target'),
             (R('a', state='idle'), 'Idle — nothing left to run in Now/Next'),
             (R('a', state='working', minutes=5, job={'role': 'maintainer', 'task': 'DOCS-MAINTAINER'}),
              'Working — DOCS-MAINTAINER repairing task docs (5m)'),
