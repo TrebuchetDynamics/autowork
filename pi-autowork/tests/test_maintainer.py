@@ -1,5 +1,6 @@
 """DOCS-MAINTAINER triggers, trigger-set key and run record (TOOLSET-164-f1)."""
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -28,8 +29,10 @@ class MaintainerTests(unittest.TestCase):
             self.assertIn(phrase, text)
         from pi_autowork.coordinator import Coordinator
         runner = Coordinator.__new__(Coordinator)
-        runner.workers = '2'
+        runner.workers, runner.seen = '2', {}
         runner.tasks = lambda: rows
+        os.environ['PI_AUTOWORK_OVERLAP_EVERY'] = '0'  # these checks are about idle slots, not the interval
+        self.addCleanup(os.environ.pop, 'PI_AUTOWORK_OVERLAP_EVERY', None)
         self.assertTrue(runner.overlap_idles())  # one of two slots runs
         runner.workers = '1'
         self.assertFalse(runner.overlap_idles())  # every slot busy: the pool limits, not the queue

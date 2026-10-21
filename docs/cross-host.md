@@ -283,7 +283,7 @@ unset; a repository with neither gets one `FULL-CHECK` question in BLOCKERS.md.
 `Touches:` schedules work: a task naming a file that running work or an unlanded commit
 also names waits until that one lands (a waiting task holds no files); directory and glob
 overlap only ranks it after independent work (TOOLSET-161-17). While slots idle on such
-waits, the DOCS-MAINTAINER re-cuts the waiting tasks. A worker may change whatever its task
+waits, the DOCS-MAINTAINER re-cuts the waiting tasks, at most every 30 minutes. A worker may change whatever its task
 needs. Finished work integrates one task at a time in priority order; the merge settles
 overlap, and a real conflict goes to the merge resolver. Only coordinator-owned files and
 undeclared protected files (manifests, lock files, schema, migration and CI files) hold a

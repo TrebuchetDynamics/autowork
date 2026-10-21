@@ -980,6 +980,24 @@ class BatchLandingTests(unittest.TestCase):
                 runner.settle()
             self.assertEqual(started, ['A'])
 
+    def test_the_overlap_re_cut_runs_at_most_once_per_interval(self):
+        """Back-to-back re-cuts held the loop: no review, landing or dispatch for half an hour."""
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator = self.runner(folder, {})
+            runner.workers = 8
+            runner.tasks = lambda snapshot=None: [{'task': 'B', 'state': 'waiting',
+                                                   'reason': 'shares a.py with A; starts after it lands'}]
+            now = [1000.0]
+            with patch.object(coordinator.time, 'monotonic', lambda: now[0]):
+                self.assertTrue(runner.overlap_idles())
+                now[0] += 600
+                self.assertFalse(runner.overlap_idles())
+                now[0] += 1200
+                self.assertTrue(runner.overlap_idles())
+                with patch.dict(os.environ, {'PI_AUTOWORK_OVERLAP_EVERY': '60'}):
+                    now[0] += 61
+                    self.assertTrue(runner.overlap_idles())
+
     def test_a_due_reload_starts_no_merge_resolver(self):
         """Each new resolver kept the reload pending, and a due reload starts no batch: commits
         were resolved again and again for hours while none landed."""
