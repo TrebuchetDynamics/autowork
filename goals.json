@@ -1138,7 +1138,8 @@
     },
     {
       "depends_on": [
-        "TOOLSET-261-15"
+        "TOOLSET-261-15",
+        "TOOLSET-270-a9"
       ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-200-c1",
@@ -1150,7 +1151,8 @@
       "depends_on": [
         "TOOLSET-165-f7",
         "TOOLSET-195-ee",
-        "TOOLSET-261-15"
+        "TOOLSET-261-15",
+        "TOOLSET-270-a9"
       ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-230-bf",
@@ -1214,7 +1216,8 @@
     {
       "depends_on": [
         "TOOLSET-154-d3",
-        "TOOLSET-163-f7"
+        "TOOLSET-163-f7",
+        "TOOLSET-270-a9"
       ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-287-44",
@@ -1231,7 +1234,9 @@
       "title": "Split coordinator.py into mixin modules along its section markers"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-192-71"
+      ],
       "goal": "PARALLEL",
       "id": "TOOLSET-292-6a",
       "section": "Now",
@@ -1292,7 +1297,9 @@
       "title": "A main check that did not pass says why: failing tests, timeout, killed, environment or incomplete"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-279-eb"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-301-d1",
       "section": "Now",
@@ -1318,7 +1325,9 @@
       "title": "An unchanged main failure does not rewrite its repair task again: the runner reports why the repair is not running"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-297-cb"
+      ],
       "goal": "PARALLEL",
       "id": "TOOLSET-304-be",
       "section": "Now",
