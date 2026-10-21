@@ -538,6 +538,7 @@ class FleetViewTests(unittest.TestCase):
         runner = fleet_view.Runner(name='a', held=[('A', 'overlap'), ('B', 'conflict')])
         self.assertEqual(fleet_view.task_counts(runner), (0, 0, 1, 1, 2))
 
+    @unittest.skipUnless(shutil.which('uv'), 'uv is not installed')
     def test_the_tui_drives_the_same_actions_headless(self):
         """Textual is not a runner dependency: the pilot runs under uv, from its cache only."""
         result = subprocess.run(['uv', 'run', '--offline', '--quiet', '--no-project', '--with', 'textual==8.2.8',
