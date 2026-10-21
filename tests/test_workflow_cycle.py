@@ -77,9 +77,9 @@ class CycleGuidanceTests(unittest.TestCase):
                                  '--goal-max-turns', '--max-retries', '100-turn default'):
                     self.assertNotIn(obsolete, text)
         direct = (ROOT / 'skills/autowork/references/owner-cycle.md').read_text()
-        for requirement in ('TODO.md owns product requirements', 'goals.json is optional',
+        for requirement in ('`tasks/` owns product requirements', 'Selection reads `tasks/` at the base commit',
                             'actual process plus workspace/Git', 'explicit finite timeout',
-                            'not provider spend, tokens', 'never closes the TODO task'):
+                            'not provider spend, tokens', 'it never closes the task'):
             self.assertIn(requirement, direct)
 
     def test_cross_profile_audit_verifies_publication_without_takeover(self):

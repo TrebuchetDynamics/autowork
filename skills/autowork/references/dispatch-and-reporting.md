@@ -12,7 +12,7 @@ do not change recurring cadence or replace existing live workers.
 3. If a downstream qualification task depends on unfinished production work, delegate
    only independent executable fixture/harness preparation. Keep its dependency and
    open status intact; harness readiness is not platform qualification.
-4. Give the parent integration and ledger ownership. Children return attributed changes
+4. Give the parent integration and task-store ownership. Children return attributed changes
    and exact executed checks; the parent verifies a coherent candidate before completion.
    Compare returned file hashes to the integrated files, then run the union of affected
    test targets once with duplicates removed. Do not add child pass counts when suites
@@ -73,7 +73,7 @@ continue independent authorized work; do not flood the user with repeated asks.
 ### Required task-centered status
 
 Every non-silent report, including cron, blocked and failed runs, uses these fields
-in this order. TODO task IDs and titles are user-facing identifiers, not hidden
+in this order. Task IDs and titles are user-facing identifiers, not hidden
 implementation details. Keep internal Kanban/card/run IDs and routine boilerplate
 in durable receipts unless needed for diagnosis.
 
@@ -89,10 +89,10 @@ dependency transition or verified completion.
 ```text
 <PROJECT / profile> — <OUTCOME>; <delivered behavior or current execution state>
 Action needed from you: <only for a genuine user-dependent blocker; exact action, target, reason and what resumes>.
-Task: TODO.md <ID> — <exact title> [<canonical task state or unverified>].
+Task: <ID> — <exact title> [<canonical task state or unverified>].
 This run: <concrete change or none>; checks: <actual result and material failures>.
 Remaining: <required parent outcomes still missing; optional followups separate; omit for completed tasks>.
-Next: TODO.md <ID> — <exact title> [eligible / blocked by <IDs or reason>]; or next eligible: none; or not evaluated.
+Next: <ID> — <exact title> [eligible / blocked by <IDs or reason>]; or next eligible: none; or not evaluated.
 Delivery: <commit SHA and push result, or no commit/push>. Blocker/action: <when applicable>.
 ```
 
@@ -103,7 +103,7 @@ Choose the outcome from evidence, not the cron job title or scheduler exit statu
 
 | Outcome | Meaning |
 | --- | --- |
-| COMPLETED | Named TODO task acceptance and required closure gates passed, with canonical completion verified. This is task success, not whole-project completion. |
+| COMPLETED | Named task acceptance and required closure gates passed, with canonical completion verified. This is task success, not whole-project completion. |
 | PROGRESS | Verified partial implementation or a resolved prerequisite advanced the named task; acceptance remains incomplete. State the actual advance. |
 | RUNNING | The same named task has an observed active run and verified original admission; this occurrence did not complete it. |
 | QUEUED | Handoff is recorded, but admitted implementation is not yet verified; state observed process activity separately. |
@@ -112,21 +112,21 @@ Choose the outcome from evidence, not the cron job title or scheduler exit statu
 | NO_CHANGE | Reconciliation found no new task progress or completion. |
 
 If checks fail and ownership prevents further work, report BLOCKED with the failures,
-not success or “verified progress.” Passing ledger validation, an isolated build,
-creating a card, or observing another session's old result does not complete a TODO
+not success or “verified progress.” Passing `autowork tasks validate`, an isolated build,
+creating a card, or observing another session's old result does not complete a
 task. Attribute externally observed results to their owning session; distinguish
 new work this occurrence from earlier evidence. For mixed outcomes name completed
 task IDs separately and retain the failed/blocked task; do not imply every task passed.
 
-Read current canonical TODO bodies, goals.json, ownership and completion receipts
+Read current canonical task and goal records, holds and `tasks/evidence/` receipts
 before composing the report. Count a newly reconciled worker completion when the
 previous occurrence recorded that task as unfinished and current canonical state,
 acceptance and required review prove it done. Attribute it to the original worker;
-report COMPLETED even with no new implementation by the picker. List its TODO ID
+report COMPLETED even with no new implementation by the picker. List its task ID
 and title as completed since the previous occurrence. Do not count the same completion again;
 an old done task or delivery-only update is not another completion. Without a
 trustworthy prior baseline, label the new-completion count unverified, not zero.
-If the baseline proves no new completions, record **0 TODO tasks completed** in
+If the baseline proves no new completions, record **0 tasks completed** in
 the task-status detail. For verified partial delivery, lead with what was delivered
 and report the parent as open with its remaining acceptance. Do not headline a
 real delivery as zero progress or count a slice as a completed parent. See
@@ -136,8 +136,8 @@ unverified** rather than guessing zero. If the task is known only by ID, show th
 and `title unverified`; if there is no verified task binding, say `Task: not identified`
 and name the missing source. Never invent a title from a job label or card summary.
 
-Select “Next” from the current canonical selector (`goals.py next <repo> --json`),
-then verify its full TODO title, dependencies and live ownership. An eligible
+Select “Next” from the current canonical order (`autowork tasks list`; `autowork tasks why ID`
+explains it), then verify its full title, dependencies and current `Held by:` note. An eligible
 selection is not a claim or promise of dispatch. If selection returns none, use
 `Next eligible: none — <reason>` and, when evidenced, name the intended successor
 as a **blocked candidate**, with its dependency IDs. If ownership prevents a fresh
@@ -147,7 +147,7 @@ canonical completion evidence, not merely a selector returning none.
 
 The next action names the actual task it advances and the missing evidence or
 prerequisite; “continue verification” without a task is insufficient.
-“Scheduled in TODO.md” means ordered backlog work, not an active timer or worker.
+“Scheduled in tasks/” means ordered backlog work, not an active timer or worker.
 Omit empty Questions sections and exhaustive skipped-check lists; preserve material
 unverified acceptance and real owner questions. A queued handoff is normal asynchronous
 dispatch, not failure unless dispatcher/run evidence establishes a blocker.
@@ -155,9 +155,9 @@ Questions: use the action-first request above for the one decision needed now. O
 Nothing eligible: `Checked scope exhausted` plus inspected sources/components and evidence that considered candidates are complete, claimed, blocked, or unsupported; do not claim repository-wide completeness from a scoped search.
 
 No skill invocation, selected contract or completed session alone proves task
-acceptance, Telegram delivery or scheduler activation. Record the TODO task ID,
+acceptance, Telegram delivery or scheduler activation. Record the task ID,
 actual session/process identity, source/candidate, explicit limits, known usage and
-executed checks in private evidence. Human-facing summaries include verified TODO
+executed checks in private evidence. Human-facing summaries include verified task
 IDs and titles. Current-session work does not require a native goal or card.
 
 ## Interactive updates
