@@ -1954,6 +1954,9 @@ Rules the implementation keeps:
 - Every field that grants execution authority (`Resources`, ownership, live
   authorization, kind) is typed; an absent field never grants permission. A check
   declared in a task file is not thereby approved to run with the coordinator's rights.
+- Authority is read only from the base revision. A worker branch that adds a task or
+  edits any task's authority fields or checks is refused or held for the coordinator,
+  never merged as bookkeeping.
 - Git status (`open`, `done`, `superseded`) is not a worker lease; the engine's private
   state stays the authority on running, held and integrating work. Closure publishes
   one bookkeeping-only commit (task status and its receipt) through the existing
@@ -1973,7 +1976,7 @@ with its queue empty.
 
 Implementation: goal TASK-STORE, tasks TOOLSET-294-f6 through TOOLSET-302-33.
 
-Delivery (owner, 2026-10-20): the read-only store, selector, writer and CLI, and the
+Delivery (decision 2026-10-20, supervisor, delegated while owner AFK): the read-only store, selector, writer and CLI, and the
 converter (TOOLSET-294-f6 to 297-41) land on main one by one; nothing the runner calls
 uses them yet. The cutover tasks (TOOLSET-298-c2, 302-33, 299-d9, 300-68 and 301-32) are
 built on the branch `task-store-v2` by an interactive session and land on main in one

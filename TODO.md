@@ -105,7 +105,7 @@ admission or live qualification.
 ### TOOLSET-298-c2 — The engine reads only tasks/
 
 - [ ] TOOLSET-298-c2 — The engine reads only tasks/
-- Owner decision: 2026-10-20: built on branch task-store-v2 by an interactive session, never by the runner; it lands on main only inside TOOLSET-301-32's single merge with this repository's conversion, because any one cutover task on main stops every unconverted repository's runner, this one's included
+- Owner decision: Decision 2026-10-20 (supervisor, delegated while owner AFK): built on branch task-store-v2 by an interactive session, never by the runner; it lands on main only inside TOOLSET-301-32's single merge with this repository's conversion, because any one cutover task on main stops every unconverted repository's runner, this one's included
 - Short: Engine cutover to tasks/
 - Status: open
 - Goal: TASK-STORE
@@ -113,7 +113,7 @@ admission or live qualification.
 - Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20); [selector](pi-autowork/engine/task_execution.py); [dispatch](pi-autowork/engine/parallel_dispatch.py); [integration](pi-autowork/engine/parallel_integrate.py) (`PLANNING_FILES`, `planning_only`); [claims](pi-autowork/engine/parallel_claims.py); [state](pi-autowork/engine/parallel_state.py); [status](pi-autowork/engine/parallel_status.py); [retry](pi-autowork/engine/retry_selection.py).
 - Evidence: these modules read TODO.md or goals.json directly and detect task changes by file bytes, so a rank edit can invalidate admitted work.
 - Touches: pi-autowork/engine/task_execution.py, pi-autowork/engine/parallel_dispatch.py, pi-autowork/engine/parallel_claims.py, pi-autowork/engine/retry_selection.py, pi-autowork/engine/test_task_execution.py
-- Scope: (1) Selection, dispatch, claims and retry take records from TaskStore at the base commit and use `task_select`; parallel_state and parallel_status follow only where they read the queue. (2) Dispatch admits work against a record's contract hash; a rank or title edit keeps an admitted slot, a contract change sets it aside. (3) Retired, closed and removed tasks are judged by TaskStore at the base revision (`parallel_dispatch`'s closed-on lookup), so a task closed on the base branch is never redispatched from an older session. (4) A repository without `tasks/` stops with "run autowork migrate <repo>" and selects nothing. Engine tests move their fixtures to `tasks/`.
+- Scope: (1) Selection, dispatch, claims and retry take records from TaskStore at the base commit and use `task_select`; parallel_state and parallel_status follow only where they read the queue. (2) Dispatch reads every authority field (resources, live authorization, kind, ownership, checks) only from the base revision, never from a worker branch or working-tree edit, and admits work against a record's contract hash; a rank or title edit keeps an admitted slot, a contract change sets it aside. (3) Retired, closed and removed tasks are judged by TaskStore at the base revision (`parallel_dispatch`'s closed-on lookup), so a task closed on the base branch is never redispatched from an older session. (4) A repository without `tasks/` stops with "run autowork migrate <repo>" and selects nothing. Engine tests move their fixtures to `tasks/`.
 - Acceptance: a rank or title edit to an admitted task keeps its slot (`test_rank_edit_keeps_admitted_work`); an acceptance edit sets it aside (`test_contract_edit_invalidates_admitted_work`); a task closed at the base revision is not redispatched and an unconverted repo returns the migrate instruction (`test_closed_at_base_is_not_redispatched`, `test_unconverted_repo_names_migrate`).
 - Checks: python3 -m unittest discover -s pi-autowork/engine; python3 scripts/check.py
 - Dependencies: TOOLSET-297-41.
@@ -123,7 +123,7 @@ admission or live qualification.
 ### TOOLSET-302-33 — Integration judges task edits by contract hash, not by path
 
 - [ ] TOOLSET-302-33 — Integration judges task edits by contract hash, not by path
-- Owner decision: 2026-10-20: built on branch task-store-v2 by an interactive session, never by the runner; it lands on main only inside TOOLSET-301-32's single merge with this repository's conversion, because any one cutover task on main stops every unconverted repository's runner, this one's included
+- Owner decision: Decision 2026-10-20 (supervisor, delegated while owner AFK): built on branch task-store-v2 by an interactive session, never by the runner; it lands on main only inside TOOLSET-301-32's single merge with this repository's conversion, because any one cutover task on main stops every unconverted repository's runner, this one's included
 - Short: Contract-hash change classification
 - Status: open
 - Goal: TASK-STORE
@@ -131,8 +131,8 @@ admission or live qualification.
 - Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20); [integration](pi-autowork/engine/parallel_integrate.py) (`PLANNING_FILES`, `planning_only`, the remerge shortcut, the post-verification contract recheck).
 - Evidence: `planning_only` treats `docs/` and the planning files as safe to remerge without rerunning checks; simply adding `tasks/` there would let an acceptance or check edit ride through as "planning only". File-per-task also allows clean textual merges of one task's acceptance edit and another branch's `status = "done"`.
 - Touches: pi-autowork/engine/parallel_integrate.py, pi-autowork/engine/task_store.py, pi-autowork/engine/test_parallel_integrate.py
-- Scope: (1) Classify a `tasks/` change by comparing records at base, incoming and current: rank, title, short, notes, Now/Next and an unrelated new task are bookkeeping; a contract-hash change to the task being integrated (acceptance, checks, dependencies, Touches, authority fields, Needs decision, superseded) requires revalidation or a hold. (2) `done` survives a merge only if the contract hash equals the one that was verified; otherwise the task returns to open with the reason. (3) BLOCKERS.md and TODO.archive.md stay path-classified planning files.
-- Acceptance: `test_rank_edit_on_base_keeps_the_remerge_shortcut`, `test_acceptance_edit_on_base_requires_revalidation` and `test_done_with_a_changed_contract_is_reopened` pass.
+- Scope: (1) Classify a `tasks/` change by comparing records at base, incoming and current: rank, title, short, notes and Now/Next are bookkeeping; a worker-authored change that adds a task or edits any task's authority fields (resources, live authorization, kind, ownership, checks) is never bookkeeping: integration refuses it or holds it for the coordinator, and authority is read only from the base revision; a contract-hash change to the task being integrated (acceptance, checks, dependencies, Touches, authority fields, Needs decision, superseded) requires revalidation or a hold. (2) `done` survives a merge only if the contract hash equals the one that was verified; otherwise the task returns to open with the reason. (3) BLOCKERS.md and TODO.archive.md stay path-classified planning files.
+- Acceptance: `test_rank_edit_on_base_keeps_the_remerge_shortcut`, `test_acceptance_edit_on_base_requires_revalidation` and `test_done_with_a_changed_contract_is_reopened` and `test_worker_cannot_grant_authority_via_task_edit` (a worker branch that adds a task with `live_authorization = true` or extra resources or checks, or grants them to another task, is refused or held, never merged as bookkeeping) pass.
 - Checks: python3 -m unittest discover -s pi-autowork/engine -p test_parallel_integrate.py; python3 scripts/check.py
 - Dependencies: TOOLSET-298-c2.
 - Ownership: Toolset coordinator.
@@ -141,7 +141,7 @@ admission or live qualification.
 ### TOOLSET-299-d9 — The runner and the fleet view read only tasks/
 
 - [ ] TOOLSET-299-d9 — The runner and the fleet view read only tasks/
-- Owner decision: 2026-10-20: built on branch task-store-v2 by an interactive session, never by the runner; it lands on main only inside TOOLSET-301-32's single merge with this repository's conversion, because any one cutover task on main stops every unconverted repository's runner, this one's included
+- Owner decision: Decision 2026-10-20 (supervisor, delegated while owner AFK): built on branch task-store-v2 by an interactive session, never by the runner; it lands on main only inside TOOLSET-301-32's single merge with this repository's conversion, because any one cutover task on main stops every unconverted repository's runner, this one's included
 - Short: Runner and fleet view cutover
 - Status: open
 - Goal: TASK-STORE
@@ -159,7 +159,7 @@ admission or live qualification.
 ### TOOLSET-300-68 — Closing a task publishes one receipt and status commit exactly once
 
 - [ ] TOOLSET-300-68 — Closing a task publishes one receipt and status commit exactly once
-- Owner decision: 2026-10-20: built on branch task-store-v2 by an interactive session, never by the runner; it lands on main only inside TOOLSET-301-32's single merge with this repository's conversion, because any one cutover task on main stops every unconverted repository's runner, this one's included
+- Owner decision: Decision 2026-10-20 (supervisor, delegated while owner AFK): built on branch task-store-v2 by an interactive session, never by the runner; it lands on main only inside TOOLSET-301-32's single merge with this repository's conversion, because any one cutover task on main stops every unconverted repository's runner, this one's included
 - Short: Idempotent closure receipts
 - Status: open
 - Goal: TASK-STORE
@@ -177,7 +177,7 @@ admission or live qualification.
 ### TOOLSET-301-32 — Planning skills use the autowork CLI and this repository converts to tasks/
 
 - [ ] TOOLSET-301-32 — Planning skills use the autowork CLI and this repository converts to tasks/
-- Owner decision: 2026-10-20: built on branch task-store-v2 by an interactive session, never by the runner; it lands on main only inside TOOLSET-301-32's single merge with this repository's conversion, because any one cutover task on main stops every unconverted repository's runner, this one's included
+- Owner decision: Decision 2026-10-20 (supervisor, delegated while owner AFK): built on branch task-store-v2 by an interactive session, never by the runner; it lands on main only inside TOOLSET-301-32's single merge with this repository's conversion, because any one cutover task on main stops every unconverted repository's runner, this one's included
 - Short: Skills, docs and this repo's conversion
 - Status: open
 - Goal: TASK-STORE
