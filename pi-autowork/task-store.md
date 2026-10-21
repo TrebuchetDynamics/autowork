@@ -96,6 +96,38 @@ superseded explicitly. Goal assignment and dependencies still
 require consumer-side scheduling checks. Goal contract hashes cover priority,
 source, status and focus, excluding title and notes.
 
+## Selection
+
+`task_select.order(store)` lists every selectable task: open, not a draft, in Now or
+Next, dependencies done, goal not met and goal dependencies met. It sorts by the focus
+goal, section, rank, goal priority, goal status (`unverified`, `partial`, `unmet`) and ID,
+the rule the TODO.md queue uses. `next(store)` is the first that is not a planning task.
+`why(store, id)` returns stable reason codes: the blocking rule (`DONE`, `SUPERSEDED`,
+`NEEDS_DECISION`, `DRAFT`, `NO_GOAL`, `GOAL_MET`, `GOAL_DEPENDENCY_UNMET`,
+`DEPENDENCY_UNFINISHED`, `UNKNOWN_TASK`) or `POSITION` plus the sort-key rule
+(`AFTER_FOCUS`, `AFTER_SECTION`, `AFTER_RANK`, …) that put the task ahead of it there.
+Authority is not a selection rule; admission applies it afterwards.
+
+## Writing and `autowork tasks`
+
+`tomllib` only reads, so `task_store` carries its own writer. `render` writes a new record
+in canonical key order; `edit` changes only the header lines it names and keeps every
+other byte; `set_note` sets one `- Label: value` line in the body. Each refuses what it
+cannot reproduce (a value spread over several lines, a trailing comment, line breaks or
+control characters, unknown keys) instead of dropping it, and checks that the result reads
+back to exactly the intended values.
+
+`autowork tasks` reads at HEAD (`list`, `show`, `why`, `validate`; `validate --worktree`
+checks uncommitted edits through a throwaway commit that leaves the index and refs alone)
+and edits the working tree (`add`, `field`, `place`, `move`, `supersede`, `new-id`); it
+never commits and never writes TODO.md or goals.json. A write refuses a file that changed
+since it was read and is undone when the resulting store does not validate. `field` sets a
+typed header field, or any other label as a body note (`Held by`, `Owner decision`).
+New and placed tasks take the next multiple of 1000 in their section; `move` takes the
+midpoint between its new neighbours and, when no integer is left, spreads only the run of
+gapless neighbours that follows, never the whole section. A written file grants no
+authority beyond its typed fields, and a declared check still needs approval to run.
+
 ## Offline verification
 
 ```sh

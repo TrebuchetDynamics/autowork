@@ -33,6 +33,10 @@
     autowork move TASK up|down [target]
                                   move an open task among its TODO.md group's open tasks;
                                   the runner records the new order as its priority
+    autowork tasks list|validate|new-id [target]   autowork tasks show|why TASK [target]
+                                  read a tasks/ store at HEAD (validate --worktree: uncommitted)
+    autowork tasks add|field|place|move|supersede ... [target]
+                                  edit task files in the working tree (never commits)
     autowork scorecard [--days N] [--json] [target...]
                                   per runner: tasks closed, held share, start to merge, owner
                                   questions over the last N days (default 7)
@@ -52,7 +56,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pi_autowork import fleet_view, scorecard, service  # noqa: E402
+from pi_autowork import fleet_view, scorecard, service, task_commands  # noqa: E402
 
 COMPONENT = Path(__file__).resolve().parents[1]
 TOOLSET = COMPONENT.parent
@@ -485,6 +489,11 @@ def cmd_add_task(args, paths):
     return goals(resolve(args.target, paths)[0], *argv)
 
 
+def cmd_tasks(args, paths):
+    """`autowork tasks ...` on the tasks/ store of a runner name, path or `.`."""
+    return task_commands.run(args, resolve(args.repo, paths)[0])
+
+
 def parser():
     top = argparse.ArgumentParser(prog='autowork', description=__doc__,
                                   formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -557,6 +566,7 @@ def parser():
     add.add_argument('--acceptance')
     add.add_argument('--checks')
     add.add_argument('target', nargs='?', help='runner name, repository path or . (default: .)')
+    task_commands.add_parser(sub)
     sub.add_parser('help', help='this help')
     return top
 
@@ -567,7 +577,7 @@ COMMANDS = {'ls': cmd_ls, 'status': cmd_status, 'logs': cmd_logs, 'start': cmd_s
             'pause': cmd_pause, 'resume': lambda a, p: cmd_pause(a, p, resume=True),
             'model': cmd_model, 'models': cmd_models, 'scorecard': cmd_scorecard,
             'clear-held': cmd_clear_held, 'update': cmd_update, 'move': cmd_move, 'field': cmd_field,
-            'place': cmd_place, 'add-task': cmd_add_task}
+            'place': cmd_place, 'add-task': cmd_add_task, 'tasks': cmd_tasks}
 
 
 def main(argv=None):

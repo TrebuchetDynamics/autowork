@@ -339,3 +339,122 @@ class TaskStore:
                    or path.startswith(('tasks/items/', 'tasks/goals/')) for path in changed):
                 paths.update(changed)
         return tuple(sorted(paths))
+
+
+# --- Writing ---------------------------------------------------------------------------
+# tomllib only reads. This writer emits exactly the schema's types and edits only the
+# header lines it is asked to change; anything it cannot reproduce is refused, not dropped.
+
+TASK_ORDER = ('schema', 'id', 'title', 'short', 'status', 'goal', 'section', 'rank', 'depends_on',
+              'touches', 'resources', 'kind', 'ownership', 'live', 'scope', 'acceptance', 'checks',
+              'exclusions')
+GOAL_ORDER = ('schema', 'id', 'title', 'priority', 'source', 'status', 'focus', 'depends_on')
+_CONTROL = re.compile(r'[\x00-\x1f\x7f]')
+_STRINGS = re.compile(r'"(?:[^"\\\n]|\\.)*"|\'[^\'\n]*\'')  # TOML one-line strings
+
+
+class WriteError(ValueError):
+    """The requested write cannot be represented without losing or reflowing content."""
+
+
+def toml_value(key, value) -> str:
+    """One-line TOML for a schema value: a string, an integer, a boolean or a string array."""
+    if isinstance(value, bool):
+        return 'true' if value else 'false'
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, str):
+        if _CONTROL.search(value):
+            raise WriteError(f'{key}: control characters and line breaks cannot be written; use one line')
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, (list, tuple)) and all(isinstance(v, str) for v in value):
+        return '[' + ', '.join(toml_value(key, v) for v in value) + ']'
+    raise WriteError(f'{key}: unsupported value {value!r}')
+
+
+def render(fields: dict, body: str = '', goal: bool = False) -> str:
+    """A new record in canonical key order; unknown keys are refused."""
+    order = GOAL_ORDER if goal else TASK_ORDER
+    unknown = set(fields) - set(order)
+    if unknown:
+        raise WriteError('unknown field ' + ', '.join(sorted(unknown)))
+    header = [f'{key} = {toml_value(key, fields[key])}' for key in order if key in fields]
+    text = '+++\n' + '\n'.join(header) + '\n+++\n' + body
+    _check(text, fields)
+    return text
+
+
+def _header_span(lines):
+    if not lines or lines[0].strip() != '+++':
+        raise WriteError('expected opening +++ frontmatter delimiter')
+    end = next((i for i in range(1, len(lines)) if lines[i].strip() == '+++'), None)
+    if end is None:
+        raise WriteError('missing closing +++ frontmatter delimiter')
+    return end
+
+
+def edit(text: str, changes: dict, goal: bool = False) -> str:
+    """Set (or, with None, remove) header keys, leaving every other byte as it was."""
+    order = GOAL_ORDER if goal else TASK_ORDER
+    lines = text.splitlines(keepends=True)
+    end = _header_span(lines)
+    before = tomllib.loads(''.join(lines[1:end]))
+    for key, value in changes.items():
+        if key not in order or key in ('schema', 'id'):
+            raise WriteError(f'{key} cannot be set here')
+        matches = [i for i in range(1, end) if re.match(rf'[ \t]*{re.escape(key)}[ \t]*=', lines[i])]
+        if len(matches) > 1:
+            raise WriteError(f'{key} appears more than once')
+        if matches:
+            i = matches[0]
+            try:
+                alone = tomllib.loads(lines[i])
+            except tomllib.TOMLDecodeError:
+                raise WriteError(f'{key} spans several lines; edit it by hand') from None
+            if alone.get(key) != before.get(key) or '#' in _STRINGS.sub('', lines[i]):
+                raise WriteError(f'{key} carries a comment this writer would drop; edit it by hand')
+            newline = '\n' if lines[i].endswith('\n') else ''
+            if value is None:
+                del lines[i]
+                end -= 1
+            else:
+                lines[i] = f'{key} = {toml_value(key, value)}' + (newline or '\n')
+        elif value is not None:
+            lines.insert(end, f'{key} = {toml_value(key, value)}\n')
+            end += 1
+    result = ''.join(lines)
+    expected = {**before, **{k: v for k, v in changes.items() if v is not None}}
+    for key in [k for k, v in changes.items() if v is None]:
+        expected.pop(key, None)
+    _check(result, expected)
+    return result
+
+
+def set_note(text: str, label: str, value: str) -> str:
+    """Set the body line `- <label>: <value>`, replacing an earlier one or appending it."""
+    if not re.fullmatch(r"[A-Za-z][A-Za-z '-]*", label):
+        raise WriteError('a note label is letters, spaces, hyphens or apostrophes')
+    if _CONTROL.search(value):
+        raise WriteError(f'{label}: line breaks cannot be written; use one line')
+    lines = text.splitlines(keepends=True)
+    end = _header_span(lines)
+    line = f'- {label}: {value}\n'
+    for i in range(end + 1, len(lines)):
+        if lines[i].startswith(f'- {label}:'):
+            lines[i] = line
+            break
+    else:
+        if len(lines) > end + 1 and not lines[-1].endswith('\n'):
+            lines[-1] += '\n'
+        lines.append(line)
+    return ''.join(lines)
+
+
+def _check(text: str, expected: dict):
+    """The written header parses back to exactly the intended values."""
+    lines = text.splitlines(keepends=True)
+    end = _header_span(lines)
+    parsed = tomllib.loads(''.join(lines[1:end]))
+    want = {k: list(v) if isinstance(v, tuple) else v for k, v in expected.items()}
+    if parsed != want:
+        raise WriteError('the written header would not read back as written; nothing written')
