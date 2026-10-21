@@ -48,6 +48,7 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- **TUI Play prepares an unready repository** (TOOLSET-327-02, issue 9). Play on a repository without a usable task store now offers Prepare and Prepare and start, runs `autowork tasks prepare`, shows the outcome code and next step (NO_STORE, converted, MIGRATION_DEFERRED/BLOCKED, TOOLCHAIN, INVALID) and only starts after fresh readiness passes.
 - **Held attempts keep their work and tools** (TOOLSET-331-be). The stale-temp sweep skips temp directories of held or interrupted slots and removes them only once the slot is set aside, closed or released; a fresh attempt after a set-aside is told which set-aside worktree holds uncommitted work and which paths it kept.
 - **Task records end cleanly and a refused closure stays integrated** (TOOLSET-330-0a). Rendered records (an add, the `-LIVE` follow-up) end with exactly one newline, so a repository whose pre-commit hook runs `git diff --check` no longer refuses the engine's close commit; when a hook does refuse it, the runner reports the hook's output and keeps the task integrated rather than closing it, retrying without redispatching.
 - **Review gate: no second suite to confirm a hold, and its stages are visible.** When a
