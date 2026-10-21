@@ -333,9 +333,11 @@ class Coordinator:
             revisions = {r.split('@')[0]: r for r in getattr(self, 'batch_revisions', [])}
             checked = [revisions[t] for t in result.get('tasks') or [] if t in revisions]
             suspects = [revisions[t] for t in result.get('suspects') or [] if t in revisions]
-            if suspects and len(suspects) < len(checked):
+            if suspects and 2 * len(suspects) <= len(checked):
                 # The failing tests import or name only these candidates' changes: they integrate
-                # one at a time, and the rest batch again at once instead of in halves.
+                # one at a time, and the rest batch again at once instead of in halves. Suspects
+                # past half the batch tell little: a test of the CLI imports nearly everything, it
+                # named five of six, and each waited its own review while halving finds the one.
                 failed = self.batch_failed() | set(suspects)
                 (self.state / 'batch-failed.json').write_text(json.dumps(sorted(failed)) + '\n')
                 LOG.say(failure + f'the failing tests point at {", ".join(r.split("@")[0] for r in suspects)}, '

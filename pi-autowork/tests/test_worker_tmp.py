@@ -781,6 +781,15 @@ class BatchFailureTests(unittest.TestCase):
             self.assertEqual(runner.batch_due(reported), list('ACD'))
             runner.batch_done({'outcome': 'BATCH_GATE_FAILED', 'tasks': list('ACD'), 'suspects': list('ACD')})
             self.assertEqual(json.loads(Path(folder, 'batch-failed.json').read_text()), ['A@a', 'B@b', 'C@c', 'D@d'])
+        # Suspects past half the batch: halves, not five reviews of their own.
+        reported = [(t, t.lower()) for t in 'MNOPQR']
+        with tempfile.TemporaryDirectory() as folder, patch('pi_autowork.coordinator.LOG'):
+            runner = self.coordinator(folder)
+            self.assertEqual(runner.batch_due(reported), list('MNOPQR'))
+            runner.batch_done({'outcome': 'BATCH_GATE_FAILED', 'tasks': list('MNOPQR'), 'suspects': list('MNOPQ')})
+            self.assertFalse(Path(folder, 'batch-failed.json').exists())
+            self.assertEqual(json.loads(Path(folder, 'batch-split.json').read_text()),
+                             [['M@m', 'N@n', 'O@o'], ['P@p', 'Q@q', 'R@r']])
 
     def test_the_failing_tests_point_at_the_candidates_whose_changes_they_import_or_read(self):
         with tempfile.TemporaryDirectory() as folder:
