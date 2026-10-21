@@ -305,6 +305,11 @@ class DeferredConversionTests(Repo):
 
     def setUp(self):
         super().setUp()
+        self.mid_attempt()
+
+    def mid_attempt(self):
+        """The legacy queue, T-001 claimed, and its attempt's worktree with committed and
+        uncommitted work under a slot no live worker holds; prepare has deferred."""
         for name in ('TODO.md', 'TODO.archive.md', 'goals.json'):
             (self.repo / name).write_bytes((LEGACY / name).read_bytes())
         self.unclaimed = reader.order(self.repo)  # the queue before the legacy runner's claim
@@ -443,6 +448,99 @@ class ActivationTests(Repo):
                                  text=True).stdout.strip()
         with mock.patch.dict(os.environ, {'PI_AUTOWORK_STATE_DIR': str(self.runner_on(current))}):
             self.assertEqual(self.prepare()['outcome'], 'READY')
+
+
+def detached_sleep():
+    """A process in its own session that init reaps once killed (no zombie keeps it 'live')."""
+    out = subprocess.run(['sh', '-c', 'setsid sleep 120 >/dev/null 2>&1 & echo $!'], capture_output=True,
+                         text=True, check=True).stdout.strip()
+    pid = int(out)
+    deadline = time.time() + 5
+    while time.time() < deadline and Path(f'/proc/{pid}/stat').read_text().split()[5] != str(pid):
+        time.sleep(0.05)  # setsid has made it its own session and group leader
+    return pid
+
+
+class ForceTests(Repo):
+    """`/docs_sync force` (prepare --force) converts now instead of deferring, keeping all work."""
+
+    def setUp(self):
+        super().setUp()
+        DeferredConversionTests.mid_attempt(self)
+        self.calls = Path(self.tmp.name) / 'systemctl.log'
+        fake = Path(self.tmp.name) / 'systemctl'
+        fake.write_text(f'#!/bin/sh\necho "$@" >> {self.calls}\n')
+        fake.chmod(0o755)
+        self.env = {'PI_AUTOWORK_SYSTEMCTL': str(fake), 'PI_AUTOWORK_ENV_DIR': str(Path(self.tmp.name) / 'env'),
+                    'PI_AUTOWORK_UNIT_DIR': str(Path(self.tmp.name) / 'units')}
+
+    def force(self):
+        with mock.patch.dict(os.environ, self.env):
+            return self.prepare('--force', ok=False)
+
+    def kill_later(self, pid):
+        def end():
+            try:
+                os.kill(pid, 9)
+            except ProcessLookupError:
+                pass
+        self.addCleanup(end)
+
+    def test_force_stops_the_service_and_a_live_worker_and_converts_keeping_the_work(self):
+        import task_execution
+        pid = detached_sleep()
+        self.kill_later(pid)
+        record = self.repo / '.git/autowork-execution/slots/T-001.json'
+        record.write_text(json.dumps(dict(json.loads(record.read_text()), worker=task_execution.identity(pid))))
+        (self.repo / 'TODO.md').write_text((self.repo / 'TODO.md').read_text() + '\n')  # owner's edit
+        report = self.force()
+        self.assertEqual((report['ok'], report['outcome']), (True, 'MIGRATED'), report)
+        step = report['forced']['step']
+        self.assertEqual((step['stopped'], step['set_aside'], step['committed']), (['T-001'], ['T-001'], ['TODO.md']))
+        self.assertIsNone(task_execution.identity(pid), 'the live worker was stopped')
+        self.assertEqual(self.git('rev-parse', 'autowork/T-001-set-aside-1'), self.work)
+        self.assertEqual((Path(str(self.worktree) + '-set-aside-1') / 'draft.txt').read_text(), 'uncommitted work\n')
+        self.assertIn('owner planning before a forced conversion', self.git('log', '--format=%s', '-3'))
+        self.assertTrue(self.git('ls-tree', '--name-only', 'HEAD', 'tasks'))
+        self.assertEqual(self.git('status', '--porcelain'), '')
+        self.assertIsNone(task_migrate.intent(self.repo))
+
+    def test_force_ends_another_runner_holding_the_lease(self):
+        import parallel_state
+        import task_execution
+        pid = detached_sleep()
+        self.kill_later(pid)
+        common = parallel_state.common_dir(self.repo)
+        task_execution.save(common / 'coordinator.json', dict(
+            owner=task_execution.identity(pid), workspace=str(self.repo.resolve()), profile='',
+            max_workers=2, started_at=time.time()))
+        report = self.force()
+        self.assertEqual(report['outcome'], 'MIGRATED', report)
+        self.assertIn(f'PID {pid}', report['forced']['step']['ended'][0])
+        self.assertIsNone(task_execution.identity(pid))
+
+    def test_a_running_service_is_stopped_then_started_again(self):
+        fake = Path(self.env['PI_AUTOWORK_SYSTEMCTL'])
+        fake.write_text(f'#!/bin/sh\necho "$@" >> {self.calls}\n'
+                        'case "$*" in *is-active*) exit 0;; esac\nexit 0\n')
+        report = self.force()
+        self.assertEqual(report['outcome'], 'MIGRATED', report)
+        self.assertEqual((report['forced']['service_stopped'], report['forced']['service_started']), (True, True))
+        calls = self.calls.read_text().splitlines()
+        stop = next(i for i, c in enumerate(calls) if c.startswith('--user stop pi-autowork@'))
+        start = next(i for i, c in enumerate(calls) if c.startswith('--user start pi-autowork@'))
+        self.assertLess(stop, start)
+
+    def test_force_never_overwrites_content_it_cannot_account_for(self):
+        with mock.patch.object(task_migrate, 'finish', side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                with mock.patch.object(task_migrate, 'refusals', return_value=[]):
+                    task_migrate.convert(self.repo, released=task_migrate.claimed(self.repo))
+        self.write('tasks/items/T-001.md', 'someone else wrote this\n')
+        report = self.force()
+        self.assertEqual((report['ok'], report['outcome']), (False, 'MIGRATION_BLOCKED'), report)
+        self.assertEqual((self.repo / 'tasks/items/T-001.md').read_text(), 'someone else wrote this\n')
+        self.assertTrue((self.repo / 'TODO.md').exists())
 
 
 class CapabilityTests(unittest.TestCase):

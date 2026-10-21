@@ -30,7 +30,12 @@ which writes nothing; without commit authority: `--no-commit`) and act on its
 repository's runner drains and converts it; report pending, not done),
 `MIGRATION_BLOCKED` (report the named refusal), `INVALID_STORE` or
 `ACTIVATION_PENDING` (the running runner's release cannot read `tasks/`; the owner
-restarts it). Its `state` is `none` for a new repository (bootstrap goals
+restarts it). When the owner's request says `force` (`/docs_sync force`), run
+`autowork tasks prepare --force .` instead (needs `prepare_api` 3): it converts now,
+stopping the service, live workers and other lease holders, setting every attempt aside
+with its work kept, and committing the owner's planning edits; report what it stopped
+and set aside. Force never discards work or data; report a `MIGRATION_BLOCKED` it still
+returns rather than deleting anything. Its `state` is `none` for a new repository (bootstrap goals
 from its `accepted` headings only, else report the missing intent and create no
 queue), and its `diagnostics` name defects with the `autowork tasks` command that
 repairs each: repair only from accepted evidence, never grant ownership, `live` or
