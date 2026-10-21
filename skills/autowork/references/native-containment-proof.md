@@ -2,7 +2,7 @@
 
 ## 1. Containment and cancellation
 
-Use `scripts/native_containment.py` only for its admitted Linux x86_64/Python 3.12 Python/true/systemctl fixtures. It is not a model-worker launch authorization or arbitrary hostile-code sandbox. Preserve the native execution gate until vetted controller-bound spending and provider routing are enforced.
+Use [`scripts/native_containment.py` (archived source)](https://github.com/TrebuchetDynamics/autowork/commit/026e23baf4c226aac2c672e3d0e984a77996b9da) only for its admitted Linux x86_64/Python 3.12 Python/true/systemctl fixtures. It is not a model-worker launch authorization or arbitrary hostile-code sandbox. Preserve the native execution gate until vetted controller-bound spending and provider routing are enforced.
 
 - Combine a private user-systemd cgroup with bubblewrap namespaces and narrow trusted read-only runtime mounts. Hide host homes and manager buses; clear inherited credentials/routing. A root read-only bind still exposes credentials. Set independent manager-side runtime limits; process-group cancellation alone misses setsid or relocated workers.
 - Verify manager and kernel controls before releasing the target. Report configuration/readback separately from limit-exhaustion tests. Root-owned runtime and cooperative pathname ownership remain prerequisites, not guarantees against hostile host writers.

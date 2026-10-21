@@ -1,6 +1,6 @@
 # Request-bound reservation proof
 
-Use scripts/budget_controller.py only for its trusted-controller synthetic FIXTURE_UNITS scope. It has no real provider adapter, price guarantee, wire authentication or monetary authorization. Keep native live execution closed until those controls are separately enforced and qualified.
+Use [scripts/budget_controller.py (archived source)](https://github.com/TrebuchetDynamics/autowork/commit/026e23baf4c226aac2c672e3d0e984a77996b9da) only for its trusted-controller synthetic FIXTURE_UNITS scope. It has no real provider adapter, price guarantee, wire authentication or monetary authorization. Keep native live execution closed until those controls are separately enforced and qualified.
 
 - Commit a controller-computed conservative exposure reservation before invoking the adapter. Serialize cap/identity admission with a real SQLite immediate transaction; never accept a worker-supplied tariff, budget, refund or endpoint.
 - Bind permanent request identity to payload digest, subject, model, bounds, immutable config and scope. Refuse changed identities and duplicate forwarding after restart. Crash windows may waste capacity but must not allow replay or refund of possibly forwarded requests.
