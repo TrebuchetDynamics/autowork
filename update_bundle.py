@@ -71,11 +71,27 @@ class GitFailure(ValueError):
         super().__init__(f'Git {args[0]} failed in {repo}; inspect the checkout and retry (exit {code})')
 
 
+# A fetch that stalls below 1 KB/s for 30 s aborts instead of holding the update for the
+# whole timeout; a normal fetch of a profile checkout takes seconds.
+STALL = {'GIT_CONFIG_COUNT': '2', 'GIT_CONFIG_KEY_0': 'http.lowSpeedLimit', 'GIT_CONFIG_VALUE_0': '1000',
+         'GIT_CONFIG_KEY_1': 'http.lowSpeedTime', 'GIT_CONFIG_VALUE_1': '30'}
+
+
 def git(repo, *args):
-    result = subprocess.run(['git', '-C', str(repo), *args], capture_output=True, timeout=120)
+    env = {**os.environ, **STALL} if args[:1] == ('fetch',) else None
+    result = subprocess.run(['git', '-C', str(repo), *args], capture_output=True, timeout=120, env=env)
     if result.returncode:
         raise GitFailure(repo, args, result.returncode)
     return result.stdout
+
+
+def fetch(repo, *args):
+    """Fetch once more after a stall or failure: one network stall failed the Hermes update of
+    every profile, and the retry a moment later fetched in two seconds."""
+    try:
+        return git(repo, 'fetch', *args)
+    except (GitFailure, subprocess.TimeoutExpired):
+        return git(repo, 'fetch', *args)
 
 
 def is_ancestor(repo, before, after):
@@ -228,7 +244,7 @@ def prepare(source, profiles, *, upstream=UPSTREAM):
                 evidence, refusal = None, str(error)
             # Never execute a configured remote/helper. One bounded trusted history fetch.
             shallow = git(repo, 'rev-parse', '--is-shallow-repository').strip() == b'true'
-            git(repo, 'fetch', '--no-tags', *(['--deepen=1000'] if shallow else []), upstream, 'refs/heads/main')
+            fetch(repo, '--no-tags', *(['--deepen=1000'] if shallow else []), upstream, 'refs/heads/main')
             after = git(repo, 'rev-parse', 'FETCH_HEAD').decode().strip()
             recovery = not is_ancestor(repo, before, after)
             if recovery:

@@ -1335,6 +1335,32 @@ class ManagedRecoveryTests(unittest.TestCase):
             self.assertNotIn('recovery', result)
             self.assertEqual(self.calls, [])
 
+    def test_a_stalled_fetch_is_retried_once(self):
+        original, fetches = self.mod.git, []
+        def stall_once(repo, *args):
+            if args[0] == 'fetch':
+                fetches.append(args)
+                if len(fetches) == 1:
+                    raise subprocess.TimeoutExpired(['git', 'fetch'], 120)
+            return original(repo, *args)
+        with patch.object(self.mod, 'git', stall_once):
+            code, result = self.run_update()
+        self.assertEqual(len(fetches), 2)
+        self.assertEqual(code, 0, result)
+
+    def test_a_fetch_aborts_a_stalled_transfer(self):
+        seen = {}
+        def run(argv, **kwargs):
+            seen['env'] = kwargs.get('env')
+            return subprocess.CompletedProcess(argv, 0, b'', b'')
+        with patch.object(self.mod.subprocess, 'run', run):
+            self.mod.git(self.repo, 'fetch', 'origin')
+        self.assertEqual(seen['env']['GIT_CONFIG_KEY_0'], 'http.lowSpeedLimit')
+        self.assertEqual(seen['env']['GIT_CONFIG_VALUE_1'], '30')
+        with patch.object(self.mod.subprocess, 'run', run):
+            self.mod.git(self.repo, 'status')
+        self.assertIsNone(seen['env'])
+
     def test_dry_run_has_no_fetch_or_recovery_state(self):
         before = self.git(self.repo, 'rev-parse', 'refs/remotes/origin/main')
         fetched = (self.repo / '.git/FETCH_HEAD').read_bytes()
