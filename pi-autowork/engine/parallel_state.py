@@ -67,16 +67,16 @@ HOLD_CAUSES = {
 }
 NEEDS_PERSON = tuple(cause for cause, action in HOLD_CAUSES.items()
                      if action == 'ask_owner' or cause in ('scope', 'scope_request'))
-COORDINATOR_FILES = ('TODO.md', 'TODO.archive.md', 'goals.json', 'CHANGELOG.md')
+COORDINATOR_FILES = ('tasks/', 'TODO.archive.md', 'CHANGELOG.md')
 
 
-def close_files(repo):
-    """The files a close writes, repository-relative where they can be. It lives here so
-    parallel_integrate can re-export it for callers that stage a close's own file set."""
-    repo = Path(repo)
-    archive = execution.archive_file(repo)
-    return ['TODO.md', 'goals.json',
-            archive.relative_to(repo).as_posix() if archive.is_relative_to(repo) else str(archive)]
+def close_files(repo, task=None):
+    """The files a close writes, repository-relative: the task's record and its receipt (and a
+    live follow-up beside them). Without a task, the whole store a close may write in. It lives
+    here so parallel_integrate can re-export it for callers that stage a close's own file set."""
+    if task is None:
+        return ['tasks/items/', 'tasks/evidence/']
+    return [f'tasks/items/{task}.md', f'tasks/evidence/{task}.toml', f'tasks/items/{task}-LIVE.md']
 
 
 def common_dir(repo):

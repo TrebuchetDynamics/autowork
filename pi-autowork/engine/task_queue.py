@@ -165,3 +165,24 @@ def deferred(snapshot):
     Their dependents wait for them without another question."""
     return {t.id for t in snapshot.tasks.values() if t.status == 'open' and t.section == 'Needs decision'
             and re.search(r'\b\d{4}-\d{2}-\d{2}\b', notes(t).get('Owner decision', ''))}
+
+
+def parse_contract(text):
+    """{label: value} of a contract as contract_text() wrote it (the first line is its title)."""
+    return {label: value.strip() for label, value in NOTE.findall(text or '')}
+
+
+def record(repo, task_id, rev='HEAD'):
+    """The task's record at ``rev``, or None when the store lacks it or cannot be read."""
+    try:
+        return store(repo, rev).tasks.get(task_id)
+    except StoreError:
+        return None
+
+
+def order_ranks(repo):
+    """{task: position} of the open Now/Next tasks in the store's priority order at HEAD."""
+    snapshot = store(repo)
+    open_tasks = sorted((t for t in snapshot.tasks.values() if t.status == 'open' and t.section in task_select.SECTION_RANK),
+                        key=lambda t: (task_select.SECTION_RANK[t.section], t.rank or 0, t.id))
+    return {t.id: index for index, t in enumerate(open_tasks)}, {t.id: set(t.depends_on) for t in open_tasks}

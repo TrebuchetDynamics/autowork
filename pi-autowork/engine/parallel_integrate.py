@@ -13,6 +13,8 @@ import time
 
 import parallel_dispatch as dispatch
 import parallel_plan as plan
+import task_queue
+import task_store
 import parallel_state as state
 from parallel_state import close_files  # the close's own file set; re-exported for callers
 import task_execution as execution
@@ -344,7 +346,7 @@ def verify_scope(repo, common, slot, contracts, files):
     if protected:
         rescoped = slot.get('rescoped_contract') if slot.get('rescoped') else None
         contract = rescoped or dispatched_contract(common, slot)
-        admitted = {'fields': execution.goals_module().task_fields(contract)} if contract else None
+        admitted = {'fields': task_queue.parse_contract(contract)} if contract else None
         inventory = dispatch.protected_files(repo, slot['baseline'])
         if rescoped:
             # An answered rescope admits only the protected paths it actually reserves.
@@ -371,7 +373,30 @@ def head_conflicts(repo, commit):
     result = subprocess.run(['git', '-C', str(repo), 'merge-tree', '--write-tree', '--name-only', '--no-messages',
                              'HEAD', commit], env=env, capture_output=True, text=True, timeout=60)
     files = [p for p in result.stdout.splitlines()[1:] if p] if result.returncode == 1 else []
-    return files if set(files) - set(dispatch.COORDINATOR_FILES) else []
+    return files if any(not dispatch.coordinator_owned(p) for p in files) else []
+
+
+def worker_task_edits(root, slot, baseline):
+    """Task-store paths the worker's commit changed that match no version the base held since
+    the worker started: what it wrote itself, not what it merged in from the base."""
+    edits = []
+    for path in changed(root, slot['baseline'], slot['commit']):
+        if not path.startswith('tasks/'):
+            continue
+        mine = blob(root, slot['commit'], path)
+        seen = {blob(root, rev, path) for rev in [baseline, slot['baseline'],
+                *git(root, 'rev-list', f"{slot['baseline']}..{baseline}", '--', path).split()]}
+        if mine not in seen:
+            edits.append(path)
+    return edits
+
+
+def blob(root, rev, path):
+    """The blob ID of ``path`` at ``rev``, or '' when the path is absent there."""
+    try:
+        return git(root, 'rev-parse', '-q', '--verify', f'{rev}:{path}')
+    except ValueError:
+        return ''
 
 
 def merge_candidate(root, slot, baseline):
@@ -381,14 +406,21 @@ def merge_candidate(root, slot, baseline):
     redirect work into a ledger path: capture that delta before resolving its conflicts.
     Other conflicts still hold. Raw bytes keep blank context, CRLF and binary patches intact.
     """
-    owned = set(dispatch.COORDINATOR_FILES)
-    proposed = sorted(owned.intersection(changed(root, slot['baseline'], slot['commit'])))
+    owned = lambda paths: {p for p in paths if dispatch.coordinator_owned(p)}
+    # A worker never writes the task store: an edit it authored there (not one it took in from
+    # the base by merging) is held for the coordinator, never merged as bookkeeping, so no
+    # branch can grant itself or another task resources, live authorization or checks.
+    authored = worker_task_edits(root, slot, baseline)
+    if authored:
+        raise Hold('scope', 'the worker edited the task store, which only the coordinator writes: '
+                   + ', '.join(authored), outside=authored)
+    proposed = sorted(owned(changed(root, slot['baseline'], slot['commit'])))
     redirected, patch = [], b''
     try:
         git(root, 'merge', '--no-ff', '--no-edit', slot['commit'])
     except ValueError:
         conflicts = git(root, 'diff', '--name-only', '--diff-filter=U', '-z').rstrip('\0').split('\0')
-        if not conflicts or set(conflicts) - owned:
+        if not conflicts or set(conflicts) - owned(conflicts):
             git(root, 'merge', '--abort')
             raise Hold('conflict', 'merge conflict; worker and canonical checkout preserved',
                        conflict_files=[p for p in conflicts if p])
@@ -409,7 +441,7 @@ def merge_candidate(root, slot, baseline):
         if existing:
             git(root, 'restore', '--source=' + baseline, '--staged', '--worktree', '--', *existing)
         git(root, 'commit', '--no-edit', '--allow-empty')
-    actual = sorted(owned.intersection(changed(root, baseline, 'HEAD')))
+    actual = sorted(owned(changed(root, baseline, 'HEAD')))
     paths = sorted(set(proposed) | set(actual) | set(redirected))
     if not paths:
         return None
@@ -436,7 +468,7 @@ UNCOMMITTED_HOLD = 'uncommitted changes in the main checkout'
 # The owner's uncommitted planning files do not stop a merge elsewhere: landing reconciles
 # them or keeps the branch (TOOLSET-223-8e). A planning file the session holds open for
 # writing still counts (it stays in ``mine``).
-PLANNING_FILES = ('TODO.md', 'TODO.archive.md', 'todo.archive.md', 'goals.json', 'BLOCKERS.md')
+PLANNING_FILES = ('TODO.archive.md', 'todo.archive.md', 'BLOCKERS.md')
 WRITERS_BUSY_SKIP = state.WRITERS_BUSY_SKIP
 writers_busy = state.writers_busy
 
@@ -448,13 +480,26 @@ def main_checkout(repo):
         return None
 
 
-def planning_only(paths):
-    """Whether every path is a planning file or under docs/ (TOOLSET-233-ba): a session that moved
-    only by such commits during validation changed nothing the validation judged."""
-    return bool(paths) and all(p in PLANNING_FILES or p.startswith('docs/') for p in paths)
+def planning_only(paths, repo=None, before=None, after=None, task=None):
+    """Whether a session that moved only by these commits during validation changed nothing the
+    validation judged (TOOLSET-233-ba): planning files, docs/, and task-store edits that leave
+    ``task``'s contract hash as it was. A rank, title, note or another task's entry is
+    bookkeeping; an edit to the validated task's acceptance, checks, dependencies, Touches,
+    authority fields or section group is not. Without the revisions a task edit never counts."""
+    if not paths:
+        return False
+    tasks = [p for p in paths if p.startswith('tasks/')]
+    if any(p not in PLANNING_FILES and not p.startswith('docs/') for p in paths if p not in tasks):
+        return False
+    if not tasks:
+        return True
+    if repo is None or task is None:
+        return False
+    old, new = task_queue.record(repo, task, before), task_queue.record(repo, task, after)
+    return old is not None and new is not None and old.contract_hash == new.contract_hash
 
 
-def remerge_planning(repo, root, merge, head):
+def remerge_planning(repo, root, merge, head, task=None):
     """The validated ``merge`` on top of a session head that moved only by planning commits:
     a merge of ``head`` into it in the integration worktree, or None when that conflicts or
     would change anything else."""
@@ -465,7 +510,7 @@ def remerge_planning(repo, root, merge, head):
         return None
     remerged = git(root, 'rev-parse', 'HEAD')
     brought = changed(repo, merge, remerged)
-    if brought and not planning_only(brought):
+    if brought and not planning_only(brought, repo, merge, remerged, task):
         git(root, 'checkout', '-q', '--detach', merge)
         return None
     return remerged
@@ -474,7 +519,8 @@ def remerge_planning(repo, root, merge, head):
 def uncommitted(main):
     """Paths with uncommitted changes in the main checkout, planning files excepted."""
     listing = git(main, 'status', '--porcelain', '-z', '--untracked-files=all')
-    return {entry[3:] for entry in listing.split('\0') if entry} - set(PLANNING_FILES) if listing else set()
+    return {entry[3:] for entry in listing.split('\0') if entry
+            and entry[3:] not in PLANNING_FILES and not entry[3:].startswith('tasks/')} if listing else set()
 
 
 def checkout_holder(repo):
@@ -748,12 +794,13 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
                     run_id = execution.uuid.uuid4().hex
                     integration = {'commit': merge, 'baseline': baseline, 'changed_files': files, 'worktree': str(root),
                                    'check_receipt': str(common / (run_id + '.json')),
-                                   'task_contract': contracts[task]['contract'], 'canonical_branch': canonical_branch}
+                                   'task_contract': contracts[task]['contract'],
+                                   'contract_hash': contracts[task].get('contract_hash'), 'canonical_branch': canonical_branch}
                     # Durable intent precedes validation and FF. An abandoned helper
                     # can only recover this exact candidate, never infer a landing.
                     slot = state.write_slot(common, dict(slot, integration=integration, checks=None,
                                                          ledger_edit_dropped=dropped), slot)
-                inputs = {p: execution.digest(root / p) for p in ('TODO.md', 'goals.json')}
+                inputs = {p: execution.digest(root / p) for p in (execution.task_path(task),)}
                 check = execution.bounded_command(argv, root, common, task, timeout, inputs,
                             receipt_context={'integration_commit': merge}, receipt_writer=save_receipt, run_id=run_id,
                             check_slot_wait=True)
@@ -776,7 +823,8 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
                     fresh_contracts = {t['id']: t for t in dispatch.contracts(repo)}
                     verify(repo, common, slot, fresh_contracts)
                     verify_scope(repo, common, slot, fresh_contracts, changed(repo, baseline, merge))
-                    if display_free(fresh_contracts[task]['contract']) != display_free(contracts[task]['contract']):
+                    # A rank, title or note edit keeps the validation; a contract change does not.
+                    if fresh_contracts[task].get('contract_hash') != contracts[task].get('contract_hash'):
                         raise Hold('contract_changed', 'task contract changed during validation')
                     require_no_writers(repo, changed(repo, baseline, merge))
                     if git(repo, 'symbolic-ref', 'HEAD') != canonical_branch:
@@ -785,8 +833,9 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
                     if head != baseline:
                         # Moved only by planning commits (the runner takes main between and beside
                         # reviews, TOOLSET-233-ba): land the validated merge on top, unvalidated again.
-                        remerged = (remerge_planning(repo, root, merge, head)
-                                    if ancestor(repo, baseline, head) and planning_only(changed(repo, baseline, head))
+                        remerged = (remerge_planning(repo, root, merge, head, task)
+                                    if ancestor(repo, baseline, head)
+                                    and planning_only(changed(repo, baseline, head), repo, baseline, head, task)
                                     else None)
                         if remerged:
                             state.event(common, 'integration_head_moved_planning_only', task_id=task, head=head)
@@ -849,7 +898,7 @@ def recover_integration(repo, common, slot, contracts):
     """
     info = slot.get('integration') or {}
     if (not info.get('commit') or not info.get('baseline')
-            or display_free(info.get('task_contract')) != display_free(contracts[slot['task_id']]['contract'])
+            or not info.get('contract_hash') or info['contract_hash'] != contracts[slot['task_id']].get('contract_hash')
             or info.get('canonical_branch') != git(repo, 'symbolic-ref', 'HEAD')
             or git(repo, 'rev-list', '--parents', '-n', '1', info['commit']).split()[1:]
                != [info['baseline'], slot['commit']]):
@@ -887,70 +936,6 @@ def recover_integration(repo, common, slot, contracts):
             'ledger_edit_dropped': slot.get('ledger_edit_dropped')}
 
 
-def goals_command(repo, *argv):
-    script = Path(__file__).resolve().parents[2] / 'skills/docs-sync/scripts/goals.py'
-    result = subprocess.run([sys.executable, str(script), argv[0], str(repo), *argv[1:]],
-                            capture_output=True, text=True, timeout=60)
-    if result.returncode:
-        raise ValueError('goals.py failed: ' + result.stderr.strip())
-    return result.stdout
-
-
-def live_followup(repo, task, items, indexed):
-    """Record a report's pending live checks as their own task, exactly once.
-
-    Offline completion never qualifies live behavior (AGENTS.md): the task closes and
-    `TASK-LIVE` waits in Needs decision, depending on it. A retried close finds the
-    follow-up already present and adds nothing.
-    """
-    goals = execution.goals_module()
-    followup = task + '-LIVE'
-    if indexed:
-        ledger = {t['id']: t for t in goals.normalize(goals.load(repo))['tasks']}
-        if followup not in ledger:
-            goals_command(repo, 'add-task', followup, '--goal', ledger[task]['goal'], '--title',
-                          'Live checks for ' + task, '--section', 'Needs decision', '--depends-on', task)
-    with goals.coordination(repo):
-        todo = repo / 'TODO.md'
-        before = todo.read_bytes()
-        text = before.decode()
-        if followup in goals.task_bodies(text):
-            return followup
-        body = (f'- [ ] {followup} — Live checks for {task}\n'
-                f'  Scope: Run the live checks the offline work for {task} left pending.\n'
-                '  Acceptance: Each check passes on the real target:\n'
-                + ''.join(f'  - {" ".join(item.split())}\n' for item in items) +
-                '  Checks: Live qualification by an authorized person; offline evidence does not count.\n'
-                f'  Dependencies: {task}.\n'
-                '  Status: open\n')
-        heading = re.search(r'^## Needs decision[ \t]*\r?\n', text, re.M)
-        if heading:
-            end = re.compile(r'^## ', re.M).search(text, heading.end())
-            at = end.start() if end else len(text)
-            text = text[:at].rstrip('\n') + '\n\n' + body + ('\n' + text[at:] if end else '')
-        else:
-            coverage = re.search(r'^## Goal coverage', text, re.M)
-            at = coverage.start() if coverage else len(text)
-            text = (text[:at].rstrip('\n') + '\n\n## Needs decision\n\n' + body
-                    + ('\n' + text[at:] if coverage else ''))
-        require_no_writers(repo, close_files(repo))
-        goals.atomic_write(todo, text, expected_bytes=before)
-    if indexed:
-        # Record the follow-up's place in the priority order, or the ledger reports drift
-        # and stops all dispatch (flutter, TASK-008). Only when it is the sole
-        # difference: someone else's unrecorded reordering is not this close's to accept.
-        status = goals.priority_status(goals.normalize(goals.load(repo)), (repo / 'TODO.md').read_text())
-        if (status['state'] == 'drift' and status['added'] == [followup]
-                and not (status['moved'] or status['missing'] or status['duplicates'])):
-            goals_command(repo, 'reorder', '--expected-revision', goals_command(repo, 'revision').strip())
-    return followup
-
-
-def archive_path(repo):
-    """Reuse Docs Sync's history-owner rules, including legacy and linked archives."""
-    return execution.archive_file(repo)
-
-
 # How a task is shown or ordered, not what it asks: adding `Short:` to every entry sent each held
 # task's finished work aside as if its contract had changed.
 DISPLAY_FIELDS = ('Short', 'Priority reason')
@@ -962,111 +947,129 @@ def display_free(contract):
     return _DISPLAY_LINE.sub('', contract or '').strip()
 
 
-def require_task_contract(items, expected, *, archived=False):
-    """Only closure-owned checkbox/status changes may differ from validation."""
-    closed = re.sub(r'(?m)^([ \t]*(?:[-*][ \t]+)?Status:)[^\n]*', r'\1 done', expected)
-    if archived and len(items) > 1:
-        # History can hold an older entry for the same ID (sierra TASK-029): the closed
-        # entry matching this contract is the one this close wrote.
-        items = [item for item in items if item[1].lower() == 'x'
-                 and display_free(item[0]) in (display_free(expected), display_free(closed))]
-    if len(items) != 1:
-        raise ValueError('task contract provenance missing or ambiguous; no close')
-    body, mark, _ = items[0]
-    # A live body may already read `Status: done` with its box unchecked: an earlier
-    # close that wrote the status but missed a bold `**ID**` checkbox.
-    if ((archived and mark.lower() != 'x') or display_free(body) not in
-            ({display_free(expected), display_free(closed)} if mark.lower() == 'x' or not archived
-             else {display_free(expected)})):
-        raise ValueError(CONTRACT_CHANGED)
+def receipt_path(task):
+    return f'tasks/evidence/{task}.toml'
+
+
+def receipt_text(repo, task, slot, info, checks, record):
+    """The closure's evidence, deterministic for one verified operation: no time, no logs, no
+    transcript; secrets redacted and absolute paths dropped, as for public commits."""
+    import check_receipt
+    command = (checks.get('command_receipt') or {}).get('argv') or (checks.get('command_receipt') or {}).get('command') or []
+    if isinstance(command, str):
+        command = [command]
+
+    def public(text):
+        text = check_receipt.redact(str(text))
+        return re.sub(r'(?<![\w.-])/(?:[^\s/]+/)+[^\s/]*', '<path>', text)
+
+    tree = git(repo, 'rev-parse', f"{info['commit']}^{{tree}}")
+    review = (slot.get('review') or {}).get('decision') or ('passed' if passed(checks) else 'failed')
+    fields = [('schema', 1), ('task', task), ('candidate', slot['commit']), ('integration', info['commit']),
+              ('tree', tree), ('contract_hash', record.contract_hash),
+              ('checks', [public(part) for part in command]),
+              ('result', 'pass' if passed(checks) else 'fail'), ('review', public(review))]
+    lines = [f'{key} = {task_store.toml_value(key, value)}' for key, value in fields]
+    return '\n'.join(lines) + '\n'
+
+
+def followup_text(task, record, items):
+    """A Needs decision task for the live checks an offline close left pending."""
+    followup = task + '-LIVE'
+    fields = dict(schema=1, id=followup, title='Live checks for ' + task, short='Live checks for ' + task,
+                  status='open', goal=record.goal, section='Needs decision', rank=task_store_rank(record),
+                  depends_on=[task], touches=list(record.touches) or ['**'], resources=list(record.resources),
+                  kind='implementation', ownership='owner', exclusions=['Offline evidence does not count'],
+                  scope=f'Run the live checks the offline work for {task} left pending.',
+                  acceptance=[' '.join(item.split()) for item in items],
+                  checks=['Live qualification by an authorized person'])
+    return followup, task_store.render(fields, '\n')
+
+
+def task_store_rank(record):
+    return (record.rank or 0) + 1
+
+
+def close_writes(repo, task, slot, info, checks, record):
+    """{path: text} a close writes: the task's done record, its receipt and, when live checks
+    remain, their follow-up task. Nothing else; TODO.archive.md is not written."""
+    path = repo / execution.task_path(task)
+    text = task_store.edit(path.read_text(), {'status': 'done'})
+    writes = {execution.task_path(task): text, receipt_path(task): receipt_text(repo, task, slot, info, checks, record)}
+    live = live_items((slot.get('report') or {}).get('pending_live'))
+    if live:
+        followup, body = followup_text(task, record, live)
+        if task_queue.record(repo, followup) is None:
+            writes[execution.task_path(followup)] = body
+    return writes
+
+
+def pending_writes(repo, writes):
+    """The closure paths whose working-tree bytes differ from HEAD: what is left to commit."""
+    pending = []
+    for path, text in writes.items():
+        at_head = subprocess.run(['git', '-C', str(repo), 'show', f'HEAD:{path}'], capture_output=True, text=True)
+        if at_head.returncode != 0 or at_head.stdout != text:
+            pending.append(path)
+    return pending
 
 
 def close(repo, owner_pid, task):
+    """Close one verified task: its record says done, its receipt names the exact candidate and
+    tree that passed, in files the coordinator commits as one closure commit. A replay of a
+    closure already written returns only what is still uncommitted; nothing is written twice."""
     repo, common = context(repo, owner_pid)
     with execution.lock(common / 'dispatch.lock'), execution.lock(common / 'integration.lock'), \
             execution.lock(common / 'writer.lock'):
         state.require_owner(common, owner_pid)
-        # Only the files a close writes: a person's session in the main checkout that is not
-        # editing them does not keep finished work open (interactive sessions work there).
-        require_no_writers(repo, close_files(repo))
+        require_no_writers(repo, close_files(repo, task))
         slot = slot_for(common, task)
         if not slot or slot['state'] not in ('integrated', 'closed'):
             raise ValueError('close requires an integrated slot with passing validation')
         info, checks = validated_receipt(repo, common, slot)
-        if slot['state'] == 'closed':
-            archive = archive_path(repo)
-            archived = execution.goals_module().task_bodies(archive.read_text()) if archive.exists() else {}
-            require_task_contract(archived.get(task, []), info.get('task_contract', ''), archived=True)
+        record = task_queue.record(repo, task)
+        if record is None:
+            raise ValueError('task record missing from tasks/; no close')
+        if record.contract_hash != info.get('contract_hash'):
+            raise ValueError(CONTRACT_CHANGED)
+        written = repo / execution.task_path(task)
+        on_disk = task_store.edit(written.read_text(), {}) if written.exists() else ''
+        done_on_disk = 'status = "done"' in on_disk
+        if slot['state'] == 'closed' or record.status == 'done' or done_on_disk:
+            # Replay: the closure was written (and maybe committed) by an earlier call.
+            writes = close_writes(repo, task, slot, info, checks, record) if record.status != 'done' else {}
+            for path, text in writes.items():
+                target = repo / path
+                if not target.exists() or target.read_text() != text:
+                    raise ValueError('a partial closure differs from what this close writes; inspect before retrying')
+            if slot['state'] != 'closed':
+                slot = state.change(common, slot, 'closed', {})
             dispatch.cleanup_tmpdir(common, slot)
-            return {'outcome': 'CLOSED', 'task': task, 'cleaned': cleanup_worker(repo, common, slot)}
-        # The helper has no TODO-only `task` CLI. Use its same coordination and
-        # atomic writer in this narrow adapter instead of creating a goals ledger.
-        goals = execution.goals_module()
-        current = goals.task_bodies((repo / 'TODO.md').read_text()).get(task, [])
-        expected_contract = info.get('task_contract', '')
-        if current:
-            require_task_contract(current, expected_contract)
-        else:
-            archive = archive_path(repo)
-            archived = goals.task_bodies(archive.read_text()) if archive.exists() else {}
-            require_task_contract(archived.get(task, []), expected_contract, archived=True)
-        indexed = (repo / 'goals.json').exists()
-        # All or nothing: a close that fails after writing would leave these uncommitted in
-        # the session, where every later merge refuses them (bravo, TASK-010).
-        touched = [repo / 'TODO.md', repo / 'goals.json', archive_path(repo)]
-        before = {path: path.read_bytes() if path.exists() else None for path in touched}
+            return {'outcome': 'CLOSED', 'task': task, 'cleaned': cleanup_worker(repo, common, slot),
+                    'files': pending_writes(repo, writes)}
+        writes = close_writes(repo, task, slot, info, checks, record)
+        before = {path: (repo / path).read_bytes() if (repo / path).exists() else None for path in writes}
         try:
-            archive, followup = _close_writes(repo, slot, task, indexed, goals)
+            for path, text in writes.items():
+                target = repo / path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                temporary = target.with_name(f'.{target.name}.{os.getpid()}.tmp')
+                temporary.write_text(text)
+                os.replace(temporary, target)
         except BaseException:
+            # All or nothing: a half-written close would sit uncommitted in the session.
             for path, data in before.items():
                 if data is None:
-                    path.unlink(missing_ok=True)
-                elif not path.exists() or path.read_bytes() != data:
-                    path.write_bytes(data)
+                    (repo / path).unlink(missing_ok=True)
+                else:
+                    (repo / path).write_bytes(data)
             raise
         slot = state.change(common, slot, 'closed', {})
         dispatch.cleanup_tmpdir(common, slot)
-        files = ['TODO.md', *(['goals.json'] if indexed else []), archive.relative_to(repo).as_posix()]
+        followup = next((path for path in writes if path.endswith('-LIVE.md')), None)
         return {'outcome': 'CLOSED', 'task': task, 'cleaned': cleanup_worker(repo, common, slot),
-                'files': files, **({'live_followup': followup} if followup else {})}
-
-
-def _close_writes(repo, slot, task, indexed, goals):
-    """The close's writes to TODO.md, goals.json and the archive; (archive, live follow-up)."""
-    if indexed:
-        require_no_writers(repo, close_files(repo))
-        goals_command(repo, 'task', task, 'done')
-    # `goals.py task` updates the index, not the authored checkbox/body.
-    # Update that exact body under the helper's own stale-write guard too.
-    with goals.coordination(repo):
-        todo = repo / 'TODO.md'
-        before = todo.read_bytes()
-        text = before.decode()
-        blocks = [b for b in goals.task_blocks(text) if b['id'] == task]
-        if len(blocks) > 1:
-            raise ValueError('TODO task duplicated; no close')
-        if blocks:
-            block = blocks[0]
-            body = text[block['start']:block['end']]
-            # IDs may be bold or code: `- [ ] **T-1 — Title**` (sierra).
-            body = re.sub(r'(?m)^([ \t]*[-*] \[)[ xX](\][ \t]+(?:\*\*)?`?' + re.escape(task) + r'\b)', r'\g<1>x\2', body)
-            body = re.sub(r'(?m)^([ \t]*(?:[-*][ \t]+)?Status:)[^\n]*', r'\1 done', body)
-            require_no_writers(repo, close_files(repo))
-            goals.atomic_write(todo, text[:block['start']] + body + text[block['end']:], expected_bytes=before)
-    live = live_items((slot.get('report') or {}).get('pending_live'))
-    followup = live_followup(repo, task, live, indexed) if live else None
-    require_no_writers(repo, close_files(repo))
-    archived_result = json.loads(goals_command(repo, 'archive', *([] if indexed else ['--verified-tasks', task])))
-    # Read back exact target before journaling closure; archive can fail safely
-    # after task mutation, in which case slot stays integrated and is retryable.
-    # The archive command can return null on an idempotent retry.
-    archive = repo / archived_result['archive'] if archived_result.get('archive') else archive_path(repo)
-    archived = goals.task_bodies(archive.read_text()) if archive.exists() else {}
-    # The contract was checked before any write. The archiver cuts a body at the next
-    # group heading, which the contract parser keeps, so compare presence, not bytes.
-    if task not in archived or task in goals.task_bodies((repo / 'TODO.md').read_text()):
-        raise ValueError('archive did not move the task; no close')
-    return archive, followup
+                'files': sorted(writes),
+                **({'live_followup': task + '-LIVE'} if followup else {})}
 
 
 CONTRACT_CHANGED = 'task contract changed since integration; no close'
@@ -1084,42 +1087,41 @@ def dispatched_contract(common, slot):
         text = (data / 'prompt.md').read_text()
     except (OSError, ValueError):
         return None
-    marker = '\nTask contract from TODO.md:\n\n'
-    if marker not in text:
+    marker = re.search(r'\nTask contract \(tasks/items/[^\n]*\):\n\n', text)
+    if marker is None:
         return None
-    return text.split(marker, 1)[1].split('\nFresh retry after a held integration.', 1)[0].strip()
+    return text[marker.end():].split('\nFresh retry after a held integration.', 1)[0].strip()
+
+
+def pinned_hash(common, slot):
+    """The contract hash this slot's current attempt was dispatched with, or None."""
+    try:
+        return (execution.read(dispatch.data_dir(common, slot) / 'contract.json') or {}).get('contract_hash')
+    except (OSError, ValueError):
+        return None
 
 
 def entry_changes(repo, common, slot):
-    """Changed field names since dispatch or the last rescope; None without evidence.
+    """Changed contract labels since dispatch or the last rescope; None without evidence.
 
-    Keep raw field bodies (including continuations, duplicate fields and free text)
-    rather than comparing only the planner's recognized, nonempty field values.
+    Display lines (title, Short) are not contract. When no label differs but the contract
+    hash does (a move to Needs decision), the change is named `Contract`. A removed record
+    is `Entry`: never a Touches-only answer.
     """
     previous = slot.get('rescoped_contract') or dispatched_contract(common, slot)
     if previous is None:
         return None  # no record to compare with: never guess
-    goals = execution.goals_module()
-    items = goals.task_bodies((repo / 'TODO.md').read_text()).get(slot['task_id'], [])
-    if len(items) != 1:
-        return ['Entry']  # removed or duplicated: never a Touches-only answer
-
-    def fields(text):
-        # Use prose offsets so field-looking text inside a fenced example is not a field.
-        marks = list(re.finditer(r'^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?([A-Za-z][^:\r\n]*?):(?:\*\*)?[ \t]*',
-                                 goals.task_prose(text), re.M))
-        result = {'Entry': [text[:marks[0].start()].rstrip() if marks else text]}
-        for index, mark in enumerate(marks):
-            end = marks[index + 1].start() if index + 1 < len(marks) else len(text)
-            result.setdefault(mark[1], []).append(text[mark.start():end].rstrip())
-        return result
-
-    before, after = fields(previous.strip()), fields(items[0][0].strip())
-    return sorted(key for key in before.keys() | after.keys()
-                  if not key.startswith(DISPLAY_FIELDS) and before.get(key) != after.get(key))
-
-
-
+    current = task_queue.record(repo, slot['task_id'])
+    if current is None:
+        return ['Entry']
+    before = task_queue.parse_contract(previous)
+    after = task_queue.parse_contract(task_queue.contract_text(current))
+    changes = sorted(key for key in before.keys() | after.keys()
+                     if not key.startswith(DISPLAY_FIELDS) and before.get(key) != after.get(key))
+    pinned = None if slot.get('rescoped_contract') else pinned_hash(common, slot)
+    if not changes and pinned and pinned != current.contract_hash:
+        changes = ['Contract']
+    return changes
 
 
 def blocker_resolved(repo, common, slot, hold):
@@ -1130,13 +1132,12 @@ def blocker_resolved(repo, common, slot, hold):
     """
     if 'Blocker resolution' not in (entry_changes(repo, common, slot) or []):
         return False
-    goals = execution.goals_module()
-    items = goals.task_bodies((repo / 'TODO.md').read_text()).get(slot['task_id'], [])
-    if len(items) != 1:
+    current = task_queue.record(repo, slot['task_id'])
+    if current is None:
         return False
-    value = ' '.join(goals.task_fields(items[0][0]).get('Blocker resolution', '').split())
+    value = ' '.join(task_queue.notes(current).get('Blocker resolution', '').split())
     previous = slot.get('rescoped_contract') or dispatched_contract(common, slot)
-    before = ' '.join(goals.task_fields(previous or '').get('Blocker resolution', '').split())
+    before = ' '.join(task_queue.parse_contract(previous or '').get('Blocker resolution', '').split())
     prefix = hold['fingerprint'] + ';'
     return (value.casefold() != before.casefold() and value.startswith(prefix)
             and bool(value[len(prefix):].strip()))
@@ -1236,19 +1237,13 @@ def set_aside(repo, owner_pid, task):
             raise ValueError('set-aside needs an existing slot with no live worker')
         requeued = True
         if slot['state'] == 'integrated':
-            current = execution.goals_module().task_bodies((repo / 'TODO.md').read_text()).get(task, [])
-            if not current:
-                # Someone else archived or removed the entry after the merge (bravo
+            current = task_queue.record(repo, task)
+            if current is None or current.status != 'open':
+                # Someone else closed or removed the task after the merge (bravo
                 # TASK-001): the merge stays and nothing is queued again.
                 requeued = False
-            else:
-                try:
-                    require_task_contract(current, (slot.get('integration') or {}).get('task_contract', ''))
-                except ValueError as exc:
-                    if str(exc) != CONTRACT_CHANGED:
-                        raise
-                else:
-                    raise ValueError('integrated task still matches its contract; close it instead')
+            elif current.contract_hash == (slot.get('integration') or {}).get('contract_hash'):
+                raise ValueError('integrated task still matches its contract; close it instead')
         elif slot['state'] == 'integrating':
             # A finished commit whose review a restart cut short (integration.lock is held, so
             # no review runs): refused, one waited 15 hours. Unless its merge already landed.
@@ -1407,13 +1402,13 @@ def merged(repo, owner_pid, task):
         # base's planning (including deletions) before reporting/checking its commit,
         # unless the task itself authored the path. Integration still handles authored
         # coordinator edits through its existing proposal path.
-        planning = {'TODO.md', 'TODO.archive.md', 'goals.json'}
+        planning = lambda paths: {p for p in paths if dispatch.coordinator_owned(p) and p != 'CHANGELOG.md'}
         # Adoption replaces baseline/commit: retain original authorship even when an
         # earlier resolution made a task-authored path identical to the merged base.
         authored = slot.get('merged_authored_planning')
         if authored is None:
-            authored = sorted(planning & set(changed(repo, slot['baseline'], slot['commit'])))
-        restore = sorted((planning - set(authored)) & set(changed(repo, base, head)))
+            authored = sorted(planning(changed(repo, slot['baseline'], slot['commit'])))
+        restore = sorted(planning(changed(repo, base, head)) - set(authored))
         if restore:
             git(root, 'restore', '--source=' + base, '--staged', '--worktree', '--', *restore)
             git(root, 'commit', '--amend', '--no-edit', '--allow-empty')
@@ -1497,18 +1492,12 @@ def review_rework(repo, common, current):
 
 
 def inherited_ranks(repo):
-    """{task: rank} in TODO.md order, where a task ranks as high as the highest-priority open task
-    that depends on it, directly or through others. TOOLSET-261-15 (36th of 77) waited a day to
-    integrate behind higher-ranked commits while 15 tasks waited on it, five of them in the top 12."""
-    goals = execution.goals_module()
-    order, needs = [], {}
-    for tid, entries in goals.task_bodies((repo / 'TODO.md').read_text()).items():
-        block, mark, section = entries[0]
-        if mark != ' ' or section not in ('Now', 'Next'):
-            continue
-        order.append(tid)
-        needs[tid] = plan.dependency_ids(goals.task_fields(block).get('Dependencies', 'None.'))
-    rank = {tid: index for index, tid in enumerate(order)}
+    """{task: rank} in the store's priority order, where a task ranks as high as the
+    highest-priority open task that depends on it, directly or through others. TOOLSET-261-15
+    (36th of 77) waited a day to integrate behind higher-ranked commits while 15 tasks waited on
+    it, five of them in the top 12."""
+    rank, needs = task_queue.order_ranks(repo)
+    order = sorted(rank, key=rank.get)
     changed = True
     while changed:  # to a fixpoint: a dependency inherits through chains of any length
         changed = False
@@ -1684,7 +1673,7 @@ def retry_held(args):
                                  and not state.worker_live(s) and entry_changed(repo, common, s)), None)
             if changed_slot is not None:
                 rework_path(common, changed_slot['task_id']).unlink(missing_ok=True)  # a person's answer resets it
-                present = bool(execution.goals_module().task_bodies((repo / 'TODO.md').read_text()).get(changed_slot['task_id']))
+                present = task_queue.record(repo, changed_slot['task_id']) is not None
                 state.event(common, 'task_entry_changed', task_id=changed_slot['task_id'],
                             changed_fields=entry_changes(repo, common, changed_slot), action='requeue')
                 result = _retire(repo, common, changed_slot, present)
