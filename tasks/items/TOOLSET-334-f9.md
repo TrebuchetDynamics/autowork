@@ -17,3 +17,4 @@ acceptance = ["Two candidates with disjoint touches are reviewed and checked at 
 checks = ["python3 scripts/check.py pi-autowork/engine/test_parallel_integrate.py tests/test_pi_autowork.py pi-autowork/tests/test_landing.py"]
 exclusions = []
 +++
+- Coordination: TOOLSET-342-0153a52b covers one case of this: a failed batch of two or three checked side by side. Whichever lands second replaces the other's mechanism with its own, so failed-batch candidates are checked concurrently one way, not two.

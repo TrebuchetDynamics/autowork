@@ -271,20 +271,42 @@ class LogScreen(Screen):
             log.write('(no output yet)')
 
 
+def action_text(line, width=0, stamp=None):
+    """One action as a colored line (fleet_view.action_style), cut to ``width`` (0: whole)."""
+    text = Text()
+    if stamp is not None:
+        text.append(stamp + '  ', style='dim')
+        width = max(0, width - len(stamp) - 2) if width else 0
+    text.append(fleet_view.fit_line(line, width), style=fleet_view.action_style(line))
+    return text
+
+
 class WorkerScreen(Screen):
     """One worker's actions as a log: oldest first, stamped with the time, new ones appended at the
-    bottom so the view keeps its place while you scroll back; refreshed."""
-    BINDINGS = [Binding('escape,q', 'app.pop_screen', 'back')]
+    bottom so the view keeps its place while you scroll back; refreshed. Each action is colored by
+    its kind and kept to one line; w shows long ones whole."""
+    BINDINGS = [Binding('escape,q', 'app.pop_screen', 'back'), Binding('w', 'toggle_wrap', 'wrap')]
 
     def __init__(self, runner, task):
         super().__init__()
         self.runner, self.task_id = runner, task  # Screen.task is Textual's own, read-only
         self.shown = []
+        self.wrap = False
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield RichLog(id='worker-actions', wrap=True, highlight=False, markup=False)
         yield Footer()
+
+    def action_toggle_wrap(self):
+        self.wrap = not self.wrap
+        self.shown = []  # rewrite every line at the new setting
+        self.refresh_actions()
+
+    def on_resize(self, event):
+        if not self.wrap:
+            self.shown = []  # cut again to the new width
+            self.refresh_actions()
 
     def on_mount(self):
         self.title = f'{self.runner.name}: {self.task_id}'
@@ -302,9 +324,10 @@ class WorkerScreen(Screen):
             fresh = actions
             if not actions:
                 log.write('No actions recorded yet.')
+        width = 0 if self.wrap else max(20, self.size.width - 4)  # border and scrollbar
         for at, line in fresh:
             stamp = time.strftime('%H:%M:%S', time.localtime(at)) if at is not None else '--:--:--'
-            log.write(Text.assemble((stamp + '  ', 'dim'), line))
+            log.write(action_text(line, width, stamp))
         if fresh:
             self.shown = actions
 
@@ -364,8 +387,7 @@ class TasksScreen(Screen):
         position = {row.task: number + 1 for number, row in enumerate(self.rows)}
         cells = [{'#': (str(position[row.task]), 'dim'), 'Task': (row.task, 'bold'),
                   'Short': (row.short, ''),
-                  'State': (row.state, 'bold yellow' if row.kind in ('held', 'waiting') else
-                            'bold green' if row.kind == 'working' else ''),
+                  'State': (row.state, fleet_view.state_style(row)),
                   'Why': (row.why, 'yellow' if row.question else 'dim')} for row in self.shown]
         self.app.fill(table, cells, self.FIXED, self.TEXT, minimum=10)
         tasks = [row.task for row in self.shown]
@@ -392,7 +414,7 @@ class TasksScreen(Screen):
         else:
             text.append(row.task, style='bold')
             text.append(f'  {row.short}\n')
-            text.append(f'{row.section} · {row.state}\n', style='dim')
+            text.append(f'{row.section} · {row.state}\n', style=fleet_view.state_style(row) or 'dim')
             if row.why:
                 text.append(row.why + '\n', style='yellow' if row.question else '')
         keys = [(a.key, a.label) for a in self.actions(row)]
@@ -496,7 +518,7 @@ class TaskScreen(Screen):
         text.append(self.task_id, style='bold')
         if row:
             text.append(f'  {row.short}\n')
-            text.append(f'{row.section} · {row.state}\n', style='dim')
+            text.append(f'{row.section} · {row.state}\n', style=fleet_view.state_style(row) or 'dim')
         else:
             text.append('  (closed, or not in tasks/ now)\n', style='dim')
         if question:
@@ -516,7 +538,8 @@ class TaskScreen(Screen):
             text.append('\nLast actions\n', style='bold')
             for line, age in actions:
                 text.append(f'{fleet_view.ago(age):>9}  ', style='dim')
-                text.append(line + '\n')
+                text.append_text(action_text(line, max(20, self.size.width - 15)))
+                text.append('\n')
         self.query_one('#task-body', Static).update(text)
         keys = Text()
         for answer in self.answers():
@@ -684,7 +707,7 @@ class FleetApp(App):
     LANE_COLUMNS = ('Task', 'Status', 'Try', 'For', 'Quiet')
     LANE_TEXT = ('Doing',)
     STATUS_STYLE = {fleet_view.ACTIVE: 'bold green', fleet_view.MERGEABLE: 'bold cyan',
-                    fleet_view.WAITING: 'bold yellow', fleet_view.BLOCKER: 'bold yellow'}
+                    fleet_view.WAITING: 'bold yellow', fleet_view.BLOCKER: 'bold red'}
 
     def on_mount(self):
         table = self.query_one('#runners', DataTable)
@@ -854,7 +877,7 @@ class FleetApp(App):
                  'Status': (' · '.join(fleet_view.status(lane)), self.STATUS_STYLE[fleet_view.status(lane)[0]]),
                  'Try': (str(lane.attempt), ''), 'For': (fleet_view.duration(lane.minutes), ''),
                  'Quiet': (fleet_view.quiet(lane).removeprefix('quiet '), 'bold yellow'),
-                 'Doing': (doing(lane), '')} for lane in runner.lanes]
+                 'Doing': (doing(lane), fleet_view.action_style(doing(lane)))} for lane in runner.lanes]
         keep = table.cursor_row
         if self.fill(table, rows, self.LANE_COLUMNS, self.LANE_TEXT) and rows:
             table.move_cursor(row=min(keep, len(rows) - 1))

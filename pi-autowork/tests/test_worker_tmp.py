@@ -1095,19 +1095,45 @@ class BatchLandingTests(unittest.TestCase):
             runner.board_train(rows)
             self.assertEqual(started, [])  # the batch ahead has no chain yet
 
-    def test_no_car_boards_while_a_failed_batch_is_halved(self):
+    def test_no_car_boards_on_a_half_while_a_failed_batch_is_halved(self):
         """A failing candidate rode three stopped cars on failing halves and never got a verdict of
-        its own, so every batch it joined failed: halving must check halves alone."""
+        its own, so every batch it joined failed: halving must check halves alone. The next half is
+        checked alone too, on the base the half ahead was built on, beside it (TOOLSET-340-64b75d92)."""
         with tempfile.TemporaryDirectory() as folder:
             runner, coordinator, rows = self.merge_train_runner(folder)
             started = []
-            runner.start_batch = lambda tasks, on=None, revisions=None: started.append(tasks)
-            (runner.state / 'batch-split.json').write_text(json.dumps([['C@c1'], ['D@d1']]))
+            runner.start_batch = lambda tasks, on=None, revisions=None, independent=False: \
+                started.append((tasks, on, independent))
+            split = runner.state / 'batch-split.json'
+            split.write_text(json.dumps([['C@c1'], ['D@d1']]))
             runner.board_train(rows)
-            self.assertEqual(started, [])
-            (runner.state / 'batch-split.json').unlink()  # the search ended: cars board again
+            self.assertEqual(started, [])  # no recorded base for the half ahead: nothing boards on its tip
+            runner.integration['base'] = 'base0'
             runner.board_train(rows)
-            self.assertEqual(started, [['C', 'D']])
+            self.assertEqual(started, [(['C'], 'base0', True)])  # the next half alone, on the base
+            self.assertEqual(json.loads(split.read_text()), [['D@d1']])
+            started.clear()
+            with patch.dict(os.environ, PI_AUTOWORK_INDEPENDENT_HALVES='0'):
+                runner.board_train(rows)
+            self.assertEqual(started, [])  # turned off: halves wait their turn as before
+            split.unlink()  # the search ended: cars board on the tip again
+            runner.board_train(rows)
+            self.assertEqual(started, [(['C', 'D'], 'abc123', False)])
+
+    def test_an_independent_half_survives_a_failing_half_and_yields_to_a_passing_one(self):
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator, _ = self.merge_train_runner(folder)
+            stopped = []
+            runner.stop_train = lambda why='': stopped.append(why)
+            failed = {'outcome': 'BATCH_GATE_FAILED', 'tasks': ['A', 'B']}
+            passed = {'outcome': 'BATCH', 'tasks': ['A', 'B'], 'passed': ['A', 'B']}
+            for independent, result, stops in ((True, failed, False), (True, passed, True),
+                                               (False, failed, True), (False, passed, False)):
+                with self.subTest(independent=independent, result=result['outcome']):
+                    stopped.clear()
+                    runner.train = {'members': ['C'], 'independent': independent}
+                    runner.settle_train(result)
+                    self.assertEqual(bool(stopped), stops)
 
     def test_a_car_on_a_batch_that_did_not_pass_is_stopped_and_its_verdicts_dropped(self):
         with tempfile.TemporaryDirectory() as folder:
