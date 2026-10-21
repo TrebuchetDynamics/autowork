@@ -480,6 +480,7 @@ class MainCheckTests(unittest.TestCase):
                     while main_check.exit_code(root) is None:
                         self.assertLess(time.monotonic(), deadline)
                         time.sleep(.01)
+                    self.assertEqual(main_check.read(root)['check_slot']['timeout'], .5)
                     runner.check_main()
                     self.assertEqual(main_check.read(root)['state'], 'green')
                     self.assertTrue((root / 'ran').exists())
@@ -490,13 +491,26 @@ class MainCheckTests(unittest.TestCase):
                     for child in children:
                         child.wait(timeout=10)
 
+    def test_a_live_check_flags_its_execution_timeout_but_not_slot_waiting(self):
+        record = dict(state='running', rev='abcdef123', started=0,
+                      pid=os.getpid(), start_time=main_check.start_time(os.getpid()))
+        for progress, overdue in (({}, True),
+                ({'state': 'running', 'started': 3500, 'timeout': 60}, True),
+                ({'state': 'running', 'started': 3590, 'timeout': 60}, False),
+                ({'state': 'waiting', 'ahead': 1}, False),
+                ({'state': 'finished'}, False)):
+            with self.subTest(progress=progress):
+                text = main_check.line(dict(record, check_slot=progress), now=3601)
+                self.assertEqual('past timeout' in text, overdue, text)
+
     def test_the_status_line(self):
         self.assertEqual(main_check.line({'state': 'red', 'rev': 'abcdef123', 'failures': ['a', 'b']}),
                          'main red since abcdef1: 2 failing')
         self.assertEqual(main_check.line({'state': 'green', 'rev': 'abcdef123'}), 'main green at abcdef1')
         self.assertEqual(main_check.line({'state': 'green', 'rev': 'abcdef123', 'flaky': ['a']}),
                          'main green at abcdef1 (1 flaky)')
-        self.assertEqual(main_check.line({'state': 'running', 'rev': 'abcdef123', 'started': 0}, now=600),
+        self.assertEqual(main_check.line({'state': 'running', 'rev': 'abcdef123', 'started': 0,
+                                          'pid': os.getpid(), 'start_time': main_check.start_time(os.getpid())}, now=600),
                          'main check running on abcdef1 (10m)')
         self.assertEqual(main_check.line({}), '')
         self.assertEqual(main_check.command({'PI_AUTOWORK_MAIN_CHECK': ' python3 scripts/check.py '}),
