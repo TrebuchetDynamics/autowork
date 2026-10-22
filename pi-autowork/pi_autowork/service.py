@@ -5,11 +5,16 @@ path. SIGINT is the runner's Ctrl+C: workers pause, finished work merges and the
 next start resumes. Deliberate exits (1, 2, 3, 4) do not restart; crashes and kills do.
 A service never exits 3: it waits for another runner holding the repository to end.
 """
+from contextlib import contextmanager
+import fcntl
+import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
 import subprocess
+import tempfile
 import time
 
 from .common import die
@@ -99,8 +104,111 @@ def reload_in_place(systemctl, unit, state_root, repo, wait=None):
             return True, f'Restarted {unit} (its runner exited meanwhile); workers resume on the same attempt.'
         time.sleep(0.5)
     return False, (f'{unit} asked to reload, but it has not within {wait:g}s; it reloads once its running review '
-                   f'or Pi job ends. To restart it now (workers pause and resume): autowork restart --stop-workers '
+                   f'or Pi job ends. To interrupt it now (workers pause and resume): autowork restart --stop-workers --now '
                    f'{unit[len("pi-autowork@"):-len(".service")]}')
+
+
+def restart_requests(folder):
+    """Live callers asking this runner to hold at a merge-safe point.
+
+    The request stays present through systemctl restart, closing the gap in which a
+    fresh review could start. A killed caller cannot leave the runner held forever.
+    """
+    from . import main_check
+    found = []
+    for path in Path(folder).glob('restart-*/request.json'):
+        try:
+            request = json.loads(path.read_text())
+            if (request.get('runner_pid') == os.getpid()
+                    and main_check.alive(request.get('pid'), request.get('start_time'))):
+                found.append(path.parent.name)
+        except (OSError, ValueError, TypeError, AttributeError):
+            continue
+    return found
+
+
+@contextmanager
+def restart_when_idle(state_root, repo, *, active=lambda: True):
+    """Yield (safe, message), holding the runner at its acknowledged safe point until exit."""
+    try:
+        wait = float(os.environ.get('PI_AUTOWORK_RESTART_WAIT', '1800'))
+        if not math.isfinite(wait) or wait < 0:
+            raise ValueError
+    except ValueError:
+        yield False, 'PI_AUTOWORK_RESTART_WAIT must be finite, nonnegative seconds; service not restarted.'
+        return
+    end = time.monotonic() + wait
+    root = Path(state_root)
+    root.mkdir(parents=True, exist_ok=True)
+    key = hashlib.sha256(str(repo).encode()).hexdigest()
+    # Held across the yielded systemctl call too. A queued caller reads the new
+    # runner record only after the earlier service restart has completed.
+    with open(root / f'restart-{key}.lock', 'a') as lock:
+        said = False
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= end:
+                    yield False, (f'Refusing restart after {wait:g}s: still waiting for another restart request; '
+                                  'service not restarted.')
+                    return
+                if not said:
+                    print('Waiting for another restart request to finish before restarting.', flush=True)
+                    said = True
+                time.sleep(min(0.1, max(0, end - time.monotonic())))
+        if not active():  # check only after the preceding restart released the lock
+            yield True, ''
+            return
+        with _restart_when_idle(state_root, repo, end, wait) as result:
+            yield result
+
+
+@contextmanager
+def _restart_when_idle(state_root, repo, end, wait):
+    from . import main_check
+    record, folder = runner_record(state_root, repo)
+    # Missing records can mean a re-exec is still starting, not an idle runner.
+    while not record and time.monotonic() < end:
+        time.sleep(min(0.25, max(0, end - time.monotonic())))
+        record, folder = runner_record(state_root, repo)
+    if not record:
+        yield False, 'Refusing restart: waiting for the runner record; service not restarted. Use --now to interrupt.'
+        return
+    status_path = folder / 'restart-status.json'
+
+    def read():
+        try:
+            value = json.loads(status_path.read_text())
+            return value if isinstance(value, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    status = read()
+    if status.get('pid') != record.get('pid'):
+        yield False, ('Refusing restart: this runner has no safe-restart handshake; service not restarted. '
+                      'Reload with plain autowork restart first, or use --stop-workers --now to interrupt.')
+        return
+    with tempfile.TemporaryDirectory(prefix='restart-', dir=folder) as request_dir:
+        request = Path(request_dir)
+        (request / 'request.json').write_text(json.dumps(dict(
+            runner_pid=record['pid'], pid=os.getpid(), start_time=main_check.start_time(os.getpid()))))
+        said = None
+        while True:
+            status = read()
+            operation = status.get('operation') or 'the coordinator safe point'
+            if time.monotonic() >= end:
+                yield False, (f'Refusing restart after {wait:g}s: still waiting for {operation}; '
+                              'service not restarted. Use --stop-workers --now to interrupt.')
+                return
+            if status.get('pid') == record['pid'] and request.name in status.get('ready_for', []):
+                yield True, ''
+                return
+            if operation != said:
+                print(f'Waiting for {operation} before restarting (up to {wait:g}s).', flush=True)
+                said = operation
+            time.sleep(min(0.1, max(0, end - time.monotonic())))
 
 
 def service_path(env):

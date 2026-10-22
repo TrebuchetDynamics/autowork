@@ -510,7 +510,12 @@ class AutoworkCommandTests(unittest.TestCase):
         self.assertIn('Reloaded pi-autowork@india.service; 2 worker(s) kept running.', result.stdout)
         self.assertIn('systemctl --user kill --kill-whom=main --signal=SIGHUP pi-autowork@india.service', self.calls())
         self.assertNotIn('systemctl --user restart pi-autowork@india.service', self.calls())
-        stopped = self.aw('restart', '--stop-workers', 'india')  # the explicit form still restarts the unit
+        refused = self.aw('restart', '--stop-workers', 'india')  # this fixture predates safe restarts
+        self.assertEqual(refused.returncode, 1, refused.stdout)
+        self.assertIn('no safe-restart handshake', refused.stdout)
+        self.assertNotIn('systemctl --user restart pi-autowork@india.service', self.calls())
+        stopped = self.aw('restart', '--stop-workers', '--now', 'india')
+        self.assertEqual(stopped.returncode, 0, stopped.stderr)
         self.assertIn('systemctl --user restart pi-autowork@india.service', self.calls())
         self.assertIn('workers paused and resume on the same attempt', stopped.stdout)
 
@@ -520,8 +525,76 @@ class AutoworkCommandTests(unittest.TestCase):
         self.env['PI_AUTOWORK_RELOAD_WAIT'] = '1'
         result = self.aw('restart', 'india')
         self.assertEqual(result.returncode, 1)
-        self.assertIn('autowork restart --stop-workers india', result.stdout)
+        self.assertIn('autowork restart --stop-workers --now india', result.stdout)
         self.assertNotIn('systemctl --user restart pi-autowork@india.service', self.calls())
+
+    def test_restart_rejects_invalid_waits_and_now_without_stop_workers(self):
+        self.aw('start', str(self.repo))
+        self.running()
+        invalid = self.aw('restart', '--now', 'india')
+        self.assertNotEqual(invalid.returncode, 0)
+        self.assertIn('--now requires --stop-workers', invalid.stderr)
+        for value in ('-1', 'nan', 'inf', 'not-seconds'):
+            with self.subTest(wait=value):
+                self.env['PI_AUTOWORK_RESTART_WAIT'] = value
+                result = self.aw('restart', '--stop-workers', 'india')
+                self.assertEqual(result.returncode, 1)
+                self.assertIn('PI_AUTOWORK_RESTART_WAIT', result.stdout)
+        self.assertNotIn('systemctl --user restart pi-autowork@india.service', self.calls())
+
+    def test_overlapping_safe_restarts_cannot_reuse_permission_for_the_old_runner(self):
+        from unittest.mock import patch
+        from pi_autowork import command
+        self.aw('start', str(self.repo))
+        record = self.running()
+        status = record.parent / 'restart-status.json'
+        status.write_text(json.dumps({'pid': 4242, 'operation': '', 'ready_for': []}))
+        entered, release, done = threading.Event(), threading.Event(), threading.Event()
+        restarted = []
+        results = []
+
+        def ctl(paths, *args, **kwargs):
+            if args[0] == 'is-active' and entered.is_set():
+                return subprocess.CompletedProcess(args, 1)  # service is deactivating during first restart
+            if args[0] == 'restart':
+                restarted.append(json.loads(record.read_text())['pid'])
+                entered.set()
+                release.wait(timeout=5)
+                record.write_text(json.dumps({'pid': 4243, 'repo': str(self.repo)}))
+            return subprocess.CompletedProcess(args, 0)
+
+        def acknowledge():
+            while not done.wait(0.01):
+                requests = []
+                for path in record.parent.glob('restart-*/request.json'):
+                    try:
+                        if json.loads(path.read_text())['runner_pid'] == 4242:
+                            requests.append(path.parent.name)
+                    except FileNotFoundError:  # a completed request was just removed
+                        continue
+                tmp = status.with_suffix('.tmp')
+                tmp.write_text(json.dumps({'pid': 4242, 'operation': '', 'ready_for': requests}))
+                tmp.replace(status)
+
+        with patch.dict(os.environ, PI_AUTOWORK_RESTART_WAIT='5'), patch.object(command, 'systemctl', ctl):
+            paths = command.env_paths(self.env)
+            ack = threading.Thread(target=acknowledge)
+            first = threading.Thread(target=lambda: results.append(command.restart(paths, 'india', str(self.repo), True)))
+            ack.start()
+            first.start()
+            try:
+                self.assertTrue(entered.wait(timeout=5))  # first caller holds its acknowledged request
+                with patch.dict(os.environ, PI_AUTOWORK_RESTART_WAIT='0.2'):
+                    second = command.restart(paths, 'india', str(self.repo), True)
+                self.assertEqual(second[0], 1, second)
+                self.assertEqual(restarted, [4242])  # second caller must not reach systemctl
+            finally:
+                release.set()
+                first.join(timeout=5)
+                done.set()
+                ack.join(timeout=5)
+        self.assertEqual(results[0][0], 0, results)
+        self.assertEqual(json.loads(record.read_text())['pid'], 4243)
 
     def test_a_runner_from_before_reloads_is_restarted(self):
         self.aw('start', str(self.repo))

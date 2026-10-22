@@ -1224,6 +1224,74 @@ class EngineTests(Fixture):
         self.assertEqual(runs.read_text().count('ran'), 2, result.stdout)
         self.assertEqual(sorted(r['task'] for r in self.runs('verify')), ['A', 'B', 'C'])  # each reviewed once
 
+    def test_stop_workers_restart_preserves_an_inflight_batch_result_unless_now(self):
+        """A toolset restart must not discard the batch's full check or unread result."""
+        self.env.update(PI_AUTOWORK_BATCH='6', PI_AUTOWORK_MAIN_CHECK='true')
+        ctl = self.bin / 'systemctl'
+        calls = self.root / 'restart-calls'
+        ctl.write_text('#!/usr/bin/env python3\nimport os, signal, sys\nfrom pathlib import Path\n'
+                       'if "restart" in sys.argv:\n'
+                       f'    Path({str(calls)!r}).touch()\n'
+                       '    os.kill(int(os.environ["TEST_RUNNER_PID"]), signal.SIGINT)\n')
+        ctl.chmod(0o755)
+        for mode in ('idle', 'wait', 'now'):
+            with self.subTest(mode=mode):
+                self.repo = self.make_repo(self.root / mode, [] if mode == 'idle' else [('A', None), ('B', None)])
+                self.env['FAKE_MAIN_REPO'] = str(self.repo)
+                release, ready = self.root / f'release-{mode}', self.root / f'ready-{mode}'
+                calls.unlink(missing_ok=True)
+                self.env['PI_AUTOWORK_VALIDATE'] = (
+                    f'touch {ready}; while ! test -e {release}; do sleep 0.05; done')
+                self.plan({'worker:A': ['barrier'], 'worker:B': ['barrier']})
+                runner = self.start_runner('--interval', '1', '--workers', '2')
+                command = None
+                try:
+                    folder = self.state / hashlib.sha256(str(self.repo / '.git').encode()).hexdigest()[:16]
+                    self.wait_for(folder / 'restart-status.json', timeout=60)
+                    if mode != 'idle':
+                        self.wait_for(ready, timeout=60)
+                    env = dict(self.env, PI_AUTOWORK_SYSTEMCTL=str(ctl), TEST_RUNNER_PID=str(runner.pid),
+                               PI_AUTOWORK_RESTART_WAIT='10' if mode == 'idle' else '1')
+                    argv = [str(ROOT / 'pi-autowork/bin/autowork'), 'restart', '--stop-workers', str(self.repo)]
+                    if mode in ('idle', 'now'):
+                        result = subprocess.run([*argv, *(['--now'] if mode == 'now' else [])], env=env,
+                                                capture_output=True, text=True, timeout=15)
+                        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                        self.assertTrue(calls.exists())
+                        self.assertFalse(release.exists())
+                        continue
+                    refused = subprocess.run(argv, env=env, capture_output=True, text=True, timeout=15)
+                    self.assertNotEqual(refused.returncode, 0, refused.stdout)
+                    self.assertIn('batch', refused.stdout.lower())
+                    self.assertIn('A, B', refused.stdout)
+                    self.assertFalse(calls.exists())
+                    self.assertIsNone(runner.poll())
+                    env['PI_AUTOWORK_RESTART_WAIT'] = '60'
+                    output = self.root / 'restart-output'
+                    with output.open('w') as stream:
+                        command = subprocess.Popen(argv, env=env, stdout=stream, stderr=subprocess.STDOUT)
+                    deadline = time.monotonic() + 15
+                    while 'Waiting' not in output.read_text():
+                        self.assertIsNone(command.poll(), output.read_text())
+                        self.assertLess(time.monotonic(), deadline, output.read_text())
+                        time.sleep(0.05)
+                    self.assertFalse(calls.exists())
+                    release.touch()
+                    self.assertEqual(command.wait(timeout=60), 0, output.read_text())
+                    self.assertTrue(calls.exists())
+                    log = ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+                    self.assertIn('Batch: 2 passed (A, B)', log)
+                    self.assertNotIn('abandoned integration', log)
+                    self.assertTrue(self.done('A', 'B'), log)
+                finally:
+                    release.touch()
+                    if command and command.poll() is None:
+                        command.kill()
+                        command.wait()
+                    if runner.poll() is None:
+                        runner.send_signal(signal.SIGINT)
+                    runner.communicate(timeout=60)
+
     def test_a_candidate_finished_during_a_batch_check_rides_the_merge_train(self):
         """A task that finished while a batch ran its long check waited for that batch to land,
         then for a check of its own. It is now checked on top of the batch, beside it, and lands

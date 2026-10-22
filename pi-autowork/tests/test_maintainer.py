@@ -91,7 +91,7 @@ class MaintainerTests(unittest.TestCase):
             runner.draining, runner.mode, runner.once_done, runner.once_task = True, 'once', True, 'A'
             runner.seen, runner.settled = {'synced-at-start': True}, False
             runner.plan_signature, runner.planning_ready = lambda: '', lambda: True
-            for method in ('restart_if_updated', 'ensure_session', 'follow_base', 'sweep_tmp', 'check_main',
+            for method in ('restart_checkpoint', 'restart_if_updated', 'ensure_session', 'follow_base', 'sweep_tmp', 'check_main',
                            'land_planning', 'settle', 'handle_requests', 'health_update'):
                 setattr(runner, method, lambda: None)  # external lifecycle, not the handoff
             def finish(code, text):

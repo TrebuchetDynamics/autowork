@@ -37,7 +37,7 @@ name, a repository path or `.`. Nothing here calls a model.
 | `autowork` | The live TUI on a terminal (help otherwise) |
 | `autowork start [dir]` | Install (if needed) and start the repository's service; refuses a directory without a committed `tasks/` store and its main branch checked out, saying what is missing (`autowork tasks prepare` converts legacy planning or reports the next step). Services run from the Pi package installed from `git:github.com/TrebuchetDynamics/autowork`; a service on another copy (a package under an older name) is moved onto it and restarted, and the others follow at their next restart |
 | `autowork stop [target]` | Stop the service; workers pause and resume on the same attempt |
-| `autowork restart [target] [--stop-workers]` | Reload the runner in place on its current release and settings; running workers keep running. `--stop-workers` restarts the service instead, pausing them |
+| `autowork restart [target] [--stop-workers [--now]]` | Reload in place; running workers keep running. `--stop-workers` waits for in-flight merges, then restarts the service and pauses workers; `--now` interrupts immediately instead |
 | `autowork pause` / `resume [target]` | Stop the service and keep it off, also after a reboot (disable), or start it again (enable); only a paused service is listed as `paused`, any other stopped one as `not running` |
 | `autowork model [target] [provider/model] [--fallback provider/model]` | Show or set this service's Pi model (checked against Pi's list), then reload it |
 | `autowork models [search]` | Pi's model list (`pi --list-models`); an empty catalog is an actionable error, never `No/models` |
@@ -54,6 +54,29 @@ name, a repository path or `.`. Nothing here calls a model.
 | `autowork tasks prepare [target] [--check\|--no-commit]` | What Docs Sync runs first: detect the store's state, convert or finish converting a TODO.md + goals.json repository, and report diagnostics with the command that repairs each, as JSON; `--check` writes nothing ([task store](task-store.md#preparing-a-repository-autowork-tasks-prepare)) |
 | `autowork migrate [target] [--dry-run] [--no-commit]` | Convert a TODO.md + goals.json repository to `tasks/` once, in one local commit (`--no-commit`: staged); an interrupted run resumes; it refuses while work is in flight |
 | `autowork scorecard [--days N] [--json \| --csv] [--baseline FILE] [target...]` | Per runner and overall over 1–30 days (default 7): labelled evaluation metrics, weekly breakdown and first-to-last-week changes; JSON retains closure, held-share, questions and task/attempt accounting details; no model call |
+
+`autowork restart --stop-workers [target]` names the batch or merge-train check,
+integration review or merge resolution it is waiting for. The coordinator records
+its result and finishes pending batch landings before allowing the service restart;
+it starts no new merge work while the request waits. With no merge in flight, it
+acknowledges the restart at its next safe point. Workers keep running until the
+service actually restarts, then pause and resume on the same attempt.
+
+The wait defaults to **30 minutes**. Set `PI_AUTOWORK_RESTART_WAIT=SECONDS` in the
+calling shell to change it (finite, nonnegative seconds). Expiry exits nonzero,
+names the operation still pending and leaves the service running; it never turns
+into an immediate restart. Cancelling the command releases the request too.
+Overlapping safe restarts are serialized within the same wait bound; each caller
+checks the current runner after the earlier restart completes.
+`autowork restart --stop-workers --now [target]` bypasses this protection and can
+interrupt a check or lose an unread integration result. `--now` requires
+`--stop-workers`. Plain `autowork restart` is unchanged.
+
+A running older release without the safe-restart handshake is refused: reload it
+with plain `autowork restart` first, or explicitly interrupt it with `--stop-workers
+--now`. A stopped service restarts without waiting. Offline command/coordinator
+fixtures cover idle, wait, timeout refusal, recorded batch results and immediate
+interruption; they do not qualify a live systemd service.
 
 Before reusing an installed or running service, `autowork start` refuses if an
 explicitly supplied supported service setting differs from its saved env file
