@@ -26,6 +26,28 @@ class MainCheckTests(unittest.TestCase):
                                                      'test_ui_taste_bundle.UiTasteBundleTests.test_bundle',
                                                      'test_other.OtherTests.test_fixed', '/repo/tests (timed out)'])
 
+    def test_flutter_failures_are_named_before_the_process_exits_abnormally(self):
+        """A Flutter failure line followed by a crash is a TEST_FAILURE, not 'no result'."""
+        log = ('00:02 +0 -1: opening the database [E]\n'
+               '  Expected: a row\n'
+               '  Actual: no rows\n'
+               '00:02 +0 -1: Some tests failed.\n'
+               'Oops; flutter has exited unexpectedly: "Bad state: No element".\n')
+        self.assertEqual(main_check.failures(log), ['opening the database'])
+        self.assertEqual(main_check.result_class(log, 1), 'TEST_FAILURE')
+        self.assertEqual(main_check.result_class(log, -6), 'TEST_FAILURE')
+        self.assertEqual(main_check.result_class(log, -6, timed_out=True), 'TIMEOUT')
+        self.assertEqual(main_check.result_class(log, None), 'TEST_FAILURE')
+
+    def test_a_harness_crash_without_a_test_result_is_not_a_pass_or_test_failure(self):
+        log = 'Oops; flutter has exited unexpectedly: "Bad state: No element".\n'
+        for code, expected in ((-6, 'HARNESS_ERROR'), (1, 'INCOMPLETE'), (0, 'PASS')):
+            with self.subTest(code=code):
+                self.assertEqual(main_check.result_class(log, code), expected)
+        self.assertEqual(main_check.result_class(log, 0, complete=False), 'INCOMPLETE')
+        self.assertEqual(main_check.result_class(log, -6, stopped=True), 'PROCESS_INTERRUPTED')
+        self.assertEqual(main_check.result_class(log, -6, environment=True), 'ENVIRONMENT_FAILURE')
+
     def test_a_background_main_check_yields_to_reviews(self):
         """It re-checks what already landed; the review that lands the next task goes first."""
         with tempfile.TemporaryDirectory() as folder, \

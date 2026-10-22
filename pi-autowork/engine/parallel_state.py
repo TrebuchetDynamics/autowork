@@ -11,6 +11,7 @@ import time
 
 import task_execution as execution
 import execution_journal as journal
+import failure_policy
 
 # Public readers of the existing journal, not a second telemetry store.
 lifecycle_events = journal.lifecycle_events
@@ -55,9 +56,12 @@ HOLD_CAUSES = {
     'stale_validation': 'reoffer_once',
     'conflict': 'resolve_conflict',
     'blocker': 'ask_owner',
-    'timeout': 'ask_owner',
-    'no_change': 'ask_owner',
-    'reviewed_twice': 'ask_owner',
+    # A slow host, a worker that found nothing to change and a second failed review are
+    # engineering dispositions: the coordinator re-verifies, an agent repairs, or the task
+    # becomes a visible engineering hold. None is a product decision (failure_policy).
+    'timeout': 'reverify',
+    'no_change': 'engineering_stuck',
+    'reviewed_twice': 'engineering_stuck',
     'task_wait': 'wait_for_task',
     'scope_request': 'rerun',
     'runner_merged': 'rerun',
@@ -68,8 +72,8 @@ HOLD_CAUSES = {
     'diverged': 'rerun',
     'launch': 'rerun',
 }
-NEEDS_PERSON = tuple(cause for cause, action in HOLD_CAUSES.items()
-                     if action == 'ask_owner' or cause in ('scope', 'scope_request'))
+NEEDS_PERSON = tuple(cause for cause in HOLD_CAUSES
+                     if failure_policy.owner_decision_required(cause))
 COORDINATOR_FILES = ('tasks/', 'TODO.archive.md', 'CHANGELOG.md')
 
 
@@ -650,6 +654,7 @@ def exhausted(slot):
     """A held slot no fresh attempt should replace; a resolver can still adopt its commit."""
     return (slot['state'] == 'held' and (slot.get('waits_for') or slot['attempt'] >= 2
             or slot.get('cause') in NEEDS_PERSON
+            or slot.get('cause') in ('reviewed_twice', 'no_change', 'timeout')
             or (slot.get('cause') == 'report' and slot.get('report_resume_attempt') == slot['attempt'])
             or (slot.get('cause') == 'conflict' and bool(slot.get('merged_base'))))
             and not readoptable(slot))

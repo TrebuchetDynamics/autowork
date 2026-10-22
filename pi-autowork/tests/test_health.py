@@ -42,6 +42,21 @@ class HealthTests(unittest.TestCase):
         self.assertIsNone(health.update(self.state, snapshot(), now=1000 + 4000))  # not again
         self.assertEqual(self.status()['since'], 1000)
 
+    def test_exhausted_review_work_is_engineering_not_a_person(self):
+        """Running out of reviewer rework does not turn a defect into an owner decision."""
+        engineering = {'id': 'T-8', 'kind': 'held', 'cause': 'reviewed_twice', 'blocks': 1,
+                       'tasks': ['A'], 'reason': 'validation failed; its one rework failed too'}
+        self.assertFalse(health.needs_person(engineering))
+        self.assertTrue(health.needs_person(HELD))
+        health.update(self.state, snapshot(waiting=('A',), roots=(engineering,)), now=0)
+        status = self.status()
+        self.assertEqual((status['stopped'], status['waiting']), (0, 1))
+        # It becomes a visible engineering stall, never a person's question.
+        line = health.update(self.state, snapshot(waiting=('A',), roots=(engineering,)), now=1800)
+        self.assertIn('engineering hold', line)
+        self.assertNotIn('held for a person', line)
+        self.assertEqual(self.status()['state'], 'stalled')
+
     def test_holds_that_only_own_each_others_files_are_named_a_deadlock(self):
         """TOOLSET-157-cd: two commits held for overlap looked like work for a person."""
         overlap = dict(HELD, cause='overlap')

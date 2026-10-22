@@ -27,6 +27,9 @@ from pi_autowork.processes import alive, start_time  # noqa: E402,F401
 
 FAILURE = re.compile(r'^(FAIL|ERROR|UNEXPECTED SUCCESS): (\S+) \(([^)]+)\)', re.M)
 TIMEOUT = re.compile(r'^TIMEOUT: (\S+) after', re.M)
+# Flutter emits a per-test failure line before its process exits; without this the suite's
+# meaningful failures were mistaken for a harness crash with no test result.
+FLUTTER_FAILURE = re.compile(r'^\s*\d{1,2}:\d{2} \+\d+(?:\s*~\d+)?\s+-\d+:\s+(.+?)\s+\[E\]\s*$', re.M)
 
 
 FULL_CHECK = re.compile(r'^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?Full check:(?:\*\*)?[ \t]*`?([^`\n]+?)`?[ \t]*$', re.M)
@@ -368,8 +371,35 @@ def failures(log_text, limit=20):
     found = [where for _, _, where in FAILURE.findall(log_text)]
     found += re.findall(r'^FAILED (\S+::\S+)', log_text, re.M)  # pytest
     found += re.findall(r'^\s*--- FAIL: (\S+)', log_text, re.M)  # go test
+    found += FLUTTER_FAILURE.findall(log_text)  # Flutter test name before the process dies
     found += [f'{directory} (timed out)' for directory in TIMEOUT.findall(log_text)]
     return list(dict.fromkeys(found))[:limit]
+
+
+def result_class(log_text, code, *, timed_out=False, stopped=False, environment=False, complete=None):
+    """Classify a finished check from typed evidence, never from missing output.
+
+    ``PASS`` needs an ordinary exit and, when the caller can tell, a complete result. Named
+    failures are ``TEST_FAILURE`` even when the process later exits abnormally. A process that
+    did terminate abnormally without naming a test is a harness/environment failure or an
+    incomplete result, never a pass.
+    """
+    if stopped:
+        return 'PROCESS_INTERRUPTED'
+    if timed_out:
+        return 'TIMEOUT'
+    named = failures(log_text, limit=None)
+    if code == 0:
+        return 'INCOMPLETE' if complete is False else 'PASS'
+    if named:
+        return 'TEST_FAILURE'
+    if environment:
+        return 'ENVIRONMENT_FAILURE'
+    if code is None:
+        return 'INCOMPLETE'
+    if code == 1:
+        return 'INCOMPLETE'
+    return 'HARNESS_ERROR'
 
 
 def complete_results(text, root, cmd=None):

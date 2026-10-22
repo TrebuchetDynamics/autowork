@@ -2784,19 +2784,18 @@ class EngineTests(Fixture):
         self.assertEqual(len([r for r in self.runs('worker') if r['task'] == 'A']), 1)  # no fresh attempt
         self.assertTrue(self.done('A', 'B', 'C'))
 
-    def test_an_unresolved_repeat_merge_stays_an_owner_question(self):
+    def test_an_unresolved_repeat_merge_stays_a_visible_engineering_hold(self):
         self.plan({'worker:A': ['move_session'], 'verify:A': ['move_session'], 'merge': ['resolve', 'leave']})
         result = self.run_runner('--once')
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertEqual([r['run'] for r in self.runs('merge')], ['resolve', 'leave'])
         self.assertEqual(len([r for r in self.runs('worker') if r['task'] == 'A']), 1)
-        question = (self.repo / 'BLOCKERS.md').read_text()
-        self.assertIn('Q-A', question)
-        self.assertIn('A.txt', question)
-        self.assertIn('1 of 3', question)
-        self.assertIn('the merge could not be resolved; it waits for the owner', result.stdout)
+        blockers = self.repo / 'BLOCKERS.md'
+        question = blockers.read_text() if blockers.exists() else ''
+        self.assertNotIn('Q-A', question)
+        self.assertIn('the merge could not be resolved; it remains a visible engineering hold', result.stdout)
 
-    def test_a_refused_adoption_asks_the_owner_without_running_the_resolver(self):
+    def test_a_refused_adoption_holds_technically_without_running_the_resolver(self):
         self.plan({'verify:A': ['fail', 'fail', 'fail']})  # with its one rework after review
         first = self.run_runner('--until-empty')
         self.assertEqual(first.returncode, 1, first.stdout + first.stderr)
@@ -2813,10 +2812,9 @@ class EngineTests(Fixture):
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertEqual(len(self.runs('merge')), before, result.stdout)
         self.assertEqual(json.loads(slot_path.read_text())['state'], 'held')
-        question = (self.repo / 'BLOCKERS.md').read_text()
-        self.assertIn('Q-A', question)
-        self.assertIn('A.txt', question)
-        self.assertIn('1 of 3', question)
+        blockers = self.repo / 'BLOCKERS.md'
+        question = blockers.read_text() if blockers.exists() else ''
+        self.assertNotIn('Q-A', question)  # a conflict is routine recovery, not an owner decision
         # At the limit, after other work moved main again, the commit is set aside and the task
         # runs fresh instead of asking the owner.
         slot_path.write_text(json.dumps(dict(original, attempt=1, merged_base=base, merged_count=3)))

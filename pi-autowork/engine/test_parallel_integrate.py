@@ -208,8 +208,9 @@ class IntegrationTests(unittest.TestCase):
         self.module().hold(self.common, slot, 'integration validation failed or changed the integration tree: '
                            f'PI_AUTOWORK_VERIFY: fail \u2014 {finding}', cause='validation')
 
-    def test_a_last_attempt_that_failed_review_is_reworked_once_then_asked(self):
-        """TOOLSET-285-29: a second attempt failed its review and was neither retried nor asked about."""
+    def test_a_last_attempt_that_failed_review_is_reworked_once_then_becomes_an_engineering_hold(self):
+        """TOOLSET-285-29: a second attempt failed its review and was neither retried nor asked about.
+        Exhausting the bounded rework never turns the defect into an owner decision."""
         sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'pi-autowork'))
         from pi_autowork import questions
         module = self.module()
@@ -224,7 +225,7 @@ class IntegrationTests(unittest.TestCase):
         self.assertIn('Rework after review', text)
         self.assertIn('reclaim continues after pressure stops', text)
         self.assertIn(commit, text)
-        # The rework fails review too: no third attempt, one question quoting both findings.
+        # The rework fails review too: no third attempt, one visible engineering hold quoting both findings.
         self.worker()
         self.review_failed('signed execution cases never ran', 1)
         self.assertNotEqual(module.retry_held(self.retry_args()).get('outcome'), 'REQUEUED')
@@ -233,8 +234,13 @@ class IntegrationTests(unittest.TestCase):
         self.assertIn('signed execution cases never ran', slot['reason'])
         self.assertIn('reclaim continues after pressure stops', slot['reason'])
         self.assertTrue(state.exhausted(slot))
-        self.assertTrue(questions.exhausted(dict(slot, task='A')))
-        self.assertEqual(module.retry_held(self.retry_args()).get('outcome'), 'IDLE')  # asked, not retried
+        self.assertFalse(questions.exhausted(dict(slot, task='A')))  # technical, never an owner decision
+        self.assertEqual(module.retry_held(self.retry_args()).get('outcome'), 'IDLE')  # stuck, not retried
+        stuck = dispatch.rework_record(self.common, 'A')['stuck']
+        self.assertEqual((stuck['failure_class'], stuck['resolution_owner'], stuck['state']),
+                         ('VALIDATION_FAILURE', 'AGENT_REPAIR', 'engineering_stuck'))
+        self.assertFalse(stuck['owner_decision_required'])
+        self.assertTrue(stuck['incident'].startswith('INC-'))
 
     def test_an_environment_miss_is_not_reworked(self):
         self.worker()

@@ -13,7 +13,10 @@ unknown ownership remains protected; no competing repair session, slot clearing,
 service restart, pause resumption, credential use, deployment or push is implied.
 A real resource wait or missing external prerequisite can remain held. Ask only
 for consequential intent or unavailable authority/input; do not ask again for
-answers already saved. Explicit planning/questions-only requests perform no
+answers already saved. A failed review, dead worker or merge conflict is an
+engineering hold, not a product decision: preserve its findings and candidate,
+use the bounded repair/recovery path, and keep the incident visible after that
+budget ends. Explicit planning/questions-only requests perform no
 execution; read-only requests also write nothing.
 
 Report actual repairs separately from saved answers, pending owner handoffs,

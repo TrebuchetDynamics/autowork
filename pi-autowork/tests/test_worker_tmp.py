@@ -976,8 +976,8 @@ class BatchLandingTests(unittest.TestCase):
                 self.assertTrue(runner.merge_main())  # planning and docs leave the verdicts valid
 
     def test_a_commit_at_the_merge_limit_runs_fresh_instead_of_asking_the_owner(self):
-        """Peers landing in coordinator.py used up three merges, and the commit became an owner
-        question with nothing to answer."""
+        """Peers landing in coordinator.py used up three merges; the commit stays a technical
+        hold with nothing for the owner to answer."""
         with tempfile.TemporaryDirectory() as folder:
             runner, coordinator = self.runner(folder, {})
             runner.stop, runner.reload = False, False
@@ -996,7 +996,7 @@ class BatchLandingTests(unittest.TestCase):
             self.assertEqual(calls, [('--parallel-set-aside', 'B')] * 2)
             self.assertEqual(said[0], 'B: its commit conflicted with main after 3 merges; set aside as '
                                       'autowork/B-set-aside-1, and the task runs fresh on current main')
-            self.assertIn('it waits for the owner', said[1])
+            self.assertIn('it remains a visible engineering hold', said[1])
 
     def test_a_candidate_landing_behind_a_busy_checkout_is_said_once(self):
         with tempfile.TemporaryDirectory() as folder:

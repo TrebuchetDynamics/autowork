@@ -236,7 +236,8 @@ class Walk:
                     and first.get('commit') and str(first.get('reason') or '').startswith(state.SCOPE_HOLD))
 
     def m_exhausted(self, rec):
-        return (rec['state'] == 'held' and (rec['attempt'] >= 2 or rec['cause'] in state.NEEDS_PERSON)
+        return (rec['state'] == 'held' and (rec['attempt'] >= 2 or rec['cause'] in state.NEEDS_PERSON
+                or rec['cause'] in ('reviewed_twice', 'no_change', 'timeout'))
                 and not self.m_readoptable(rec))
 
     def m_check_resumed(self, rec):
