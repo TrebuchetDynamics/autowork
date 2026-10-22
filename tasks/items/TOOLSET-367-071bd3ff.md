@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-367-071bd3ff"
 title = "An unreadable task store never reads as a removed record: held work is kept, not set aside"
 short = "Invalid store is not a removed record"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 1000
@@ -16,5 +16,7 @@ scope = "A consumer's main gained one task file without TOML frontmatter (writte
 acceptance = ["With one malformed record in the store and a held slot for another task, a dispatch/retry cycle leaves the held slot unchanged and reports the ledger error; after the file is repaired the slot resumes its normal recovery", "No set-aside, requeue or close event is written for any slot while task_queue reports StoreError"]
 checks = ["python3 scripts/check.py pi-autowork/engine/test_parallel_integrate.py pi-autowork/engine/test_hold_causes.py tests/test_pi_autowork.py"]
 exclusions = []
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-367-071bd3ff.toml"
 +++
 - Sources: docs/plans/structural-audit-2026-10.md#hotspots
