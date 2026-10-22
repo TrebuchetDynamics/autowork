@@ -52,6 +52,90 @@ class OfflineCheckTests(unittest.TestCase):
         self.assertNotIn('test_external.py', result.stdout)
         self.assertNotIn('unsafe import', result.stdout + result.stderr)
 
+    def git(self, *args):
+        return subprocess.run(['git', '-c', 'user.email=t@example.invalid', '-c', 'user.name=T', *args],
+                              cwd=self.root, check=True, capture_output=True, text=True).stdout.strip()
+
+    def affected_repo(self):
+        shutil.copy2(ROOT / 'scripts/affected_tests.py', self.root / 'scripts/affected_tests.py')
+        self.git('init', '-q')
+        self.git('add', '-A')
+        self.git('commit', '-qm', 'base')
+        return self.git('rev-parse', 'HEAD')
+
+    def test_affected_fleet_change_runs_importers_and_core_not_unrelated_tests(self):
+        self.write('pi-autowork/pi_autowork/fleet_view.py', 'VALUE = 1\n')
+        self.write('pi-autowork/pi_autowork/__init__.py', 'from .fleet_view import VALUE\n')
+        self.write('pi-autowork/pi_autowork/command.py', 'def view():\n    from . import fleet_view\n')
+        self.write('pi-autowork/pi_autowork/sub.py', 'VALUE = 0\n')
+        for name, dependency in (('fleet', 'from pi_autowork import fleet_view'),
+                                 ('command', 'import command'), ('package', 'import pi_autowork'),
+                                 ('dotted', 'import pi_autowork.sub')):
+            self.write(f'tests/test_{name}.py',
+                       f'import unittest\nif False:\n    {dependency}\n'
+                       f'class Check(unittest.TestCase):\n    def test_view(self): print("RAN {name}")\n')
+        self.write('tests/test_unrelated.py', 'raise RuntimeError("unselected module ran")\n')
+        self.write('scripts/tree_guard.py', 'print("CORE guard")\n')
+        self.write('skills/docs-sync/scripts/docs.py', 'print("CORE docs")\n')
+        self.write('tasks/items/T.md', '# fixture\n')
+        self.write('pi-autowork/bin/autowork', '#!/usr/bin/env python3\nprint("CORE tasks")\n').chmod(0o755)
+        base = self.affected_repo()
+        self.write('pi-autowork/pi_autowork/fleet_view.py', 'VALUE = 2\n')
+        self.git('commit', '-qam', 'fleet change')
+        result = self.run_check('--affected', base + '..HEAD', '--jobs', '1')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for text in ('RAN fleet', 'RAN command', 'RAN package', 'RAN dotted',
+                     'CORE guard', 'CORE docs', 'CORE tasks',
+                     'test_command.py <- pi-autowork/pi_autowork/command.py <- pi-autowork/pi_autowork/fleet_view.py'):
+            self.assertIn(text, result.stdout)
+        self.assertNotIn('unselected module ran', result.stdout + result.stderr)
+        self.assertFalse(list((self.root / 'scripts').glob('__pycache__/*')))
+
+    def test_affected_named_paths_include_tests_and_ambiguous_basename_consumers(self):
+        self.write('tests/test_direct.py', 'import unittest\n')
+        self.write('tests/test_wrapper.py', 'from pathlib import Path\nPath("tests/test_direct.py")\n')
+        self.write('tests/test_reader.py', 'from pathlib import Path\nPath("data") / "config.json"\n')
+        self.write('tests/test_unrelated.py', 'import unittest\n')
+        self.write('data/config.json', '{}\n')
+        self.write('backup/config.json', '{}\n')
+        base = self.affected_repo()
+        self.write('tests/test_direct.py', 'import unittest\n# changed\n')
+        self.git('commit', '-qam', 'test change')
+        result = self.run_check('--affected', base + '..HEAD', '--list')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('RUN tests/test_direct.py', result.stdout)
+        self.assertIn('RUN tests/test_wrapper.py', result.stdout)
+        self.assertNotIn('RUN tests/test_unrelated.py', result.stdout)
+        self.assertIn('test_wrapper.py <- tests/test_direct.py', result.stdout)
+        self.write('tests/test_direct.py', 'import unittest\nDATA = "data/config.json"\n')
+        self.git('commit', '-qam', 'direct consumer')
+        base = self.git('rev-parse', 'HEAD')
+        self.write('data/config.json', '{"value": 2}\n')
+        self.git('commit', '-qam', 'data change')
+        result = self.run_check('--affected', base + '..HEAD', '--list')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('RUN tests/test_direct.py', result.stdout)
+        self.assertIn('RUN tests/test_reader.py', result.stdout)
+        self.assertNotIn('RUN tests/test_unrelated.py', result.stdout)
+
+    def test_affected_unresolved_and_global_inputs_fall_back_to_full(self):
+        self.write('tests/test_one.py', 'import unittest\n')
+        self.write('tests/test_two.py', 'import unittest\n')
+        self.affected_repo()
+        for path in ('unknown.dat', 'tests/conftest.py', 'pyproject.toml',
+                     '.github/workflows/ci.yml', 'scripts/check.py'):
+            with self.subTest(path=path):
+                base = self.git('rev-parse', 'HEAD')
+                target = self.root / path
+                self.write(path, target.read_text() + '\n' if target.exists() else '# changed\n')
+                self.git('add', '-A'); self.git('commit', '-qm', 'change')
+                result = self.run_check('--affected', base + '..HEAD', '--list')
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                for text in ('whole suite', path, 'RUN tests/test_one.py', 'RUN tests/test_two.py'):
+                    self.assertIn(text, result.stdout)
+        result = self.run_check('--affected', 'missing..HEAD', '--list')
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+
     def test_importable_inventory_is_side_effect_free(self):
         self.assertTrue(SCRIPT.is_file(), 'missing offline checker')
         spec = importlib.util.spec_from_file_location('check_inventory', SCRIPT)

@@ -445,7 +445,15 @@ class MainCheckTests(unittest.TestCase):
             for receipt, reused in ((dict(ok=True, tree='tree1', command='true', task='batch'), True),
                                     (dict(ok=False, tree='tree1', command='true', task='batch'), False),
                                     (dict(ok=True, tree='tree1', command='python3 other.py', task='batch'), False),
-                                    (dict(ok=True, tree='tree2', command='true', task='batch'), False)):
+                                    (dict(ok=True, tree='tree2', command='true', task='batch'), False),
+                                    (dict(ok=True, tree='tree1', command='true', task='batch',
+                                          selection=dict(full=False)), False),
+                                    (dict(ok=True, tree='tree1', command='true --affected old..new',
+                                          full_command='true', task='batch',
+                                          selection=dict(full=False, base='old', head='new')), False),
+                                    (dict(ok=True, tree='tree1', command='true --affected old..new',
+                                          full_command='true', task='batch',
+                                          selection=dict(full=True, base='old', head='new')), True)):
                 with self.subTest(receipt=receipt):
                     started.clear()
                     (receipts / 'tree-tree1.json').write_text(json.dumps(receipt))

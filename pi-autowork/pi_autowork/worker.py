@@ -395,13 +395,15 @@ def replay_gate_log(state, task, cached):
 
 
 def full_suite_gate(state, task, checkout, base=None):
-    """(ok, reason) of the repository's full check on the merged tree, run once per tree and
+    """(ok, reason) of the merged-tree landing check (affected where supported), once per tree and
     command (TOOLSET-227-a8): a re-review of the same tree, by a changed reviewer or after a
     requeue, reuses the verdict instead of running the suite again. A crash is never cached,
     so provisioning can fix it."""
-    command = main_check.full_check(checkout)
-    if not command:
+    full_command = main_check.full_check(checkout)
+    if not full_command:
         return True, ''
+    command, selection = main_check.landing_check(
+        checkout, base or git(checkout, 'rev-parse', 'HEAD^1'), full_command)
     tree = git(checkout, 'rev-parse', 'HEAD^{tree}')
     cache = Path(state) / 'full-check' / f'tree-{tree}.json'
     try:
@@ -414,7 +416,8 @@ def full_suite_gate(state, task, checkout, base=None):
     except (OSError, ValueError, KeyError, AttributeError, TypeError):
         pass
     details = {}
-    ok, reason = run_gate(state, task, checkout, command, base, evidence=details)
+    ok, reason = run_gate(state, task, checkout, command, base, evidence=details,
+                          baseline_command=full_command)
     if tree and (ok or reason.startswith(('the full check has new failures', 'the full check exits'))):
         cache.parent.mkdir(parents=True, exist_ok=True)
         # The evidence is tree-keyed too: this cache outlives the task that ran it, and that
@@ -428,7 +431,8 @@ def full_suite_gate(state, task, checkout, base=None):
             digest = hashlib.sha256(evidence.read_bytes()).hexdigest()
         except OSError:
             digest = None
-        cache.write_text(json.dumps({'command': command, 'tree': tree,
+        cache.write_text(json.dumps({'command': command, 'full_command': full_command,
+                                     'selection': selection, 'tree': tree,
                                      'commit': git(checkout, 'rev-parse', 'HEAD'),
                                      'ok': ok, 'reason': reason, 'task': task,
                                      'log': str(evidence), 'log_sha256': digest, **details}))
@@ -515,17 +519,18 @@ def gate_event(state, task, text, *, fresh=False):
         pass  # a view's record; the gate's verdict never depends on it
 
 
-def run_gate(state, task, checkout, command, base_rev=None, *, evidence=None):
+def run_gate(state, task, checkout, command, base_rev=None, *, evidence=None, baseline_command=None):
     """(ok, reason) of ``command`` on the merged tree (TOOLSET-180-72): a reviewer-approved commit
     landed while breaking 44 tests its own checks never ran. Only what the base does not already
     fail rejects a candidate; a test that passes when rerun alone is flaky, not new."""
     gate_event(state, task, 'full check on the merged tree started', fresh=True)
-    ok, reason = _run_gate(state, task, checkout, command, base_rev, evidence=evidence)
+    ok, reason = _run_gate(state, task, checkout, command, base_rev, evidence=evidence,
+                           baseline_command=baseline_command)
     gate_event(state, task, 'full check passed' if ok else f'full check failed: {reason}')
     return ok, reason
 
 
-def _run_gate(state, task, checkout, command, base_rev=None, *, evidence=None):
+def _run_gate(state, task, checkout, command, base_rev=None, *, evidence=None, baseline_command=None):
     limit = setting('PI_AUTOWORK_VALIDATE_TIMEOUT', 3600, float)
     log = gate_log(state, task)
     progress = log.with_name(f'{safe_name(task)}.status.json')
@@ -586,8 +591,9 @@ def _run_gate(state, task, checkout, command, base_rev=None, *, evidence=None):
         return False, 'the full check did not complete ' + first_ten(incomplete)
     gate_event(state, task, 'comparing with the base (its full check, unless one is on record)')
     try:
-        base = base_result(state, checkout, command, base_rev or git(checkout, 'rev-parse', 'HEAD^1'),
-                           limit, progress)
+        # Compare with a full baseline (or its full-main receipt), never an affected-only green.
+        base = base_result(state, checkout, baseline_command or command,
+                           base_rev or git(checkout, 'rev-parse', 'HEAD^1'), limit, progress)
         gate_event(state, task, 'base: ' + ('all tests pass' if base['code'] == 0 else f'{len(base["failures"])} failing')
                    + (f" (main's check of {base['from_main'][:7]}, not run again)" if base.get('from_main') else ''))
     except (OSError, ValueError, TypeError, subprocess.SubprocessError) as error:
@@ -644,8 +650,29 @@ def batched_verdict(state, task, checkout):
         # can never match again; left, it held new batches back for two hours.
         record.unlink(missing_ok=True)
         return None
+    if value.get('ok'):
+        landing_receipt(state, task, checkout, value.get('selection'))
     record.unlink(missing_ok=True)
     return bool(value.get('ok')), value.get('reason') or ''
+
+
+def landing_receipt(state, task, checkout, selection):
+    """Keep the accepted landing scope after a one-use batch verdict is consumed."""
+    target = Path(state) / 'landing-check' / f'{safe_name(task)}.json'
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(dict(task=task, commit=git(checkout, 'rev-parse', 'HEAD'),
+                                     tree=git(checkout, 'rev-parse', 'HEAD^{tree}'), selection=selection)))
+
+
+def gate_selection(state, checkout):
+    tree = git(checkout, 'rev-parse', 'HEAD^{tree}')
+    try:
+        record = json.loads((Path(state) / 'full-check' / f'tree-{tree}.json').read_text())
+        if main_check.receipt_command_matches(record, main_check.full_check(checkout)):
+            return record.get('selection')
+    except (OSError, ValueError, AttributeError):
+        pass
+    return None
 
 
 def verify(state, task):
@@ -678,7 +705,7 @@ def verify(state, task):
     try:
         if batch_gate:  # a batch already passed the full check on a tree containing this one
             return batch_review(state, task, checkout, json.loads(batch_gate))
-        if optimistic.enabled():
+        if optimistic.enabled() and not main_check.affected_checker(checkout, main_check.full_check(checkout)):
             # Optimistic landing (TOOLSET-344-7dadea23): its own checks and the review decide;
             # main's full check runs after it lands, and a regression there reverts it.
             if os.environ.get('PI_AUTOWORK_REVIEW', '1') == '0':
@@ -694,9 +721,13 @@ def verify(state, task):
             print(f'pi-autowork: the full check rejects {task}: {reason}', file=sys.stderr)
             return 1
         if os.environ.get('PI_AUTOWORK_REVIEW', '1') == '0':
+            landing_receipt(state, task, checkout, gate_selection(state, checkout))
             return 0
         head_before = git(checkout, 'rev-parse', 'HEAD')
-        return review(state, task, checkout, head_before, gate_note(state, task, checkout))
+        code = review(state, task, checkout, head_before, gate_note(state, task, checkout))
+        if code == 0:
+            landing_receipt(state, task, checkout, gate_selection(state, checkout))
+        return code
     except main_check.Stopped:
         print(f'pi-autowork: verification of {task} stopped', file=sys.stderr)
         return 1
@@ -776,7 +807,7 @@ def batch_review(state, task, checkout, gate):
     record = batch_record(state, task)
     record.parent.mkdir(parents=True, exist_ok=True)
     record.write_text(json.dumps({'tree': git(checkout, 'rev-parse', 'HEAD^{tree}'), 'commit': git(checkout, 'rev-parse', 'HEAD^2'),
-                                  'ok': code == 0, 'at': time.time(),
+                                  'ok': code == 0, 'at': time.time(), 'selection': gate.get('selection'),
                                   # verify prints it as the hold reason, which must never be empty
                                   'reason': (reason or f'the batch review of {task} failed without a finding '
                                              '(no verdict, an environment miss or a changed checkout)') if code else ''}))
@@ -992,7 +1023,7 @@ def verify_batch(state, session, script, tasks):
                 json.dumps({'tip': steps[-1][1], 'tasks': result['tasks']}) + '\n')
         os.environ['TMPDIR'] = str(root)
         lease = review_port_lease()  # held until this process exits
-        if optimistic.enabled():
+        if optimistic.enabled() and not main_check.affected_checker(str(chain), main_check.full_check(str(chain))):
             # Optimistic landing (TOOLSET-334-f9): no full suite before landing, so a batch is just
             # its candidates' reviews side by side; main's full check runs after they land.
             gate = json.dumps({'note': OPTIMISTIC_NOTE})
@@ -1004,7 +1035,8 @@ def verify_batch(state, session, script, tasks):
                                       suspects=batch_suspects(state, str(chain), base, steps))))
                 return 0
             # The same note a single review gets, with any failures the gate excused.
-            gate = json.dumps({'note': gate_note(state, 'batch', str(chain))})
+            gate = json.dumps({'note': gate_note(state, 'batch', str(chain)),
+                               'selection': gate_selection(state, str(chain))})
         limit = max(1, setting('PI_AUTOWORK_REVIEWS', 3))
         pending = list(steps)
         # A stop reaches only the reviews already running: start no more, and let those record theirs.
@@ -1063,13 +1095,19 @@ def gate_note(state, task, checkout):
     tree = git(checkout, 'rev-parse', 'HEAD^{tree}')
     cache = Path(state) / 'full-check' / f'tree-{tree}.json'
     outcome, reference = 'result detail unavailable: no matching gate record', 'Producing evidence unavailable'
+    selection = None
     try:
         record = json.loads(cache.read_text())
-        if record.get('command') != command or record.get('tree', tree) != tree:
+        if not main_check.receipt_command_matches(record, command) or record.get('tree', tree) != tree:
             raise ValueError('mismatched gate identity')
         outcome = ('accepted result with unavailable detail' if record.get('ok') is True else
                    'gate rejected the tree: ' + str(record.get('reason') or 'reason unavailable'))
+        command = record.get('command') or command
         reference = f'Gate record: {cache}; producer task: {record.get("task") or "unavailable"}'
+        selection = record.get('selection')
+        if isinstance(selection, dict):
+            scope = 'full suite' if selection.get('full') else 'affected modules only'
+            reference += f'; checked selection: {scope}: ' + ', '.join(selection.get('tests') or [])
         result = record.get('result')
         # Legacy aggregate caches remain admissible, but neither an old task log nor the
         # absence of parsed failure names establishes an all-green inventory.
@@ -1108,6 +1146,12 @@ def gate_note(state, task, checkout):
                           + f'; resource-gate skips: {result["resource_skips"]}')
     except (OSError, ValueError, AttributeError, TypeError):
         pass
+    if isinstance(selection, dict) and selection.get('full') is False:
+        return (f' The runner checked affected modules only (`{command}`) for tree `{tree}`: {outcome}. '
+                f'{reference}. This is not full-suite qualification: main runs the full suite after '
+                'landing and attributes regressions to the landed task. Read the producing evidence '
+                'instead of repeating the selection. Run task-specific checks outside that selection, '
+                'but do not expand to the full suite or whole test directories.')
     return GATE.format(command=command, tree=tree, outcome=outcome, evidence=reference)
 
 
