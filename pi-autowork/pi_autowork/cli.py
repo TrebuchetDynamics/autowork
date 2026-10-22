@@ -236,7 +236,7 @@ def load_repo_settings(repo):
     if values.get('PI_AUTOWORK_REPO') and values['PI_AUTOWORK_REPO'] != str(repo):
         return  # another repository with the same name owns this file
     for key, value in values.items():
-        if key.startswith('PI_AUTOWORK_') and key != 'PI_AUTOWORK_REPO' and key not in os.environ:
+        if (key.startswith('PI_AUTOWORK_') or key == 'PI_CODING_AGENT_DIR') and key != 'PI_AUTOWORK_REPO' and key not in os.environ:
             os.environ[key] = value
 
 

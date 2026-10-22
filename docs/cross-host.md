@@ -165,6 +165,60 @@ without a warning. Check `/` completions rather than assuming this package repla
 Use Pi's package controls (`pi list`, `pi update --extensions`, `pi remove <source>`)
 for management. Removing the package leaves repository documents and commits intact.
 
+### Nous Portal through the local proxy
+
+Hermes authentication alone does not configure Pi. The supported optional route is
+**Pi → local Hermes subscription proxy → Nous Portal**; Pi still executes workers.
+Use `autowork setup-portal --provider nous-local --model EXACT_ID` to inspect a
+proposal, then add `--apply` only after reviewing it. TUI **o — Nous Portal** offers
+the same preview and separate confirmation, even before a runner exists. Neither
+path starts a proxy/service, logs in, copies credentials or requests inference.
+See [configuration scope and refusal rules](../pi-autowork/README.md#nous-portal-setup-opt-in).
+
+Prerequisites are operator-owned and are **not run by setup**:
+
+1. Install Hermes with `hermes proxy` support and Pi with compatible-endpoint
+   configuration. Log in to the intended Hermes profile yourself with `hermes portal`
+   (use `hermes -p PROFILE portal` for a named profile).
+2. In that same profile, manually run
+   `hermes proxy start --provider nous --host 127.0.0.1 --port 8645`
+   (or `hermes -p PROFILE proxy start ...`). Keep it running; setup does not install
+   a proxy service or alter an existing proxy's owner/lifecycle. A custom loopback
+   port requires the matching `--endpoint http://127.0.0.1:PORT/v1` in setup.
+3. Choose an exact model ID available on your Portal plan. Setup intentionally does
+   not discover it via `/v1/models`: that route can refresh upstream credentials.
+   Only local `/health` is read; missing login, unavailable proxy or incompatible
+   health responses produce actionable diagnostics. `hermes proxy status` can also
+   refresh credentials and is not part of this read-only inspection.
+4. Review/apply the Pi provider proposal. Use the same absolute `PI_CODING_AGENT_DIR`
+   in setup and service installation, or leave it unset everywhere for `~/.pi/agent`.
+   The installer persists that directory; CLI/TUI service-model selection uses it.
+   Preparing a provider changes no runner defaults or fallback. To use only Nous,
+   explicitly select `nous-local/EXACT_ID` as primary and disable fallback with
+   `PI_AUTOWORK_NO_FALLBACK=1` at service installation, or select an available Nous
+   fallback too. Starting/reconfiguring a runner remains a separate lifecycle action.
+
+Setup can prepare a provider while the proxy is unavailable. Its JSON `applied`
+flag proves a configuration edit only; `proxy.state=available` and Pi's model catalog
+prove neither live inference nor completed tasks. Atomic edits preserve unrelated
+provider values and refuse conflicting selected entries; declining performs no writes.
+No direct Nous API-key integration is provided.
+
+**Separate live qualification, only with permission to use the subscription:** from
+a disposable directory with the intended Pi agent directory, run one explicit
+`pi --provider nous-local --model EXACT_ID --no-tools --no-session --no-approve -p 'Reply only OK'`.
+This can refresh Hermes credentials and consume subscription quota or credits; it is
+not an offline setup check. Record the exact selected model and response without
+credentials. A successful reply proves that request's connectivity only, not worker
+tool use, billing mode, all models, a service after logout or a completed Autowork task.
+These live checks remain unqualified by this implementation's offline stubs/pilot.
+
+Authoritative contracts: [Hermes subscription proxy](https://hermes-agent.nousresearch.com/docs/user-guide/features/subscription-proxy),
+[non-forwarding health handler](https://github.com/NousResearch/hermes-agent/blob/3a9d585e4f1a60588237587a72d365d187094c74/hermes_cli/proxy/server.py),
+[Pi models.json](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/models.md#configure-a-compatible-endpoint)
+and [agent directory](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/configuration.md#agent-directory)
+(verified against installed Pi 1.3.0 docs, not a minimum-version guarantee).
+
 ### Run Autowork continuously
 
 [`scripts/pi-autowork.sh`](../scripts/pi-autowork.sh) keeps Autowork running through
@@ -179,7 +233,9 @@ TODO.md + goals.json repository once).
 
 Prerequisites: Pi with this package installed (above), Node 22, `git`, `jq`,
 `python3`, `flock` and `timeout`, Linux (the engine identifies workers through
-`/proc`), and Pi credentials for both models.
+`/proc`), and Pi credentials for both models (or the explicitly configured
+[Nous proxy route](#nous-portal-through-the-local-proxy), with fallback disabled or
+also selected there).
 `pi auth check --provider openai-codex --model gpt-6.1-sol` and
 `pi auth check --provider openrouter --model deepseek/deepseek-v4.1-flash` should
 print `ready`; set `OPENROUTER_API_KEY` or sign in through Pi. The script never
@@ -523,8 +579,9 @@ falls back to sequential execution. These templates are checked against each CLI
 `--help` and with fake workers offline; real model workers are not yet qualified.
 Python 3 is needed for `autowork`; a questions-only interview needs no Python.
 
-No package installs external integrations, modifies approval policies, copies
-credentials, or changes model/memory settings. Host permissions and repo instructions
+Package installation does not install external integrations, modify approval policies,
+copy credentials, or change model/memory settings. The separate opt-in
+`autowork setup-portal --apply` command prepares only the selected Pi proxy provider. Host permissions and repo instructions
 still apply. Installing the package exposes skills, not proof of an executed workflow.
 Host-specific commands in vendored research protocols are adapted to
 native tools; the portable host contract wins over foreign runtime instructions.

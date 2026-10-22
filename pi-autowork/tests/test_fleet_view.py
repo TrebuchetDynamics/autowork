@@ -310,6 +310,9 @@ class FleetViewTests(unittest.TestCase):
     def test_models_come_from_pi_and_settings_keep_other_lines(self):
         pi = self.fake('pi', 'echo "provider  model  context"; echo "openrouter  deepseek/deepseek-v4.1-flash  128K"')
         self.assertEqual(fleet_view.models(pi), ['openrouter/deepseek/deepseek-v4.1-flash'])
+        self.fake('pi', 'echo "No models available. Use /login to authenticate."')
+        with self.assertRaisesRegex(ValueError, 'setup-portal'):
+            fleet_view.models(pi)
         settings = self.base / 'india.env'
         settings.write_text('PI_AUTOWORK_REPO=/git/india\nPATH=/bin\nPI_AUTOWORK_PRIMARY=old/model\n')
         fleet_view.write_env(settings, {'PI_AUTOWORK_PRIMARY': 'openai-codex/gpt-6-luna', 'PI_AUTOWORK_FALLBACK': 'x/y'})

@@ -2,12 +2,14 @@
 
 No real service or model is touched.
 """
+import http.server
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 
@@ -53,6 +55,7 @@ if [[ $1 == --install-service ]]; then
   repo=$3; name=$(basename "$repo")
   mkdir -p "$PI_AUTOWORK_ENV_DIR"
   printf 'PI_AUTOWORK_REPO=%s\nPI_AUTOWORK_STATE_DIR=%s\n' "$repo" "$PI_AUTOWORK_STATE_DIR" > "$PI_AUTOWORK_ENV_DIR/$name.env"
+  [[ -n ${PI_CODING_AGENT_DIR:-} ]] && printf 'PI_CODING_AGENT_DIR=%s\n' "$PI_CODING_AGENT_DIR" >> "$PI_AUTOWORK_ENV_DIR/$name.env"
   touch "$FAKE_UNITS/pi-autowork@$name.service.enabled" "$FAKE_UNITS/pi-autowork@$name.service.active"
   echo "Installed and started pi-autowork@$name.service"
 fi
@@ -84,7 +87,7 @@ class AutoworkCommandTests(unittest.TestCase):
             path.chmod(0o755)
         self.repo = self.make_repo('india')
         self.env = {k: v for k, v in os.environ.items() if not k.startswith(('GIT_', 'TMUX'))}
-        self.env.update(FAKE_LOG=str(self.log), FAKE_UNITS=str(self.units), PI_AUTOWORK_ENV_DIR=str(self.env_dir),
+        self.env.update(HOME=str(base / 'home'), FAKE_LOG=str(self.log), FAKE_UNITS=str(self.units), PI_AUTOWORK_ENV_DIR=str(self.env_dir),
                         PI_AUTOWORK_UNIT_DIR=str(base / 'unit-dir'), PI_AUTOWORK_STATE_DIR=str(self.state),
                         PI_AUTOWORK_SYSTEMCTL=str(base / 'bin/systemctl'), PI_AUTOWORK_SCRIPT=str(base / 'bin/pi-autowork.sh'),
                         AUTOWORK_JOURNALCTL=str(base / 'bin/journalctl'), AUTOWORK_PI=str(base / 'bin/pi'),
@@ -108,6 +111,124 @@ class AutoworkCommandTests(unittest.TestCase):
 
     def calls(self):
         return self.log.read_text().splitlines()
+
+    def portal_stub(self):
+        requests = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                requests.append((self.path, self.headers.get('Authorization')))
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'{"status":"ok","upstream":"Nous Portal","authenticated":true}')
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.HTTPServer(('127.0.0.1', int(os.environ.get('AUTOWORK_PORT_BASE', '20700')) + 1), Handler)
+        self.addCleanup(server.server_close)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+        return f'http://127.0.0.1:{server.server_port}/v1', requests
+
+    def test_portal_setup_requires_consent_and_preserves_other_providers(self):
+        agent = self.base / 'agent'
+        agent.mkdir()
+        config = agent / 'models.json'
+        original = b'{"other": true, "providers": {"private": {"apiKey": "DO-NOT-LOG", "baseUrl": "https://example.invalid"}}}\n'
+        config.write_bytes(original)
+        self.env['PI_CODING_AGENT_DIR'] = str(agent)
+        endpoint, requests = self.portal_stub()
+        args = ('setup-portal', '--provider', 'nous-test', '--model', 'openai/example', '--endpoint', endpoint, '--json')
+        preview = self.aw(*args)
+        self.assertEqual(preview.returncode, 0, preview.stderr)
+        proposal = json.loads(preview.stdout)
+        self.assertFalse(proposal['applied'])
+        self.assertIn('consent', proposal['message'].lower())
+        self.assertEqual(proposal['endpoint'], endpoint)
+        self.assertEqual(proposal['proxy']['state'], 'available')
+        self.assertEqual(config.read_bytes(), original)
+        self.assertEqual(sorted(p.name for p in agent.iterdir()), ['models.json'])
+        result = self.aw(*args, '--apply')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        prepared = json.loads(result.stdout)
+        self.assertTrue(prepared['applied'])
+        data = json.loads(config.read_text())
+        self.assertEqual(data['providers']['private'], json.loads(original)['providers']['private'])
+        self.assertTrue(data['other'])
+        self.assertEqual(data['providers']['nous-test'], {
+            'baseUrl': endpoint, 'api': 'openai-completions',
+            'apiKey': 'local-proxy-placeholder', 'models': [{'id': 'openai/example'}]})
+        self.assertEqual(config.stat().st_mode & 0o777, 0o600)
+        self.assertNotIn('DO-NOT-LOG', preview.stdout + preview.stderr + result.stdout + result.stderr)
+        before = config.read_bytes()
+        self.assertEqual(self.aw(*args, '--apply').returncode, 0)
+        self.assertEqual(config.read_bytes(), before)
+        data['providers']['nous-test']['models'][0].update(name='Retained name', contextWindow=32000)
+        config.write_text(json.dumps(data))
+        result = self.aw('setup-portal', '--provider', 'nous-test', '--model', 'another-model',
+                         '--endpoint', endpoint, '--apply', '--json')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        updated = json.loads(config.read_text())
+        self.assertEqual(updated['providers']['nous-test']['models'], [
+            {'id': 'openai/example', 'name': 'Retained name', 'contextWindow': 32000}, {'id': 'another-model'}])
+        self.assertEqual(updated['providers']['private'], data['providers']['private'])
+        self.assertTrue(requests)
+        self.assertEqual(set(requests), {('/health', None)})
+        self.assertEqual(self.calls(), [])  # no Pi auth, Hermes CLI or lifecycle operation
+
+    def test_service_model_uses_saved_or_default_directory_not_the_callers(self):
+        endpoint, requests = self.portal_stub()
+        default = self.base / 'home' / '.pi' / 'agent'
+        caller = self.base / 'caller-agent'
+        saved = self.base / 'saved-agent'
+        self.env['PI_CODING_AGENT_DIR'] = str(caller)
+        entry = {'apiKey': 'local-proxy-placeholder', 'api': 'openai-completions',
+                 'baseUrl': endpoint, 'models': [{'id': 'example'}]}
+        for folder in (default, caller, saved):
+            folder.mkdir(parents=True)
+            folder.joinpath('models.json').write_text(json.dumps({'providers': {'nous-test': entry}}))
+        caller.joinpath('models.json').write_text(json.dumps({'providers': {'nous-test': {
+            **entry, 'baseUrl': f'http://127.0.0.1:{int(os.environ.get("AUTOWORK_PORT_BASE", "20700")) + 3}/v1'}}}))
+        self.base.joinpath('bin/pi').write_text('#!/usr/bin/env bash\necho "catalog $PI_CODING_AGENT_DIR" >> "$FAKE_LOG"\necho "provider model context"\necho "nous-test example 128K"\n')
+        env_file = self.env_dir / 'india.env'
+        for selected in (default, saved):
+            with self.subTest(selected=selected):
+                original = f'PI_AUTOWORK_REPO={self.repo}\n'
+                if selected == saved:
+                    original += f'PI_CODING_AGENT_DIR={saved}\n'
+                env_file.write_text(original)
+                self.log.write_text('')
+                result = self.aw('model', 'india', 'nous-test/example')
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(f'catalog {selected}', self.calls())
+                self.assertIn('PI_AUTOWORK_PRIMARY=nous-test/example', env_file.read_text())
+                self.assertNotIn(str(caller), env_file.read_text())
+        self.assertEqual(set(requests), {('/health', None)})
+
+    def test_portal_setup_refuses_conflicts_without_partial_write(self):
+        agent = self.base / 'agent'
+        agent.mkdir()
+        self.env['PI_CODING_AGENT_DIR'] = str(agent)
+        config = agent / 'models.json'
+        for original in (b'{bad', b'{"providers": []}',
+                         b'{"providers": {}, "providers": {}}', b'{"bad":NaN}', b'{"bad":1e999}',
+                         b'{"providers":{"nous-test":{"apiKey":"local-proxy-placeholder","api":"openai-completions","baseUrl":123}}}',
+                         b'{"providers":{"nous-test":{"apiKey":"DO-NOT-LOG"}}}',
+                         *[json.dumps({'providers': {'nous-test': {
+                             'apiKey': 'local-proxy-placeholder', 'api': 'openai-completions',
+                             'baseUrl': 'http://127.0.0.1:8645/v1', 'models': [{'id': 'example', **override}]}
+                         }}).encode() for override in (
+                             {'baseUrl': 'https://example.invalid/v1'}, {'api': 'anthropic-messages'},
+                             {'headers': {'Authorization': '!DO-NOT-LOG'}})]):
+            with self.subTest(original=original):
+                config.write_bytes(original)
+                result = self.aw('setup-portal', '--provider', 'nous-test', '--model', 'example', '--apply')
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(config.read_bytes(), original)
+                self.assertNotIn('DO-NOT-LOG', result.stdout + result.stderr)
+                self.assertNotIn('Traceback', result.stderr)
+        self.assertEqual(self.calls(), [])
 
     def test_start_installs_once_then_only_starts(self):
         first = self.aw('start', cwd=self.repo)

@@ -7,10 +7,11 @@ import subprocess
 import sys
 import tempfile
 import time
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'engine'))
-from pi_autowork import fleet_view  # noqa: E402
+from pi_autowork import fleet_view, portal  # noqa: E402
 import store_fixture  # noqa: E402
 from pi_autowork.tui import (REFRESH, BrowseScreen, FleetApp, LogScreen, TaskScreen, TasksScreen,  # noqa: E402
                              WorkerScreen, doing)
@@ -27,7 +28,8 @@ async def main():
     assert doing(lane) == 'reviewer: committed as `abc`.', doing(lane)
     assert FleetApp.fit('reviewer: committed as abc', 16) == 'reviewer: commi…', FleetApp.fit('reviewer: committed as abc', 16)
     assert FleetApp.fit('one two three four', 15) == 'one two three…'
-    with tempfile.TemporaryDirectory() as folder:
+    with tempfile.TemporaryDirectory() as folder, \
+            mock.patch.dict(os.environ, PI_CODING_AGENT_DIR=str(Path(folder) / 'agent')):
         base = Path(folder)
         state, env = base / 'state' / 'india', base / 'env'
         state.mkdir(parents=True)
@@ -104,11 +106,38 @@ async def main():
             menubar = app.query_one('#menubar')
             assert menubar.region.y < app.query_one('#runners').region.y, 'the menu bar is above the runners'
             hints = menubar.render()
-            assert str(hints).rstrip().endswith('Log  Pause  Stop  Restart  Model  Fallback  Tasks  New  Quit'), str(hints)
+            assert str(hints).rstrip().endswith('Log  Pause  Stop  Restart  Model  Fallback  Tasks  New  Nous Portal  Quit'), str(hints)
             marked = {str(hints)[span.start:span.end] for span in hints.spans if 'underline' in str(span.style)}
-            assert marked == set('LPSRMFTNQ'), marked
+            assert marked == set('LPSRMFTNQo'), marked
             log = '\n'.join(line.text for line in app.query_one('#log').lines)
             assert 'TASK-036: waiting' in log and 'pending —' not in log, log
+            # Portal setup previews exactly the selected provider before a separate consent.
+            agent = base / 'agent'
+            agent.mkdir()
+            config = agent / 'models.json'
+            original = b'{"providers":{"other":{"apiKey":"DO-NOT-LOG"}}}\n'
+            config.write_bytes(original)
+            with mock.patch.object(portal, 'probe', return_value={'state': 'unavailable', 'message': 'Proxy unavailable; start it yourself.'}):
+                await pilot.press('o')
+                await pilot.pause()
+                app.screen.query_one('#portal-model').value = 'openai/example'
+                await pilot.click('#portal-preview')
+                await pilot.pause()
+                question = str(app.screen.question)
+                assert 'setup proposal' in question and 'nous-local/openai/example' in question, question
+                assert 'Proxy unavailable' in question and 'DO-NOT-LOG' not in question, question
+                assert config.read_bytes() == original
+                await pilot.press('n')
+                await pilot.pause()
+                assert config.read_bytes() == original
+                assert sorted(p.name for p in agent.iterdir()) == ['models.json']
+                await pilot.click('#portal-preview')
+                await pilot.pause()
+                await pilot.press('y')
+                await pilot.pause()
+                assert json.loads(config.read_text())['providers']['nous-local']['models'] == [{'id': 'openai/example'}]
+                assert json.loads(config.read_text())['providers']['other'] == {'apiKey': 'DO-NOT-LOG'}
+                assert calls == [], calls
             await pilot.press('s')                      # stop asks first; n declines
             await pilot.pause()
             await pilot.press('n')
@@ -258,7 +287,7 @@ async def main():
         async with viewer.run_test(size=(140, 40)) as pilot:
             await pilot.pause()
             assert 'view only' in str(viewer.query_one('#menubar').render())
-            for key in ('s', 'p', 'm', 'f', 'r', 'u', 'n'):
+            for key in ('s', 'p', 'm', 'f', 'r', 'u', 'n', 'o'):
                 await pilot.press(key)
                 await pilot.pause()
             assert len(calls) == before, calls          # view-only: no key runs anything

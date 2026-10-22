@@ -10,6 +10,7 @@ has its tasks/ store committed on its main branch.
     python3 tui.py --command PATH --script PATH [--view-only]
 """
 import argparse
+import asyncio
 import os
 from pathlib import Path
 import subprocess
@@ -17,7 +18,7 @@ import sys
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pi_autowork import fleet_view  # noqa: E402
+from pi_autowork import fleet_view, portal  # noqa: E402
 
 from rich.text import Text  # noqa: E402  (installed with textual)
 from textual.app import App, ComposeResult  # noqa: E402
@@ -209,6 +210,62 @@ class NewTask(ModalScreen[dict]):
             self.notify('A new task needs a title, a short title and a goal.', severity='warning')
             return
         self.dismiss(dict(value, goal=goal, section=self.query_one('#section', Select).value))
+
+    def action_cancel(self):
+        self.dismiss(None)
+
+
+class PortalSetup(ModalScreen[dict]):
+    """Preview a selected provider; a separate confirmation owns the write."""
+    BINDINGS = [Binding('escape', 'cancel', 'cancel')]
+    DEFAULT_CSS = '''
+    PortalSetup { align: center middle; }
+    PortalSetup > VerticalScroll { width: 86; height: auto; max-height: 95%; border: thick $accent; background: $surface; padding: 1 2; }
+    PortalSetup Input { margin-bottom: 1; }
+    PortalSetup Horizontal { height: auto; align-horizontal: right; }
+    '''
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll():
+            yield Label('Nous Portal through the local Hermes proxy')
+            yield Label('No login, proxy start, model request or service change. Preview before consent.')
+            yield Input(value='nous-local', placeholder='Selected Pi provider entry', id='portal-provider')
+            yield Input(placeholder='Exact model ID from your Portal plan', id='portal-model')
+            yield Input(value=portal.DEFAULT_ENDPOINT, placeholder='Loopback /v1 endpoint', id='portal-endpoint')
+            yield Static('', id='portal-result', markup=False)
+            with Horizontal():
+                yield Button('Preview', id='portal-preview', variant='primary')
+                yield Button('Cancel', id='portal-cancel')
+
+    async def on_button_pressed(self, event):
+        if event.button.id == 'portal-cancel':
+            self.dismiss(None)
+            return
+        if event.button.id != 'portal-preview':
+            return
+        button = self.query_one('#portal-preview', Button)
+        button.disabled = True
+        try:
+            proposal = await asyncio.to_thread(portal.propose,
+                self.query_one('#portal-provider', Input).value,
+                self.query_one('#portal-model', Input).value,
+                self.query_one('#portal-endpoint', Input).value)
+        except portal.SetupError as error:
+            self.query_one('#portal-result', Static).update(str(error))
+        else:
+            self.query_one('#portal-result', Static).update(proposal.text())
+
+            def consent(yes):
+                if not yes:
+                    self.query_one('#portal-result', Static).update(proposal.text() + '\nDeclined: no changes made.')
+                    return
+                try:
+                    self.dismiss(portal.apply(proposal))
+                except portal.SetupError as error:
+                    self.query_one('#portal-result', Static).update(str(error))
+            self.app.push_screen(Confirm(Text(proposal.text() + '\nApply this provider edit only?')), consent)
+        finally:
+            button.disabled = False
 
     def action_cancel(self):
         self.dismiss(None)
@@ -688,9 +745,10 @@ class FleetApp(App):
         Binding('t', 'run("t")', 'Tasks', show=False),
         Binding('u', 'run("u")', 'Uninstall', show=False),
         Binding('n', 'browse', 'New', show=False),
+        Binding('o', 'setup_portal', 'Nous Portal', show=False),
         Binding('q', 'quit', 'Quit', show=False),
     ]
-    CONTROL = {'run', 'browse', 'pick_model'}
+    CONTROL = {'run', 'browse', 'pick_model', 'setup_portal'}
 
     def __init__(self, *, command, script, state_root, env_dir, systemctl='systemctl',
                  journalctl='journalctl', agent=None, runner_cmd=subprocess.run, view_only=False, browse_root=None,
@@ -850,13 +908,13 @@ class FleetApp(App):
         if runner is None:
             detail.update('No pi-autowork runners yet. Press n for a new one: choose a repository and play its service.')
             self.query_one('#lanes', DataTable).display = False
-            menubar.show([] if self.view_only else [('n', 'New'), ('q', 'Quit')])
+            menubar.show([] if self.view_only else [('n', 'New'), ('o', 'Nous Portal'), ('q', 'Quit')])
             return
         # The keys go in the menu bar at the top, like a GUI app's menu; the pane holds the facts.
         if self.view_only:
             menubar.show([('l', 'Log'), ('q', 'Quit')], prefix='view only')
         else:
-            menubar.show([(a.key, a.label) for a in self.available(runner)] + [('n', 'New'), ('q', 'Quit')])
+            menubar.show([(a.key, a.label) for a in self.available(runner)] + [('n', 'New'), ('o', 'Nous Portal'), ('q', 'Quit')])
         text = Text()
         # First the answer to "is it stuck, and why": one sentence, wrapped, never cut.
         sentence, style = fleet_view.verdict(runner)
@@ -957,13 +1015,28 @@ class FleetApp(App):
         else:
             self.execute(action)
 
+    def action_setup_portal(self):
+        def prepared(result):
+            if result:
+                self.model_cache = None
+                self.notify(result['message'], timeout=10)
+        self.push_screen(PortalSetup(), prepared)
+
     def action_pick_model(self, which):
         runner = self.current()
         if runner is None or not runner.has_service:
             self.notify('Models are set per service; play one first (p, or n for a new one).', severity='warning')
             return
-        if self.model_cache is None:
-            self.model_cache = self.list_models()
+        try:
+            if self.list_models is fleet_view.models:
+                settings = fleet_view.read_env(Path(self.env_dir) / f'{runner.name}.env')
+                self.model_cache = self.list_models(pi=os.environ.get('AUTOWORK_PI', 'pi'),
+                    agent_dir=portal.service_agent_dir(settings))
+            elif self.model_cache is None:
+                self.model_cache = self.list_models()
+        except portal.SetupError as error:
+            self.notify(str(error), severity='error', timeout=10)
+            return
         if not self.model_cache:
             self.notify("Pi listed no models (pi --list-models).", severity='error')
             return

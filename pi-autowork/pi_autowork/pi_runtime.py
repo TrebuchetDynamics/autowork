@@ -32,9 +32,10 @@ import time
 import uuid
 
 if __package__:
-    from . import accounting, telemetry
+    from . import accounting, portal, telemetry
 else:
     import accounting
+    import portal
     import telemetry  # pi_runtime.py is also a standalone subprocess entry point.
 
 PROVIDER_FAILURE = re.compile(
@@ -108,18 +109,28 @@ def cool_primary(s, reason):
 
 def choose(s):
     """(model or None, fallback reason)."""
+    def ready(model):
+        try:
+            portal.check_model(model)
+        except portal.SetupError as error:
+            return False, str(error)
+        return auth_ready(s, model), ''
+
     if not s.fallback_enabled:
-        if auth_ready(s, s.primary):
+        usable, reason = ready(s.primary)
+        if usable:
             return s.primary, ''
-        return None, 'primary not authenticated and the fallback is disabled'
+        return None, reason or 'primary not authenticated and the fallback is disabled'
     if not primary_cooling(s):
-        if auth_ready(s, s.primary):
+        usable, reason = ready(s.primary)
+        if usable:
             return s.primary, ''
-        reason = 'primary not authenticated'
+        reason = reason or 'primary not authenticated'
         cool_primary(s, reason)
     else:
         reason = _provider_file(s).get('reason') or 'primary cooling down'
-    return (s.fallback if auth_ready(s, s.fallback) else None), reason
+    usable, fallback_reason = ready(s.fallback)
+    return (s.fallback if usable else None), fallback_reason or reason
 
 
 # --- One run --------------------------------------------------------------------

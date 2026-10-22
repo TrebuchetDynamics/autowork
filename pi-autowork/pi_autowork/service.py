@@ -20,7 +20,7 @@ ENV_NAMES = ('PI_AUTOWORK_PRIMARY', 'PI_AUTOWORK_FALLBACK', 'PI_AUTOWORK_TASK_TI
              'PI_AUTOWORK_COOLDOWN', 'PI_AUTOWORK_BACKOFF', 'PI_AUTOWORK_MAX_RUNTIME',
              'PI_AUTOWORK_MIN_FREE_MB', 'PI_AUTOWORK_STATE_DIR', 'PI_AUTOWORK_TOOLSET',
              'PI_AUTOWORK_UPDATE_INTERVAL', 'PI_AUTOWORK_UPDATE_WAIT', 'PI_AUTOWORK_PLANNING_QUIET',
-             'PI_AUTOWORK_PLAN_SETTLE', 'PI_AUTOWORK_PUSH')
+             'PI_AUTOWORK_PLAN_SETTLE', 'PI_AUTOWORK_PUSH', 'PI_CODING_AGENT_DIR')
 # run() also accepts these through its workers argument and environment switches.
 SETTING_NAMES = ENV_NAMES + ('PI_AUTOWORK_WORKERS', 'PI_AUTOWORK_ALLOW_HERMES', 'PI_AUTOWORK_NO_FALLBACK')
 
@@ -199,7 +199,7 @@ def run(action, *, repo, base, script, workers, state_root, hermes_jobs, argv0):
     # A model chosen with `autowork model` survives a reinstall unless this one sets its own.
     try:
         kept = [line for line in env_file.read_text().splitlines()
-                if line.split('=', 1)[0] in ('PI_AUTOWORK_PRIMARY', 'PI_AUTOWORK_FALLBACK')
+                if line.split('=', 1)[0] in ('PI_AUTOWORK_PRIMARY', 'PI_AUTOWORK_FALLBACK', 'PI_CODING_AGENT_DIR')
                 and not env.get(line.split('=', 1)[0])]
     except OSError:
         kept = []

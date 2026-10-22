@@ -16,7 +16,7 @@ import subprocess
 import sys
 import time
 
-from pi_autowork import health, main_check, questions as owner_questions, task_prepare
+from pi_autowork import health, main_check, portal, questions as owner_questions, task_prepare
 from pi_autowork.common import safe_name
 
 KINDS = {'runner': 'runner', 'cycle': 'dependency cycle', 'held': 'blocker', 'contract': 'not runnable',
@@ -78,14 +78,23 @@ def write_env(path, updates):
         os.umask(old)
 
 
-def models(pi='pi', search=None, timeout=60):
+def models(pi='pi', search=None, timeout=60, *, agent_dir=None):
     """provider/model IDs from `pi --list-models` (Pi's own catalog)."""
     argv = [pi, '--list-models'] + ([search] if search else [])
     found = []
-    for line in _lines(argv, timeout=timeout):
+    table = False
+    env = dict(os.environ, PI_CODING_AGENT_DIR=agent_dir) if agent_dir else None
+    for line in _lines(argv, timeout=timeout, env=env):
         parts = line.split()
-        if len(parts) >= 2 and parts[0] != 'provider' and re.fullmatch(r'[A-Za-z0-9._-]+', parts[0]):
+        if [p.lower() for p in parts[:2]] == ['provider', 'model']:
+            table = True
+            continue
+        if (table and len(parts) >= 3 and re.fullmatch(r'[A-Za-z0-9._-]+', parts[0])
+                and re.fullmatch(r'[0-9][0-9.,]*[kKmM]?', parts[2])):
             found.append(f'{parts[0]}/{parts[1]}')
+    if not found:
+        raise portal.SetupError('Pi listed no usable models; check Pi installation/logins. For Nous Portal, '
+                                'use autowork setup-portal --provider NAME --model ID (proposal only).')
     return found
 
 
@@ -894,9 +903,9 @@ class DiscoveryUnavailable(RuntimeError):
     """Service discovery failed; an empty list would be misleading."""
 
 
-def _lines(argv, timeout=10, *, strict=False):
+def _lines(argv, timeout=10, *, strict=False, env=None):
     try:
-        out = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+        out = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, env=env)
     except (OSError, subprocess.SubprocessError) as error:
         if strict:
             raise DiscoveryUnavailable(f'runner discovery unavailable: {type(error).__name__}') from error
