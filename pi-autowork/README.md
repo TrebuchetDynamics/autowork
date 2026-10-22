@@ -86,6 +86,13 @@ service lifecycle; it describes the next launch, not an unreloaded process's env
 Existing saved `1`/`0` settings remain enabled/disabled and are not migrated or rewritten
 by a settings load or status read. No live service migration is part of this default change.
 
+`autowork ls --json` includes a boolean `push` for each runner, and the TUI detail
+pane shows `Push enabled` or `Push disabled`. Both read the saved service env file,
+not the viewing shell's overrides: only `PI_AUTOWORK_PUSH=1` enables push; a missing
+or other value means disabled. Like status, these are read-only settings displays,
+not probes of an unreloaded process's environment. Offline command tests and the
+headless TUI pilot cover these displays; they do not qualify live publication.
+
 In the TUI each key is the first letter of its word, highlighted in the detail pane:
 `l` (or Enter) **L**og, `p` **P**lay/**P**ause (starts a stopped service, resumes a
 paused one, pauses a running one), `s` **S**top, `r` **R**estart, `m` **M**odel and

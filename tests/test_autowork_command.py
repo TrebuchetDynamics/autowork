@@ -312,6 +312,24 @@ class AutoworkCommandTests(unittest.TestCase):
             self.assertEqual(settings.read_bytes(), before)
             self.assertEqual(self.calls(), [])
 
+    def test_ls_json_shows_saved_push_grant_not_the_callers_environment(self):
+        settings = self.env_dir / 'india.env'
+        for value, expected in ((None, False), ('1', True), ('0', False), ('', False), ('true', False)):
+            with self.subTest(value=value):
+                saved = f'PI_AUTOWORK_REPO={self.repo}\n# keep this comment\n'
+                if value is not None:
+                    saved += f'PI_AUTOWORK_PUSH={value}\n'
+                settings.write_text(saved)
+                self.env['PI_AUTOWORK_PUSH'] = '0' if expected else '1'
+                self.log.write_text('')
+                result = self.aw('ls', '--json')
+                self.assertEqual(result.returncode, 0, result.stderr)
+                runner, = json.loads(result.stdout)['runners']
+                self.assertIs(runner.get('push'), expected)
+                self.assertEqual(settings.read_text(), saved)
+                self.assertTrue(all(c.startswith(('systemctl --user list-units ',
+                                                 'systemctl --user is-enabled ')) for c in self.calls()))
+
     def test_start_reinstalls_a_service_whose_unit_script_is_gone(self):
         self.aw('start', str(self.repo))
         unit = self.base / 'unit-dir' / 'pi-autowork@.service'

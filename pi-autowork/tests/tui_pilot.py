@@ -117,6 +117,15 @@ async def main():
             assert [str(c) for c in runners.get_row_at(0)[2:8]] == ['0', '0', '23', '1', '0', '24']
             assert '19 wait for TASK-036 (overlap' in str(runners.get_row_at(0)[8]), runners.get_row_at(0)  # cut to fit
             assert 'Tasks      24 open · 0 active · 0 mergeable · 23 waiting · 1 blocker' in detail, detail
+            assert 'Push       disabled' in detail, detail  # no saved grant: local only
+            settings = env / 'india.env'
+            saved = settings.read_text()
+            for value, label in (('1', 'enabled'), ('0', 'disabled')):
+                settings.write_text(saved + f'PI_AUTOWORK_PUSH={value}\n')
+                app.action_refresh()
+                detail = str(app.query_one('#detail').render())
+                assert f'Push       {label}' in detail, detail
+                assert settings.read_text() == saved + f'PI_AUTOWORK_PUSH={value}\n'
             # The keys, in the menu bar at the top (a GUI app's "File Edit View"), each word's first
             # letter highlighted in it; one key per action. The detail pane holds no keys.
             assert 'Quit' not in detail, detail
