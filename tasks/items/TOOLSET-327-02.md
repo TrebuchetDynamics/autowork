@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-327-02"
 title = "Play on a repository without a task store offers to prepare it through autowork tasks prepare"
 short = "Prepare from Play in the TUI (issue 9)"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 41000
@@ -16,6 +16,11 @@ scope = "GitHub issue 9 (onboarding part; the tree and Play already share fleet_
 acceptance = ["In a headless TUI test, Play on a legacy repository offers Prepare; choosing it converts the repository and the node then shows ready", "On a repository with no accepted intent, Prepare reports NO_STORE and creates no task file", "On a repository with work in flight, Prepare reports MIGRATION_DEFERRED and Start stays unavailable"]
 checks = ["python3 scripts/check.py pi-autowork/tests/test_fleet_view.py tests/test_task_prepare.py"]
 exclusions = []
+closure = "manual"
+closure_actor = "owner interactive session (Claude)"
+closure_timestamp = "2026-10-22T01:17:03.973867+00:00"
+closure_reason = "Re-landed unchanged in e5162924 after the misattributed revert 2bacf7a0; main's red check was the stalled-service assertion fixed in a215993d"
+closure_evidence = "commit e5162924 re-lands the reviewed landing (reverted by misattributed optimistic-landing blame; the failing test predated it and was fixed in a215993d); scripts/affected_tests.py --base HEAD --run passed on the staged change"
 +++
 
 - Sources: https://github.com/TrebuchetDynamics/autowork/issues/9
