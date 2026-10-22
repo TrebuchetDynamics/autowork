@@ -1412,23 +1412,75 @@ class EngineTests(Fixture):
         self.assertTrue(self.done('B', 'C'), result.stdout)  # and A's retry lands later
 
     def test_candidates_held_by_conflicts_are_resolved_as_a_group_then_checked_once(self):
-        """Two conflicts are held, resolved together, then checked in one batch run (not one each)."""
-        self.env['PI_AUTOWORK_BATCH'] = '6'
-        self.env['PI_AUTOWORK_MAIN_CHECK'] = 'true'
-        self.plan({'worker:A': ['move_session'], 'worker:B': ['move_session'],
-                   'merge': ['resolve', 'resolve', 'resolve', 'resolve']})
-        result = self.run_runner('--until-empty', timeout=300)
-        self.assertTrue(self.done('A', 'B', 'C'), result.stdout)
-        self.assertIn('left out (conflict): A, B', result.stdout)  # the first batch merged neither
-        # Both held conflicts are resolved before either integrates (no fresh retry meanwhile),
-        # so the re-batch merges and checks them as a pair: one shared check, not one each.
-        self.assertGreaterEqual(result.stdout.count('merged the session into its commit'), 2, result.stdout)
-        self.assertIn('Batch: 2 passed (A, B)', result.stdout)
-        self.assertGreaterEqual(result.stdout.count('Batch of 2 candidates (A, B)'), 2, result.stdout)
-        # Side by side: the second resolution starts before the first one is adopted.
-        asked = [m.start() for m in re.finditer('asking Pi to resolve the merge in its worktree', result.stdout)]
-        self.assertGreaterEqual(len(asked), 2, result.stdout)
-        self.assertLess(asked[1], result.stdout.index('merged the session into its commit'), result.stdout)
+        """Conflicts discovered in one or two batches still share one check after resolution."""
+        # Move the session at Git boundaries, not after sleeps: both candidates have finished
+        # before the batch snapshots its base. B's move can then precede that snapshot or follow
+        # its successful merge into the first batch's disposable chain.
+        real_git = shutil.which('git')
+        hook = self.root / 'batch-git.py'
+        hook.write_text(r'''
+import os, subprocess, sys
+from pathlib import Path
+args = sys.argv[1:]
+real = os.environ['FAKE_REAL_GIT']
+marker = Path(os.environ['FAKE_SESSION_MOVE'])
+def git(*command):
+    return subprocess.run([real, '-c', 'user.email=s@example.invalid', '-c', 'user.name=Session',
+                           *command], check=True, capture_output=True, text=True).stdout.strip()
+def move(session, tasks):
+    for task in tasks:
+        Path(session, task + '.txt').write_text('from the session\n')
+    git('-C', session, 'add', *[task + '.txt' for task in tasks])
+    git('-C', session, 'commit', '-qm', 'session moved')
+batch = os.environ.get('PI_AUTOWORK_BATCH_TIP')
+command = args[args.index('-C') + 2:] if '-C' in args else args
+if batch and command == ['rev-parse', 'HEAD'] and not marker.exists():
+    session = args[args.index('-C') + 1]
+    move(session, 'AB' if os.environ['FAKE_B_MOVE'] == 'before' else 'A')
+    marker.write_text(session)
+result = subprocess.run([real, *args])
+if (batch and result.returncode == 0 and command[:3] == ['merge', '--no-ff', '--no-edit']
+        and os.environ['FAKE_B_MOVE'] == 'after' and not marker.with_suffix('.B').exists()
+        and git('show', '-s', '--format=%s', args[-1]) == 'worker B'):
+    move(marker.read_text(), 'B')
+    marker.with_suffix('.B').touch()
+sys.exit(result.returncode)
+''')
+        wrapper = self.bin / 'git'
+        wrapper.write_text('#!/bin/sh\n'
+                           f'if [ -z "${{PI_AUTOWORK_BATCH_TIP:-}}" ]; then exec {shlex.quote(real_git)} "$@"; fi\n'
+                           f'exec {shlex.quote(sys.executable)} {shlex.quote(str(hook))} "$@"\n')
+        wrapper.chmod(0o755)
+        for order, first_conflicts in (('before', 'A, B'), ('after', 'A')):
+            with self.subTest(b_session_move=order):
+                self.repo = self.make_repo(self.root / order, [('A', None), ('B', None), ('C', 'A')])
+                self.state = self.root / f'state-{order}'
+                self.log = self.root / f'pi-{order}.log'
+                runs = self.root / f'full-check-runs-{order}'
+                barrier = self.root / f'barrier-{order}'
+                barrier.mkdir()
+                self.env.update(FAKE_MAIN_REPO=str(self.repo), PI_AUTOWORK_STATE_DIR=str(self.state),
+                                FAKE_PI_ROOT=str(barrier), FAKE_PI_LOG=str(self.log),
+                                FAKE_REAL_GIT=real_git, FAKE_B_MOVE=order,
+                                FAKE_SESSION_MOVE=str(self.root / f'session-move-{order}'),
+                                PI_AUTOWORK_BATCH='6', PI_AUTOWORK_MAIN_CHECK='true',
+                                PI_AUTOWORK_VALIDATE=f'echo ran >> {runs}')
+                self.plan({'worker:A': ['barrier'], 'worker:B': ['barrier']})
+                result = self.run_runner('--until-empty', timeout=300)
+                self.assertTrue(self.done('A', 'B', 'C'), result.stdout)
+                first_batch = next((line for line in result.stdout.splitlines() if 'left out (conflict):' in line), '')
+                self.assertIn(f'left out (conflict): {first_conflicts};', first_batch, result.stdout)
+                # Both resolutions finish before either candidate lands; discovery need not be
+                # in the same batch. No fresh worker or separate full check is needed for either.
+                self.assertGreaterEqual(result.stdout.count('merged the session into its commit'), 2, result.stdout)
+                self.assertEqual(runs.read_text().splitlines(), ['ran', 'ran'], result.stdout)  # A+B, then C
+                self.assertIn('Batch: 2 passed (A, B)', result.stdout)
+                self.assertCountEqual([r['task'] for r in self.runs('worker')], ['A', 'B', 'C'], result.stdout)
+                asked = [m.start() for m in re.finditer('asking Pi to resolve the merge in its worktree', result.stdout)]
+                self.assertGreaterEqual(len(asked), 2, result.stdout)
+                self.assertLess(asked[1], result.stdout.index('A: integrated'), result.stdout)
+                if order == 'before':  # already known together: resolve side by side, not serially
+                    self.assertLess(asked[1], result.stdout.index('merged the session into its commit'), result.stdout)
 
     def test_a_running_merge_resolution_keeps_its_hold_and_the_session_still(self):
         """A clear-held request and the docs maintainer's MAIN repair both landed beside a running
