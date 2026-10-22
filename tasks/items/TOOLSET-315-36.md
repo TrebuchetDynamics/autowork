@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-315-36"
 title = "Task-store validation leaves no unreachable Git objects"
 short = "No objects from validation"
-status = "open"
+status = "done"
 goal = "TASK-STORE-HARDENING"
 section = "Next"
 rank = 11000
@@ -16,6 +16,8 @@ scope = "validate --worktree, prepare, migrate --dry-run and task writes build t
 acceptance = ["After validate --worktree, prepare and a dry-run migration on a fixture repository, git count-objects reports no new loose objects, and the reads still validate the same stores.", "A written report at docs/plans/unreachable-objects-2026-10.md names the remaining sources of unreachable objects and whether set-aside commits, recovery checkpoints and candidates are ref-reachable; workers never write tasks/, so the report is a document, not a task note."]
 checks = ["python3 -m unittest discover -s tests -p test_task_*.py", "python3 -m unittest discover -s pi-autowork/engine -p test_task_store.py", "python3 scripts/check.py"]
 exclusions = ["No git gc, prune, repack or removal of .git/gc.log, and no ref deletion, in any repository: report only."]
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-315-36.toml"
 +++
 
 - Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20)
