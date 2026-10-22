@@ -14,8 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'engine'))
 from pi_autowork import fleet_view, portal  # noqa: E402
 from pi_autowork.processes import start_time  # noqa: E402
 import store_fixture  # noqa: E402
-from pi_autowork.tui import (REFRESH, BrowseScreen, FleetApp, LogScreen, TaskScreen, TasksScreen,  # noqa: E402
-                             WorkerScreen, doing)
+from pi_autowork.tui import (REFRESH, BrowseScreen, Confirm, FleetApp, LogScreen, TaskScreen,  # noqa: E402
+                             TasksScreen, WorkerScreen, doing)
 
 
 class Result:
@@ -105,6 +105,12 @@ async def main():
                        browse_root=str(tree), list_models=lambda: ['openai-codex/gpt-6-luna', 'openai-codex/gpt-6.1-sol'])
         async with app.run_test(size=(150, 45)) as pilot:
             await pilot.pause()
+            # A late or doubled button event on an already-dismissed confirmation must be a
+            # no-op, not pop the last screen and crash the TUI (ScreenStackError, 2026-10-22).
+            late = Confirm('late confirmation')
+            late.on_button_pressed(mock.Mock(button=mock.Mock(id='no')))
+            late.action_answer(True)
+            assert late.is_current is False
             assert app.query_one('#runners').row_count == 1
             detail = str(app.query_one('#detail').render())
             # TOOLSET-166-b4: the verdict first, then why tasks wait, grouped.
