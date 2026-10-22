@@ -40,7 +40,6 @@ import os
 from pathlib import Path
 import re
 import subprocess
-import sys
 
 from pi_autowork import task_commands, task_migrate
 from pi_autowork.task_commands import worktree_store
@@ -253,8 +252,12 @@ def outcome(report):
     return 'MIGRATED' if any(a.get('action') == 'convert' for a in report['actions']) else 'READY'
 
 
-def prepare(repo, mode='commit'):
-    """One report dict; ``mode`` is check (read-only), stage (no commit) or commit."""
+def prepare(repo, mode='commit', *, force=None):
+    """One report dict; ``mode`` is check (read-only), stage (no commit), commit or force.
+
+    The CLI supplies ``force(repo)`` for force mode: service control belongs to the caller,
+    not to the store preparation layer used by read-only fleet lookups.
+    """
     top = _git(repo, 'rev-parse', '--show-toplevel')
     if not top:
         return dict(ok=False, state='no_repository', outcome='INVALID_STORE',
@@ -283,31 +286,6 @@ def prepare(repo, mode='commit'):
     report['runner'] = runner(repo)
     report['outcome'] = outcome(report)
     return report
-
-
-def force(repo):
-    """The owner's force (`/docs_sync force`): convert a legacy repository now. Stops this
-    repository's service if it runs, ends live workers and other lease holders, sets every
-    attempt aside with its work kept, commits the owner's planning edits, converts through a
-    helper (the lease names its parent), then starts the service again if it was running.
-    Returns dict(service_stopped, service_started, step)."""
-    from pi_autowork import command, fleet_view
-    paths = command.env_paths()
-    name = fleet_view.instance(str(repo))
-    was_active = command.service_state(paths, name) == 'active'
-    if was_active:
-        command.systemctl(paths, 'stop', f'pi-autowork@{name}.service')
-    script = Path(__file__).resolve().parent / 'command.py'
-    result = subprocess.run([sys.executable, str(script), 'migrate', str(repo), '--after-drain', '--force',
-                             '--owner-pid', str(os.getpid())], capture_output=True, text=True, timeout=900)
-    try:
-        step = json.loads(result.stdout)
-    except ValueError:
-        step = dict(outcome='BLOCKED', detail=' '.join((result.stderr or 'no answer').split())[-300:])
-    started = False
-    if was_active:
-        started = command.systemctl(paths, 'start', f'pi-autowork@{name}.service').returncode == 0
-    return dict(service_stopped=was_active, service_started=started, step=step)
 
 
 def _prepare(repo, mode):

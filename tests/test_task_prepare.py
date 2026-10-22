@@ -5,11 +5,15 @@ every host to: prepare, reconcile through `autowork tasks`, validate the working
 commit, and prepare again. Nothing here runs a model; the skill's prose is checked only
 for naming this lifecycle (DocsSyncInstructionTests), not for model adherence.
 """
+import ast
 import fcntl
+from graphlib import CycleError, TopologicalSorter
 import hashlib
+from importlib.util import resolve_name
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -575,6 +579,56 @@ class ForceTests(Repo):
         self.assertEqual((report['ok'], report['outcome']), (False, 'MIGRATION_BLOCKED'), report)
         self.assertEqual((self.repo / 'tasks/items/T-001.md').read_text(), 'someone else wrote this\n')
         self.assertTrue((self.repo / 'TODO.md').exists())
+
+
+class PackageImportTests(unittest.TestCase):
+    def test_every_module_imports_in_isolation_and_all_import_edges_are_acyclic(self):
+        package = ROOT / 'pi-autowork/pi_autowork'
+        modules = {}
+        for path in sorted(package.rglob('*.py')):
+            parts = path.relative_to(package.parent).with_suffix('').parts
+            name = '.'.join(parts[:-1] if parts[-1] == '__init__' else parts)
+            modules[name] = path
+        graph = {name: set() for name in modules}
+        for name, path in modules.items():
+            parent = name if path.name == '__init__.py' else name.rpartition('.')[0]
+            # Walk function bodies too: deferred imports must not hide a cycle.
+            for node in ast.walk(ast.parse(path.read_text())):
+                targets = []
+                if isinstance(node, ast.Import):
+                    targets = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom):
+                    base = node.module or ''
+                    if node.level:
+                        base = resolve_name('.' * node.level + base, parent)
+                    targets = [base, *(f'{base}.{alias.name}' for alias in node.names)]
+                # Frozen legacy readers use bare sibling names via their own sys.path.
+                for target in targets:
+                    if target not in modules:
+                        target = f'pi_autowork.legacy.{target}'
+                    if target in modules:
+                        graph[name].add(target)
+        try:
+            list(TopologicalSorter(graph).static_order())
+        except CycleError as exc:
+            self.fail(f'pi_autowork import cycle (including deferred imports): {exc}')
+        script = ('import importlib,sys; sys.path[:0] = sys.argv[1:4]; '
+                  'importlib.import_module(sys.argv[4])')
+        for name in modules:
+            with self.subTest(module=name):
+                python = [sys.executable]
+                if name == 'pi_autowork.tui':
+                    if not shutil.which('uv'):
+                        self.skipTest('uv is not installed (optional Textual UI)')
+                    python = ['uv', 'run', '--offline', '--quiet', '--no-project', '--with',
+                              'textual==8.2.8', 'python3']
+                result = subprocess.run([*python, '-c', script, str(package.parent),
+                                         str(package.parent / 'engine'), str(package / 'legacy'), name],
+                                        capture_output=True, text=True, timeout=60)
+                if name == 'pi_autowork.tui' and result.returncode == 2 and \
+                        'textual' in result.stderr.lower() and 'offline' in result.stderr.lower():
+                    self.skipTest('textual==8.2.8 is not in the uv cache (offline)')
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 class CapabilityTests(unittest.TestCase):
