@@ -18,3 +18,4 @@ checks = ["Live qualification by an authorized person"]
 exclusions = ["Offline evidence does not count"]
 +++
 
+- Owner decision: 2026-10-22: deferred pending explicit live authorization and an operator-run qualification window. Preserve every live acceptance criterion and the offline-evidence exclusion; no live service, model, credential, proxy, billing or external repository access is authorized. Offline delivery remains separate.
