@@ -7,7 +7,7 @@ status = "open"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 32000
-depends_on = ["TOOLSET-314-23", "TOOLSET-315-36"]
+depends_on = ["TOOLSET-314-23", "TOOLSET-315-36", "TOOLSET-318-17"]
 touches = ["pi-autowork/pi_autowork/task_commands.py", "pi-autowork/engine/task_store.py", "pi-autowork/engine/test_task_store.py", "tests/test_task_commands.py", "pi-autowork/task-store.md"]
 resources = []
 kind = "implementation"
@@ -18,3 +18,4 @@ checks = ["python3 -m unittest discover -s tests -p 'test_task_*.py'", "python3 
 exclusions = []
 +++
 - Coordination: Overlap repair: merge unstarted TOOLSET-347-1741c514 into this unstarted task; both edit task_commands.py and tests/test_task_commands.py. All three original list-input Acceptance items and all three dated-decision Acceptance items are retained verbatim here; Checks are identical. Wait for TOOLSET-314-23 (reported candidate eae7bd1917410f8e7c95da331fe73302ac2a8b9c; attempt-1/report.json under slot-data in the Git common execution directory) and the earlier-ranked TOOLSET-315-36 validation/object-isolation work. Neither earlier task supplies JSON-list flag normalization, nested-list refusal or dated place decisions. Touches removes the whole pi_autowork/ claim and names engine/task_store.py and its tests because the shared reader validates list fields there; task_commands.py owns add flags and cmd_place. There is no disjoint CLI implementation or runnable docs split before the input/validation behavior exists. Original contracts were queued together in f18530c901815ef65b6441078b3e3b46f110de0f; Task Store v2 in docs/project.md and pi-autowork/task-store.md retain the shared-store/CLI boundary. Rank and section are unchanged.
+- Scheduling: Overlap repair: wait for TOOLSET-318-17 as well as the existing prerequisites. Its attempt-1 slot is running, with no report yet, and its saved contract.txt claims pi-autowork/task-store.md and tests/, which overlaps this task at tests/test_task_commands.py too. This task has no worker slot or report. Do not merge into or edit the running task. Moving only the shared documentation into a follow-up would leave the CLI regression tests overlapping the running contract; no disjoint acceptance slice is established. The conversion task does not deliver list-input normalization, nested-list refusal or dated place decisions, so superseding this task would lose acceptance. Make the existing earlier-rank order explicit in depends_on; preserve all Scope, Touches, six Acceptance items, Checks, exclusions, section and rank. Sources: both task records, TOOLSET-318-17 attempt-1/contract.txt under slot-data in the Git common execution directory, and docs/project.md Task Store v2.
