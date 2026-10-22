@@ -85,6 +85,8 @@ class MigrateTests(unittest.TestCase):
         self.assertEqual((g['G2'].focus, g['G1'].focus, g['G3'].status), (True, False, 'met'))
         self.assertIn('- Evidence: executed: fixture check (pass)', g['G3'].body)
         self.assertEqual(self.migrate().returncode, 1, 'a converted repository is refused')
+        # Only the durable conversion belongs in the object database, never its proof.
+        self.assertEqual(self.git('fsck', '--unreachable', '--no-reflogs'), '')
 
     def test_migration_refuses_unsafe_states(self):
         common = self.repo / '.git/autowork-execution'
@@ -130,9 +132,16 @@ class MigrateTests(unittest.TestCase):
         held on a worker-reported blocker; no supported path released it, so neither could run."""
         self.blocker_slot()
         common = self.repo / '.git/autowork-execution'
+        objects = self.git('count-objects', '-v')
+        index = (self.repo / '.git/index').read_bytes()
+        refs = self.git('show-ref', '--head')
         dry = self.migrate('--dry-run')
         self.assertEqual(dry.returncode, 0, dry.stderr)
         self.assertEqual(json.loads(dry.stdout)['would_set_aside'], ['T-001'])
+        self.assertEqual(json.loads(dry.stdout)['order'], ['T-004', 'T-001', 'T-003', 'T-005'])
+        self.assertEqual(self.git('count-objects', '-v'), objects)
+        self.assertEqual((self.repo / '.git/index').read_bytes(), index)
+        self.assertEqual(self.git('show-ref', '--head'), refs)
         self.assertTrue((common / 'slots/T-001.json').exists(), 'a dry run sets nothing aside')
         result = self.migrate()
         self.assertEqual(result.returncode, 0, result.stderr)

@@ -553,32 +553,31 @@ def _render(tid, header, body):
 
 # --- proof and write -------------------------------------------------------------------
 
-def converted_tree(repo, files):
-    """HEAD's tree with the built store added and TODO.md and goals.json removed: no
-    working-tree or index write."""
+def converted_tree(repo, files, *, env=None):
+    """Build a conversion in the selected object store, without editing files/index."""
     with tempfile.TemporaryDirectory() as tmp:
-        env = {'GIT_INDEX_FILE': str(Path(tmp) / 'index')}
+        env = {**(env or {}), 'GIT_INDEX_FILE': str(Path(tmp) / 'index')}
         _git(repo, 'read-tree', 'HEAD', env=env)
         for path, text in files.items():
-            oid = _git(repo, 'hash-object', '-w', '--stdin', stdin=text)
+            oid = _git(repo, 'hash-object', '-w', '--stdin', stdin=text, env=env)
             _git(repo, 'update-index', '--add', '--cacheinfo', f'100644,{oid},{path}', env=env)
         _git(repo, 'update-index', '--force-remove', '--', 'TODO.md', 'goals.json', env=env)
         return _git(repo, 'write-tree', env=env)
 
 
-def proof_store(repo, tree):
+def proof_store(repo, tree, *, env):
     """The converted tree read back through a throwaway commit."""
     ident = {'GIT_AUTHOR_NAME': 'autowork', 'GIT_AUTHOR_EMAIL': 'autowork@localhost',
              'GIT_COMMITTER_NAME': 'autowork', 'GIT_COMMITTER_EMAIL': 'autowork@localhost'}
-    commit = _git(repo, 'commit-tree', tree, '-p', 'HEAD', '-m', 'migration proof', env=ident)
+    commit = _git(repo, 'commit-tree', tree, '-p', 'HEAD', '-m', 'migration proof', env={**env, **ident})
     try:
-        return TaskStore.at(repo, commit)
+        return TaskStore.at(repo, commit, env=env)
     except StoreError as exc:
         raise Refused(f'the converted store does not validate: {exc}') from None
 
 
-def prove(repo, tree, legacy, ids):
-    store = proof_store(repo, tree)
+def prove(repo, tree, legacy, ids, *, env):
+    store = proof_store(repo, tree, env=env)
     missing = sorted(ids - set(store.tasks))
     if missing:
         raise Refused('tasks missing from the converted store: ' + ', '.join(missing))
@@ -713,8 +712,9 @@ def convert(repo, dry_run=False, commit=True, owner_pid=None, released=()):
     if found := refusals(repo, owner_pid, released):
         raise Refused('; '.join(found))
     files, legacy, ids = build(repo, released)
-    tree = converted_tree(repo, files)
-    store = prove(repo, tree, legacy, ids)
+    with task_store.temporary_objects(repo) as env:
+        tree = converted_tree(repo, files, env=env)
+        store = prove(repo, tree, legacy, ids, env=env)
     summary = dict(outcome='DRY_RUN' if dry_run else 'CONVERTED', tasks=len(store.tasks), goals=len(store.goals),
                    order=legacy)
     waiting = sorted(s['task_id'] for s in awaiting_answer(repo))
@@ -724,6 +724,8 @@ def convert(repo, dry_run=False, commit=True, owner_pid=None, released=()):
         return summary
     if waiting:
         summary['set_aside'] = set_aside_waiting(repo, owner_pid)
+    # Only an actual conversion persists the proven tree; its proof commit never does.
+    tree = converted_tree(repo, files)
     head = _git(repo, 'rev-parse', 'HEAD')
     candidate = _git(repo, 'commit-tree', tree, '-p', head, '-m', SUBJECT, '-m',
                      f'{len(store.tasks)} tasks and {len(store.goals)} goals; selection order unchanged. '

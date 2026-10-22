@@ -7,6 +7,7 @@ records. StoreError invalidates the entire snapshot and reports path:line errors
 Files are UTF-8 Markdown with TOML between opening/closing +++ lines. See the
 component's task-store.md for the schema and the precise runnable/hash boundary.
 """
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from enum import Enum
 import hashlib
@@ -15,6 +16,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import tempfile
 import tomllib
 from types import MappingProxyType
 from typing import Mapping
@@ -151,9 +153,25 @@ def _hash(value: dict) -> str:
                               separators=(',', ':')).encode('utf-8'))
 
 
-def _git(repo, *args, stdin=None) -> bytes:
+@contextmanager
+def temporary_objects(repo):
+    """Discard validation objects; read existing objects through a read-only alternate.
+
+    Resolve Git's object path (shared by linked worktrees), not <checkout>/.git.
+    Only explicitly passed environments opt in; never change process-global state.
+    """
+    objects = _git(repo, 'rev-parse', '--path-format=absolute', '--git-path', 'objects').removesuffix(b'\n')
+    # Git accepts C-quoted bytes, not JSON's Unicode escapes. Octal also protects
+    # path-list separators, quotes, control characters and non-UTF-8 filenames.
+    alternate = '"' + ''.join(f'\\{byte:03o}' for byte in objects) + '"'
+    with tempfile.TemporaryDirectory(prefix='autowork-objects-') as tmp:
+        yield {'GIT_OBJECT_DIRECTORY': tmp, 'GIT_ALTERNATE_OBJECT_DIRECTORIES': alternate}
+
+
+def _git(repo, *args, stdin=None, env=None) -> bytes:
     # Do not let inherited GIT_DIR/GIT_INDEX_FILE redirect the requested repo.
-    env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
+    clean = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
+    env = {**clean, **(env or {})}
     try:
         result = subprocess.run(['git', '--no-optional-locks', '--no-replace-objects',
                                  '-C', str(repo), *args], env=env, input=stdin,
@@ -165,11 +183,11 @@ def _git(repo, *args, stdin=None) -> bytes:
     return result.stdout
 
 
-def _objects(repo, oids):
+def _objects(repo, oids, *, env=None):
     """Batch immutable objects, retaining missing references as absent rather than proof."""
     if not oids:
         return {}
-    out = _git(repo, 'cat-file', '--batch', stdin=''.join(oid + '\n' for oid in oids).encode())
+    out = _git(repo, 'cat-file', '--batch', stdin=''.join(oid + '\n' for oid in oids).encode(), env=env)
     objects, cursor = {}, 0
     for oid in oids:
         end = out.index(b'\n', cursor)
@@ -185,9 +203,9 @@ def _objects(repo, oids):
     return objects
 
 
-def _blobs(repo, oids) -> list[bytes]:
+def _blobs(repo, oids, *, env=None) -> list[bytes]:
     """Every blob in one `git cat-file --batch` call, not one process per file."""
-    objects = _objects(repo, oids)
+    objects = _objects(repo, oids, env=env)
     if any(objects.get(oid, (None,))[0] != b'blob' for oid in oids):
         raise StoreError('tasks/:1: Git read failed: expected blob objects')
     return [objects[oid][1] for oid in oids]
@@ -325,12 +343,12 @@ class TaskStore:
     goals: Mapping[str, GoalRecord]
 
     @classmethod
-    def at(cls, repo: str | Path, rev: str) -> 'TaskStore':
-        """Read all task/goal records at a commit; any invalid file aborts."""
-        pinned = _git(repo, 'rev-parse', '--verify', '--end-of-options', f'{rev}^{{commit}}').decode().strip()
+    def at(cls, repo: str | Path, rev: str, *, env=None) -> 'TaskStore':
+        """Read all records eagerly; env may explicitly select a temporary object store."""
+        pinned = _git(repo, 'rev-parse', '--verify', '--end-of-options', f'{rev}^{{commit}}', env=env).decode().strip()
         # Include trees themselves: a trailing-slash pathspec silently omits a
         # symlink/gitlink replacing a store directory, disguising it as empty.
-        tree = _git(repo, 'ls-tree', '-rtz', '--full-tree', pinned, '--', 'tasks')
+        tree = _git(repo, 'ls-tree', '-rtz', '--full-tree', pinned, '--', 'tasks', env=env)
         tasks, goals, documents = {}, {}, {}
         seen, files, evidence = {}, [], {}
         if not any(entry.split(b'\t', 1)[-1] == b'tasks' for entry in tree.split(b'\0') if entry):
@@ -355,7 +373,7 @@ class TaskStore:
             if Path(path).suffix != '.md' or len(Path(path).parts) != 3:
                 raise StoreError(f'{path}:1: expected tasks/items/<ID>.md or tasks/goals/<ID>.md')
             files.append((path, _oid.decode()))
-        for path, blob in zip((path for path, _ in files), _blobs(repo, [oid for _, oid in files])):
+        for path, blob in zip((path for path, _ in files), _blobs(repo, [oid for _, oid in files], env=env)):
             document = _Document(path, blob)
             is_goal = path.startswith('tasks/goals/')
             record = document.record(blob, is_goal)
@@ -369,7 +387,7 @@ class TaskStore:
                      and task.closure_evidence == f'tasks/evidence/{tid}.toml'
                      and task.closure_evidence in evidence]
         receipts = {}
-        for (tid, _), blob in zip(requested, _blobs(repo, [evidence[path] for _, path in requested])):
+        for (tid, _), blob in zip(requested, _blobs(repo, [evidence[path] for _, path in requested], env=env)):
             task = tasks[tid]
             try:
                 receipt = tomllib.loads(blob.decode('utf-8'))
@@ -383,8 +401,8 @@ class TaskStore:
             if valid:
                 receipts[tid] = receipt
         objects = _objects(repo, sorted({r[key] for r in receipts.values()
-                                         for key in ('candidate', 'integration', 'tree')}))
-        ancestors = set(_git(repo, 'rev-list', pinned).decode().split()) if receipts else set()
+                                         for key in ('candidate', 'integration', 'tree')}), env=env)
+        ancestors = set(_git(repo, 'rev-list', pinned, env=env).decode().split()) if receipts else set()
         for tid, receipt in receipts.items():
             integration = objects.get(receipt['integration'], (None, b''))
             headers = integration[1].split(b'\n\n', 1)[0].splitlines()
