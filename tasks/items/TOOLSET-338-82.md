@@ -7,7 +7,7 @@ status = "open"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 29000
-depends_on = ["TOOLSET-336-3c", "TOOLSET-335-89", "TOOLSET-334-f9", "TOOLSET-337-e0"]
+depends_on = ["TOOLSET-336-3c", "TOOLSET-335-89", "TOOLSET-334-f9"]
 touches = ["scripts/check.py", "pi-autowork/pi_autowork/coordinator.py", "pi-autowork/pi_autowork/worker.py", "pi-autowork/pi_autowork/main_check.py", "pi-autowork/tests/test_main_check.py", "tests/test_pi_autowork.py", "tests/test_check.py"]
 resources = []
 kind = "implementation"
@@ -19,5 +19,5 @@ exclusions = []
 +++
 
 - Owner decision: 2026-10-21 (owner): batch and landing checks run only the affected test modules; the full suite runs on main after landing, with regressions attributed to the landed task
-- Dependencies: TOOLSET-336-3c, TOOLSET-335-89, TOOLSET-334-f9, TOOLSET-337-e0
+- Dependencies: TOOLSET-336-3c, TOOLSET-335-89, TOOLSET-334-f9
 - Scheduling: Overlap repair: retain TOOLSET-336-3c and its full-suite-only base-green rule; wait for TOOLSET-335-89 and then TOOLSET-334-f9 before changing their shared coordinator.py, worker.py and tests/test_pi_autowork.py paths. TOOLSET-334-f9 declared TOOLSET-337-e0 as a prerequisite but closed in be7f56d7 under optimistic landing before it, so no landed change owns scripts/check.py now; TOOLSET-337-e0 is open again after its revert and still reshapes scripts/check.py's SPLIT and tests/test_pi_autowork.py. This task therefore depends on it: both edit those two files and must not write them at the same time (337-e0 is earlier-ranked and its timing changes alter the same test module this task extends). Splitting off the affected-test selector would still collide with TOOLSET-337-e0 in scripts/check.py, not produce a runnable disjoint slice. Preserve the owner decision in 3d4efc9a and the affected-only/main-green reconciliation in d07af414, including every existing Acceptance item; no scope, Touches, Checks or queue-rank change.
