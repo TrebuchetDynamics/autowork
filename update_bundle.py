@@ -790,7 +790,41 @@ def _describe_runner(folder):
     marker = _read_marker(folder)
     if marker.get('mode') == 'deferred':
         return {'pid': marker.get('waiter_pid'), 'mode': 'restart_waiter', 'started': None}
+    # No receipt or marker names the holder (a crashed update whose receipt was replaced, a
+    # hung helper): name the live process that has the lock open, so the owner can stop it
+    # instead of rerunning into "busy" forever (seen on a host, 2026-10-22).
+    holders = _lock_holders(folder / 'lock')
+    if holders:
+        return {'pid': holders[0]['pid'], 'mode': 'unknown', 'started': holders[0]['started'],
+                'command': holders[0]['command']}
     return {'pid': None, 'mode': 'unknown', 'started': None}
+
+
+def _lock_holders(lockpath, proc='/proc'):
+    """Live processes (other than this one) holding ``lockpath`` open, from procfs; each with its
+    PID, command line and start time. Empty where procfs or permissions hide them."""
+    found = []
+    try:
+        target = os.stat(lockpath)
+    except OSError:
+        return found
+    for entry in os.scandir(proc) if os.path.isdir(proc) else ():
+        if not entry.name.isdigit() or int(entry.name) == os.getpid():
+            continue
+        try:
+            for fd in os.scandir(os.path.join(entry.path, 'fd')):
+                try:
+                    info = os.stat(fd.path)
+                except OSError:
+                    continue
+                if (info.st_dev, info.st_ino) == (target.st_dev, target.st_ino):
+                    command = b' '.join(Path(entry.path, 'cmdline').read_bytes().split(b'\0')).decode(errors='replace').strip()
+                    started = datetime.datetime.fromtimestamp(os.stat(entry.path).st_ctime).isoformat(timespec='seconds')
+                    found.append({'pid': int(entry.name), 'command': command[:200] or 'unknown', 'started': started})
+                    break
+        except OSError:
+            continue
+    return found
 
 
 def running_update(folder):
@@ -1908,10 +1942,14 @@ def main(argv=None):
             except BlockingIOError:
                 if time.monotonic() >= deadline:
                     # Report the owner; its receipt stays untouched.
-                    print(json.dumps({'status': 'busy', 'running': _describe_runner(state_dir),
-                                      'note': 'Another update holds the update lock. Nothing was changed and its '
+                    running = _describe_runner(state_dir)
+                    who = (f" (PID {running['pid']}, {running.get('command') or running.get('mode')})"
+                           if running.get('pid') else '')
+                    print(json.dumps({'status': 'busy', 'running': running,
+                                      'note': f'Another update holds the update lock{who}. Nothing was changed and its '
                                               'receipt was not replaced; use /autowork update status, then rerun '
-                                              'once it finishes.'}, indent=2))
+                                              'once it finishes. A holder that no longer makes progress is stopped '
+                                              'with kill <PID>; the lock frees itself when it exits.'}, indent=2))
                     return 3
                 time.sleep(0.2)
         try:

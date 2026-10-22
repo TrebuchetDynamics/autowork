@@ -474,6 +474,28 @@ class ConcurrentUpdateTests(unittest.TestCase):
             self.run_main('--check')
         self.assertEqual((seen['status'], seen['mode']), ('running', 'check'))
 
+    def test_an_unrecorded_lock_holder_is_named_from_procfs(self):
+        """A host saw `busy` with pid null on every update for hours: the holder's receipt had been
+        replaced, so nothing named it and nobody could tell what to stop."""
+        (self.state / 'latest.json').write_text(json.dumps({'status': 'updated', 'pid': 1}))
+        holder = subprocess.Popen([sys.executable, '-c',
+                                   'import fcntl, sys, time\n'
+                                   f'f = open({str(self.state / "lock")!r}, "a"); fcntl.flock(f, fcntl.LOCK_EX)\n'
+                                   'print("held", flush=True); time.sleep(60)'], stdout=subprocess.PIPE, text=True)
+        self.addCleanup(holder.wait)
+        self.addCleanup(holder.kill)
+        self.assertEqual(holder.stdout.readline().strip(), 'held')
+        running = self.mod.running_update(self.state)
+        self.assertEqual((running['pid'], running['mode']), (holder.pid, 'unknown'))
+        self.assertIn('python', running['command'])
+        self.assertTrue(running['started'])
+        code, out = self.run_main('--check')
+        self.assertEqual(code, 3)
+        report = json.loads(out)
+        self.assertEqual(report['running']['pid'], holder.pid)
+        self.assertIn(f'PID {holder.pid}', report['note'])
+        self.assertIn('kill <PID>', report['note'])
+
     def test_running_update_is_none_when_no_update_holds_the_lock(self):
         self.assertIsNone(self.mod.running_update(self.state))
         self.hold_lock()
