@@ -66,6 +66,9 @@ other than `schema` and `id` produce a visible draft rather than a store error.
 Empty acceptance/checks/touches also produce draft reasons in `missing_fields`.
 Explicit empty arrays are valid for dependencies, resources and exclusions.
 Resource strings are tokens such as `live`, `exclusive` or `test-db`, not prose.
+A string item that itself encodes a JSON array is refused in every task list field,
+including `verified_depends_on`; diagnostics name the task path and field. Store
+validation does not silently flatten or repair such records.
 
 Goal fields are all mandatory: `id`, `title`, `source` are nonempty strings;
 `priority` is an integer; `status` is `"unmet"`, `"partial"`, `"unverified"` or
@@ -190,8 +193,25 @@ A write to the contract (the hashed fields or the goal), the section, or the sta
 or integrated slot, or the sequential lease) is refused: rank, title, short and notes stay
 open, and a held or interrupted attempt stays repairable. `add` writes a whole contract at once (`--resources`, `--exclusions`,
 `--kind`, `--ownership`, `--sources`) and refuses a task whose goal and title match an open
-or done one, naming it. `field` sets a
-typed header field, or any other label as a body note (`Held by`, `Owner decision`).
+or done one, naming it. Each list flag (`--acceptance`, `--checks`, `--touches`,
+`--depends-on`, `--verified-depends-on`, `--resources`, `--exclusions`) accepts one
+item or a JSON array of strings; repeated flags and arrays may be mixed and are
+flattened in argument order. For example, `--touches '["a", "b"]'` and
+`--touches a --touches b` both write `touches = ["a", "b"]`. An empty JSON array
+adds no items; arrays containing nonstrings or nested arrays are refused without
+writing. Bracket-leading text that is not valid JSON (such as `[ -f README.md ]`
+or `[ab].py`) remains a literal item. Plain items are not comma-split. `add --depends-on`
+refuses an ID not already in the working-tree store, naming the missing ID.
+Historical records with missing dependencies remain readable for scheduling and
+repair diagnostics.
+
+`place ID "Needs decision" --decision TEXT` writes a one-line `Owner decision:`
+note prefixed with today's local date (`YYYY-MM-DD: `), unless the text already
+starts with a `YYYY-MM-DD` date. Caller-supplied dates are retained. The runner
+treats a dated decision in Needs decision as an answered deferral: dependents wait
+without asking that question again in BLOCKERS.md. The note does not close the task
+or grant execution authority. `field` sets a typed header field, or any other label
+as a body note (`Held by`, `Owner decision`); it does not date arbitrary notes.
 `done ID --by WHO --reason TEXT [--evidence REF]` manually closes **any task kind**.
 It writes `closure = "manual"`, actor, UTC timestamp, reason and the optional evidence
 reference into the task record. It writes no receipt, check result or verification claim.
@@ -457,7 +477,13 @@ whole-set writes. Run it with
 The closure case in `engine/test_parallel_integrate.py` covers verified provenance,
 receipt-dependent selection and fleet display; `../tests/test_task_commands.py` covers
 manual closure across task kinds, CLI/fleet disclosure, verified dependencies and goal
-qualification. Its JSON-input case runs the documented shell command forms against files
+qualification. Its list-input cases cover equivalent repeated/JSON/mixed flags across
+all task lists (including bracket-leading shell checks and globs), nonstring-array
+refusal, unknown add dependencies and validation of
+encoded-list items. The place case checks automatic and caller-supplied dates and
+readback through the runner's status/question builder: an answered deferral removes
+its BLOCKERS.md question. These are offline fixtures, not live runner acceptance.
+Its JSON-input case runs the documented shell command forms against files
 and stdin, checks lossless scope/acceptance/body and goal-title readback, and asserts that
 backtick and command-substitution payloads never create their marker files. `tests/test_scorecard.py` covers the total/verified/manual closure split.
 `tests/test_task_migrate.py`, `tests/test_task_commands.py`, `tests/test_task_prepare.py`

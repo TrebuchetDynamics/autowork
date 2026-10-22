@@ -282,6 +282,15 @@ class _Document:
             value = self.data[key]
             if not isinstance(value, list) or any(not isinstance(v, str) or not v.strip() for v in value):
                 self.fail(f'{key} must be an array of nonempty strings', key)
+            for item in value:
+                if not item.lstrip().startswith('['):
+                    continue
+                try:
+                    parsed = json.loads(item)
+                except ValueError:
+                    continue  # Prose containing brackets is not an encoded list.
+                if isinstance(parsed, list):
+                    self.fail(f'{key} must not contain a JSON-encoded list item; use separate strings', key)
             if key == 'resources' and any(not _RESOURCE.fullmatch(v) for v in value):
                 self.fail('resources must contain resource tokens, not prose', key)
         for key in _CLOSURE_FIELDS:
