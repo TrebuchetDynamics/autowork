@@ -62,6 +62,52 @@ class GateCommandTests(unittest.TestCase):
             self.assertFalse(main_check.complete_results(text, self.repo, env['PI_AUTOWORK_MAIN_CHECK']))
         self.assertTrue((self.repo / 'attempted').is_file())  # the merged run failed; the rerun alone passed
 
+    def test_recorded_gate_results_keep_their_verdict_reasons(self):
+        """Excusing named failures must not excuse an unfinished run or a shared crash.
+
+        Receipt-shaped fixtures retain the result, isolated reruns and baseline fields
+        produced by the real gate; transient crash/completeness evidence is supplied separately.
+        """
+        green = {'code': 0, 'failures': [], 'timed_out': False, 'skips': 0, 'resource_skips': 0}
+        red = dict(green, code=1, failures=['m.T.test_red'])
+        crash = dict(green, code=139)
+        cases = [
+            ('pass', {'result': green}, (True, '')),
+            ('legacy result without skip metadata',
+             {'result': {'code': 0, 'failures': [], 'timed_out': False}}, (True, '')),
+            ('flaky excused', {'result': red, 'isolated_rerun': ['m.T.test_red']}, (True, '')),
+            ('baseline equivalent', {'result': red, 'baseline': red}, (True, '')),
+            ('new failure', {'result': red, 'baseline': green},
+             (False, 'the full check has new failures the base does not: m.T.test_red')),
+            ('partly excused', {'result': dict(red, failures=['m.T.test_flaky', 'm.T.test_red']),
+                               'isolated_rerun': ['m.T.test_flaky'], 'baseline': green},
+             (False, 'the full check has new failures the base does not: m.T.test_red')),
+            ('time limit', {'result': dict(red, timed_out=True), 'limit': 12.5},
+             (False, 'the full check ran out of time after 12.5 s')),
+            ('incomplete receipt', {'result': red, 'isolated_rerun': ['m.T.test_red'], 'incomplete': True},
+             (False, 'the full check stopped before its results were complete (exit 1); the rest never ran')),
+            ('signal after named failures', {'result': dict(red, code=137), 'isolated_rerun': ['m.T.test_red']},
+             (False, 'the full check stopped before its results were complete (exit 137); the rest never ran')),
+            ('directory timeout', {'result': dict(red, failures=['tests (timed out)']), 'baseline': red},
+             (False, 'the full check did not complete tests (timed out)')),
+            ('missing base', {'result': red, 'base_error': 'unknown revision'},
+             (False, 'the full check has no base to compare with: unknown revision')),
+            ('unfinished base', {'result': red, 'baseline': dict(red, timed_out=True)},
+             (False, 'the full check has no base to compare with: the base run did not complete')),
+            ('directory timeout on base', {'result': red,
+                                          'baseline': dict(red, failures=['tests (timed out)'])},
+             (False, 'the full check has no base to compare with: the base run did not complete')),
+            ('crash on green base', {'result': crash, 'baseline': green, 'crash': 'Segmentation fault'},
+             (False, 'the full check exits 139 where the base passes: Segmentation fault')),
+            ('crash on red base', {'result': crash, 'baseline': red, 'crash': 'Segmentation fault'},
+             (False, 'the full check exits 139 where the base runs to its test results: Segmentation fault')),
+            ('crash on base too', {'result': crash, 'baseline': crash, 'crash': 'Segmentation fault'},
+             (False, 'the full check crashed before any test result, on the base too: Segmentation fault')),
+        ]
+        for name, receipt, expected in cases:
+            with self.subTest(receipt=name):
+                self.assertEqual(worker.gate_verdict(**receipt), expected)
+
     def test_explicit_main_check_command_still_judges_its_own_log(self):
         """Main's check passes its command: a complete unittest log is provable even when the
         repository's gate check is a different command."""

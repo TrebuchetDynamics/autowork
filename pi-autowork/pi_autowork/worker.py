@@ -530,6 +530,105 @@ def run_gate(state, task, checkout, command, base_rev=None, *, evidence=None, ba
     return ok, reason
 
 
+def merged_gate_verdict(result, isolated_rerun, incomplete, limit):
+    """A verdict needing no base, or None when a base comparison is still required."""
+    if result['code'] == 0:
+        return True, ''
+    if result['timed_out']:
+        return False, f'the full check ran out of time after {limit:g} s'
+    failures = [f for f in result['failures'] if f not in isolated_rerun]
+    if result['failures'] and not failures:
+        # Named tests passing alone cannot excuse a signal or an unfinished inventory.
+        if result['code'] != 1 or incomplete:
+            return False, f'the full check stopped before its results were complete (exit {result["code"]}); the rest never ran'
+        return True, ''
+    unfinished = timed_out_failures(result['failures'])
+    if unfinished:
+        # A directory timeout is not a failure the base can excuse.
+        return False, 'the full check did not complete ' + first_ten(unfinished)
+    return None
+
+
+def incomplete_base(base):
+    """A cut-off base names only failures before its cut-off, so cannot excuse a candidate."""
+    return not conclusive(base) and bool(base.get('timed_out') or base['failures'])
+
+
+def gate_verdict(result, isolated_rerun=(), baseline=None, *, incomplete=False, limit=3600,
+                 crash='', base_error=None):
+    """Pure (ok, reason) from recorded results and reruns, with no suites or receipt writes.
+
+    Supply a baseline (or base_error) unless the merged result is decisive on its own.
+    The caller retries a nameless crash before presenting its final result here.
+    """
+    verdict = merged_gate_verdict(result, isolated_rerun, incomplete, limit)
+    if verdict is not None:
+        return verdict
+    if base_error is not None:
+        return False, f'the full check has no base to compare with: {base_error}'
+    if incomplete_base(baseline):
+        return False, 'the full check has no base to compare with: the base run did not complete'
+    if not result['failures']:
+        if baseline['code'] == 0 or baseline['failures']:
+            return False, (f'the full check exits {result["code"]} where the base '
+                           + ('passes' if baseline['code'] == 0 else 'runs to its test results') + f': {crash}')
+        return False, f'the full check crashed before any test result, on the base too: {crash}'
+    failures = [f for f in result['failures'] if f not in isolated_rerun]
+    new = failures if baseline['code'] == 0 else [f for f in failures if f not in baseline['failures']]
+    return (False, 'the full check has new failures the base does not: ' + first_ten(new)) if new else (True, '')
+
+
+def gate_reruns(state, task, checkout, log, failures, limit):
+    """Collect isolated passes and completeness evidence; an invalid rerun receipt excuses nothing."""
+    receipt = log.with_suffix('.reruns.json')
+    receipt.unlink(missing_ok=True)
+    rev = git(checkout, 'rev-parse', 'HEAD') or ''
+    check_stop()
+    gate_event(state, task, f'rerunning the {len(failures)} failure(s) alone')
+    try:
+        main_check.rerun_failures(str(log), checkout, str(receipt), rev)
+        reruns = json.loads(receipt.read_text())
+    except Exception as error:
+        print(f'pi-autowork: rerunning the failures of {task} failed: {error}', file=sys.stderr)
+        reruns = {}
+    if not isinstance(reruns, dict) or reruns.get('rev') != rev or not isinstance(reruns.get('flaky'), list):
+        reruns = {}
+    remaining = [f for f in failures if f not in (reruns.get('flaky') or [])]
+    if remaining and reruns:
+        remaining = [f for f in remaining if f not in quiet_reruns(state, task, log, checkout, rev, remaining, limit)]
+    isolated = [f for f in failures if f not in remaining]
+    gate_event(state, task, f'{len(isolated)} passed alone; {len(remaining)} still fail')
+    return isolated, reruns.get('incomplete')
+
+
+def compare_gate_base(state, task, checkout, command, base_rev, limit, log, progress, evidence):
+    """Collect the full baseline and crash evidence, then record only the original receipt fields."""
+    gate_event(state, task, 'comparing with the base (its full check, unless one is on record)')
+    try:
+        # Never compare with an affected-only green.
+        base = base_result(state, checkout, command,
+                           base_rev or git(checkout, 'rev-parse', 'HEAD^1'), limit, progress)
+        gate_event(state, task, 'base: ' + ('all tests pass' if base['code'] == 0 else f'{len(base["failures"])} failing')
+                   + (f" (main's check of {base['from_main'][:7]}, not run again)" if base.get('from_main') else ''))
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError) as error:
+        return gate_verdict(evidence['result'], evidence['isolated_rerun'], base_error=str(error))
+    merged, isolated, crash = evidence['result'], evidence['isolated_rerun'], ''
+    if not incomplete_base(base):
+        if merged['failures']:
+            failures = [f for f in merged['failures'] if f not in isolated]
+            evidence['baseline'] = base
+            evidence['baseline_equivalent'] = [f for f in failures if base['code'] != 0 and f in base['failures']]
+        else:
+            crash = main_check.crash_line(log.read_text(errors='replace'))
+            if base['code'] != 0 and not base['failures']:
+                marker = environment_marker(state, task)
+                marker.parent.mkdir(parents=True, exist_ok=True)
+                marker.write_text(json.dumps({
+                    'missing': f'a full check that runs to its test results (it crashed: {crash})',
+                    'commit': git(checkout, 'rev-parse', 'HEAD')}))
+    return gate_verdict(merged, isolated, base, crash=crash)
+
+
 def _run_gate(state, task, checkout, command, base_rev=None, *, evidence=None, baseline_command=None):
     limit = setting('PI_AUTOWORK_VALIDATE_TIMEOUT', 3600, float)
     log = gate_log(state, task)
@@ -541,86 +640,19 @@ def _run_gate(state, task, checkout, command, base_rev=None, *, evidence=None, b
     gate_event(state, task, 'merged tree: ' + ('all tests passed' if merged['code'] == 0 else
                                                f'{len(merged["failures"])} test(s) failed' if merged['failures']
                                                else f'exit {merged["code"]} before any test result'))
-    if merged['code'] == 0:
-        return True, ''
-    if merged['timed_out']:
-        return False, f'the full check ran out of time after {limit:g} s'
-    if not merged['failures']:
-        # It crashed before naming a test (TOOLSET-237-35): once more, then never a pass for want
-        # of evidence. A crash only this tree has is its own; one the base shares is the host's.
+    if merged['code'] != 0 and not merged['timed_out'] and not merged['failures']:
+        # A nameless crash gets one retry before requiring evidence from the base.
         merged = run_suite(command, checkout, limit, log, progress)
         evidence['result'] = merged
-        if merged['code'] == 0:
-            return True, ''
-        if merged['timed_out']:
-            return False, f'the full check ran out of time after {limit:g} s'
-    failures = merged['failures']
-    if failures:
-        # Rerun them alone first: when each passes, there is nothing for the base to explain, and the
-        # base suite (as long as the merged one, on nearly every review) is not run at all.
-        receipt = log.with_suffix('.reruns.json')
-        receipt.unlink(missing_ok=True)
-        rev = git(checkout, 'rev-parse', 'HEAD') or ''
-        check_stop()
-        gate_event(state, task, f'rerunning the {len(failures)} failure(s) alone')
-        try:
-            main_check.rerun_failures(str(log), checkout, str(receipt), rev)
-            reruns = json.loads(receipt.read_text())
-        except Exception as error:  # the reruns only excuse tests: without them, none is excused
-            print(f'pi-autowork: rerunning the failures of {task} failed: {error}', file=sys.stderr)
-            reruns = {}
-        if not isinstance(reruns, dict) or reruns.get('rev') != rev or not isinstance(reruns.get('flaky'), list):
-            reruns = {}
-        failures = [f for f in failures if f not in (reruns.get('flaky') or [])]
-        if failures and reruns:
-            failures = [f for f in failures if f not in quiet_reruns(state, task, log, checkout, rev, failures, limit)]
-        evidence['isolated_rerun'] = [f for f in merged['failures'] if f not in failures]
-        gate_event(state, task, f'{len(evidence["isolated_rerun"])} passed alone; {len(failures)} still fail')
-        # The coordinator's rule for main: signals and shell errors are not ordinary unittest
-        # failures, and the receipt says when the log has no complete summary.
-        if not failures and (merged['code'] != 1 or reruns.get('incomplete')):
-            # What it named passed alone, but the rest never ran, and a pass here was cached for the tree.
-            return False, f'the full check stopped before its results were complete (exit {merged["code"]}); the rest never ran'
-        if not failures:
-            return True, ''
-    # A directory check.py gave up on is not a failure the base can excuse. It reports the timeout
-    # as a failure, so with the same directory timing out on a loaded base this left nothing new
-    # to reject and the gate passed a tree whose full check never ran that directory.
-    incomplete = timed_out_failures(merged['failures'])
-    if incomplete:
-        return False, 'the full check did not complete ' + first_ten(incomplete)
-    gate_event(state, task, 'comparing with the base (its full check, unless one is on record)')
-    try:
-        # Compare with a full baseline (or its full-main receipt), never an affected-only green.
-        base = base_result(state, checkout, baseline_command or command,
-                           base_rev or git(checkout, 'rev-parse', 'HEAD^1'), limit, progress)
-        gate_event(state, task, 'base: ' + ('all tests pass' if base['code'] == 0 else f'{len(base["failures"])} failing')
-                   + (f" (main's check of {base['from_main'][:7]}, not run again)" if base.get('from_main') else ''))
-    except (OSError, ValueError, TypeError, subprocess.SubprocessError) as error:
-        # Without a base there is no verdict, and never a pass for want of evidence.
-        return False, f'the full check has no base to compare with: {error}'
-    if not conclusive(base) and (base.get('timed_out') or base['failures']):
-        # A base cut off by its time limit names only the failures before the cut-off: every later
-        # one would read as the candidate's own.
-        return False, 'the full check has no base to compare with: the base run did not complete'
-    if not merged['failures']:
-        crash = main_check.crash_line(log.read_text(errors='replace'))
-        if base['code'] == 0 or base['failures']:
-            # The base ran to its results (a red main names failures; it did not crash): the crash
-            # is this tree's own. Called a host crash, it was provisioned for instead of rejected.
-            return False, (f'the full check exits {merged["code"]} where the base '
-                           + ('passes' if base['code'] == 0 else 'runs to its test results') + f': {crash}')
-        marker = environment_marker(state, task)
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text(json.dumps({'missing': f'a full check that runs to its test results (it crashed: {crash})',
-                                      'commit': git(checkout, 'rev-parse', 'HEAD')}))
-        return False, f'the full check crashed before any test result, on the base too: {crash}'
-    new = failures if base['code'] == 0 else [f for f in failures if f not in base['failures']]
-    evidence['baseline'] = base
-    evidence['baseline_equivalent'] = [f for f in failures if f not in new]
-    if not new:
-        return True, ''
-    return False, 'the full check has new failures the base does not: ' + first_ten(new)
+    incomplete = False
+    if merged['code'] != 0 and not merged['timed_out'] and merged['failures']:
+        # If all pass alone, avoid the full base suite altogether.
+        evidence['isolated_rerun'], incomplete = gate_reruns(state, task, checkout, log, merged['failures'], limit)
+    verdict = merged_gate_verdict(merged, evidence['isolated_rerun'], incomplete, limit)
+    if verdict is not None:
+        return verdict
+    return compare_gate_base(state, task, checkout, baseline_command or command,
+                             base_rev, limit, log, progress, evidence)
 
 
 def batch_record(state, task):
@@ -974,108 +1006,123 @@ def batch_suspects(state, checkout, base, steps):
     return [task for task, _ in steps if task in suspects]
 
 
-def verify_batch(state, session, script, tasks):
-    """TOOLSET-258-07: the reported candidates merged onto the session one after another in the
-    engine's order, the full check run once on the result, and each candidate reviewed side by
-    side on its own step of that chain. Verdicts are recorded per tree; the engine then lands
-    each candidate through its usual integration, which finds its verdict when the tree matches."""
-    order, slots = batch_order(session, set(tasks))
+def merge_batch_candidates(chain, order, slots, size, skipped):
+    """Build the engine's stripped merge chain, counting only candidates that merge."""
     _, parallel_integrate, _ = engine_modules()
+    steps = []
+    for task in order:
+        if len(steps) >= size:
+            break
+        slot = slots.get(task)
+        if not slot or not slot.get('commit'):
+            skipped.append(task)
+            continue
+        try:
+            # Only integration persists the dropped proposal and slot evidence.
+            parallel_integrate.merge_candidate(chain, slot, git(chain, 'rev-parse', 'HEAD'))
+        except parallel_integrate.Hold:
+            skipped.append(task)
+            continue
+        steps.append((task, git(chain, 'rev-parse', 'HEAD')))
+    return steps
+
+
+def batch_gate(state, chain, base, steps, result):
+    """The shared review instructions, or None after printing a failed batch gate."""
+    if optimistic.enabled() and not main_check.affected_checker(str(chain), main_check.full_check(str(chain))):
+        # Optimistic batches only review; main checks the full suite after landing.
+        return json.dumps({'note': OPTIMISTIC_NOTE})
+    ok, reason = full_suite_gate(state, 'batch', str(chain), base)
+    if not ok:
+        # Attribute failing tests when possible; otherwise the coordinator halves the batch.
+        print(json.dumps(dict(result, outcome='BATCH_GATE_FAILED', reason=reason,
+                              suspects=batch_suspects(state, str(chain), base, steps))))
+        return None
+    return json.dumps({'note': gate_note(state, 'batch', str(chain)),
+                       'selection': gate_selection(state, str(chain))})
+
+
+def run_batch_reviews(state, session, script, root, steps, gate, result, running, order):
+    """Review each step side by side; leave running children visible to the caller's cleanup."""
+    limit = max(1, setting('PI_AUTOWORK_REVIEWS', 3))
+    pending = list(steps)
+    # A stop reaches only reviews already running: start no more, and let those record theirs.
+    while (pending and not pi_runtime.STOP) or running:
+        while pending and len(running) < limit and not pi_runtime.STOP:
+            task, head = pending.pop(0)
+            where = root / safe_name(task)
+            if git(session, 'worktree', 'add', '--detach', str(where), head) is None:
+                result['tasks'].remove(task)  # unreviewed: it integrates on its own
+                continue
+            child = subprocess.Popen(['bash', script, '--verify', state, task], cwd=where,
+                                     env=dict(os.environ, PI_AUTOWORK_BATCH_GATE=gate),
+                                     stdout=subprocess.DEVNULL, stderr=sys.stderr)
+            running.append((task, where, child))
+        if running:  # WNOWAIT leaves reaping to Popen
+            os.waitid(os.P_ALL, 0, os.WEXITED | os.WNOWAIT)
+        for item in [r for r in running if r[2].poll() is not None]:
+            running.remove(item)
+            task, where, child = item
+            result['passed' if child.returncode == 0 else 'held'].append(task)
+            git(session, 'worktree', 'remove', '--force', '--force', str(where))
+    for task, _ in pending:  # left by a stop: each integrates on its own
+        result['tasks'].remove(task)
+    for verdict in ('passed', 'held'):
+        result[verdict].sort(key=order.index)
+
+
+def cleanup_batch(session, root, running):
+    """Stop leftover reviews before removing the scratch worktrees they may still be using."""
+    for _, _, child in running:
+        if child.poll() is None:
+            child.kill()
+            child.wait()
+    for path in [p for p in root.iterdir() if p.is_dir()] if root.exists() else []:
+        subprocess.run(['git', '-C', session, 'worktree', 'remove', '--force', '--force', str(path)],
+                       capture_output=True)
+    shutil.rmtree(root, ignore_errors=True)
+
+
+def verify_batch(state, session, script, tasks):
+    """Gate one merged chain, then review its steps for the engine's later integration."""
+    order, slots = batch_order(session, set(tasks))
     size = max(2, setting('PI_AUTOWORK_BATCH', 6))
     drop_dead_scratch(session, review_root())
-    # A merge train's next car (PI_AUTOWORK_BATCH_ON): built on the tip of the batch still being
-    # checked, so its verdicts hold once that batch lands as checked, and need only one candidate.
+    # The next merge-train car starts on the previous batch's tip and needs just one candidate.
     on = os.environ.get('PI_AUTOWORK_BATCH_ON') or ''
     base = git(session, 'rev-parse', '--verify', '-q', on + '^{commit}') if on else git(session, 'rev-parse', 'HEAD')
     fewest = 1 if on else 2
-    # `aw-b-<pid>-*`, so drop_dead_scratch sweeps a killed batch's chain as it does a review's.
     root = Path(tempfile.mkdtemp(prefix=f'aw-b-{os.getpid()}-', dir=review_root()))
     chain = root / 'chain'
-    steps, skipped, running = [], [], []
+    skipped, running = [], []
     result = {'outcome': 'BATCH', 'tasks': [], 'skipped': skipped, 'passed': [], 'held': []}
     try:
         if not base or git(session, 'worktree', 'add', '--detach', str(chain), base) is None:
             print(json.dumps(dict(result, reason=f'the batch chain could not be created in {root}')))
             return 0
-        for task in order:
-            if len(steps) >= size:  # counted after conflicts, so a conflict does not shrink the batch
-                break
-            slot = slots.get(task)
-            if not slot or not slot.get('commit'):
-                skipped.append(task)
-                continue
-            try:
-                # Check and review exactly the stripped tree the engine will integrate.
-                # Only integration persists the dropped proposal and slot evidence.
-                parallel_integrate.merge_candidate(chain, slot, git(chain, 'rev-parse', 'HEAD'))
-            except parallel_integrate.Hold:
-                skipped.append(task)
-                continue
-            steps.append((task, git(chain, 'rev-parse', 'HEAD')))
+        steps = merge_batch_candidates(chain, order, slots, size, skipped)
         result['tasks'] = [t for t, _ in steps]
         if len(steps) < fewest:
             print(json.dumps(dict(result, reason='fewer than two candidates merge together' if fewest == 2
                                   else 'no candidate merges onto the batch ahead')))
             return 0
         if os.environ.get('PI_AUTOWORK_BATCH_TIP'):
-            # Published before the long check, so the next car can start beside it.
+            # Publish before the long check, so the next car can start beside it.
             Path(os.environ['PI_AUTOWORK_BATCH_TIP']).write_text(
                 json.dumps({'tip': steps[-1][1], 'tasks': result['tasks']}) + '\n')
         os.environ['TMPDIR'] = str(root)
         lease = review_port_lease()  # held until this process exits
-        if optimistic.enabled() and not main_check.affected_checker(str(chain), main_check.full_check(str(chain))):
-            # Optimistic landing (TOOLSET-334-f9): no full suite before landing, so a batch is just
-            # its candidates' reviews side by side; main's full check runs after they land.
-            gate = json.dumps({'note': OPTIMISTIC_NOTE})
-        else:
-            ok, reason = full_suite_gate(state, 'batch', str(chain), base)
-            if not ok:
-                # The candidates the failing tests point at, when they all do; else the batch is halved.
-                print(json.dumps(dict(result, outcome='BATCH_GATE_FAILED', reason=reason,
-                                      suspects=batch_suspects(state, str(chain), base, steps))))
-                return 0
-            # The same note a single review gets, with any failures the gate excused.
-            gate = json.dumps({'note': gate_note(state, 'batch', str(chain)),
-                               'selection': gate_selection(state, str(chain))})
-        limit = max(1, setting('PI_AUTOWORK_REVIEWS', 3))
-        pending = list(steps)
-        # A stop reaches only the reviews already running: start no more, and let those record theirs.
-        while (pending and not pi_runtime.STOP) or running:
-            while pending and len(running) < limit and not pi_runtime.STOP:
-                task, head = pending.pop(0)
-                where = root / safe_name(task)
-                if git(session, 'worktree', 'add', '--detach', str(where), head) is None:
-                    result['tasks'].remove(task)  # unreviewed: it integrates on its own
-                    continue
-                child = subprocess.Popen(['bash', script, '--verify', state, task], cwd=where,
-                                         env=dict(os.environ, PI_AUTOWORK_BATCH_GATE=gate),
-                                         stdout=subprocess.DEVNULL, stderr=sys.stderr)
-                running.append((task, where, child))
-            if running:  # until a review exits; WNOWAIT leaves reaping to its Popen
-                os.waitid(os.P_ALL, 0, os.WEXITED | os.WNOWAIT)
-            for item in [r for r in running if r[2].poll() is not None]:
-                running.remove(item)
-                task, where, child = item
-                result['passed' if child.returncode == 0 else 'held'].append(task)
-                git(session, 'worktree', 'remove', '--force', '--force', str(where))
-        for task, _ in pending:  # left by a stop: unreviewed, so each integrates on its own
-            result['tasks'].remove(task)
-        for verdict in ('passed', 'held'):  # in batch order, not the order reviews exited
-            result[verdict].sort(key=order.index)
+        gate = batch_gate(state, chain, base, steps, result)
+        if gate is None:
+            return 0
+        run_batch_reviews(state, session, script, root, steps, gate, result, running, order)
         print(json.dumps(result))
         return 0
     except main_check.Stopped:
         print('pi-autowork: the batch stopped', file=sys.stderr)
         return 1
     finally:
-        for _, _, child in running:  # an error mid-batch left reviews running in removed worktrees
-            if child.poll() is None:
-                child.kill()
-                child.wait()
-        for path in [p for p in root.iterdir() if p.is_dir()] if root.exists() else []:
-            subprocess.run(['git', '-C', session, 'worktree', 'remove', '--force', '--force', str(path)],
-                           capture_output=True)
-        shutil.rmtree(root, ignore_errors=True)
+        cleanup_batch(session, root, running)
 
 
 OPTIMISTIC_NOTE = ('The runner did not run the full test suite before this review (optimistic landing): it lands '
@@ -1086,9 +1133,65 @@ OPTIMISTIC_NOTE = ('The runner did not run the full test suite before this revie
                    'repository\'s AGENTS.md names a tool that selects the tests a change affects, use it.')
 
 
+def gate_inventory_complete(record, tree):
+    """Legacy aggregate caches are admissible, but cannot establish an all-green inventory."""
+    result = record.get('result')
+    return (record.get('tree') == tree and bool(record.get('commit')) and isinstance(result, dict)
+            and isinstance(result.get('failures'), list)
+            and all(isinstance(f, str) for f in result['failures'])
+            and type(result.get('code')) is int
+            and type(result.get('timed_out')) is bool
+            and type(result.get('resource_skips')) is int
+            and (result.get('skips') is None or type(result['skips']) is int))
+
+
+def gate_result_outcome(record, log, fallback):
+    """Prompt outcome from validated inventory and whether its producing log is available."""
+    result = record['result']
+    named = result['failures']
+    baseline, isolated = record.get('baseline_equivalent'), record.get('isolated_rerun')
+    classified = (isinstance(baseline, list) and isinstance(isolated, list)
+                  and all(isinstance(f, str) for f in baseline + isolated)
+                  and set(named) == set(baseline + isolated))
+    if record.get('ok') is not True or result['timed_out']:
+        return fallback
+    if result['code'] == 0 and not named and log and type(result.get('skips')) is int:
+        return ('accepted with skipped tests' if result['skips'] or result['resource_skips']
+                else 'it passed (all-green recorded result)')
+    if result['code'] != 0 and named and classified:
+        outcome = 'accepted under exception policy'
+        if baseline:
+            outcome += '; baseline-equivalent failures: ' + first_ten(baseline)
+        if isolated:
+            outcome += '; isolated-rerun passes: ' + first_ten(isolated)
+        if not log:
+            outcome += '; log detail unavailable'
+        return outcome
+    return fallback
+
+
+def gate_inventory_reference(result):
+    """The producing suite's inventory, not a claim that exception acceptance was all-green."""
+    named = result['failures']
+    return (f'; original inventory: exit {result["code"]}; failures: '
+            + (first_ten(named) if named else 'none recorded')
+            + f'; unittest skips: {result.get("skips") if result.get("skips") is not None else "unavailable (unsupported inventory)"}'
+            + f'; resource-gate skips: {result["resource_skips"]}')
+
+
+def build_gate_note(command, tree, outcome, reference, selection):
+    """Render review instructions without reading or validating receipts."""
+    if isinstance(selection, dict) and selection.get('full') is False:
+        return (f' The runner checked affected modules only (`{command}`) for tree `{tree}`: {outcome}. '
+                f'{reference}. This is not full-suite qualification: main runs the full suite after '
+                'landing and attributes regressions to the landed task. Read the producing evidence '
+                'instead of repeating the selection. Run task-specific checks outside that selection, '
+                'but do not expand to the full suite or whole test directories.')
+    return GATE.format(command=command, tree=tree, outcome=outcome, evidence=reference)
+
+
 def gate_note(state, task, checkout):
-    """What the review prompt says about the runner's full check, so the reviewer judges from
-    that run instead of repeating it (TOOLSET-227-a8); '' without a full check."""
+    """Explain the runner's recorded gate instead of asking the reviewer to repeat it."""
     command = main_check.full_check(checkout)
     if not command:
         return ''
@@ -1108,51 +1211,17 @@ def gate_note(state, task, checkout):
         if isinstance(selection, dict):
             scope = 'full suite' if selection.get('full') else 'affected modules only'
             reference += f'; checked selection: {scope}: ' + ', '.join(selection.get('tests') or [])
-        result = record.get('result')
-        # Legacy aggregate caches remain admissible, but neither an old task log nor the
-        # absence of parsed failure names establishes an all-green inventory.
-        if (record.get('tree') != tree or not record.get('commit') or not isinstance(result, dict)
-                or not isinstance(result.get('failures'), list)
-                or any(not isinstance(f, str) for f in result['failures'])
-                or type(result.get('code')) is not int
-                or type(result.get('timed_out')) is not bool
-                or type(result.get('resource_skips')) is not int
-                or (result.get('skips') is not None and type(result['skips']) is not int)):
+        if not gate_inventory_complete(record, tree):
             reference += '; original inventory and log detail unavailable (legacy or incomplete metadata)'
         else:
             reference += f'; producer commit: {record["commit"]}'
             log = producing_gate_log(state, record)
             reference += f'; producing log: {log}' if log else '; producing log unavailable (missing, unreadable or mismatched)'
-            named = result['failures']
-            baseline, isolated = record.get('baseline_equivalent'), record.get('isolated_rerun')
-            classified = (isinstance(baseline, list) and isinstance(isolated, list)
-                          and all(isinstance(f, str) for f in baseline + isolated)
-                          and set(named) == set(baseline + isolated))
-            if record.get('ok') is True and not result['timed_out']:
-                if result['code'] == 0 and not named and log and type(result.get('skips')) is int:
-                    outcome = ('accepted with skipped tests' if result['skips'] or result['resource_skips']
-                               else 'it passed (all-green recorded result)')
-                elif result['code'] != 0 and named and classified:
-                    outcome = 'accepted under exception policy'
-                    if baseline:
-                        outcome += '; baseline-equivalent failures: ' + first_ten(baseline)
-                    if isolated:
-                        outcome += '; isolated-rerun passes: ' + first_ten(isolated)
-                    if not log:
-                        outcome += '; log detail unavailable'
-            reference += (f'; original inventory: exit {result["code"]}; failures: '
-                          + (first_ten(named) if named else 'none recorded')
-                          + f'; unittest skips: {result.get("skips") if result.get("skips") is not None else "unavailable (unsupported inventory)"}'
-                          + f'; resource-gate skips: {result["resource_skips"]}')
+            outcome = gate_result_outcome(record, log, outcome)
+            reference += gate_inventory_reference(record['result'])
     except (OSError, ValueError, AttributeError, TypeError):
         pass
-    if isinstance(selection, dict) and selection.get('full') is False:
-        return (f' The runner checked affected modules only (`{command}`) for tree `{tree}`: {outcome}. '
-                f'{reference}. This is not full-suite qualification: main runs the full suite after '
-                'landing and attributes regressions to the landed task. Read the producing evidence '
-                'instead of repeating the selection. Run task-specific checks outside that selection, '
-                'but do not expand to the full suite or whole test directories.')
-    return GATE.format(command=command, tree=tree, outcome=outcome, evidence=reference)
+    return build_gate_note(command, tree, outcome, reference, selection)
 
 
 def review(state, task, checkout, head_before, gate=''):
