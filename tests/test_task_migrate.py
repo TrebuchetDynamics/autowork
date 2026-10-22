@@ -67,6 +67,7 @@ class MigrateTests(unittest.TestCase):
         self.assertFalse((self.repo / 'TODO.md').exists())
         self.assertFalse((self.repo / 'goals.json').exists())
         self.assertTrue((self.repo / 'TODO.archive.md').exists())
+        self.assertFalse((self.repo / 'CHECKLIST.md').exists(), 'a plain queue needs no snapshot')
         self.assertIn('autowork migrate', self.git('log', '-1', '--format=%s'))
         store = TaskStore.at(self.repo, 'HEAD')
         t = store.tasks
@@ -87,6 +88,141 @@ class MigrateTests(unittest.TestCase):
         self.assertEqual(self.migrate().returncode, 1, 'a converted repository is refused')
         # Only the durable conversion belongs in the object database, never its proof.
         self.assertEqual(self.git('fsck', '--unreachable', '--no-reflogs'), '')
+
+    def test_conversion_requires_acceptance_of_tracked_consumers(self):
+        (self.repo / 'Makefile').write_text('check:\n\tcat TODO.md\n')
+        (self.repo / 'test_queue.py').write_text('open("TODO.md").read()\n')
+        (self.repo / 'hook').write_text('cat goals.json\n')
+        self.commit()
+        objects = self.git('count-objects', '-v')
+        dry = self.migrate('--dry-run')
+        self.assertEqual(dry.returncode, 0, dry.stderr)
+        hits = json.loads(dry.stdout)['consumers']
+        self.assertEqual([(h['path'], h['line'], h['names']) for h in hits],
+                         [('Makefile', 2, ['TODO.md']), ('hook', 1, ['goals.json']),
+                          ('test_queue.py', 1, ['TODO.md'])])
+        self.assertEqual(self.git('count-objects', '-v'), objects, 'dry run persists no proof objects')
+        refused = self.migrate()
+        self.assertEqual(refused.returncode, 1)
+        for name in ('Makefile:2', 'test_queue.py:1', 'hook:1', '--accept-consumers'):
+            self.assertIn(name, refused.stderr)
+        self.assertTrue((self.repo / 'TODO.md').exists())
+        self.assertFalse((self.repo / 'tasks').exists())
+        staged = self.migrate('--accept-consumers', '--no-commit')
+        self.assertEqual(staged.returncode, 0, staged.stderr)
+        self.assertEqual(json.loads(staged.stdout)['outcome'], 'STAGED')
+        self.assertEqual(self.migrate().returncode, 1, 'resume also requires explicit consumer acceptance')
+        accepted = self.migrate('--accept-consumers')
+        self.assertEqual(accepted.returncode, 0, accepted.stderr)
+        self.assertEqual(json.loads(accepted.stdout)['consumers'], hits)
+
+    def test_uncommitted_repairs_do_not_hide_retained_consumers(self):
+        # Discarded staging must not hide a newer HEAD behind its stale candidate.
+        self.assertEqual(self.migrate('--no-commit').returncode, 0)
+        self.git('restore', '--source=HEAD', '--staged', '--worktree', '--', '.')
+        (self.repo / 'Makefile').write_text('check:\n\tcat TODO.md\n')
+        self.commit()
+        for repair in ('check:\n\ttrue\n', None):
+            with self.subTest(repair=repair):
+                if repair is None:
+                    (self.repo / 'Makefile').unlink()
+                else:
+                    (self.repo / 'Makefile').write_text(repair)
+                dry = self.migrate('--dry-run')
+                self.assertEqual(dry.returncode, 0, dry.stderr)
+                self.assertEqual([h['path'] for h in json.loads(dry.stdout)['consumers']], ['Makefile'])
+                self.assertIn('Makefile:2', self.migrate().stderr)
+        self.commit()
+        self.assertEqual(self.migrate().returncode, 0, 'a committed repair is safe')
+
+    def test_resumed_conversion_rechecks_new_consumers(self):
+        self.assertEqual(self.migrate('--no-commit').returncode, 0)
+        (self.repo / 'Makefile').write_text('check:\n\tcat TODO.md\n')
+        self.git('add', 'Makefile')
+        head = self.git('rev-parse', 'HEAD')
+        checked = subprocess.run([sys.executable, str(COMMAND), 'tasks', 'prepare', str(self.repo), '--check'],
+                                 capture_output=True, text=True, timeout=120)
+        self.assertEqual(json.loads(checked.stdout)['outcome'], 'MIGRATION_BLOCKED')
+        refused = self.migrate()
+        self.assertEqual(refused.returncode, 1)
+        self.assertIn('Makefile:2', refused.stderr)
+        self.assertEqual(self.git('rev-parse', 'HEAD'), head)
+        accepted = self.migrate('--accept-consumers')
+        self.assertEqual(accepted.returncode, 0, accepted.stderr)
+        self.assertEqual([h['path'] for h in json.loads(accepted.stdout)['consumers']], ['Makefile'])
+
+    def test_documentation_mentions_do_not_block_conversion(self):
+        (self.repo / 'README.md').write_text('See TODO.md and goals.json.\n')
+        self.commit()
+        result = self.migrate()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report['consumers'], [])
+        self.assertEqual(report['documentation_drift'],
+                         [dict(path='README.md', line=1, names=['TODO.md', 'goals.json'])])
+
+    def test_checklist_and_backlog_survive_with_source_line_numbers(self):
+        prefix = '# Product checklist\r\n\r\n- [x] MVP accepted — café\r\nOwner answers: keep\u2028this.\r\n\r\n'
+        queue = (self.repo / 'TODO.md').read_text()
+        tail = '## Backlog (not ready)\r\n\r\n- Better onboarding\r\n- [ ] Explore export\r\n'
+        coverage = '<!-- goals:coverage:begin -->\r\nGenerated table\r\n<!-- goals:coverage:end -->\r\n'
+        source = (prefix + queue + tail + coverage).encode()
+        (self.repo / 'TODO.md').write_bytes(source)
+        self.commit()
+        objects = self.git('count-objects', '-v')
+        dry = self.migrate('--dry-run')
+        self.assertEqual(dry.returncode, 0, dry.stderr)
+        kept = json.loads(dry.stdout)['preserved']
+        self.assertEqual(kept['path'], 'CHECKLIST.md')
+        self.assertIn([1, 4], kept['line_ranges'])
+        tail_start = 6 + queue.count('\n')
+        self.assertIn([tail_start, tail_start + 3], kept['line_ranges'])
+        self.assertEqual(self.git('count-objects', '-v'), objects)
+        self.assertFalse((self.repo / 'CHECKLIST.md').exists())
+        (self.repo / 'CHECKLIST.md').write_text('existing document\n')
+        self.commit()
+        refused = self.migrate()
+        self.assertEqual(refused.returncode, 1)
+        self.assertIn('CHECKLIST.md', refused.stderr)
+        self.assertIn('1-4', refused.stderr)
+        self.assertEqual((self.repo / 'CHECKLIST.md').read_text(), 'existing document\n')
+        (self.repo / 'CHECKLIST.md').unlink()
+        self.commit()
+        staged = self.migrate('--no-commit')
+        self.assertEqual(staged.returncode, 0, staged.stderr)
+        self.assertEqual((self.repo / 'CHECKLIST.md').read_bytes(), (prefix + queue + tail + '\r\n' * 3).encode())
+        self.assertEqual(self.git('rev-parse', ':CHECKLIST.md'), self.git('hash-object', 'CHECKLIST.md'))
+        resumed = self.migrate()
+        self.assertEqual(resumed.returncode, 0, resumed.stderr)
+        self.assertEqual(json.loads(resumed.stdout)['preserved']['path'], 'CHECKLIST.md')
+        self.assertEqual(self.git('status', '--porcelain'), '')
+
+    def test_task_annotations_and_continuations_are_not_silently_discarded(self):
+        original = (self.repo / 'TODO.md').read_text()
+        changes = (
+            ('- Goal: G2\n', '- Goal: G2\n  <!-- owner evidence: exact  bytes\tremain -->\n'),
+            ('- Scope: change it\n', '- Scope: change it\n  and preserve this continuation\n'),
+            ('- Acceptance: it works\n', '- Acceptance: it works\r  Owner answers: keep  exact\tbytes\n'),
+            ('- Dependencies: None.\n', '- Dependencies: None for this slice; Owner answer: exact\t  evidence\n'),
+            ('- Checks: python3 -m unittest\n', '- Checks: python3 -m unittest\n- Verification: test -s report.txt\n'),
+        )
+        for before, after in changes:
+            with self.subTest(annotation=after):
+                (self.repo / 'TODO.md').write_text(original.replace(before, after, 1))
+                self.commit()
+                dry = self.migrate('--dry-run')
+                self.assertEqual(dry.returncode, 0, dry.stderr)
+                self.assertIn('preserved', json.loads(dry.stdout))
+        text = original
+        for before, after in changes:
+            text = text.replace(before, after, 1)
+        (self.repo / 'TODO.md').write_text(text)
+        self.commit()
+        result = self.migrate()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.repo / 'CHECKLIST.md').read_bytes(), text.encode())
+        store = TaskStore.at(self.repo, 'HEAD')
+        self.assertEqual(store.tasks['T-002'].scope, 'change it\n  and preserve this continuation')
 
     def test_migration_refuses_unsafe_states(self):
         common = self.repo / '.git/autowork-execution'

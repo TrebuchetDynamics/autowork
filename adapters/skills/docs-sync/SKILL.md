@@ -18,8 +18,8 @@ architecture/spec, test plan, runbook and changelog as applicable; add condition
 roles only when useful. Fix supported doc issues now.
 
 Before task work, run `autowork capabilities`: it must succeed, list `tasks` with
-`prepare`, and report `prepare_api` 2 or higher. If not, the installed CLI is older
-than this skill: report `TOOLCHAIN_MISMATCH` (executable, what is missing, fix:
+`prepare`, and report `prepare_api` 4 or higher (consumer/content-safe conversion).
+If not, the installed CLI is older than this skill: report `TOOLCHAIN_MISMATCH` (executable, what is missing, fix:
 `autowork update` when the owner allows installing, then reload the host), keep to
 document work, and never fall back to editing TODO.md or goals.json.
 
@@ -40,6 +40,20 @@ from its `accepted` headings only, else report the missing intent and create no
 queue), and its `diagnostics` name defects with the `autowork tasks` command that
 repairs each: repair only from accepted evidence, never grant ownership, `live` or
 resources, never close work to silence one, and leave `IN_FLIGHT` contracts alone.
+
+Before conversion, inspect `consumers`, `documentation_drift` and `preserved`. Tracked
+build/CI/hook/source/test references to TODO.md or goals.json block conversion;
+documentation mentions are nonblocking drift. The inventory also checks the retained Git
+snapshot, so commit authorized consumer repairs first; uncommitted repairs are not in the
+conversion commit. Repair consumer code only within authorized repository scope. Run `autowork migrate --accept-consumers <consumer>` only with explicit
+acceptance of the reported consumers; neither Maintain nor `force` implies acceptance.
+Resuming also requires the flag while consumers remain. Otherwise report the files/lines and continue independent docs work. Never recreate the
+legacy inputs to silence checks. Extra TODO content is preserved in `CHECKLIST.md` with
+source bytes and line numbers retained (generated coverage blanked); read back the
+reported inclusive `line_ranges` and reconcile into existing document owners without
+losing the snapshot. Destination collisions refuse rather than overwrite. After conversion,
+`LEGACY_CONSUMER` and `LEGACY_DOCUMENTATION` diagnostics identify remaining references;
+repair those files from evidence within scope, not through task-field edits.
 
 Turn remaining accepted gaps into goals and tasks in `tasks/`, the repository's only
 task store, through `autowork tasks`: `goal ID --title --source path#anchor
