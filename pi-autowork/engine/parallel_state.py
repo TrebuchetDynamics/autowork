@@ -651,11 +651,16 @@ def merge_adoption(repo, slot):
 
 
 def exhausted(slot):
-    """A held slot no fresh attempt should replace; a resolver can still adopt its commit."""
+    """A held slot no fresh attempt should replace; a resolver can still adopt its commit.
+
+    A report hold whose report-only resume was already used is not exhausted: the resume is
+    spent (recover_reports and the coordinator never offer it twice), but the attempt budget
+    is not. Counting it exhausted left a first attempt held for 14 hours with no retry and,
+    since a report hold is an engine recovery, no owner question either (2026-10-21).
+    """
     return (slot['state'] == 'held' and (slot.get('waits_for') or slot['attempt'] >= 2
             or slot.get('cause') in NEEDS_PERSON
             or slot.get('cause') in ('reviewed_twice', 'no_change', 'timeout')
-            or (slot.get('cause') == 'report' and slot.get('report_resume_attempt') == slot['attempt'])
             or (slot.get('cause') == 'conflict' and bool(slot.get('merged_base'))))
             and not readoptable(slot))
 

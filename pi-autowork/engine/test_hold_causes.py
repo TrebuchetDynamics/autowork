@@ -70,6 +70,29 @@ class HoldCausesTests(unittest.TestCase):
         state.transition(fx.repo, fx.owner, 'A', 'held', cause='empty', reason='retry made no change')
         self.assertEqual(fx.module().retry_held(fx.retry_args())['outcome'], 'IDLE')
 
+    def test_a_report_hold_after_its_resume_was_used_gets_a_fresh_attempt(self):
+        """A pilot (2026-10-21) wrote no report, was resumed report-only, then reported a failed check:
+        held with cause 'report' and the resume already used, the slot counted as exhausted (no fresh
+        retry) while the failure policy called it an engine recovery (no owner question): held for
+        14 hours with nothing acting on it. A used resume ends the resume, not the attempt budget."""
+        fx = self.fixture()
+        root, commit = fx.worker()
+        report = dispatch.data_dir(fx.common, state.slots(fx.common)[0]) / 'report.json'
+        execution.save(report, dict(execution.read(report), commit='0' * 40))  # names another commit
+        state.transition(fx.repo, fx.owner, 'A', 'held', cause='report',
+                         reason='report.json does not match worker commit/files or reports failure: a check did not pass')
+        path = state.slot_path(fx.common, 'A')
+        execution.save(path, dict(state.slots(fx.common)[0], report_resume_attempt=1))
+        held = state.slots(fx.common)[0]
+        self.assertFalse(state.exhausted(held), held)
+        args = fx.retry_args()
+        args.worker_command = '["true"]'
+        with patch.object(dispatch, 'resource_gate', return_value=''), patch.object(dispatch, 'launch', return_value=None):
+            result = fx.module().retry_held(args)
+        self.assertEqual(result['outcome'], 'RETRIED', result)
+        saved = fx.module().slot_for(fx.common, 'A')
+        self.assertEqual((saved['state'], saved['attempt']), ('running', 2))
+
     def test_each_cause_follows_its_rule(self):
         # Literal policies and observable effects: a wrong dispatch branch must fail,
         # not merely an assertion that repeats the table under test.

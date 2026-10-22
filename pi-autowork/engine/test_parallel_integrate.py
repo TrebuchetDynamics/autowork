@@ -584,7 +584,12 @@ class IntegrationTests(unittest.TestCase):
         files = [self.repo / name for name in ('tasks/items/A.md', 'tasks/evidence/A.toml')]
         before = [f.read_bytes() if f.exists() else None for f in files]
         from unittest.mock import patch
-        with patch.object(module.state, 'change', side_effect=ValueError('fixture failure after the writes')):
+        replace = module.os.replace
+        def fail_after_first_write(source, target):
+            replace(source, target)
+            if Path(target).name == 'A.toml':
+                raise ValueError('fixture failure after the writes')
+        with patch.object(module.os, 'replace', side_effect=fail_after_first_write):
             with self.assertRaisesRegex(ValueError, 'fixture failure'):
                 module.close(self.repo, self.owner, 'A')
         self.assertEqual([f.read_bytes() if f.exists() else None for f in files], before)
@@ -853,6 +858,9 @@ finally:
         result = module.close(self.repo, self.owner, 'A')
         self.assertEqual(result['outcome'], 'CLOSED', result)
         self.assertEqual(result['files'], ['tasks/evidence/A.toml', 'tasks/items/A.md'])
+        self.assertEqual(state.slots(self.common)[0]['state'], 'integrated')
+        self.assertTrue(root.exists())
+        self.close_committed()
         self.assertFalse(root.exists())
         self.assertFalse(self.git('branch', '--list', 'autowork/A'))
         self.assertIn('status = "done"', self.task_text('A'))
@@ -1148,7 +1156,7 @@ finally:
             (temps[task] / 'fixture').write_text(task)
         self.assertNotEqual(temps['A'], temps['B'])
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
-        self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
+        self.assertEqual(self.close_committed()['outcome'], 'CLOSED')
         self.assertFalse(temps['A'].exists())
         self.assertEqual((temps['B'] / 'fixture').read_text(), 'B')
         # Repeating close must not delete another task's allocation at the old path.
@@ -1287,7 +1295,16 @@ finally:
         result = module.close(self.repo, self.owner, 'A')
         self.assertEqual((result['outcome'], result['live_followup']), ('CLOSED', 'A-LIVE'))
         self.assertIn('tasks/items/A-LIVE.md', result['files'])
+        self.assertTrue(self.task_text('A-LIVE').endswith('+++\n'))
+        # A partial commit must not retire the slot before its receipt and live task land.
+        self.git('add', 'tasks/items/A.md')
+        self.git('commit', '-qm', 'interrupted partial close')
+        remaining = module.close(self.repo, self.owner, 'A')
+        self.assertEqual(remaining['files'], ['tasks/evidence/A.toml', 'tasks/items/A-LIVE.md'])
+        self.assertEqual(state.slots(self.common)[0]['state'], 'integrated')
+        self.assertFalse(remaining['cleaned'])
         self.git('add', *result['files'])
+        self.git('diff', '--cached', '--check')
         self.git('commit', '-qm', 'close A')
         live = self.record('A-LIVE')
         self.assertEqual((live.section, live.status, live.depends_on, live.ownership.value),
@@ -1302,11 +1319,6 @@ finally:
         self.report(pending_live=['Production smoke test'])
         module = self.module()
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
-        from unittest.mock import patch
-        with patch.object(module.state, 'change', side_effect=ValueError('injected failure')), \
-                self.assertRaises(ValueError):
-            module.close(self.repo, self.owner, 'A')
-        self.assertFalse((self.repo / 'tasks/items/A-LIVE.md').exists())
         first = module.close(self.repo, self.owner, 'A')
         self.assertEqual(first['outcome'], 'CLOSED')
         again = module.close(self.repo, self.owner, 'A')  # a replay before the commit
@@ -1939,7 +1951,7 @@ finally:
         self.worker()
         module = self.module()
         module.integrate(self.repo, self.owner, 'A', ['true'], 10)
-        module.close(self.repo, self.owner, 'A')
+        self.close_committed()
         self.set_todo(self.todo.replace('Touches: B.txt', 'Touches: A.txt'))
         self.baseline = self.git('rev-parse', 'HEAD')
         self.worker('B', {'A.txt': 'followup\n'})
@@ -2448,6 +2460,9 @@ Path('untracked.pyo').unlink()
         root, commit = self.worker()
         module = self.module()
         module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        prepared = module.close(self.repo, self.owner, 'A')
+        self.git('add', '--', *prepared['files'])
+        self.git('commit', '-qm', 'close A')
         original = module.git
         from unittest.mock import patch
         def fail(repo, *argv, **options):
@@ -2480,6 +2495,7 @@ Path('untracked.pyo').unlink()
         module = self.module()
         module.integrate(self.repo, self.owner, 'A', ['true'], 10)
         (root / 'notes').write_text('keep')
+        self.close_committed()
         self.assertFalse(module.close(self.repo, self.owner, 'A')['cleaned'])
         (root / 'notes').unlink()
         (root / 'A.txt').write_text('new unlanded work')
@@ -2494,6 +2510,7 @@ Path('untracked.pyo').unlink()
         root, commit = self.worker()
         (root / 'notes').write_text('uncommitted diagnosis')
         self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.close_committed()
         self.assertFalse(self.module().close(self.repo, self.owner, 'A')['cleaned'])
         self.assertTrue(root.exists())
         self.assertEqual(self.git('rev-parse', 'autowork/A'), commit)
@@ -2898,6 +2915,7 @@ sys.exit(1)
         if result['files']:
             self.git('add', '--', *result['files'])
             self.git('commit', '-qm', f'docs(tasks): close {task}')
+        self.module().close(self.repo, self.owner, task)  # finalize only the committed closure
         return result
 
     def test_closure_is_one_commit(self):

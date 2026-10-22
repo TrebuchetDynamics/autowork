@@ -143,6 +143,7 @@ class ABCWorkload:
                     closure = self.cli('--parallel-close', task, '--owner-pid', str(os.getpid()))
                     self.git('add', *closure['files'])
                     self.git('commit', '-qm', 'close ' + task)
+                    self.cli('--parallel-close', task, '--owner-pid', str(os.getpid()))
                     closed.append(task)
             if len(closed) < 3:
                 answers.append(self.dispatch())
