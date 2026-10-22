@@ -8,6 +8,7 @@ of polling quietly (four runners idled for seven hours on 2026-10-16).
     health.py update STATE_DIR < snapshot.json   # prints an announcement or nothing
     health.py fleet STATE_ROOT                   # one line per runner
 """
+import hashlib
 import json
 import os
 import re
@@ -143,6 +144,62 @@ def write_status(path, value):
     tmp = path.with_suffix('.tmp')
     tmp.write_text(json.dumps(value, indent=2) + '\n')
     os.replace(tmp, path)
+
+
+def state_directory(state_root, repo, git_common=None):
+    """Use the normal repository key, or recover it when Git cannot be read."""
+    normal = Path(state_root) / hashlib.sha256((git_common or str(repo)).encode()).hexdigest()[:16]
+    if normal.is_dir():
+        return normal
+    for folder in Path(state_root).glob('*/'):
+        for name in ('status.json', 'runner.json'):
+            try:
+                if json.loads((folder / name).read_text()).get('repo') == str(repo):
+                    return folder
+            except (OSError, ValueError, AttributeError):
+                pass
+    return normal
+
+
+def setup_stop(state_dir):
+    try:
+        runner = json.loads((Path(state_dir) / 'runner.json').read_text())
+    except (OSError, ValueError):
+        runner = {}
+    if _alive(runner.get('pid')):
+        return None
+    try:
+        return json.loads((Path(state_dir) / 'status.json').read_text()).get('stop_reason')
+    except (OSError, ValueError):
+        return None
+
+
+def record_setup_stop(state_dir, repo, reason):
+    """Persist an early refusal outside the repository, without hiding a live runner."""
+    path = Path(state_dir)
+    try:
+        runner = json.loads((path / 'runner.json').read_text())
+    except (OSError, ValueError):
+        runner = {}
+    if _alive(runner.get('pid')):
+        return
+    now = time.time()
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        write_status(path / 'status.json', dict(schema=SCHEMA, repo=str(repo), updated_at=now, since=now,
+                     state='not running', stop_reason=reason, blocker=reason, active_workers=0, waiting=0,
+                     roots=[dict(id=reason, kind='runner', blocks=0)]))
+    except OSError as error:
+        print(f'pi-autowork: Cannot record setup stop in {path}: {error}', file=sys.stderr)
+
+
+def clear_setup_stop(state_dir):
+    path = Path(state_dir) / 'status.json'
+    try:
+        if json.loads(path.read_text()).get('stop_reason'):
+            path.unlink()
+    except (OSError, ValueError):
+        pass
 
 
 def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTER):
@@ -310,7 +367,8 @@ def fleet(state_root, *, now=None, service=_service):
                          waiting=status.get('waiting', 0), roots=status.get('roots', []),
                          stopped=status.get('stopped', 0), stopped_groups=status.get('stopped_groups', []),
                          held=status.get('held', []), waiting_groups=status.get('waiting_groups', []),
-                         blocker=error or status.get('blocker', ''), updated_at=status.get('updated_at'),
+                         blocker=error or status.get('blocker', ''), stop_reason=status.get('stop_reason', ''),
+                         updated_at=status.get('updated_at'),
                          snapshot_at=status.get('snapshot_at', status.get('updated_at')),
                          snapshot_age_seconds=max(0, now - status['snapshot_at'])
                          if status.get('snapshot_at') is not None else None,

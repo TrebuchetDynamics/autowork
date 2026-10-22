@@ -8,7 +8,6 @@ engine always come from one release.
 """
 import fcntl
 import glob
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -19,7 +18,7 @@ import sys
 from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pi_autowork import health, main_check, pi_runtime, service, worker  # noqa: E402
+from pi_autowork import health, main_check, pi_runtime, release, service, worker  # noqa: E402
 from pi_autowork.common import LOG, die, dirty, git, git_ok, lifecycle, model_of, provider_of, push_guard  # noqa: E402
 from pi_autowork.coordinator import Coordinator  # noqa: E402
 
@@ -99,8 +98,8 @@ Environment (optional):
   PI_AUTOWORK_ALLOW_HERMES  1 to run although a Hermes Autowork cron job targets this repository
   PI_BIN                    Pi command (default pi)
 
-Exit status: 0 done, 1 stopped on a failure or blocker, 2 setup error,
-3 another runner holds this repository, 4 needs attention, 130 interrupted.
+Exit status: 0 done, 1 stopped on a failure or blocker, 2 bootstrap/usage error,
+3 another runner holds this repository, 4 needs attention (including setup errors), 130 interrupted.
 """
 COMPONENT = Path(__file__).resolve().parents[1]
 
@@ -133,6 +132,40 @@ def installed_toolset(pi):
     return next((path for other, path in found if not other), found[0][1] if found else None)
 
 
+class SetupError(Exception):
+    """A startup refusal that a service restart cannot repair."""
+
+
+def setup_error(text):
+    raise SetupError(text)
+
+
+def main(argv):
+    if argv[:1] in (['--worker'], ['--verify'], ['--verify-batch']):
+        return worker.main(argv)
+    script = os.environ.get('PI_AUTOWORK_SCRIPT') or str(Path(__file__).resolve().parents[2] / 'scripts/pi-autowork.sh')
+    start = release.startup_target(argv, script)
+    identity = release.repository_identity(start, clean=True)
+    repo = identity[0] if identity else start
+    state_root = os.environ.get('PI_AUTOWORK_STATE_DIR') or str(
+        Path(os.environ.get('XDG_STATE_HOME') or Path.home() / '.local/state') / 'pi-autowork')
+    # Read saved settings even when parse fails (for example invalid --workers).
+    load_repo_settings(repo)
+    state_root = os.environ.get('PI_AUTOWORK_STATE_DIR') or state_root
+    state = health.state_directory(state_root, repo, identity[1] if identity else None)
+    if '--status' in argv:
+        stopped = health.setup_stop(state)
+        if stopped:
+            print(f'Repository: {repo}\nRunner:     not running\nStopped:    {stopped}')
+            return 0
+    try:
+        return run(argv, start, identity)
+    except SetupError as error:
+        if not any(arg in argv for arg in ('--status', '--dry-run', '--fleet')):
+            health.record_setup_stop(state, repo, str(error))
+        die(4, str(error))
+
+
 def parse(argv):
     opts = dict(mode='continuous', repo=None, interval='60', max_cycles='0', service=None, status=False,
                 set_aside=None, fleet=False, dry_run=False, workers=os.environ.get('PI_AUTOWORK_WORKERS', '8'))
@@ -141,8 +174,7 @@ def parse(argv):
         arg = args.pop(0)
         def value(name):
             if not args:
-                print(f'pi-autowork.sh: {arg} needs {name}', file=sys.stderr)
-                sys.exit(2)
+                setup_error(f'{arg} needs {name}')
             return args.pop(0)
         if arg == '--once':
             opts['mode'] = 'once'
@@ -176,16 +208,13 @@ def parse(argv):
             print(USAGE, end='')
             sys.exit(0)
         else:
-            print(f'Unknown option: {arg}\n', file=sys.stderr)
-            print(USAGE, end='', file=sys.stderr)
-            sys.exit(2)
+            setup_error(f'Unknown option: {arg}\n{USAGE}')
     for item in (opts['interval'], opts['max_cycles'], opts['workers']):
         if not re.fullmatch(r'[0-9]+', item):
-            print(f'Expected a whole number, got: {item}', file=sys.stderr)
-            sys.exit(2)
+            setup_error(f'Expected a whole number, got: {item}')
     opts.update(interval=int(opts['interval']), max_cycles=int(opts['max_cycles']), workers=int(opts['workers']))
     if not 1 <= opts['workers'] <= 16:
-        die(2, '--workers must be 1 to 16')
+        setup_error('--workers must be 1 to 16')
     if opts['mode'] == 'once':
         opts['workers'] = 1
     return opts
@@ -248,63 +277,49 @@ def in_catalog(pi, model):
     return any(line.split()[:2] == [provider_of(model), model_of(model)] for line in out.splitlines())
 
 
-def main(argv):
+def run(argv, start, identity):
     script = os.environ.get('PI_AUTOWORK_SCRIPT') or str(Path(__file__).resolve().parents[2] / 'scripts/pi-autowork.sh')
-    if argv[:1] in (['--worker'], ['--verify'], ['--verify-batch']):
-        return worker.main(argv)
     opts = parse(argv)
     pi = os.environ.get('PI_BIN', 'pi')
     for tool in ('git', 'timeout', 'systemd-escape'):
         if not shutil.which(tool):
-            die(2, f'Missing required command: {tool}')
+            setup_error(f'Missing required command: {tool}')
     if not shutil.which(pi):
-        die(2, f'Pi not found ({pi}). Install Pi, then: pi install git:github.com/TrebuchetDynamics/autowork')
+        setup_error(f'Pi not found ({pi}). Install Pi, then: pi install git:github.com/TrebuchetDynamics/autowork')
     state_root = os.environ.get('PI_AUTOWORK_STATE_DIR') or \
         os.path.join(os.environ.get('XDG_STATE_HOME') or str(Path.home() / '.local/state'), 'pi-autowork')
     if opts['fleet']:
         print(health.render(health.fleet(state_root)))
         return 0
 
-    # Repository
-    def script_repo():
-        top = git(Path(script).parent, 'rev-parse', '--show-toplevel')
-        return None if not top or is_toolset(top) else top  # the shipped copy targets the caller's repository
-    start = opts['repo'] or script_repo() or os.getcwd()
-    repo = git(start, 'rev-parse', '--show-toplevel')
-    if not repo:
-        die(2, f'Not inside a Git repository: {start}')
+    # Compare inherited discovery with independent, clean probes before any
+    # repository or service writes. A bad GIT_DIR/GIT_WORK_TREE must not retarget
+    # the runner, and other GIT_* (index/config, etc.) must not reach descendants.
+    if not identity:
+        setup_error(f'Not inside a Git repository: {start}')
+    if not release.repository_matches(start, identity):
+        setup_error(f'Repository identity mismatch for {start}: configured {identity}. '
+                    'Remove inherited GIT_* variables and start again.')
+    for key in list(os.environ):
+        if key.startswith('GIT_'):
+            del os.environ[key]
+    repo, git_common = identity
     if not (Path(repo) / 'tasks').is_dir() and opts['mode'] != 'continuous':
         # A continuous runner (the service) waits for the conversion instead, at zero tokens.
-        die(2, f'No tasks/ store at {repo}. Run `autowork migrate {repo}` once to convert TODO.md and '
+        setup_error(f'No tasks/ store at {repo}. Run `autowork migrate {repo}` once to convert TODO.md and '
                'goals.json, or plan the work first, for example with /plan-with-me.')
     base = git(repo, 'symbolic-ref', '--short', '-q', 'HEAD')
     if not base:
-        die(2, f'{repo} has a detached HEAD; check out its main branch first.')
+        setup_error(f'{repo} has a detached HEAD; check out its main branch first.')
     default = (git(repo, 'symbolic-ref', '--short', '-q', 'refs/remotes/origin/HEAD') or '').removeprefix('origin/')
     if base not in (default or 'main', 'main', 'master'):
-        die(2, f'{repo} is on branch {base}. Run the runner from the checkout of the main branch'
+        setup_error(f'{repo} is on branch {base}. Run the runner from the checkout of the main branch'
                f'{f" ({default})" if default else ""}; task work happens in worktrees and is merged back there.')
-    git_common = git(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')
-    load_repo_settings(repo)
-    # Settings read while parsing options, before the repository was known.
-    for key, name in (('workers', 'PI_AUTOWORK_WORKERS'),):
-        if key == 'workers' and '--workers' in argv:
-            continue
-        value = os.environ.get(name)
-        if value is not None:
-            if not re.fullmatch(r'[0-9]+', value):
-                die(2, f'Expected a whole number, got: {value}')
-            opts[key] = int(value)
-    if not 1 <= opts['workers'] <= 16:
-        die(2, '--workers must be 1 to 16')
-    if opts['mode'] == 'once':
-        opts['workers'] = 1
-
     # Toolset: prefer the package Pi has installed, so every run uses what Pi loads.
     skill_args = []
     if os.environ.get('PI_AUTOWORK_TOOLSET'):
         if not is_toolset(os.environ['PI_AUTOWORK_TOOLSET']):
-            die(2, f'PI_AUTOWORK_TOOLSET is not an Autowork checkout: {os.environ["PI_AUTOWORK_TOOLSET"]}')
+            setup_error(f'PI_AUTOWORK_TOOLSET is not an Autowork checkout: {os.environ["PI_AUTOWORK_TOOLSET"]}')
         toolset = str(Path(os.environ['PI_AUTOWORK_TOOLSET']).resolve())
         if installed_toolset(pi) != toolset:
             skill_args = ['--skill', f'{toolset}/adapters/skills/git-commit-push']
@@ -316,11 +331,11 @@ def main(argv):
         print(f'pi-autowork: autowork is not installed in Pi; using {toolset}. Install the package: '
               'pi install git:github.com/TrebuchetDynamics/autowork', file=sys.stderr, flush=True)
     else:
-        die(2, 'Autowork not found. Install it in Pi (pi install git:github.com/TrebuchetDynamics/autowork) '
+        setup_error('Autowork not found. Install it in Pi (pi install git:github.com/TrebuchetDynamics/autowork) '
                'or set PI_AUTOWORK_TOOLSET.')
     component = Path(toolset) / 'pi-autowork'
     if not (component / 'pi_autowork/cli.py').is_file():
-        die(2, f'{toolset} has no pi-autowork component; update the toolset '
+        setup_error(f'{toolset} has no pi-autowork component; update the toolset '
                '(pi update git:github.com/TrebuchetDynamics/autowork)')
     if component.resolve() != COMPONENT:
         # Continue in the resolved release's own component: one release per run.
@@ -332,21 +347,21 @@ def main(argv):
     settings = pi_runtime.Settings(state_root)
     if not opts['status'] and not opts['service']:
         if not in_catalog(pi, settings.primary):
-            die(2, f"Primary model {settings.primary} is not in Pi's model catalog (pi --list-models).")
+            setup_error(f"Primary model {settings.primary} is not in Pi's model catalog (pi --list-models).")
         if settings.fallback_enabled and not in_catalog(pi, settings.fallback):
-            die(2, f"Fallback model {settings.fallback} is not in Pi's model catalog; fix PI_AUTOWORK_FALLBACK "
+            setup_error(f"Fallback model {settings.fallback} is not in Pi's model catalog; fix PI_AUTOWORK_FALLBACK "
                    'or use --no-fallback.')
     jobs = hermes_jobs(repo)
-    state = Path(state_root) / hashlib.sha256(git_common.encode()).hexdigest()[:16]
+    state = health.state_directory(state_root, repo, git_common)
 
     # A request for the running runner, which owns the engine lease; nothing else changes.
     if opts['set_aside']:
         if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', opts['set_aside']):
-            die(2, f'Not a task ID: {opts["set_aside"]}')
+            setup_error(f'Not a task ID: {opts["set_aside"]}')
         try:
             (state / 'requests').mkdir(parents=True, exist_ok=True)
         except OSError:
-            die(2, f'Cannot create {state / "requests"}')
+            setup_error(f'Cannot create {state / "requests"}')
         (state / 'requests' / f'set-aside-{opts["set_aside"]}').touch()
         print(f'Requested: set aside {opts["set_aside"]}. The runner for {repo} acts on it within one cycle; see its log.')
         return 0
@@ -379,7 +394,7 @@ def main(argv):
         for part in ('sessions', 'runs', 'worktrees'):
             (state / part).mkdir(parents=True, exist_ok=True)
     except OSError:
-        die(2, f'Cannot create state directory {state}')
+        setup_error(f'Cannot create state directory {state}')
     LOG.state = state
     lock = open(state / 'lock', 'a')
     for _ in range(150):  # a coordinator that was just killed can leave a helper holding it briefly
@@ -407,6 +422,7 @@ def main(argv):
             print('Stopped while waiting for the other runner.', flush=True)
             return 130
         LOG.say('The other runner exited; starting.')
+    health.clear_setup_stop(state)
     (state / 'runner.json').write_text(json.dumps({
         'pid': os.getpid(), 'started': datetime.now().astimezone().isoformat(timespec='seconds'), 'repo': repo,
         # `autowork restart` reloads a runner that records this, and sees the reload land when it grows.

@@ -113,6 +113,7 @@ class Runner:
     toolset: str = ''         # PI_AUTOWORK_TOOLSET: the service runs this checkout, not the Pi package
     waiting_groups: list = field(default_factory=list)  # why tasks wait, grouped (status.json)
     blocker: str = ''         # what keeps the runner itself from dispatching (status.json)
+    stop_reason: str = ''     # saved startup refusal, even when generic setup checks also fail
     max_workers: int | None = None
     restarting: str = ''      # 'onto <commit>' or 'service' while it stops and starts again
     gate: str = ''            # the latest resource-gate reason, when the last cycle was gated
@@ -440,6 +441,8 @@ def job_text(job):
 
 def verdict(runner):
     """(sentence, style): whether this runner is stuck, and why, in one line."""
+    if runner.stop_reason:
+        return f'Needs attention — {runner.stop_reason}', 'bold red'
     count = len(runner.questions)
     asks = f"{count} question{'s' if count > 1 else ''}" if count else ''
     setup = runner.setup_label
@@ -628,6 +631,8 @@ def waiting_parts(runner):
 def blocker_parts(runner, asked=()):
     """'3: B Conflict · Agent repair · 2 behind X (outside condition or task not in Now/Next)', or '':
     the Blocker count, then each held task and what stops the waiting ones, adding up to it."""
+    if runner.stop_reason:
+        return f'Runner: {runner.stop_reason}'
     held = [f'{task} {blocker_detail(cause, task in asked)}' for task, cause in blocking(runner.held)]
     behind = [f"{g['count']} behind {g['label']}" for g in runner.stopped_groups]
     if not held and not behind:
@@ -783,6 +788,8 @@ def read_questions(repo, state_dir=''):
 
 def needs(runner):
     """What would move this runner, in a few words: setup, owner questions, else its first blocker."""
+    if runner.stop_reason:
+        return runner.stop_reason
     setup = runner.setup_label
     if setup:
         return setup
@@ -951,7 +958,9 @@ def collect(state_root, env_dir, *, systemctl='systemctl', now=None, strict=Fals
             if repo:
                 folders.setdefault(repo, str(folder))
     for row in health.fleet(state_root, now=now, service=lambda name: services.get(name, '-')):
-        runner = found.get(row['name'])
+        # systemd escapes instance names; health records the repository basename.
+        runner = next((r for r in found.values() if r.repo and Path(r.repo) == Path(row['repo'])),
+                      found.get(row['name']))
         if runner is None:
             continue  # state left behind by a runner whose service was removed
         if runner.repo and Path(runner.repo) != Path(row['repo']):
@@ -966,6 +975,7 @@ def collect(state_root, env_dir, *, systemctl='systemctl', now=None, strict=Fals
         runner.roots = [r for r in row.get('roots', []) if r.get('kind') in health.NEEDS_PERSON]
         runner.waiting_groups = row.get('waiting_groups') or []
         runner.blocker = row.get('blocker') or ''
+        runner.stop_reason = row.get('stop_reason') or ''
         runner.max_workers = row.get('max_workers')
         runner.maintainer = row.get('maintainer') or {}
         # status.json deliberately omits the PID and may outlive a stopped runner.

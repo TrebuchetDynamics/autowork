@@ -2,7 +2,7 @@
 
 One template serves every repository; the instance's env file names the repository
 path. SIGINT is the runner's Ctrl+C: workers pause, finished work merges and the
-next start resumes. Deliberate exits (1, 3, 4) do not restart; crashes and kills do.
+next start resumes. Deliberate exits (1, 2, 3, 4) do not restart; crashes and kills do.
 A service never exits 3: it waits for another runner holding the repository to end.
 """
 import json
@@ -40,9 +40,10 @@ KillSignal=SIGINT
 TimeoutStopSec=150
 SuccessExitStatus=130
 # A crash (exit 70) or an OS error such as a full disk comes back; deliberate stops do not
-# (1: failures the owner must see, 3: another runner holds it, 4: needs attention).
+# (1: failures the owner must see, 2: bootstrap/usage errors,
+# 3: another runner holds it, 4: needs attention, including checked setup failures).
 Restart=on-failure
-RestartPreventExitStatus=1 3 4
+RestartPreventExitStatus=1 2 3 4
 RestartSec=60
 
 [Install]

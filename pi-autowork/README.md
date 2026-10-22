@@ -236,6 +236,34 @@ facilities, not evidence that a live task was delivered or that a bill was paid.
 
 ## Runner health reads
 
+An unusable repository (not Git, detached HEAD or a non-main branch), missing
+runner tools or invalid `--workers` stops startup with exit **4 (needs attention)**.
+The service does not restart this exit every minute. The reason is saved outside
+the repository and remains visible in `autowork status <name>` and the TUI's
+headline, Needs and Blocker detail, ahead of generic setup or start-service advice,
+even if the checkout's `.git` is unavailable. Fix the named condition,
+then use `autowork start <name>`; a successful startup clears the saved setup stop.
+Read-only status and dry runs do not replace it. Generated units also suppress
+restart for bootstrap/usage exit 2 (for example when Python cannot launch); such
+pre-Python errors remain in the service journal. Reinstall the service to update
+an older unit's exit-2 handling.
+
+Startup compares the configured repository's Git common directory and toplevel
+with independent probes that remove inherited `GIT_*` variables. A mismatched
+`GIT_DIR` or `GIT_WORK_TREE` stops before repository writes; remove the inherited
+variables and start again. The check runs before release snapshot creation, even
+when the configured repository is the toolset itself. Release snapshot Git commands
+also ignore inherited `GIT_*`, and runner descendants do not inherit Git routing,
+index or config overrides.
+
+Offline regression coverage in `tests/test_pi_autowork.py` checks setup exits
+against the generated unit and injects Git routing into disposable repositories.
+`tests/test_autowork_command.py` checks saved reasons through status, fleet reads
+and the TUI display helpers, including escaped service names and a checkout
+without `.git`. `tests/test_task_store_qualification.py` verifies exit 4 before
+migration and successful task execution after conversion. These do not qualify a
+live systemd service.
+
 Engine status reads wait up to two seconds for the writer lock, so brief dispatch
 or integration writes do not immediately fail a read. If a read still fails,
 health keeps its last observed state for that one failure, with the snapshot's

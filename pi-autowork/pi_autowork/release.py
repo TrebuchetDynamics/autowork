@@ -17,6 +17,7 @@ import time
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 
@@ -54,7 +55,11 @@ def schema(text, name, default):
 
 
 def _git(toolset, *argv):
-    return subprocess.run(['git', '-C', str(toolset), *argv], capture_output=True, text=True, timeout=120)
+    # Bootstrap writes release worktrees before cli.py validates the target.
+    # Never let inherited routing redirect those writes into a project checkout.
+    env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
+    return subprocess.run(['git', '-C', str(toolset), *argv], env=env,
+                          capture_output=True, text=True, timeout=120)
 
 
 @contextmanager
@@ -144,9 +149,49 @@ def installed_toolset(pi):
     return next((p for other, p in found if not other), found[0][1] if found else None)
 
 
+def repository_option(argv):
+    """The last --repo value, respecting options that consume the next token."""
+    args, repo = iter(argv), None
+    for arg in args:
+        if arg in ('--repo', '--workers', '--interval', '--max-cycles', '--set-aside'):
+            value = next(args, None)
+            if arg == '--repo':
+                repo = value
+    return repo
+
+
+def repository_identity(path, *, clean=False):
+    """Probe the toplevel and common directory independently of inherited routing."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')} if clean else None
+    try:
+        result = subprocess.run(['git', '-C', str(path), 'rev-parse', '--path-format=absolute',
+                                 '--show-toplevel', '--git-common-dir'],
+                                env=env, capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    parts = result.stdout.splitlines()
+    return tuple(map(os.path.realpath, parts)) if result.returncode == 0 and len(parts) == 2 else None
+
+
+def startup_target(argv, script):
+    """The configured target, even when option validation or Git is unavailable."""
+    configured = repository_option(argv)
+    if configured:
+        return os.path.realpath(configured)
+    identity = repository_identity(Path(script).parent, clean=True)
+    toolset = identity and all((Path(identity[0]) / 'pi-autowork/engine' / name).is_file()
+                              for name in ('owner_cycle.py', 'task_store.py'))
+    return identity[0] if identity and not toolset else os.path.realpath(os.getcwd())
+
+
+def repository_matches(start, identity):
+    return bool(identity and repository_identity(start) == identity
+                and repository_identity(identity[0], clean=True) == identity)
+
+
 def bootstrap_settings(script, argv):
     """Read selection settings before pinning; keep CLI imports out of bootstrap."""
-    start = argv[argv.index('--repo') + 1] if '--repo' in argv and argv[-1] != '--repo' else None
+    start = repository_option(argv)
     if not start:
         top = _git(Path(script).parent, 'rev-parse', '--show-toplevel').stdout.strip()
         start = top if top and not (Path(top) / 'pi-autowork/pi_autowork/cli.py').is_file() else os.getcwd()
@@ -173,6 +218,14 @@ def bootstrap_settings(script, argv):
 def launch(component, script, argv):
     """Pin before cli.py imports the coordinator; children keep their inherited pin."""
     env = os.environ
+    start = startup_target(argv, script)
+    identity = repository_identity(start, clean=True)
+    if (any(not shutil.which(tool) for tool in ('git', 'timeout', 'systemd-escape'))
+            or not repository_matches(start, identity)):
+        # No release worktree write before identity validation: the configured
+        # target can itself be the toolset. The CLI owns refusal/stop reporting.
+        env['PI_AUTOWORK_SCRIPT'] = script
+        os.execv(sys.executable, [sys.executable, str(Path(component) / 'pi_autowork/cli.py'), *argv])
     bootstrap_settings(script, argv)
     reselect = env.pop('PI_AUTOWORK_RESELECT', '')
     package = env.get('PI_AUTOWORK_PACKAGE') if reselect != 'auto' else None

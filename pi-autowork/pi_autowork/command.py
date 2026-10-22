@@ -311,14 +311,20 @@ def cmd_remove(args, paths):
 
 
 def cmd_run(args, paths):
-    ready = fleet_view.readiness(args.target or '.')
-    if not ready.repo:
-        raise Fail(f'not inside a Git repository: {args.target or "."}')
-    os.execvp('bash', ['bash', script(paths), '--repo', ready.repo])
+    # The CLI owns checked startup. Do not turn inherited Git routing into a
+    # different configured target before its independent identity guard runs.
+    target = str(Path(args.target or '.').expanduser().resolve())
+    os.execvp('bash', ['bash', script(paths), '--repo', target])
 
 
 def cmd_status(args, paths):
-    repo, _ = resolve(args.target, paths)
+    target = args.target or '.'
+    if '/' in target or target in ('.', '..') or Path(target).is_dir():
+        # Preserve the requested observation target even without .git or with
+        # inherited Git routing. The CLI resolves its identity and saved stop.
+        repo = str(Path(target).expanduser().resolve())
+    else:
+        repo, _ = resolve(target, paths)
     os.execvp('bash', ['bash', script(paths), '--repo', repo, '--status'])
 
 

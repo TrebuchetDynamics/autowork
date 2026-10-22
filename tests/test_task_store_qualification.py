@@ -45,7 +45,7 @@ class QualificationTests(Fixture):
 
         refused = self.run_runner('--once')
         self.note('pi-autowork.sh --once (unconverted)', refused)
-        self.assertEqual(refused.returncode, 2, refused.stdout + refused.stderr)
+        self.assertEqual(refused.returncode, 4, refused.stdout + refused.stderr)
         self.assertIn('autowork migrate', refused.stderr)
         self.assertFalse((self.repo / 'tasks').exists())  # it converted nothing
         self.assertEqual(self.git(self.repo, 'rev-parse', 'HEAD'), before)
