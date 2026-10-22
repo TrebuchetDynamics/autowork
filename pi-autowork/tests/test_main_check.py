@@ -434,6 +434,45 @@ class MainCheckTests(unittest.TestCase):
             os.waitpid(pid, 0)
         self.assertFalse(main_check.alive(pid, start))
 
+    def test_the_main_check_leases_its_own_port_block(self):
+        """Main's check ran with no AUTOWORK_PORT_BASE, so its fixtures defaulted to a block another
+        runner's worker had leased on this host; that worker's database container answered on the
+        fixture's port and main went red for nothing. The check now leases a block like a worker."""
+        import fcntl
+        from pi_autowork import coordinator, worker
+        from pi_autowork.coordinator import Coordinator
+        dispatch, _, _ = worker.engine_modules()
+        seen = {}
+
+        class FakeChild:
+            pid = os.getpid()
+
+        def fake_popen(argv, **kwargs):
+            seen.update(kwargs)
+            base = int(kwargs['env']['AUTOWORK_PORT_BASE'])
+            block = dispatch.port_lease_dir() / str((base - 20100) // 100 + 1)
+            probe = os.open(block, os.O_RDWR)
+            try:  # the lease is held through the file descriptor the child inherits
+                with self.assertRaises(BlockingIOError):
+                    fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            finally:
+                os.close(probe)
+            return FakeChild()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = Coordinator.__new__(Coordinator)
+            runner.state, runner.stop, runner.repo, runner.base = Path(tmp), False, tmp, 'main'
+            runner.cfg = {'git_common': tmp}
+            with patch.object(Coordinator, 'scratch_checkout', return_value=tmp), \
+                    patch.object(coordinator.subprocess, 'Popen', side_effect=fake_popen), \
+                    patch.object(coordinator.LOG, 'say'):
+                runner.check_main_start({}, 'abcdef1234567', 'true')
+        base = int(seen['env']['AUTOWORK_PORT_BASE'])
+        self.assertTrue(20100 <= base < 20100 + 100 * dispatch.PORT_BLOCKS, base)
+        self.assertEqual(len(seen['pass_fds']), 1)
+        with self.assertRaises(OSError):
+            os.fstat(seen['pass_fds'][0])  # the parent closed its copy: only the child holds the block
+
     def test_an_exit_receipt_finishes_even_while_the_pid_is_alive(self):
         from pi_autowork.coordinator import Coordinator
 
