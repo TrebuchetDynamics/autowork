@@ -1,5 +1,8 @@
 """Hold policy through public transitions and the real refill adapter (offline Git)."""
+import contextlib
 import copy
+import io
+import json
 import unittest
 from unittest.mock import patch
 
@@ -7,6 +10,7 @@ import test_parallel_integrate as fixtures
 import parallel_dispatch as dispatch
 import parallel_state as state
 import task_execution as execution
+import task_queue
 
 
 class HoldCausesTests(unittest.TestCase):
@@ -94,6 +98,73 @@ class HoldCausesTests(unittest.TestCase):
         self.assertTrue(fields['owner_decision_required'])
         fresh = parallel_status.failure_fields(held['cause'], held['reason'])  # before the resume: engine recovery
         self.assertEqual((fresh['resolution_owner'], fresh['next_action']), (failure_policy.ENGINE, 'resume_report'))
+
+    def test_invalid_store_preserves_slots_until_repaired(self):
+        # Invalid B must not make A look removed, reoffer it, or resume its report.
+        for operation, cause in (('retry', 'blocker'), ('retry', 'overlap'), ('retry', 'report'),
+                                 ('dispatch', 'overlap'), ('fresh_dispatch', 'report'),
+                                 ('integrate', None), ('set_aside', None), ('close', None)):
+            with self.subTest(operation=operation, cause=cause):
+                fx = self.fixture()
+                root, commit = fx.worker()
+                module = fx.module()
+                if operation == 'close':
+                    self.assertEqual(module.integrate(fx.repo, fx.owner, 'A', ['true'], 30)['outcome'],
+                                     'INTEGRATED')
+                elif cause:
+                    state.transition(fx.repo, fx.owner, 'A', 'held', cause=cause, reason='fixture hold')
+                if cause == 'report' or operation == 'integrate':
+                    dispatch.data_dir(fx.common, state.slots(fx.common)[0]).joinpath('report.json').unlink()
+                if operation == 'dispatch':
+                    fx.worker('B')
+                    fx.set_todo(fx.todo.replace('- [ ] B', '- [x] B'))
+                    # Even a valid base's closure must not retire B while HEAD is invalid.
+                    base = fx.git('rev-parse', 'HEAD')
+                broken = fx.repo / 'tasks/items/B.md'
+                valid = broken.read_text()
+                broken.write_text('a task without TOML frontmatter\n')
+                fx.git('add', str(broken))
+                fx.git('commit', '-qm', 'malformed unrelated record')
+                args = fx.retry_args()
+                if operation == 'dispatch':
+                    args.base_ref = base
+                calls = {
+                    'retry': lambda: module.retry_held(args),
+                    'dispatch': lambda: module.dispatch_with_retries(args),
+                    'fresh_dispatch': lambda: dispatch.dispatch(args),
+                    'integrate': lambda: module.integrate(fx.repo, fx.owner, 'A', ['true'], 30),
+                    'set_aside': lambda: module.set_aside(fx.repo, fx.owner, 'A'),
+                    'close': lambda: module.close(fx.repo, fx.owner, 'A'),
+                }
+                path, journal = state.slot_path(fx.common, 'A'), fx.common / 'journal.jsonl'
+                before = path.read_bytes(), journal.read_bytes()
+                with self.assertRaisesRegex(task_queue.StoreError, r'tasks/items/B.md:1:'):
+                    calls[operation]()
+                self.assertEqual((path.read_bytes(), journal.read_bytes()), before)
+                self.assertTrue(root.exists())
+                self.assertEqual(fx.git('rev-parse', 'autowork/A'), commit)
+                if operation == 'dispatch':
+                    output = io.StringIO()
+                    with contextlib.redirect_stdout(output):
+                        code = execution.main([str(fx.repo), '--owner-pid', str(fx.owner),
+                                               '--parallel', '2', '--apply', '--worker-command', '["true"]'])
+                    result = json.loads(output.getvalue())
+                    self.assertEqual((code, result['outcome']), (1, 'ACTION_REQUIRED'))
+                    self.assertIn('tasks/items/B.md:1:', result['reason'])
+                    self.assertEqual((path.read_bytes(), journal.read_bytes()), before)
+                broken.write_text(valid)
+                fx.git('add', str(broken))
+                fx.git('commit', '-qm', 'repair task store')
+                if cause:
+                    expected = {'blocker': 'IDLE', 'overlap': 'REOFFERED', 'report': 'IDLE'}
+                    self.assertEqual(module.retry_held(args)['outcome'], expected[cause])
+                    saved = state.slots(fx.common)[0]
+                    self.assertEqual(saved['commit'], commit)
+                    self.assertEqual(saved['state'], {'blocker': 'held', 'overlap': 'reported',
+                                                      'report': 'interrupted'}[cause])
+                else:
+                    expected = {'integrate': 'HELD', 'set_aside': 'SET_ASIDE', 'close': 'CLOSED'}
+                    self.assertEqual(calls[operation]()['outcome'], expected[operation])
 
     def test_each_cause_follows_its_rule(self):
         # Literal policies and observable effects: a wrong dispatch branch must fail,

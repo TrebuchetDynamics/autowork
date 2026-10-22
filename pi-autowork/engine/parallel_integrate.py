@@ -765,6 +765,9 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
             slot = slot_for(common, task)
             if not slot or slot['state'] not in ('reported', 'integrating'):
                 raise ValueError('integration requires a reported or abandoned integrating slot')
+            # Validate before retirement or report recovery: an unreadable ledger
+            # says nothing about this candidate, and must leave its slot untouched.
+            contracts = {t['id']: t for t in dispatch.contracts(repo)}
             gone = slot['state'] == 'reported' and task in dispatch.removed(repo)
             if gone or (slot['state'] == 'reported' and task in dispatch.retired(repo, base)):
                 # Closed meanwhile (TOOLSET-218-d0): a duplicate of finished work never lands; a task
@@ -777,7 +780,6 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
                             + '; its commit is set aside')
             if missing := state.missing_commit_report(common, slot):
                 return hold(common, slot, missing, cause='report')
-            contracts = {t['id']: t for t in dispatch.contracts(repo)}
             if slot['state'] == 'reported' and task in contracts and admitted_contract_changed(repo, common, slot):
                 # A rank, title or note edit keeps the attempt; a contract edit since dispatch
                 # does not: the work was built against another contract (TOOLSET-298-c2).
@@ -1146,7 +1148,7 @@ def close(repo, owner_pid, task):
         if not slot or slot['state'] not in ('integrated', 'closed'):
             raise ValueError('close requires an integrated slot with passing validation')
         info, checks = validated_receipt(repo, common, slot)
-        record = task_queue.record(repo, task)
+        record = task_queue.store(repo).tasks.get(task)
         if record is None:
             raise ValueError('task record missing from tasks/; no close')
         if record.contract_hash != info.get('contract_hash'):
@@ -1255,7 +1257,7 @@ def entry_changes(repo, common, slot):
     previous = slot.get('rescoped_contract') or dispatched_contract(common, slot)
     if previous is None:
         return None  # no record to compare with: never guess
-    current = task_queue.record(repo, slot['task_id'])
+    current = task_queue.store(repo).tasks.get(slot['task_id'])
     if current is None:
         return ['Entry']
     before = task_queue.parse_contract(previous)
@@ -1378,6 +1380,9 @@ def set_aside(repo, owner_pid, task):
     with execution.lock(common / 'dispatch.lock'), execution.lock(common / 'integration.lock'), \
             execution.lock(common / 'writer.lock'):
         state.require_owner(common, owner_pid)
+        # Migration also uses _retire before tasks/ exists; ordinary set-aside
+        # must instead require a readable ledger before interpreting any record.
+        task_queue.store(repo)
         slot = slot_for(common, task)
         if slot is None or state.worker_live(slot):
             raise ValueError('set-aside needs an existing slot with no live worker')
@@ -1706,6 +1711,9 @@ def retry_held(args):
     repo, common = context(args.consumer, args.owner_pid)
     with execution.lock(common / 'dispatch.lock'), execution.lock(common / 'integration.lock'):
         state.require_owner(common, args.owner_pid)
+        # Validate before any slot mutation, including report-only recovery and
+        # legacy reoffers that do not otherwise read a task contract.
+        task_queue.store(repo)
         # transition() acquires writer.lock itself; never nest it under that lock.
         dispatch.enforce_timeouts(repo, args.owner_pid, common, args.worker_timeout)
         with execution.lock(common / 'writer.lock'):
