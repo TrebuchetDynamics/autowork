@@ -1,4 +1,9 @@
-"""`autowork migrate <repo> [--dry-run] [--no-commit]`: convert a repository to tasks/ once.
+"""`autowork migrate <repo> [--dry-run] [--no-commit] [--accept-consumers]`: convert once.
+
+Tracked code/build/test references to TODO.md or goals.json are listed and block conversion
+unless explicitly accepted; documentation references are separate nonblocking drift. Extra
+TODO content triggers a CHECKLIST.md snapshot, keeping source bytes and line numbers except
+for generated goal coverage (blanked). An existing destination is never overwritten.
 
 It reads TODO.md, goals.json and the archive once, builds tasks/items/ and tasks/goals/,
 proves the result first (same task set, same contract fields read back, and the same
@@ -58,7 +63,7 @@ sys.path.insert(0, str(ENGINE))
 import parallel_plan  # noqa: E402
 import task_execution  # noqa: E402  (git only)
 from pi_autowork import task_commands  # noqa: E402
-from pi_autowork.legacy import reader  # noqa: E402
+from pi_autowork.legacy import conversion_audit, reader  # noqa: E402
 import task_select  # noqa: E402
 import task_store  # noqa: E402
 from task_store import StoreError, TaskStore, WriteError  # noqa: E402
@@ -89,10 +94,13 @@ def _git(repo, *args, env=None, stdin=None):
     # No optional locks: a status read never refreshes the index, so --check writes nothing.
     clean = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')} | {'GIT_OPTIONAL_LOCKS': '0'}
     result = subprocess.run(['git', '-C', str(repo), *args], capture_output=True, text=True,
-                            env={**clean, **(env or {})}, input=stdin, timeout=120)
+                            env={**clean, **(env or {})}, input=stdin, timeout=120,
+                            errors='replace' if args[0] == 'grep' else None)
+    if args[0] == 'grep' and result.returncode == 1:
+        return ''  # no matches, not an unreadable snapshot
     if result.returncode:
         raise Refused(f'git {args[0]} failed: {result.stderr.strip()}')
-    return result.stdout.strip()
+    return result.stdout if '-z' in args else result.stdout.strip()
 
 
 # --- refusals --------------------------------------------------------------------------
@@ -185,6 +193,64 @@ def claimed(repo):
         return sorted(t['id'] for t in ledger.get('tasks', []) if t.get('status') == 'in_progress')
     except (OSError, ValueError, AttributeError, TypeError):
         return []
+
+
+def reference_inventory(repo):
+    """Tracked working-tree and retained Git-snapshot references (read-only).
+
+    Conversion retains HEAD's other files, not uncommitted repairs. A pending transaction
+    retains its candidate instead. Neither repair nor deletion may hide that snapshot.
+    """
+    try:
+        found = conversion_audit.references(repo, [p for p in _git(repo, 'ls-files', '-z').split('\0') if p])
+        candidate = pending(repo)
+        revision = candidate if candidate and not _stale(repo, candidate, drop=False) else 'HEAD'
+        if _ok(repo, 'rev-parse', '--verify', '-q', revision):
+            output = _git(repo, 'grep', '--no-color', '--no-textconv', '--full-name', '--no-column',
+                          '--no-heading', '--no-break', '--no-recurse-submodules', '-n', '-z', '-I', '-F',
+                          '-e', 'TODO.md', '-e', 'goals.json', revision, '--')
+            retained = conversion_audit.retained_references(output, revision)
+            for group in found:
+                for hit in retained[group]:
+                    if hit not in found[group]:
+                        found[group].append(dict(hit, revision=revision))
+                found[group].sort(key=lambda hit: (hit['path'], hit['line'], hit['names']))
+        return found
+    except OSError as exc:
+        raise Refused(f'cannot inspect tracked legacy consumers: {exc}') from None
+
+
+def consumer_refusal(inventory):
+    if not inventory['consumers']:
+        return None
+    return ('tracked legacy consumers: ' + ', '.join(f"{h['path']}:{h['line']} ({', '.join(h['names'])})"
+            for h in inventory['consumers']) + '; repair them first, or explicitly convert with '
+            '`autowork migrate --accept-consumers` (consumer code is never rewritten)')
+
+
+def preservation(repo, converted):
+    try:
+        snapshot, ranges = conversion_audit.preservation((Path(repo) / 'TODO.md').read_bytes(), converted)
+    except (OSError, ValueError) as exc:
+        raise Refused(f'cannot account for TODO.md content: {exc}') from None
+    if snapshot is not None:
+        path = conversion_audit.PRESERVED
+        target = Path(repo) / path
+        if target.exists() or target.is_symlink() or committed(repo, 'HEAD', path):
+            named = ', '.join(f'{start}-{end}' for start, end in ranges)
+            raise Refused(f'TODO.md lines {named} need preservation in {path}, but it already exists; '
+                          'move that document aside without losing its content, then convert')
+    return snapshot, ranges
+
+
+def preserve_content(repo, files):
+    """Add the line-accounted snapshot to a conversion, not to the shared record mapper."""
+    active = {t['id']: t for t in reader.ledger(repo)['tasks'] if t['status'] in ('open', 'in_progress')}
+    snapshot, ranges = preservation(repo, active)
+    if snapshot is not None:
+        files[conversion_audit.PRESERVED] = snapshot
+        return dict(path=conversion_audit.PRESERVED, line_ranges=ranges)
+    return None
 
 
 def refusals(repo, owner_pid=None, released=()):
@@ -667,9 +733,9 @@ def finish(repo, candidate, commit=True):
     return 'CONVERTED'
 
 
-def _stale(repo, candidate):
-    """Drop a recorded conversion built on an older HEAD when nothing of it is staged or
-    written: it is rebuilt from the planning files. True when dropped."""
+def _stale(repo, candidate, drop=True):
+    """A conversion on an older HEAD with nothing staged/written must be rebuilt.
+    ``drop=False`` detects this read-only for previews and retained-snapshot inventories."""
     old = _git(repo, 'rev-parse', f'{candidate}^')
     if _git(repo, 'rev-parse', 'HEAD') in (old, candidate) or committed(repo, 'HEAD', 'tasks'):
         return False
@@ -677,7 +743,8 @@ def _stale(repo, candidate):
     for path, _mode, _old_oid, new_oid in _changes(repo, old, candidate):
         if new_oid != zero and ((Path(repo) / path).exists() or _staged(repo, path)):
             return False
-    _git(repo, 'update-ref', '-d', CANDIDATE, candidate)
+    if drop:
+        _git(repo, 'update-ref', '-d', CANDIDATE, candidate)
     return True
 
 
@@ -686,37 +753,51 @@ def pending(repo):
     return _ok(repo, 'rev-parse', '--verify', '-q', CANDIDATE)
 
 
-def migrate(repo, dry_run=False, commit=True):
+def migrate(repo, dry_run=False, commit=True, accept_consumers=False):
     """Convert under the repository's task lock."""
     repo = Path(task_execution.git(Path(repo), 'rev-parse', '--show-toplevel')).resolve()
     with task_commands.locked(repo):
-        return convert(repo, dry_run, commit)
+        return convert(repo, dry_run, commit, accept_consumers=accept_consumers)
 
 
-def convert(repo, dry_run=False, commit=True, owner_pid=None, released=()):
+def convert(repo, dry_run=False, commit=True, owner_pid=None, released=(), accept_consumers=False):
     """Convert, or finish a recorded conversion; the caller holds the task lock. A draining
     runner passes its own pid (its lease is not in flight) and the claims it released."""
     candidate = pending(repo)
-    if candidate and not dry_run and _stale(repo, candidate):
+    if candidate and _stale(repo, candidate, drop=not dry_run):
         candidate = None
+    inventory = reference_inventory(repo)
     if candidate:
+        reason = consumer_refusal(inventory)
         if dry_run:
-            return dict(outcome='PENDING', candidate=candidate)
+            return dict(outcome='PENDING', candidate=candidate, refusals=[reason] if reason and not accept_consumers
+                        else [], **inventory)
+        if reason and not accept_consumers:
+            raise Refused(reason)
         if found := busy(repo, owner_pid):
             raise Refused('; '.join(found))
         outcome = finish(repo, candidate, commit)
-        summary = dict(outcome=outcome, candidate=candidate, resumed=True)
+        summary = dict(outcome=outcome, candidate=candidate, resumed=True, **inventory)
+        if committed(repo, candidate, conversion_audit.PRESERVED):
+            summary['preserved'] = dict(path=conversion_audit.PRESERVED)
         if outcome == 'CONVERTED':
             summary['commit'] = _git(repo, 'rev-parse', '--short', 'HEAD')
         return summary
     if found := refusals(repo, owner_pid, released):
         raise Refused('; '.join(found))
+    if not dry_run and not accept_consumers and (reason := consumer_refusal(inventory)):
+        raise Refused(reason)
     files, legacy, ids = build(repo, released)
+    kept = preserve_content(repo, files)
     with task_store.temporary_objects(repo) as env:
         tree = converted_tree(repo, files, env=env)
         store = prove(repo, tree, legacy, ids, env=env)
     summary = dict(outcome='DRY_RUN' if dry_run else 'CONVERTED', tasks=len(store.tasks), goals=len(store.goals),
-                   order=legacy)
+                   order=legacy, **inventory)
+    if kept:
+        summary['preserved'] = kept
+    if reason := consumer_refusal(inventory):
+        summary['refusals'] = [] if accept_consumers else [reason]
     waiting = sorted(s['task_id'] for s in awaiting_answer(repo))
     if dry_run:
         if waiting:
@@ -743,6 +824,8 @@ def add_parser(sub):
     p.add_argument('repo', nargs='?', default='.')
     p.add_argument('--dry-run', action='store_true', help='check and show the result; write nothing')
     p.add_argument('--no-commit', action='store_true', help='stage the conversion; never move HEAD')
+    p.add_argument('--accept-consumers', action='store_true',
+                   help='explicitly accept reported code/build/test references to the removed legacy files')
     # The runner's deferred-conversion step, run as its helper (engine leases name an ancestor).
     p.add_argument('--after-drain', action='store_true', help=argparse.SUPPRESS)
     p.add_argument('--owner-pid', type=int, help=argparse.SUPPRESS)
@@ -759,7 +842,7 @@ def run(args, repo):
         print(json.dumps(step, indent=2))
         return 0
     try:
-        result = migrate(repo, args.dry_run, not args.no_commit)
+        result = migrate(repo, args.dry_run, not args.no_commit, args.accept_consumers)
     except Refused as exc:
         print(f'autowork migrate: refused, nothing written: {exc}', file=sys.stderr)
         return 1

@@ -292,6 +292,40 @@ class LegacyTests(Repo):
         (self.repo / 'tasks/items/T-001.md').unlink()
         self.assertEqual(self.prepare()['state'], 'converted')
 
+    def test_prepare_lists_legacy_references_and_diagnoses_them_after_conversion(self):
+        self.write('Makefile', 'check:\n\tcat TODO.md\n')
+        self.write('tests/test_queue.py', 'open("goals.json")\n')
+        self.write('README.md', 'See TODO.md.\n')
+        self.commit()
+        before = self.snapshot()
+        report = self.prepare('--check', ok=False)
+        self.assertEqual(report['outcome'], 'MIGRATION_BLOCKED')
+        self.assertEqual([h['path'] for h in report['consumers']], ['Makefile', 'tests/test_queue.py'])
+        self.assertEqual([h['path'] for h in report['documentation_drift']], ['README.md'])
+        self.assertEqual(self.snapshot(), before)
+        refused = self.prepare(ok=False)
+        self.assertIn('--accept-consumers', refused['refusals'][0])
+        accepted = subprocess.run([sys.executable, str(COMMAND), 'migrate', str(self.repo), '--accept-consumers'],
+                                  capture_output=True, text=True, timeout=120)
+        self.assertEqual(accepted.returncode, 0, accepted.stderr)
+        after = self.prepare('--check')
+        diagnostics = {(d['code'], d['id']) for d in after['diagnostics']}
+        self.assertIn(('LEGACY_CONSUMER', 'Makefile'), diagnostics)
+        self.assertIn(('LEGACY_CONSUMER', 'tests/test_queue.py'), diagnostics)
+        self.assertIn(('LEGACY_DOCUMENTATION', 'README.md'), diagnostics)
+        self.assertEqual(self.prepare('--check'), after)
+
+    def test_prepare_preserves_content_and_reports_the_new_document(self):
+        source = b'# Product checklist\n\nKeep TODO.md owner answers here.\n\n' + (self.repo / 'TODO.md').read_bytes()
+        (self.repo / 'TODO.md').write_bytes(source)
+        self.commit()
+        checked = self.prepare('--check')
+        self.assertEqual(checked['preserved'], dict(path='CHECKLIST.md', line_ranges=[[1, 3]]))
+        converted = self.prepare()
+        self.assertEqual((self.repo / 'CHECKLIST.md').read_bytes(), source)
+        self.assertIn(dict(path='CHECKLIST.md', line=3, names=['TODO.md']), converted['documentation_drift'])
+        self.assertEqual(converted['diagnostics'], self.prepare('--check')['diagnostics'])
+
     def test_audit_reads_a_legacy_repository_without_writing(self):
         before = self.snapshot()
         report = self.prepare('--check')

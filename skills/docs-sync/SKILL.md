@@ -1,7 +1,7 @@
 ---
 name: docs-sync
 description: "Use when maintaining repo docs and goal-linked tasks."
-version: 0.14.0
+version: 0.15.0
 license: MIT
 metadata:
   hermes:
@@ -297,8 +297,8 @@ never hand-write records.
 Before any task-store step, run `autowork capabilities` with the `autowork` this host
 will use. It prints the resolved `executable`, `toolset` and `release`, the `commands`
 and `tasks` verbs, and `prepare_api`. Continue only when it succeeds, lists `tasks`
-with `prepare`, and reports `prepare_api` 2 or higher. Otherwise the installed CLI is
-older than this skill: report `TOOLCHAIN_MISMATCH` with the executable (`command -v
+with `prepare`, and reports `prepare_api` 4 or higher (consumer/content-safe conversion).
+Otherwise the installed CLI is older than this skill: report `TOOLCHAIN_MISMATCH` with the executable (`command -v
 autowork`), what is missing, and the one fix, `autowork update` (then reload the host
 so it loads the matching skill). Run that update only when the owner's request allows
 installing; it can queue a gateway restart. Then continue document work, and do not
@@ -319,7 +319,7 @@ converts or initializes anything by hand:
 | `MIGRATED` | Converted TODO.md + goals.json now, one local commit | Reconcile; report the conversion commit |
 | `NO_STORE` | No store; `documents` and `accepted` headings listed | Bootstrap from accepted headings only |
 | `MIGRATION_DEFERRED` | Work was in flight; nothing was written to the repository, and the request is recorded. The repository's runner (on this release) starts nothing new, lets live workers finish, sets the remaining attempts aside with their work kept, and converts. Exit status 3 | Report it as pending, not done; continue document work; run prepare again later |
-| `MIGRATION_BLOCKED` | A refusal only a person resolves (uncommitted planning files, an invalid queue, a repeated hold), or a deferral without commit authority | Report the named refusal and its fix |
+| `MIGRATION_BLOCKED` | A safety refusal (planning drift, an invalid queue, remaining legacy consumers, a preservation-path collision), or a deferral without commit authority | Resolve from evidence within scope, or report the exact missing authority |
 | `INVALID_STORE` | Refused with `path:line` errors | Fix that line from its accepted source or Git history, then rerun |
 | `ACTIVATION_PENDING` | The store is ready, but `runner.reads_tasks` is false: the running runner's release predates `tasks/` | Report it; the owner restarts the runner on the current release (`autowork restart`) |
 
@@ -344,6 +344,21 @@ is neither the old nor the converted version, or work in flight (deferred as abo
 Report it and continue independent document work; never hand-convert, stop workers,
 break a lease, close a task or delete the recorded conversion ref to get past one.
 
+Before converting, inspect `consumers`, `documentation_drift` and any `preserved` report.
+Tracked build, CI, hook, source and test references to TODO.md/goals.json block conversion;
+documentation mentions are nonblocking drift. The inventory includes the retained Git
+snapshot: commit authorized consumer repairs before converting, since uncommitted repairs
+are not part of the conversion commit. Repair consumers only when that repository and code
+are in scope. Only explicit acceptance of those consumers permits
+`autowork migrate --accept-consumers <consumer>`; neither routine Maintain nor `force`
+implies that acceptance. Resuming also requires the flag while consumers remain.
+Report the named files/lines and continue independent docs work
+when acceptance or code scope is missing. Never recreate legacy inputs to silence checks.
+Extra TODO content is saved as `CHECKLIST.md`, with source bytes/line numbers retained
+and generated coverage blanked; read back the reported inclusive `line_ranges` before
+reconciling it into existing document owners. Keep the snapshot until its content is
+accounted for. A destination collision refuses rather than overwriting any document.
+
 **`/docs_sync force`** (the owner's word `force` in the request) means: convert now, do
 not wait. Run `autowork tasks prepare --force <consumer>` (needs `prepare_api` 3) instead
 of plain `prepare`. It stops the repository's service, ends live workers and any other
@@ -359,7 +374,9 @@ invalid queue), report that refusal; do not delete or overwrite anything to get 
 Then work its `diagnostics`, each with the command that repairs it: `DRAFT`,
 `NOT_RUNNABLE`, `LIVE_NOT_AUTHORIZED`, `UNKNOWN_DEPENDENCY`, `SUPERSEDED_DEPENDENCY`,
 `TOUCHES_TASK_STORE`, `OPEN_TASK_UNDER_MET_GOAL`, `GOAL_WITHOUT_WORK`, `BROKEN_SOURCE`,
-`DUPLICATE_TASK` and `IN_FLIGHT`. Repair one only from accepted documents, source or
+`DUPLICATE_TASK` and `IN_FLIGHT`. `LEGACY_CONSUMER` and `LEGACY_DOCUMENTATION` name remaining
+file/line references after conversion; reconcile them within scope from evidence, not
+through task-field edits. Repair other diagnostics only from accepted documents, source or
 executed checks; without that evidence, keep the record a draft or place it in Needs
 decision. Never grant `worker` ownership, `live`, or resources, and never close a task
 or meet a goal to silence a diagnostic. `IN_FLIGHT` tasks keep their contract: the

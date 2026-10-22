@@ -257,7 +257,7 @@ locking, in-flight and authority checks apply; JSON is data, not permission to r
 
 ## Converting a repository: `autowork migrate`
 
-`autowork migrate [repo] [--dry-run] [--no-commit]` converts a TODO.md + goals.json
+`autowork migrate [repo] [--dry-run] [--no-commit] [--accept-consumers]` converts a TODO.md + goals.json
 repository once; `autowork tasks prepare` runs it for Docs Sync, so no owner has to. It
 refuses, writing nothing, while a worker slot is occupied (running, held, reported,
 integrating or integrated), a coordinator or sequential lease is live, a task is
@@ -288,6 +288,36 @@ the original Ownership, Resources and Live authorization wording, is kept as a b
 Done and superseded tasks, and archived tasks that open work depends on, become closed
 records with no section or rank.
 
+Before conversion, `--dry-run` and `tasks prepare --check` scan tracked working-tree text
+and the Git snapshot retained by the transaction (HEAD, or a pending candidate) for literal
+`TODO.md` or `goals.json` references (excluding those inputs and the frozen archive).
+Uncommitted repairs or deletions cannot hide consumers still present in that snapshot:
+commit those repairs first, or explicitly accept the retained consumers. Reports separate `consumers` (build files, CI, hooks, source, tests and other
+non-documentation files) from `documentation_drift` (Markdown, reStructuredText, AsciiDoc,
+Org and text files under `docs/`). Each hit gives `path`, 1-based `line` and `names`, not
+the source text; retained-only hits also name their `revision`. Binary files are skipped
+and symlinks are not followed; submodule contents and
+untracked files are outside this scan. Documentation mentions never refuse conversion.
+Other consumers do: fix them in their repository first, or explicitly accept the risk with
+`autowork migrate --accept-consumers`. This flag changes no consumer code. Dry runs still
+report the proposed conversion and its `refusals`; prepare reports `MIGRATION_BLOCKED`.
+`prepare --force` does not accept consumers implicitly. A resumed conversion rechecks
+consumers too: pass `--accept-consumers` again if any remain.
+
+Conversion also accounts for TODO.md source lines. Known task entries map to records;
+standard queue headings and archive navigation need no replacement. Generated coverage
+between its unique `goals:coverage:begin`/`end` marker lines is dropped; ambiguous markers
+refuse. Any other content (product checklists, milestones, owner answers, a free backlog,
+comments, fenced examples, continued fields or ignored task annotations) triggers a
+`CHECKLIST.md` preservation snapshot. It retains
+the original TODO bytes, including queue context, with only generated coverage replaced
+by empty lines: retained content stays at its original 1-based line numbers, with original
+line endings. The `preserved` report names the destination and the extra-content
+`line_ranges` (inclusive). A queue alone creates no snapshot. If the destination already
+exists, conversion refuses and names the source ranges rather than overwriting it.
+The preservation document is part of the same proven commit/staging/recovery transaction
+as the task records, not an uncommitted backup. On resume, `preserved` names its path.
+
 ## Preparing a repository: `autowork tasks prepare`
 
 `autowork tasks prepare [repo] [--check | --no-commit]` ([source](pi_autowork/task_prepare.py))
@@ -298,8 +328,12 @@ store's counts, drafts and selection `order`, and `diagnostics` (`DRAFT`, `NOT_R
 `LIVE_NOT_AUTHORIZED`, `UNKNOWN_DEPENDENCY`, `SUPERSEDED_DEPENDENCY`, `TOUCHES_TASK_STORE`,
 `OPEN_TASK_UNDER_MET_GOAL`, `GOAL_WITHOUT_WORK`, `BROKEN_SOURCE` for a missing path or
 heading anchor, `DUPLICATE_TASK`, `IN_FLIGHT`), each naming the `autowork tasks` command that
-repairs it. It converts a legacy repository and finishes a pending conversion through
-`autowork migrate`'s transaction; for `none` it lists tracked documents and the headings
+repairs it. After conversion, remaining references also appear as `LEGACY_CONSUMER` and
+`LEGACY_DOCUMENTATION` diagnostics, naming the file and line to reconcile from evidence;
+prepare never rewrites those files. Consumer and documentation inventories are included
+before and after conversion. The capabilities handshake reports `prepare_api: 4` for
+this conversion-safety contract. It converts a legacy repository and finishes a pending
+conversion through `autowork migrate`'s transaction; for `none` it lists tracked documents and the headings
 marked `Status: Accepted`. Everything else is judgement: it decides no intent, writes no
 goal, task or field, and grants nothing. `--check` writes no file, ref, index, lock or
 object; `--no-commit` stages a conversion without moving HEAD. It exits 1 when `ok` is false
@@ -435,6 +469,14 @@ live-service acceptance. The CLI object-isolation case checks `count-objects`, i
 bytes and refs across worktree validation, pending-edit preparation and task writes
 in a linked checkout, plus rejected validation. Migration cases check that dry-run
 proofs add no objects and an actual conversion leaves no unreachable proof commit.
+Conversion regressions also exercise consumer refusal/explicit acceptance, nonblocking
+documentation drift, checklist/backlog byte and line preservation, destination collision
+refusal, staged recovery, task annotations/continuations and unchanged queue-only
+conversion. The shared record mapper
+stays independent of preservation, so engine fixture rebuilds remain repeatable. Prepare
+rescans after conversion to include the new snapshot in its diagnostics immediately.
+Consumer checks cover resumed transactions and uncommitted repairs that would otherwise
+leave broken references in the committed conversion.
 
 The [October 2026 object audit](../docs/plans/unreachable-objects-2026-10.md) records
 remaining object-producing paths and preservation/candidate ref reachability. It does

@@ -23,7 +23,7 @@ result and changes nothing.
 Every report carries one `outcome` an agent acts on: READY (a valid store; work its
 diagnostics), MIGRATED (converted now), NO_STORE (bootstrap from accepted headings),
 MIGRATION_DEFERRED (work in flight; the runner converts after its drain),
-MIGRATION_BLOCKED (a refusal only a person resolves), INVALID_STORE, or
+MIGRATION_BLOCKED (a safety refusal requiring repair or explicit consumer acceptance), INVALID_STORE, or
 ACTIVATION_PENDING (the store is ready but the running runner's release cannot read it).
 `runner` says whether this repository's runner runs and can execute tasks/.
 
@@ -49,7 +49,7 @@ from task_store import StoreError, TaskStore  # noqa: E402
 
 # The prepare contract a skill checks (`autowork capabilities`) before it relies on it; raise
 # API when a skill would need a new prepare behaviour to act correctly.
-API = 3  # 3: prepare --force
+API = 4  # 4: tracked legacy consumers and line-accounted content preservation
 OUTCOMES = ('READY', 'MIGRATED', 'NO_STORE', 'MIGRATION_DEFERRED', 'MIGRATION_BLOCKED', 'INVALID_STORE',
             'ACTIVATION_PENDING')
 HEADING = re.compile(r'^(#{1,6})\s+(.*?)\s*#*\s*$')
@@ -314,6 +314,12 @@ def _prepare(repo, mode):
     held, problems = task_commands.in_flight(repo, task_commands.ACTIVE)
     report = dict(ok=True, repo=str(repo), mode=mode, state=detect(repo), actions=[], refusals=[],
                   in_flight=sorted(held), pending=[], diagnostics=[])
+    try:
+        report.update(task_migrate.reference_inventory(repo))
+    except task_migrate.Refused as exc:
+        report.update(ok=False, state='invalid', refusals=[str(exc)],
+                      next='make the tracked files readable, then run prepare again')
+        return report
     state = report['state']
     if state in ('legacy', 'conversion_pending'):
         if mode == 'check':
@@ -322,6 +328,8 @@ def _prepare(repo, mode):
             result = task_migrate.convert(repo, commit=mode == 'commit')
         except task_migrate.Refused as exc:
             found = task_migrate.refusals(repo) if state == 'legacy' else task_migrate.busy(repo)
+            if reason := task_migrate.consumer_refusal(report):
+                found.append(reason)
             if mode == 'commit' and task_migrate.deferrable(found):
                 # Work in flight: record the owner's request; the runner drains and converts.
                 report.update(ok=False, deferred=task_migrate.record_intent(repo, 'autowork tasks prepare', found),
@@ -335,6 +343,8 @@ def _prepare(repo, mode):
             return report
         task_migrate.clear_intent(repo)
         report['actions'].append(dict(action='convert', **result))
+        # The transaction may have added a preservation document with legacy references.
+        report.update(task_migrate.reference_inventory(repo))
         state = report['state'] = 'converted' if result['outcome'] in ('CONVERTED', 'ALREADY_CONVERTED') \
             else 'uncommitted'
     if state == 'none':
@@ -368,6 +378,12 @@ def _prepare(repo, mode):
             return report
     report.update(_summary(store))
     report['diagnostics'] = diagnose(repo, store, held)
+    for group, code in (('consumers', 'LEGACY_CONSUMER'), ('documentation_drift', 'LEGACY_DOCUMENTATION')):
+        for hit in report[group]:
+            report['diagnostics'].append(dict(code=code, id=hit['path'],
+                detail=f"{hit['path']}:{hit['line']} names {', '.join(hit['names'])}",
+                fix='update the reference for tasks/ or the preserved document from source evidence; '
+                    'conversion never rewrites consumers'))
     report['next'] = ('reconcile accepted documents with these records through `autowork tasks`; '
                       'repair the diagnostics only from evidence')
     if problems:
@@ -377,9 +393,12 @@ def _prepare(repo, mode):
 
 def _check_conversion(repo, report):
     """Read-only: what a conversion would do, without building its proof commit."""
-    if candidate := task_migrate.pending(repo):
+    if (candidate := task_migrate.pending(repo)) and not task_migrate._stale(repo, candidate, drop=False):
         report['would'] = f'finish the recorded conversion {candidate[:12]}'
         report['refusals'] = task_migrate.busy(repo)
+        if reason := task_migrate.consumer_refusal(report):
+            report['refusals'].append(reason)
+        report['ok'] = not report['refusals']
         return report
     report['refusals'] = task_migrate.refusals(repo)
     if recorded := task_migrate.intent(repo):
@@ -390,7 +409,11 @@ def _check_conversion(repo, report):
             report['would'] = dict(convert=len([p for p in files if p.startswith('tasks/items/')]),
                                    goals=len([p for p in files if p.startswith('tasks/goals/')]), order=order,
                                    set_aside=sorted(s['task_id'] for s in task_migrate.awaiting_answer(repo)))
+            if kept := task_migrate.preserve_content(repo, files):
+                report['preserved'] = kept
         except task_migrate.Refused as exc:
             report['refusals'] = [str(exc)]
+    if reason := task_migrate.consumer_refusal(report):
+        report['refusals'].append(reason)
     report['ok'] = not report['refusals']
     return report
