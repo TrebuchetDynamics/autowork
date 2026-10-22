@@ -1945,6 +1945,13 @@ Rules:
 - *Blocker* says who resolves it. *Needs you* is kept for a decision, authorization or
   input automation cannot supply; a merge conflict or a failed check is normally
   *Agent repair*.
+- Failure type and resolution owner are separate typed fields shared by the engine,
+  health, the question builder and the TUI. Exhausted reviewer rework, dead workers,
+  timeouts, merge conflicts and dependency waits stay engineering holds (Agent repair
+  or engine recovery) even when automatic retries end; only a product, scope,
+  authorization or unavailable human input creates a `USER_DECISION` question. An
+  exhausted technical hold is visible with its findings and next action, never silently
+  discarded or relabelled as an owner decision.
 - A hold the engine lifts by itself (an `overlap` hold, offered again once the other
   task's files are free) is *Waiting*, not a Blocker. The display shows *Needs you*
   when the task has an open question in BLOCKERS.md; no cause is mapped to *External*

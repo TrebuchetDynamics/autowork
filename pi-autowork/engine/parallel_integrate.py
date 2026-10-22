@@ -17,6 +17,7 @@ import task_store
 import parallel_state as state
 from parallel_state import close_files  # the close's own file set; re-exported for callers
 import task_execution as execution
+import failure_policy
 from worktree_paths import canonical_root, worktree_path
 
 
@@ -1567,10 +1568,14 @@ def reviewer_finding(slot):
 
 
 def review_rework(repo, common, current):
-    """A last attempt that failed its review was neither retried nor asked about: fresh retries are
-    for first attempts, and review failures are not questions. It now gets one rework attempt with
-    the finding and its kept commit; a rework that fails review too becomes a person's question
-    quoting both findings. Caller holds the dispatch, integration and writer locks."""
+    """A last attempt that failed its review gets one bounded engineering rework.
+
+    Fresh retries are for first attempts, and review failures are never owner questions. The
+    rework carries the finding and its kept commit. A rework that fails review too stops that
+    budget and becomes a visible engineering hold quoting both findings; its durable incident
+    record keeps the classification and next action. Caller holds the dispatch, integration and
+    writer locks.
+    """
     for slot in current:
         finding = reviewer_finding(slot)
         if slot['state'] != 'held' or not finding or state.worker_live(slot):
@@ -1580,11 +1585,33 @@ def review_rework(repo, common, current):
         if isinstance(earlier, dict):
             reason = (f'{slot.get("reason")}; this was its one rework after review, and the earlier '
                       f'review found: {earlier.get("finding", "")}')
+            # A bounded engineering repair ended. Keep the durable incident and both findings; the
+            # task becomes a visible engineering hold, never an owner decision (TOOLSET-285-29).
+            classification = failure_policy.classify('reviewed_twice', reason)
+            earlier = dict(earlier, stuck=dict(
+                cause='reviewed_twice', finding=finding, tip=slot.get('commit') or '',
+                failure_class=classification['failure_class'],
+                resolution_owner=classification['resolution_owner'],
+                state=classification['state'], next_action=classification['next_action'],
+                owner_decision_required=classification['owner_decision_required'],
+                incident=failure_policy.incident_id(repo, slot['task_id'], 'reviewed_twice',
+                                                    slot.get('commit') or '', finding),
+                at=time.time()))
+            execution.save(marker, earlier)
             state.write_slot(common, dict(slot, cause='reviewed_twice', reason=reason), slot)
-            state.event(common, 'review_rework_failed', task_id=slot['task_id'])
+            state.event(common, 'review_rework_failed', task_id=slot['task_id'],
+                        incident=earlier['stuck']['incident'], resolution_owner='AGENT_REPAIR')
         elif slot['attempt'] >= 2:
-            execution.save(marker, {'finding': finding, 'tip': slot.get('commit') or '', 'at': time.time()})
-            state.event(common, 'review_rework', task_id=slot['task_id'], tip=slot.get('commit') or '')
+            classification = failure_policy.classify('validation', finding)
+            execution.save(marker, {
+                'finding': finding, 'tip': slot.get('commit') or '', 'at': time.time(),
+                'failure_class': classification['failure_class'],
+                'resolution_owner': classification['resolution_owner'],
+                'next_action': 'repair_review_findings',
+                'incident': failure_policy.incident_id(repo, slot['task_id'], 'validation',
+                                                       slot.get('commit') or '', finding)})
+            state.event(common, 'review_rework', task_id=slot['task_id'], tip=slot.get('commit') or '',
+                        incident=execution.read(marker).get('incident'), resolution_owner='AGENT_REPAIR')
             return dict(_retire(repo, common, slot, True), outcome='REQUEUED', why='review_rework')
     return None
 

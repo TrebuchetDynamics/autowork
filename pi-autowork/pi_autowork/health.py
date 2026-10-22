@@ -18,7 +18,9 @@ import sys
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'engine'))
 from pi_autowork.processes import running, start_time  # noqa: E402
+import failure_policy  # noqa: E402
 
 SCHEMA = 1
 STALL_AFTER = 1800      # seconds with nothing running while work waits
@@ -28,6 +30,15 @@ IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')  
 NEEDS_PERSON = ('runner', 'held', 'claim', 'contract', 'outside', 'cycle')
 HOST_WAIT = 'waiting for the host'
 LOAD_WAIT = r'^resource gate: load average (\S+) >= (\S+) CPUs$'
+
+
+def needs_person(root):
+    """Whether a root genuinely needs an owner decision. A held root is judged by the shared
+    failure policy, not by its display kind: an exhausted technical hold is still visible, but it
+    is Agent repair or engine recovery, not a question."""
+    if root.get('kind') == 'held':
+        return failure_policy.owner_decision_required(root.get('cause'), root.get('reason'))
+    return root.get('kind') in NEEDS_PERSON
 
 
 def classify(snapshot, *, paused=False, stuck=0):
@@ -72,6 +83,8 @@ def describe(root):
         kind = 'deferred by owner'
     if root['kind'] == 'held' and root.get('cause') == 'overlap':
         kind = 'held'  # the engine offers it again by itself; no person is needed
+    elif root['kind'] == 'held' and root.get('cause') and not needs_person(root):
+        kind = 'engineering hold'  # visible, but an agent or the engine clears it
     if root['kind'] == 'held' and root.get('cause'):
         kind += ': ' + CAUSES.get(root['cause'], root['cause'])
     return f"{label(root)} ({kind}, holds {root['blocks']})"
@@ -125,7 +138,7 @@ def stopped(tasks, roots):
     waiting = [t.get('task') for t in tasks if t.get('state') == 'waiting' and t.get('task')]
     ids, groups = set(), []
     for root in roots:
-        if root.get('kind') not in NEEDS_PERSON or (root.get('kind') == 'held' and root.get('cause') == 'overlap'):
+        if not needs_person(root) or (root.get('kind') == 'held' and root.get('cause') == 'overlap'):
             continue
         held = waiting if root.get('kind') == 'runner' else [t for t in root.get('tasks') or [] if t in waiting]
         fresh = [t for t in held if t not in ids]
@@ -387,7 +400,7 @@ def render(rows, *, now=None):
         if row.get('blocker', '').startswith('status unavailable since '):
             lines.append('    ' + row['blocker'])
         if row['state'] in ('stalled', 'blocked', 'not running', 'not cycling'):
-            for root in [r for r in row['roots'] if r.get('kind') in NEEDS_PERSON][:3]:
+            for root in [r for r in row['roots'] if needs_person(r)][:3]:
                 lines.append('    blocked by ' + describe(root))
     return '\n'.join(lines)
 

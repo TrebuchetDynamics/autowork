@@ -526,7 +526,7 @@ def status_view(repo, base, toolset, state):
         since = (record.get('status_unavailable_since', record['since'])
                  if record['state'] == 'unavailable' else record['since'])
         line = f"Health:     {record['state']} since {datetime.fromtimestamp(int(since)):%Y-%m-%d %H:%M}"
-        roots = [r for r in record.get('roots') or [] if r.get('kind') in health.NEEDS_PERSON][:3]
+        roots = [r for r in record.get('roots') or [] if health.needs_person(r)][:3]
         if roots:
             line += '; blocked by ' + '; '.join(
                 f"{' '.join(str(r['id']).split())[:60]} ({r['kind']}, holds {r['blocks']})" for r in roots)

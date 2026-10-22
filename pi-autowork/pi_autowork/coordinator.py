@@ -2138,6 +2138,7 @@ class Coordinator:
         rev, green = record.get('rev', ''), record.get('green')
 
         def finished(value):
+            value.setdefault('result_class', main_check.result_class(log_text, code))
             common = git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')
             if common and rev and code is not None:
                 main_check.publish_evidence(self.state, common, rev, value)
@@ -2593,7 +2594,7 @@ class Coordinator:
                     return True
                 reason += f'; could not set it aside: {result.get("reason") or result.get("outcome")}'
             if self.seen.get('merge-refused-' + task) != reason:
-                LOG.say(f'{task}: not running the merge resolver: {reason}; it waits for the owner')
+                LOG.say(f'{task}: not running the merge resolver: {reason}; it remains a visible engineering hold')
                 self.seen['merge-refused-' + task] = reason
             return False
         head = git(self.integ, 'rev-parse', 'HEAD')
@@ -2639,7 +2640,7 @@ class Coordinator:
             if not git_ok(root, 'stash', 'push', '--include-untracked', '-m',
                           f'autowork: {task} left uncommitted before its merge resolution'):
                 if self.seen.get('unstashed-' + task) != root:
-                    LOG.say(f'{task}: its worktree has uncommitted files that could not be stashed; it waits for the owner')
+                    LOG.say(f'{task}: its worktree has uncommitted files that could not be stashed; it remains a visible engineering hold')
                     self.seen['unstashed-' + task] = root
                 return False
             LOG.say(f'{task}: its uncommitted files were stashed (git stash list in {root}) so its merge can be resolved')
@@ -2663,7 +2664,7 @@ class Coordinator:
             if (marker and Path(marker).exists()) or dirty(root) or not git_ok(root, 'merge-base', '--is-ancestor',
                                                                               head, 'HEAD'):
                 git(root, 'merge', '--abort')
-                next_step = 'it waits for the owner' if job['merged_count'] else 'it is retried fresh instead'
+                next_step = 'it remains a visible engineering hold' if job['merged_count'] else 'it is retried fresh instead'
                 LOG.say(f'{task}: the merge could not be resolved; {next_step}')
                 if job['merged_count']:
                     self.seen['unresolved-' + task] = job['commit']

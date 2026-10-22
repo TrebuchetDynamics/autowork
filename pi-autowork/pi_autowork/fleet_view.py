@@ -1019,7 +1019,7 @@ def _health_runner(found: dict[str, Runner], row: dict, folders: dict[str, str],
                    running=row.get('workers', 0), waiting=row.get('waiting', 0),
                    stopped=row.get('stopped', 0), stopped_groups=row.get('stopped_groups') or [],
                    held=[(h.get('task', '?'), h.get('cause')) for h in row.get('held', [])],
-                   roots=[r for r in row.get('roots', []) if r.get('kind') in health.NEEDS_PERSON],
+                   roots=[r for r in row.get('roots', []) if health.needs_person(r)],
                    waiting_groups=row.get('waiting_groups') or [], blocker=row.get('blocker') or '',
                    stop_reason=row.get('stop_reason') or '', max_workers=row.get('max_workers'),
                    maintainer=row.get('maintainer') or {}, main_check=check, job=job)

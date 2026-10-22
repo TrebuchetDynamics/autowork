@@ -2,9 +2,11 @@
 
 Owner direction (2026-10-16): the owner only plans and answers; questions live in the
 repository, never in a chat. Each cycle the runner turns what holds its queue into a
-fixed set of questions, without a model: held tasks no attempt can finish, task records that
-the engine will not run as their records state them, outside conditions and
-dependency cycles. They live under BLOCKERS.md's `## Active`, between
+fixed set of questions, without a model: held tasks whose resolution genuinely requires owner
+input, task records the engine will not run as their records state them, outside conditions and
+dependency cycles. A technical hold remains a visible engineering incident even after its
+bounded repair or recovery budget ends; it is never relabelled as an owner decision. They live
+under BLOCKERS.md's `## Active`, between
 
     <!-- pi-autowork:questions:start -->
     <!-- pi-autowork:questions:end -->
@@ -19,14 +21,13 @@ from pathlib import Path
 import re
 import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'engine'))
+import failure_policy  # noqa: E402
+
 START = '<!-- pi-autowork:questions:start -->'
 END = '<!-- pi-autowork:questions:end -->'
 EFFORT_ORDER = ('quick', 'decision', 'input', 'investigate')
 INPUT_CAUSES = ('blocker', 'scope_request', 'scope')
-# Holds the engine recovers without a person: it re-verifies the validation failure, or (on
-# request) clears the hold. A merge conflict is different — the engine resolves it during
-# integration, and one it cannot resolve stays the owner's question — so it is not listed here.
-TECHNICAL_CAUSES = ('validation', 'runner_merged')
 
 
 def _one_line(value):
@@ -51,24 +52,19 @@ def _store(repo):
 
 
 def technical(row):
-    """A hold the runner recovers by itself: a merge conflict, or an integration-validation
-    failure it can re-offer or re-verify. A person need not decide anything (owner direction:
-    the recorded reason must name a decision, or it stays technical recovery)."""
-    if row.get('cause') == 'reviewed_twice':
-        return False  # its one rework failed review too (TOOLSET-285-29)
-    return (row.get('cause') in TECHNICAL_CAUSES
-            or 'integration validation' in str(row.get('reason') or ''))
+    """A failure an agent or the engine can act on. The shared policy owns the boundary;
+    a failed review, a dead worker or a merge conflict never becomes an owner decision merely
+    because its retry budget ran out."""
+    return failure_policy.technical(row.get('cause'), row.get('reason'))
 
 
 def exhausted(row):
-    """A held task the runner will not retry: a person must answer. A technical hold the
-    engine still recovers (re-offer, re-verify, clear-held) never counts as exhausted, however
-    many attempts it took."""
+    """A held task the runner will not retry on its own. Only an owner-owned hold becomes a
+    question; an exhausted technical hold stays a visible engineering incident."""
     if technical(row):
         return False
     adoption = row.get('merge_adoption') or {}
     return row.get('state') == 'held' and (int(row.get('attempt') or 0) >= 2 or row.get('cause') in INPUT_CAUSES
-                                          or row.get('cause') == 'reviewed_twice'
                                           or adoption.get('allowed') is False or bool(adoption.get('merged_count'))
                                           or bool(row.get('quick_hold')))
 
@@ -137,7 +133,7 @@ def build(snapshot, repo, repairs=(), resolving=(), *, now=None):
         waits = row.get('waits_for') if row.get('state') == 'held' else None
         if waits:
             since = row.get('wait_since')
-            if since is None or now - since < 24 * 3600:
+            if technical(row) or since is None or now - since < 24 * 3600:
                 continue
         elif not exhausted(row):
             continue

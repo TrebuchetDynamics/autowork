@@ -22,14 +22,14 @@
       "held": [
         [
           "T-2",
-          "conflict"
+          "blocker"
         ]
       ],
       "roots": [
         {
           "id": "T-2",
           "kind": "held",
-          "cause": "conflict",
+          "cause": "blocker",
           "blocks": 2
         }
       ],

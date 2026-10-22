@@ -70,7 +70,8 @@ def snapshot():
 
 
 # T-2 with no attempt left: a question of its own beside T-1's.
-EXHAUSTED = {'task': 'T-2', 'state': 'held', 'attempt': 2, 'reason': 'held with no attempt left'}
+EXHAUSTED = {'task': 'T-2', 'state': 'held', 'attempt': 2, 'cause': 'blocker',
+             'reason': 'worker asked for an owner-supplied input'}
 
 
 class QuestionTests(unittest.TestCase):
@@ -89,33 +90,34 @@ class QuestionTests(unittest.TestCase):
         self.assertFalse(questions.exhausted(
             {'state': 'held', 'attempt': 9, 'cause': None,
              'reason': 'missing, failed, stale or mismatched integration validation'}))
-        # A merge conflict is the engine's to resolve first, but one it cannot resolve is the
-        # owner's question (the engine tests enforce that), so it stays a real hold.
-        self.assertTrue(questions.exhausted(
-            {'state': 'held', 'attempt': 2, 'cause': 'conflict', 'reason': 'merge conflict'}))
+        # A merge conflict is the engine's to resolve; an unresolved one stays a visible
+        # engineering hold, not an owner decision.
+        self.assertFalse(questions.exhausted(
+            {'state': 'held', 'attempt': 9, 'cause': 'conflict', 'reason': 'merge conflict'}))
+        # Unknown evidence is investigated before responsibility is assigned.
+        self.assertFalse(questions.exhausted(
+            {'state': 'held', 'attempt': 9, 'cause': None, 'reason': 'held with no attempt left'}))
         # A genuine owner-input hold with no attempt left is still a question.
-        self.assertTrue(questions.exhausted(
-            {'state': 'held', 'attempt': 2, 'cause': None, 'reason': 'held with no attempt left'}))
+        self.assertTrue(questions.exhausted(EXHAUSTED))
 
-    def test_task_wait_becomes_one_question_only_after_24_hours(self):
+    def test_a_dependency_wait_stays_engineering_work_not_an_owner_question(self):
         status = {'tasks': [{'task': 'T-1', 'state': 'held', 'attempt': 2, 'cause': 'task_wait',
                              'waits_for': ['T-2'], 'wait_since': 1000,
                              'reason': 'worker waits for T-2'}]}
         self.assertEqual(questions.build(status, store(), now=1000 + 24 * 3600 - 1), [])
-        found = questions.build(status, store(), now=1000 + 24 * 3600)
-        self.assertEqual([(q['id'], q['effort']) for q in found], [('T-1', 'input')])
-        self.assertIn('T-2', found[0]['needs'])
-        self.assertIn('24', found[0]['needs'])
-        text = questions.update(None, found, now=NOW)
-        self.assertEqual(text.count('### Q-'), 1)
+        self.assertEqual(questions.build(status, store(), now=1000 + 24 * 3600), [])
+        from failure_policy import classify
+        self.assertEqual(classify('task_wait')['resolution_owner'], 'ENGINE')
 
     def test_a_conflict_the_resolver_still_settles_is_not_asked(self):
         """Seven conflict holds were posted as owner questions while three resolvers cleared them."""
         held = {'task': 'T-1', 'state': 'held', 'attempt': 2, 'cause': 'conflict', 'commit': 'c',
                 'reason': 'merge conflict', 'merge_adoption': {'allowed': True, 'merged_count': 1}}
         status = {'tasks': [held], 'roots': []}
-        self.assertEqual([q['id'] for q in questions.build(status, store())], ['T-1'])
+        self.assertEqual([q['id'] for q in questions.build(status, store())], [])
         self.assertEqual(questions.build(status, store(), resolving={'T-1'}), [])
+        from failure_policy import classify
+        self.assertEqual(classify('conflict')['resolution_owner'], 'ENGINE')
         from pi_autowork.coordinator import Coordinator
         runner = Coordinator.__new__(Coordinator)
         runner.seen = {}
