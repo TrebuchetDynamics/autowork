@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-363-7e8fd487"
 title = "test_a_candidate_finished_during_a_batch_check_rides_the_merge_train passes whichever candidate reports first"
 short = "Merge-train test fixture race"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 1000
@@ -16,6 +16,8 @@ scope = "Under full-suite load (clone run of 4f13bb0b, 2026-10-22) A was impleme
 acceptance = ["The test passes when A is reviewed alone before B reports and when A and B report together (both orders forced in the fake worker plan or as subTests)", "The assertions still fail if a candidate finished during a batch check is reviewed alone instead of riding the train (verified by breaking the train locally, not committed)"]
 checks = ["python3 scripts/check.py tests/test_pi_autowork.py -k test_a_candidate_finished_during_a_batch_check_rides_the_merge_train"]
 exclusions = []
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-363-7e8fd487.toml"
 +++
 
 - Sources: docs/plans/structural-audit-2026-10.md#hotspots
