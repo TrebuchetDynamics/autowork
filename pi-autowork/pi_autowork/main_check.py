@@ -31,6 +31,9 @@ TIMEOUT = re.compile(r'^TIMEOUT: (\S+) after', re.M)
 # Flutter emits a per-test failure line before its process exits; without this the suite's
 # meaningful failures were mistaken for a harness crash with no test result.
 FLUTTER_FAILURE = re.compile(r'^\s*\d{1,2}:\d{2} \+\d+(?:\s*~\d+)?\s+-\d+:\s+(.+?)\s+\[E\]\s*$', re.M)
+# Flutter's terminal line: the suite ran to its end, whatever the counts. Without it a Flutter
+# full check could never read as complete, and consumers wrapped it in a Python harness.
+FLUTTER_SUMMARY = re.compile(r'^\s*\d{1,2}:\d{2} \+\d+(?:\s*~\d+)?(?:\s+-\d+)?:\s+(?:All tests passed!|Some tests failed\.)\s*$', re.M)
 
 
 FULL_CHECK = re.compile(r'^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?Full check:(?:\*\*)?[ \t]*`?([^`\n]+?)`?[ \t]*$', re.M)
@@ -475,6 +478,9 @@ def complete_results(text, root, cmd=None):
             args = shlex.split(cmd)
         except ValueError:
             return False
+        if 'test' in args and any(a == 'flutter' or a.endswith('/flutter') for a in args):
+            # `flutter test` (alone or after `&&` with its pub get) ends in one terminal line.
+            return len(FLUTTER_SUMMARY.findall(text)) == 1
         return (len(args) >= 3 and args[1:3] == ['-m', 'unittest']
                 and not re.search(r'[;&|<>()\n]', cmd) and len(summary.findall(text)) == 1)
     for index, section in enumerate(sections):

@@ -61,6 +61,25 @@ class MainCheckTests(unittest.TestCase):
         self.assertEqual(main_check.result_class(log, -6, timed_out=True), 'TIMEOUT')
         self.assertEqual(main_check.result_class(log, None), 'TEST_FAILURE')
 
+    def test_a_flutter_check_is_complete_at_its_terminal_line(self):
+        """A consumer whose Full check is `flutter test` could never read as complete, so its gate
+        called every run incomplete and the consumer started wrapping the suite in a Python harness
+        (a Flutter consumer, 2026-10-22). Flutter's last line says the suite ran to its end."""
+        cmd = 'flutter pub get --offline --enforce-lockfile && flutter test --no-pub --concurrency=1'
+        root = Path(tempfile.mkdtemp(prefix='flutter-check-'))
+        self.addCleanup(lambda: subprocess.run(['rm', '-rf', str(root)]))
+        passed = 'Resolving dependencies...\n00:01 +0: loading test/a_test.dart\n00:12 +125: All tests passed!\n'
+        failed = ('00:02 +0 -1: opening the database [E]\n  Expected: a row\n'
+                  '00:12 +123 ~1 -2: Some tests failed.\n')
+        crashed = ('00:02 +0 -1: opening the database [E]\n'
+                   'Oops; flutter has exited unexpectedly: "Bad state: No element".\n')
+        self.assertTrue(main_check.complete_results(passed, root, cmd))
+        self.assertTrue(main_check.complete_results(failed, root, cmd))  # complete, with named failures
+        self.assertFalse(main_check.complete_results(crashed, root, cmd))  # died before its summary
+        self.assertFalse(main_check.complete_results(passed + passed, root, cmd))  # two runs in one log
+        # A Python unittest command still needs its own summary, not Flutter's.
+        self.assertFalse(main_check.complete_results(passed, root, 'python3 -m unittest discover -s tests'))
+
     def test_a_harness_crash_without_a_test_result_is_not_a_pass_or_test_failure(self):
         log = 'Oops; flutter has exited unexpectedly: "Bad state: No element".\n'
         for code, expected in ((-6, 'HARNESS_ERROR'), (1, 'INCOMPLETE'), (0, 'PASS')):
