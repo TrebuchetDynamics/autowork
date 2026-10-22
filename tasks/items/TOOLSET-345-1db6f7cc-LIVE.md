@@ -1,0 +1,20 @@
++++
+schema = 1
+id = "TOOLSET-345-1db6f7cc-LIVE"
+title = "Live checks for TOOLSET-345-1db6f7cc"
+short = "Live checks for TOOLSET-345-1db6f7cc"
+status = "open"
+goal = "RELIABILITY-2026-10"
+section = "Needs decision"
+rank = 31001
+depends_on = ["TOOLSET-345-1db6f7cc"]
+touches = ["pi-autowork/pi_autowork/command.py", "pi-autowork/pi_autowork/service.py", "pi-autowork/pi_autowork/coordinator.py", "tests/test_autowork_command.py", "tests/test_pi_autowork.py", "pi-autowork/README.md", "docs/cross-host.md"]
+resources = []
+kind = "implementation"
+ownership = "owner"
+scope = "Run the live checks the offline work for TOOLSET-345-1db6f7cc left pending."
+acceptance = ["Qualify restart waiting, timeout refusal and --now against a real systemd user service during in-flight merge work. Offline fixtures use fake systemctl and model processes; no live service was stopped or restarted."]
+checks = ["Live qualification by an authorized person"]
+exclusions = ["Offline evidence does not count"]
++++
+
