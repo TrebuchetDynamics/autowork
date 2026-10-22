@@ -30,6 +30,11 @@ POLICY = {
     'timeout': ('PROCESS_TIMEOUT', ENGINE, 'recovery_required', 'reverify_candidate'),
     'overlap': ('RESOURCE_CONFLICT', ENGINE, 'recovery_required', 'reoffer_when_files_are_free'),
     'report': ('EVIDENCE_MISSING', ENGINE, 'recovery_required', 'resume_report'),
+    # The report-only resume was used and the attempt still has no acceptable report: the retained
+    # commit is kept (no fresh attempt replaces it), so a person inspects it, then releases or
+    # sets it aside. Left as an engine recovery, nothing ever acted on it (2026-10-21, 14 hours).
+    'report_exhausted': ('EVIDENCE_MISSING', OWNER, 'owner_decision_required',
+                         'inspect_retained_commit_then_release_or_set_aside'),
     'conflict': ('MERGE_CONFLICT', ENGINE, 'recovery_required', 'resolve_conflict'),
     'task_wait': ('DEPENDENCY_WAIT', ENGINE, 'waiting', 'wait_for_dependency'),
     'runner_merged': ('STALE_CANDIDATE', ENGINE, 'recovery_required', 'requeue_from_kept_tip'),
@@ -45,6 +50,12 @@ POLICY = {
 }
 
 UNKNOWN = ('UNKNOWN_FAILURE', ENGINE, 'investigation_required', 'inspect_and_classify')
+
+
+def effective_cause(cause, resume_used=False):
+    """The typed cause the policy judges: a report hold whose report-only resume was already
+    used (``resume_used``, from the slot's own fields, never from reason text) is exhausted."""
+    return 'report_exhausted' if cause == 'report' and resume_used else cause
 
 
 def classify(cause, reason=''):

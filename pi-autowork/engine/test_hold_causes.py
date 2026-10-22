@@ -70,13 +70,15 @@ class HoldCausesTests(unittest.TestCase):
         state.transition(fx.repo, fx.owner, 'A', 'held', cause='empty', reason='retry made no change')
         self.assertEqual(fx.module().retry_held(fx.retry_args())['outcome'], 'IDLE')
 
-    def test_a_report_hold_after_its_resume_was_used_gets_a_fresh_attempt(self):
+    def test_a_report_hold_after_its_resume_was_used_needs_a_person_not_a_pending_resume(self):
         """A pilot (2026-10-21) wrote no report, was resumed report-only, then reported a failed check:
-        held with cause 'report' and the resume already used, the slot counted as exhausted (no fresh
-        retry) while the failure policy called it an engine recovery (no owner question): held for
-        14 hours with nothing acting on it. A used resume ends the resume, not the attempt budget."""
+        held with cause 'report' and the resume already used. The engine keeps the retained commit
+        (no fresh attempt replaces it, test_parallel_state), so the policy must hand it to a person;
+        classified as a pending engine resume, nothing acted on it for 14 hours."""
+        import parallel_status
+        import failure_policy
         fx = self.fixture()
-        root, commit = fx.worker()
+        fx.worker()
         report = dispatch.data_dir(fx.common, state.slots(fx.common)[0]) / 'report.json'
         execution.save(report, dict(execution.read(report), commit='0' * 40))  # names another commit
         state.transition(fx.repo, fx.owner, 'A', 'held', cause='report',
@@ -84,14 +86,14 @@ class HoldCausesTests(unittest.TestCase):
         path = state.slot_path(fx.common, 'A')
         execution.save(path, dict(state.slots(fx.common)[0], report_resume_attempt=1))
         held = state.slots(fx.common)[0]
-        self.assertFalse(state.exhausted(held), held)
-        args = fx.retry_args()
-        args.worker_command = '["true"]'
-        with patch.object(dispatch, 'resource_gate', return_value=''), patch.object(dispatch, 'launch', return_value=None):
-            result = fx.module().retry_held(args)
-        self.assertEqual(result['outcome'], 'RETRIED', result)
-        saved = fx.module().slot_for(fx.common, 'A')
-        self.assertEqual((saved['state'], saved['attempt']), ('running', 2))
+        self.assertTrue(state.exhausted(held))  # the retained commit stays: no fresh attempt
+        self.assertEqual(fx.module().retry_held(fx.retry_args())['outcome'], 'IDLE')
+        fields = parallel_status.failure_fields(held['cause'], held['reason'], resume_used=True)
+        self.assertEqual((fields['failure_class'], fields['resolution_owner'], fields['failure_state']),
+                         ('EVIDENCE_MISSING', failure_policy.OWNER, 'owner_decision_required'))
+        self.assertTrue(fields['owner_decision_required'])
+        fresh = parallel_status.failure_fields(held['cause'], held['reason'])  # before the resume: engine recovery
+        self.assertEqual((fresh['resolution_owner'], fresh['next_action']), (failure_policy.ENGINE, 'resume_report'))
 
     def test_each_cause_follows_its_rule(self):
         # Literal policies and observable effects: a wrong dispatch branch must fail,
