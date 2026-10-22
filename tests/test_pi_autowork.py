@@ -290,6 +290,15 @@ elif role == 'merge':
     finish(text='PI_AUTOWORK_RESULT: completed')
 elif behavior == 'complete':
     work(); finish(text='done')
+elif behavior == 'released':  # finish only at the scheduling boundary chosen by the test
+    root = os.environ['FAKE_PI_ROOT']
+    open(os.path.join(root, 'ready-' + task), 'w').close()
+    deadline = time.monotonic() + 90
+    while not os.path.exists(os.path.join(root, 'release-' + task)):
+        if time.monotonic() > deadline:
+            sys.exit('worker release timed out: ' + task)
+        time.sleep(0.05)
+    work(); finish(text='done')
 elif behavior == 'stuck_command':  # a tool command that would hang for a minute, then the work
     subprocess.run(['sleep', '60'])
     work(); finish(text='done')
@@ -1379,24 +1388,77 @@ class EngineTests(Fixture):
         """A task that finished while a batch ran its long check waited for that batch to land,
         then for a check of its own. It is now checked on top of the batch, beside it, and lands
         right after it on that verdict."""
-        self.repo = self.make_repo(self.root / 'train', [('A', None), ('B', None), ('C', 'A'), ('D', None)])
-        self.env['FAKE_MAIN_REPO'] = str(self.repo)
-        self.env['PI_AUTOWORK_BATCH'] = '6'
-        self.env['PI_AUTOWORK_MAIN_CHECK'] = 'true'
-        runs = self.root / 'full-check-runs'
-        self.env['PI_AUTOWORK_VALIDATE'] = f'echo ran >> {runs}; sleep 12'  # long enough for D to finish
-        self.plan({'worker:A': ['barrier'], 'worker:B': ['barrier'], 'worker:D': ['slow']})
-        result = self.run_runner('--until-empty', '--workers', '3', timeout=300)
-        self.assertTrue(self.done('A', 'B', 'C', 'D'), result.stdout)
-        self.assertIn('Batch of 2 candidates (A, B)', result.stdout)
-        self.assertIn('Merge train: 1 more candidate(s) (D) checked on top of the batch still running', result.stdout)
-        # Boarded while the batch ahead was still checking, landed after it on its own verdict.
-        self.assertLess(result.stdout.index('Merge train: 1 more'), result.stdout.index('Batch: 2 passed (A, B)'),
-                        result.stdout)
-        self.assertIn('D: landing — passed in its batch; not reviewed again', result.stdout)
-        self.assertLess(result.stdout.index('B: integrated'), result.stdout.index('D: integrated'), result.stdout)
-        self.assertEqual(sorted(r['task'] for r in self.runs('verify')), ['A', 'B', 'C', 'D'], result.stdout)
-        self.assertEqual(runs.read_text().count('ran'), 3, result.stdout)  # A+B, A+B+D, then C alone
+        import parallel_state
+
+        for order, pair, rider in (('together', ('A', 'B'), 'D'), ('A-first', ('B', 'D'), 'C')):
+            with self.subTest(reports=order):
+                gate = self.root / order
+                gate.mkdir()
+                self.repo = self.make_repo(gate / 'train', [('A', None), ('B', None), ('C', 'A'), ('D', None)])
+                self.state, self.log = gate / 'state', gate / 'pi.log'
+                runs, checked, expired = gate / 'checks', gate / 'rider-checked', gate / 'expired'
+                self.env.update(FAKE_MAIN_REPO=str(self.repo), FAKE_PI_ROOT=str(gate), FAKE_PI_LOG=str(self.log),
+                                PI_AUTOWORK_STATE_DIR=str(self.state), PI_AUTOWORK_BATCH='6',
+                                PI_AUTOWORK_MAIN_CHECK='true')
+                # A's solo check proceeds normally. The first batch releases its rider and
+                # waits for the extended tree's check, not a guessed worker duration.
+                self.env['PI_AUTOWORK_VALIDATE'] = (
+                    f'echo ran >> {runs}; if test -s B.txt; then '
+                    f'if test -s {rider}.txt; then touch {checked}; else touch {gate / ("release-" + rider)}; '
+                    f'for i in $(seq 1 1200); do test -e {checked} && break; sleep 0.05; done; '
+                    f'test -e {checked} || touch {expired}; fi; fi')
+                self.plan({f'worker:{task}': ['released'] for task in (*pair, rider)})
+                runner = self.start_runner('--until-empty', '--workers', '3')
+                try:
+                    for task in pair:
+                        self.wait_for(gate / f'ready-{task}', timeout=60)
+                    if order == 'A-first':
+                        self.wait_for(self.repo / 'tasks/evidence/A.toml', timeout=60)
+                    # Startup barriers alone do not synchronize reports. Hold collection until
+                    # both complete worker processes have exited, then let the engine see both.
+                    common = self.repo / '.git/autowork-execution'
+                    slots = [json.loads((common / 'slots' / f'{task}.json').read_text()) for task in pair]
+                    with (common / 'writer.lock').open('a') as lock:
+                        fcntl.flock(lock, fcntl.LOCK_EX)
+                        for task in pair:
+                            (gate / f'release-{task}').touch()
+                        deadline = time.monotonic() + 60
+                        while any(parallel_state.worker_live(slot) for slot in slots):
+                            self.assertLess(time.monotonic(), deadline, 'released workers did not exit')
+                            time.sleep(0.05)
+                    out, err = runner.communicate(timeout=300)
+                finally:
+                    checked.touch()
+                    for task in 'ABCD':
+                        (gate / f'release-{task}').touch()
+                    try:
+                        if runner.poll() is None:
+                            runner.send_signal(signal.SIGINT)
+                            try:
+                                runner.communicate(timeout=60)
+                            except subprocess.TimeoutExpired:
+                                runner.kill()
+                                runner.communicate(timeout=10)
+                    finally:
+                        self.stop_workers()
+                        self.remove_releases()
+                batch = ', '.join(pair)
+                self.assertEqual(runner.returncode, 0, out + err)
+                self.assertTrue(self.done('A', 'B', 'C', 'D'), out)
+                self.assertIn(f'Batch of 2 candidates ({batch})', out)
+                if order == 'A-first':
+                    self.assertLess(out.index('A: verifying'), out.index('B: implemented'), out)
+                    self.assertLess(out.index('A: integrated'), out.index(f'Batch of 2 candidates ({batch})'), out)
+                self.assertIn(f'Merge train: 1 more candidate(s) ({rider}) checked on top of the batch still running', out)
+                # The rider boards before the batch finishes and lands after it without re-review.
+                self.assertLess(out.index('Merge train: 1 more'), out.index(f'Batch: 2 passed ({batch})'), out)
+                self.assertFalse(expired.exists(), 'batch finished before the rider check started\n' + out)
+                self.assertIn(f'{rider}: landing — passed in its batch; not reviewed again', out)
+                for task in pair:
+                    self.assertLess(out.index(f'{task}: integrated'), out.index(f'{rider}: integrated'), out)
+                self.assertCountEqual([r['task'] for r in self.runs('verify')], ['A', 'B', 'C', 'D'], out)
+                # Together: A+B, A+B+D, C. A first: A, B+D, B+D+C.
+                self.assertEqual(runs.read_text().splitlines(), ['ran', 'ran', 'ran'], out)
 
     def test_a_worker_that_edits_its_own_task_file_is_held_and_never_lands_it(self):
         """A worker cannot change the contract it is judged against (TOOLSET-302-33)."""
