@@ -24,6 +24,7 @@
     "pi-autowork/engine/",
     "pi-autowork/bin/",
     "pi-autowork/README.md",
+    "pi-autowork/task-store.md",
     "!**/__pycache__",
     "LICENSE",
     "README.md",
