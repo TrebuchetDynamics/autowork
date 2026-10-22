@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-314-23"
 title = "Pass task text to autowork tasks without shell quoting"
 short = "Shell-safe task input"
-status = "open"
+status = "done"
 goal = "TASK-STORE-HARDENING"
 section = "Next"
 rank = 38000
@@ -16,6 +16,11 @@ scope = "Agents write task prose into shell command lines, where backticks and $
 acceptance = ["Scope, acceptance and notes containing backticks, $(...), $VAR, quotes and a newline round-trip byte for byte through --json from a file and from stdin, and no subprocess is started.", "A test runs the documented command form with a value that contains a backtick command and asserts the command never runs.", "skills/docs-sync/SKILL.md, adapters/skills/docs-sync/SKILL.md and skills/shared/TODO-WORKCENTER.md name the JSON input for prose."]
 checks = ["python3 -m unittest discover -s tests -p test_task_*.py", "python3 scripts/check.py"]
 exclusions = ["No shell execution added anywhere; the existing flags keep working."]
+closure = "manual"
+closure_actor = "owner interactive session (Claude)"
+closure_timestamp = "2026-10-22T10:17:00.304708+00:00"
+closure_reason = "Re-landed in 9f6bf604 after a misattributed revert (main's red check was the stalled-service assertion fixed in a215993d)"
+closure_evidence = "re-landed unchanged in 9f6bf604 as the inverse of its optimistic-landing revert; the blamed test predated it and was fixed in a215993d; its own review and batch check had passed before the revert"
 +++
 
 - Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20)
