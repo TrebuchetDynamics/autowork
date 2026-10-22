@@ -1075,26 +1075,44 @@ class EngineTests(Fixture):
     def test_a_reload_applies_between_back_to_back_reviews(self):
         """TOOLSET-236-4d: a runner whose reviews ran back to back never found a gap for a reload
         and kept its old release for hours; it re-executes before the next review starts."""
-        self.plan({'verify:A': ['slow_review'], 'verify:B': ['slow_review']})
-        runner = self.start_runner('--interval', '1')
-        self.addCleanup(lambda: runner.poll() is None and runner.kill())
-        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
-        deadline = time.monotonic() + 120
-        while 'A: verifying' not in log():
-            self.assertLess(time.monotonic(), deadline, log())
-            time.sleep(0.2)
-        runner.send_signal(signal.SIGHUP)
-        while not ('Reloading' in log() and self.done('A', 'B')):
-            self.assertLess(time.monotonic(), deadline, log())
-            self.assertIsNone(runner.poll(), log())
-            time.sleep(0.5)
-        runner.send_signal(signal.SIGINT)
-        runner.communicate(timeout=60)
-        text = log()
-        self.assertIn('Reload pending: waiting for the review of A to end', text)
-        self.assertLess(text.index('A: integrated'), text.index('Reloading'), text)
-        self.assertLess(text.index('Reloading'), text.index('B: verifying'), text)  # not after B's review
-        self.assertEqual(len([r for r in self.runs('verify') if r['task'] == 'A']), 1, text)
+        for expected_first, expected_second in (('A', 'B'), ('B', 'A')):
+            with self.subTest(first=expected_first):
+                self.repo = self.make_repo(self.root / f'first-{expected_first}',
+                                           [(expected_first, None), (expected_second, None)])
+                self.state = self.root / f'state-{expected_first}'
+                self.log = self.root / f'pi-{expected_first}.log'
+                self.env.update(FAKE_MAIN_REPO=str(self.repo), PI_AUTOWORK_STATE_DIR=str(self.state),
+                                FAKE_PI_LOG=str(self.log))
+                # Finish the second worker during the first review, so both orders exercise
+                # back-to-back reviews rather than relying on concurrent worker timing.
+                self.plan({f'worker:{expected_second}': ['slow'],
+                           'verify:A': ['slow_review'], 'verify:B': ['slow_review']})
+                runner = self.start_runner('--interval', '1')
+                self.addCleanup(lambda runner=runner: runner.poll() is None and runner.kill())
+                log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+                deadline = time.monotonic() + 120
+                try:
+                    while not (review := re.search(r'\b([AB]): verifying', log())):
+                        self.assertLess(time.monotonic(), deadline, log())
+                        self.assertIsNone(runner.poll(), log())
+                        time.sleep(0.2)
+                    first = review[1]
+                    second = 'B' if first == 'A' else 'A'
+                    runner.send_signal(signal.SIGHUP)
+                    while not ('Reloading' in log() and self.done('A', 'B')):
+                        self.assertLess(time.monotonic(), deadline, log())
+                        self.assertIsNone(runner.poll(), log())
+                        time.sleep(0.5)
+                finally:
+                    if runner.poll() is None:
+                        runner.send_signal(signal.SIGINT)
+                    runner.communicate(timeout=60)
+                text = log()
+                self.assertEqual(first, expected_first, text)
+                self.assertIn(f'Reload pending: waiting for the review of {first} to end', text)
+                self.assertLess(text.index(f'{first}: integrated'), text.index('Reloading'), text)
+                self.assertLess(text.index('Reloading'), text.index(f'{second}: verifying'), text)
+                self.assertCountEqual([r['task'] for r in self.runs('verify')], ['A', 'B'], text)
 
     def test_only_the_candidate_the_engine_takes_next_is_started_and_reads_verifying(self):
         """TOOLSET-238-11: after a reload the runner logged "verifying" for 13 candidates and started
