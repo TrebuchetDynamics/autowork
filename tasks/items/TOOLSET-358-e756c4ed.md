@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-358-e756c4ed"
 title = "fleet_view.collect, verdict and task_rows are split by concern"
 short = "Decompose the fleet view builders"
-status = "open"
+status = "done"
 goal = "CODE-HEALTH-2026-10"
 section = "Next"
 rank = 48000
@@ -16,6 +16,8 @@ scope = "fleet_view.collect (85 lines, cc 49), verdict (63, cc 39) and task_rows
 acceptance = ["collect, verdict and task_rows are each under 50 lines and cc 15", "pi-autowork/tests/test_fleet_view.py and tests/test_pi_autowork.py pass unchanged; an added fixture test compares ls --json before and after on a recorded state directory"]
 checks = ["python3 scripts/check.py pi-autowork/tests/test_fleet_view.py tests/test_pi_autowork.py"]
 exclusions = []
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-358-e756c4ed.toml"
 +++
 
 - Sources: docs/plans/structural-audit-2026-10.md#hotspots
