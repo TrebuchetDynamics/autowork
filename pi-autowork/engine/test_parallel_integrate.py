@@ -1286,6 +1286,7 @@ finally:
             worker_timeout=10, min_free_mem_mb=0, tasks=None, plan=None)
         self.assertEqual(module.retry_held(args)['outcome'], 'IDLE')
 
+    @patch.dict(os.environ, PI_AUTOWORK_LIVE_FOLLOWUP="backlog")
     def test_pending_live_checks_close_into_one_goal_backlog_not_one_task_per_close(self):
         """flutter TASK-013: offline work passed twice but was held for device checks. Repeated
         live follow-ups must not turn every close into another owner question."""
@@ -1316,6 +1317,7 @@ finally:
         # A live check is never dispatched to an offline worker.
         self.assertNotIn(live_id, [t['id'] for t in dispatch.contracts(self.repo)])
 
+    @patch.dict(os.environ, PI_AUTOWORK_LIVE_FOLLOWUP="backlog")
     def test_a_second_close_in_the_same_goal_appends_to_the_same_live_backlog(self):
         module = self.module()
         self.worker()
@@ -1339,6 +1341,24 @@ finally:
         self.assertEqual(live.depends_on, ('A', 'B'))
         self.assertEqual(live.acceptance, ('A: First device check', 'B: Second device check'))
 
+    def test_pending_live_checks_become_notes_not_another_owner_decision(self):
+        """The default keeps live obligations on the done record instead of a Needs-decision row."""
+        self.worker()
+        self.report(pending_live=['Physical device read-back', 'Production smoke test'])
+        module = self.module()
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        result = module.close(self.repo, self.owner, 'A')
+        self.assertEqual(result['outcome'], 'CLOSED')
+        self.assertNotIn('live_followup', result)
+        self.assertFalse(list((self.repo / 'tasks/items').glob('LIVE-*.md')))
+        self.git('add', *result['files'])
+        self.git('commit', '-qm', 'close A')
+        text = self.task_text('A')
+        self.assertIn('- Pending live: Physical device read-back', text)
+        self.assertIn('- Pending live: Production smoke test', text)
+        self.assertEqual(self.record('A').status, 'done')
+
+    @patch.dict(os.environ, PI_AUTOWORK_LIVE_FOLLOWUP="backlog")
     def test_a_retried_close_adds_no_second_live_backlog_entry(self):
         self.worker()
         self.report(pending_live=['Production smoke test'])
