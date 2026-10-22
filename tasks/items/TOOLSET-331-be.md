@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-331-be"
 title = "A held attempt keeps its temp tools and its restored work"
 short = "Held attempts keep their files"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 42000
@@ -16,6 +16,11 @@ scope = "2026-10-21: a research task held on an owner question lost the pinned t
 acceptance = ["A held slot's temp directory survives the stale-temp sweep; it is removed once the slot is set aside, closed or released.", "After a set-aside whose worktree kept uncommitted files, the next attempt's prompt names that worktree and its uncommitted paths."]
 checks = ["python3 scripts/check.py"]
 exclusions = []
+closure = "manual"
+closure_actor = "owner interactive session (Claude)"
+closure_timestamp = "2026-10-22T10:17:00.874768+00:00"
+closure_reason = "Re-landed in 9f6bf604 after a misattributed revert (main's red check was the stalled-service assertion fixed in a215993d)"
+closure_evidence = "re-landed unchanged in 9f6bf604 as the inverse of its optimistic-landing revert; the blamed test predated it and was fixed in a215993d; its own review and batch check had passed before the revert"
 +++
 
 - Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20)
