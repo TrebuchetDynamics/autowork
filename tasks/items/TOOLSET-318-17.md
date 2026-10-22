@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-318-17"
 title = "Convert TODO.md without overlooking consumers or losing non-task content"
 short = "Safe TODO.md conversion"
-status = "open"
+status = "done"
 goal = "TASK-STORE-HARDENING"
 section = "Next"
 rank = 14000
@@ -16,6 +16,8 @@ scope = "2026-10-21: a repository converted cleanly, then its main went red, bec
 acceptance = ["On a fixture repository whose Makefile and one test read TODO.md, the dry run lists both, the conversion refuses naming them, and --accept-consumers converts and reports them.", "Markdown mentions of TODO.md are reported as documentation drift and never refuse.", "On a fixture whose TODO.md has a checklist above the queue and a free backlog list, the dry run names those line ranges, and the conversion keeps them byte for byte in the named document.", "A TODO.md that is only a queue converts exactly as before."]
 checks = ["python3 -m unittest discover -s tests -p 'test_task_*.py'", "python3 scripts/check.py"]
 exclusions = ["No edits to any consumer repository; the converter reports, it does not rewrite their code."]
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-318-17.toml"
 +++
 
 - Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20)
