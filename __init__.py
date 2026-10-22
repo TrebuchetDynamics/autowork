@@ -2,8 +2,10 @@
 
 from functools import partial
 import logging
+import os
 from pathlib import Path
 import re
+import subprocess
 
 
 SKILLS_DIR = Path(__file__).resolve().parent / "skills"
@@ -43,6 +45,16 @@ def _invoke(ctx, name, path, raw_args, namespace="autowork"):
 
     if not path.is_file():
         return f"Skill {name!r} no longer exists. Update the plugin and restart Hermes."
+    if name == "blockers" and not (raw_args or '').strip():
+        # `/blockers` with no target: name the repository from the session's cwd, so the
+        # skill reads its questions instead of the plugin's empty BLOCKERS.md template.
+        target = repository_here()
+        if target:
+            raw_args = target
+        else:
+            raw_args = ("No target repository was given and the current directory is not a Git "
+                        "repository. Run `autowork ls`, then ask which runner to unblock; do not "
+                        "report that there are no questions without a resolved target.")
     public = name
     mode = ""
     if namespace == "autowork" and name == "grill-me" and (SKILLS_DIR / "plan-with-me/SKILL.md").is_file():
@@ -103,6 +115,21 @@ def blockers_args(raw_args):
     `/plan_with_me blockers` are `/blockers`, routed here rather than by the model."""
     first, _, rest = (raw_args or '').strip().partition(' ')
     return rest.strip() if first.lower() == 'blockers' else None
+
+
+def repository_here(start=None):
+    """The Git top level containing ``start`` (the Hermes process cwd by default), or ''.
+
+    `/blockers` with no argument must not fall back to the Hermes process cwd: that is
+    often the home directory or the plugin, whose empty `BLOCKERS.md` template made the
+    skill report no questions while the repository had held tasks."""
+    where = str(start or os.getcwd())
+    try:
+        found = subprocess.run(['git', '-C', where, 'rev-parse', '--show-toplevel'],
+                               capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return ''
+    return found.stdout.strip() if found.returncode == 0 else ''
 
 
 def _autowork(run_skill, run_blockers, raw_args):

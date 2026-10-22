@@ -297,7 +297,6 @@ def cmd_model(args, paths):
     if unknown:
         raise Fail(f"not in Pi's model list: {', '.join(unknown)} (see: autowork models)")
     fleet_view.write_env(env_file, updates)
-    unit = f'pi-autowork@{name}.service'
     print(f'{name}: ' + ', '.join(f'{"model" if k.endswith("PRIMARY") else "fallback"} {v}' for k, v in updates.items()))
     if service_state(paths, name) == 'active':
         code, text = restart(paths, name, repo)

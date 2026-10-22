@@ -1077,7 +1077,6 @@ def dispatch_locked(args, repo, common, count, template, host):
                    and (s['attempt'] == 1 or s.get('paused'))}
     # A restartable slot's own files are not someone else's running work.
     running = [t for t in running if t['id'] not in restartable]
-    slotted = {s['task_id'] for s in current}
     # A task someone holds (`Held by:` in its record) is never selected, so no claim reaches here.
     backlog = merge_backlog(common, occupying, workers=count)
     planned = admit(candidates, running, restartable, occupying, everything=context,

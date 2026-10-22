@@ -1867,7 +1867,9 @@ class EngineTests(Fixture):
                                capture_output=True, text=True, timeout=60)
         self.assertEqual(fleet.returncode, 0, fleet.stderr)
         self.assertIn(f'{self.repo.name}', fleet.stdout)
-        self.assertIn('stalled for 0 min; 0 running, 1 waiting', fleet.stdout)
+        # A held task is stopped by a blocker, not a waiting task (TOOLSET-351/352): the
+        # fleet counts it separately and says what holds it.
+        self.assertIn('stalled for 0 min; 0 running, 0 waiting, 1 stopped by a blocker', fleet.stdout)
         self.assertIn('    blocked by A (held for a person: its worker reported a blocker, holds 1)', fleet.stdout)
         status = self.run_runner('--status')
         self.assertIn('Health:     stalled since', status.stdout)
