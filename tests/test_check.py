@@ -192,12 +192,13 @@ class Check(unittest.TestCase):
         for name in ('CONTAINMENT_LINUX_TESTS', 'RUN_CONTROLLER_BRIDGE_LINUX', 'HERMES_NATIVE_HANDOFF_TEST', 'HERMES_NATIVE_REGISTRATION_TEST',
                      'PI_AUTOWORK_MAIN_CHECK', 'AUTOWORK_CACHE'):
             self.assertFalse(name in os.environ, name + ' leaked into offline tests')
+        self.assertEqual(os.environ.get('AUTOWORK_PORT_BASE'), '20300')
 ''')
         self.write('tests/integration_bundle.py',
                    "raise RuntimeError('live integration imported')\n")
         env = dict(os.environ, CONTAINMENT_LINUX_TESTS='1', RUN_CONTROLLER_BRIDGE_LINUX='1',
                    HERMES_NATIVE_HANDOFF_TEST='1', HERMES_NATIVE_REGISTRATION_TEST='1',
-                   PI_AUTOWORK_MAIN_CHECK='false', AUTOWORK_CACHE='/elsewhere')
+                   PI_AUTOWORK_MAIN_CHECK='false', AUTOWORK_CACHE='/elsewhere', AUTOWORK_PORT_BASE='20300')
         result = self.run_check(env=env)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('Ran 1 test', result.stdout + result.stderr)

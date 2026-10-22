@@ -260,9 +260,11 @@ def main(argv=None):
         return 1
     # No live-test flags, and no settings of the runner whose worker or reviewer runs this:
     # tests start their own runners, and a service's PI_AUTOWORK_MAIN_CHECK and
-    # PI_AUTOWORK_NO_FALLBACK failed them.
+    # PI_AUTOWORK_NO_FALLBACK failed them. Keep the worker's port lease so
+    # offline listeners do not fall back onto another check's host ports.
     env = without_push_guard({k: v for k, v in os.environ.items()
-                              if k not in LIVE_FLAGS and not k.startswith(('PI_AUTOWORK_', 'AUTOWORK_'))})
+                              if k == 'AUTOWORK_PORT_BASE'
+                              or (k not in LIVE_FLAGS and not k.startswith(('PI_AUTOWORK_', 'AUTOWORK_')))})
     passed = failed = gated = 0
     work = list(units(root, tests, args.pattern))
     # Modules (and shards of split ones) are independent processes; output is still printed
