@@ -24,4 +24,4 @@ closure_evidence = "commit e5162924 re-lands the reviewed landing (reverted by m
 +++
 
 - Sources: tasks/items/TOOLSET-326-fb.md
-- Reopened: its landing broke the full check on main at a9926d3: test_pi_autowork.EngineTests.test_a_stalled_service_says_so_once_and_the_fleet_view_shows_why; reverted by optimistic landing. Fix those tests in the next attempt
+- Reopened: optimistic landing reverted 6ef6c826 at a9926d3, blaming test_pi_autowork.EngineTests.test_a_stalled_service_says_so_once_and_the_fleet_view_shows_why. The blame was misattributed: that assertion predated this landing and was fixed in a215993d, and this task was re-landed unchanged in e5162924 (see the closure above). No test work belongs to this task.

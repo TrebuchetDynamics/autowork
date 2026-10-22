@@ -18,4 +18,4 @@ checks = ["python3 scripts/check.py tests/test_update_quiet_restart.py tests/tes
 exclusions = []
 +++
 
-- Reopened: its landing broke the full check on main at 9cb0dfa: test_pi_autowork.EngineTests.test_a_stalled_service_says_so_once_and_the_fleet_view_shows_why; reverted by optimistic landing. Fix those tests in the next attempt
+- Reopened: optimistic landing reverted 2ded2896270fbf95f87a68fc8331c0aded72cb20 in e4b75754, blaming test_pi_autowork.EngineTests.test_a_stalled_service_says_so_once_and_the_fleet_view_shows_why on main at 9cb0dfa. That assertion predated every affected landing, was fixed separately in a215993d and passes on main, so it is not this task's defect and needs no work here (TOOLSET-353-9db87df7 and TOOLSET-327-02 were re-landed unchanged for the same reason in e5162924). Next attempt: re-land or re-verify the reverted commit above with this contract and Acceptance unchanged.

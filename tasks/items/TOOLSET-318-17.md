@@ -7,7 +7,7 @@ status = "open"
 goal = "TASK-STORE-HARDENING"
 section = "Next"
 rank = 14000
-depends_on = ["TOOLSET-307-5a", "TOOLSET-305-7b"]
+depends_on = ["TOOLSET-307-5a", "TOOLSET-305-7b", "TOOLSET-315-36"]
 touches = ["pi-autowork/pi_autowork/task_migrate.py", "pi-autowork/pi_autowork/task_prepare.py", "tests/", "pi-autowork/task-store.md", "skills/docs-sync/", "adapters/skills/docs-sync/", "pi-autowork/pi_autowork/legacy/"]
 resources = []
 kind = "implementation"
@@ -20,5 +20,6 @@ exclusions = ["No edits to any consumer repository; the converter reports, it do
 
 - Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20)
 - Planning repair: Merged the unstarted TOOLSET-319-82 into this task because both edit task_migrate.py, conversion fixtures and pi-autowork/task-store.md. All four acceptance items, both scopes and the union of Touches are retained. Wait for TOOLSET-307-5a: its reported candidate b96065e8473ce56a9611702c4d4088df76ca654b edits pi-autowork/task-store.md and its declared pi-autowork/pi_autowork/ scope also covers the converter; a documentation-only split would not remove the overlap. Queue section and rank stay unchanged. Quoted the unittest glob so the shell passes one pattern to discovery.
-- Dependencies: TOOLSET-307-5a, TOOLSET-305-7b
+- Dependencies: TOOLSET-307-5a, TOOLSET-305-7b, TOOLSET-315-36
+- Scheduling: TOOLSET-315-36 is a prerequisite for the same reason the earlier repairs waited: it also edits pi-autowork/pi_autowork/task_migrate.py, sending migrate --dry-run's throwaway objects to a temporary object directory inside the conversion path this task makes lossless. Both are open and neither was ordered against the other, so 315-36 (earlier-ranked, 11000) goes first and this task waits rather than writing the converter twice.
 - Coordination: Overlap repair: wait for TOOLSET-305-7b before conversion hardening. Its attempt-1 slot is running; its saved contract declares pi-autowork/pi_autowork/, tests/, pi-autowork/task-store.md, skills/docs-sync/ and adapters/skills/, and its working tree already edits task-store.md, tests/test_task_prepare.py and both Docs Sync skills. No worker report exists yet. TOOLSET-318-17 has no worker slot or report. Merging into the running task is prohibited, and a documentation-only split leaves the converter, tests and skill paths overlapping; no independent acceptance slice with disjoint Touches is established. Preserve all Scope, Touches, Acceptance, Checks, exclusions, section and rank, and retain TOOLSET-307-5a as a prerequisite; do not edit the running task.
