@@ -11,7 +11,7 @@ its typed fields, and a declared check still needs the existing approval to run.
 """
 import argparse
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import fcntl
 from functools import wraps
 import hashlib
@@ -453,6 +453,9 @@ def cmd_add(repo, goal, title, short, section='Now', scope=None, acceptance=(), 
     store = worktree_store(repo)
     if goal not in store.goals:
         raise CommandError(f'unknown goal {goal}')
+    for dep in depends_on:
+        if dep not in store.tasks:
+            raise CommandError(f'unknown task dependency {dep}')
     same = sorted(t.id for t in store.tasks.values()
                   if t.goal == goal and t.status != 'superseded' and _same_title(t.title) == _same_title(title))
     if same:
@@ -596,7 +599,12 @@ def cmd_place(repo, tid, section, decision=None):
         raise CommandError('section is Now, Next or Needs decision')
     if section != t.section:
         _unheld(repo, tid)
-    note = ('Owner decision', ' '.join(decision.split())) if decision else None
+    note = None
+    if decision:
+        decision = ' '.join(decision.split())
+        if not re.match(r'^\d{4}-\d{2}-\d{2}\b', decision):
+            decision = f'{date.today().isoformat()}: {decision}'
+        note = ('Owner decision', decision)
     _set(repo, tid, {'section': section, 'rank': bottom_rank(store, section, without=tid)}, note)
 
 
@@ -733,7 +741,8 @@ def add_parser(sub):
     p.add_argument('--sources', default=argparse.SUPPRESS,
                    help='the accepted path#anchor it comes from, kept as its Sources note')
     for flag in ('--acceptance', '--checks', '--touches', '--depends-on', '--verified-depends-on', '--resources', '--exclusions'):
-        p.add_argument(flag, action='append', default=argparse.SUPPRESS)
+        p.add_argument(flag, action='append', default=argparse.SUPPRESS,
+                       help='one item or a JSON array of strings; may be repeated')
     p = verbs.add_parser('field')
     p.add_argument('task')
     p.add_argument('label', nargs='?', default=argparse.SUPPRESS)
@@ -833,6 +842,25 @@ def _input_values(args):
                 raise CommandError(f'--json {key} must be {kind.__name__}' + (' of strings' if kind is list else ''))
         for key, value in values.items():
             setattr(args, 'task_id' if key == 'id' else key, value)
+    elif args.verb == 'add':
+        for key, kind in types.items():
+            if kind is not list or not hasattr(args, key):
+                continue
+            items = []
+            for value in getattr(args, key):
+                if not value.lstrip().startswith('['):
+                    items.append(value)
+                    continue
+                flag = '--' + key.replace('_', '-')
+                try:
+                    parsed = json.loads(value)
+                except ValueError:
+                    items.append(value)  # Bracket-leading shell checks/globs remain literal items.
+                    continue
+                if not isinstance(parsed, list) or any(not isinstance(v, str) for v in parsed):
+                    raise CommandError(f'{flag} needs a JSON array of strings')
+                items.extend(parsed)
+            setattr(args, key, items)
     required = {'add': ('goal', 'title', 'short'), 'field': ('label', 'value'), 'goal': ()}[args.verb]
     missing = [key for key in required if not hasattr(args, key)]
     if missing:

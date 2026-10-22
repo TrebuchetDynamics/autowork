@@ -1,4 +1,5 @@
 """`autowork tasks ...` against a real Git repository built from the TaskStore fixture."""
+from datetime import date
 import json
 from pathlib import Path
 import os
@@ -13,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 COMMAND = ROOT / 'pi-autowork/pi_autowork/command.py'
 FIXTURE = ROOT / 'pi-autowork/engine/fixtures/task_store'
 sys.path.insert(0, str(ROOT / 'pi-autowork/engine'))
-from task_store import TaskStore  # noqa: E402
+from task_store import TaskStore, edit  # noqa: E402
 
 
 class TaskCommandTests(unittest.TestCase):
@@ -106,6 +107,36 @@ class TaskCommandTests(unittest.TestCase):
         self.assertFalse((self.repo / 'TODO.md').exists())
         self.assertFalse((self.repo / 'goals.json').exists())
 
+    def test_add_list_flags_accept_json_arrays_and_repeated_items(self):
+        self.add('Other prerequisite', '--id', 'T-2')
+        expected = dict(touches=['[ab].py', 'b'], acceptance=['done, checked', 'proven'],
+                        checks=['[ -f README.md ]', 'true'], depends_on=['T-1', 'T-2'],
+                        verified_depends_on=['T-1', 'T-2'], resources=['exclusive', 'test-db'],
+                        exclusions=['no push', 'no live'])
+        for mode in ('repeated', 'json', 'mixed'):
+            with self.subTest(mode=mode):
+                flags = []
+                for field, values in expected.items():
+                    inputs = (values if mode == 'repeated' else [json.dumps(values)] if mode == 'json'
+                              else [json.dumps(values[:1]), values[1], '[]'])
+                    for value in inputs:
+                        flags.extend(['--' + field.replace('_', '-'), value])
+                tid = self.tasks('add', '--goal', 'G-1', '--title', mode, '--short', mode,
+                                 '--scope', 'x', *flags).stdout.split()[-1]
+                record = json.loads(self.tasks('show', tid, '--worktree').stdout)
+                self.assertEqual({key: record[key] for key in expected}, expected)
+
+    def test_add_refuses_nonstring_json_list_items_without_writing(self):
+        before = self.git('status', '--porcelain', '--', 'tasks')
+        for value in ('[1]', '[["a"]]', '[true]', '[null]'):
+            with self.subTest(value=value):
+                refused = self.tasks('add', '--goal', 'G-1', '--title', 'Bad list', '--short', 'Bad list',
+                                     '--touches', value, ok=False)
+                self.assertEqual(refused.returncode, 1)
+                self.assertIn('touches', refused.stderr)
+                self.assertNotIn('Traceback', refused.stderr)
+                self.assertEqual(self.git('status', '--porcelain', '--', 'tasks'), before)
+
     def test_json_input_round_trips_literal_prose_without_shell_execution(self):
         # Run the documented shell form; expanding either command would leave a marker.
         prose = '  `touch backtick-ran` $(touch substitution-ran) $VAR "double" \'single\' café\nnext line  '
@@ -175,12 +206,25 @@ class TaskCommandTests(unittest.TestCase):
         self.assertEqual(self.tasks('field', 'T-1', 'status', 'done', ok=False).returncode, 1)
 
     def test_place_into_needs_decision_changes_the_contract(self):
+        sys.path.insert(0, str(ROOT / 'pi-autowork'))
+        import parallel_status
+        from pi_autowork import questions
+        self.add('Waiting for decision', '--depends-on', 'T-1')
         before = self.show('T-1')
         self.tasks('place', 'T-1', 'Needs decision')
         after = self.show('T-1')
         self.assertEqual(after['section'], 'Needs decision')
         self.assertNotEqual(after['contract_hash'], before['contract_hash'])
         self.assertEqual(json.loads(self.tasks('why', 'T-1').stdout)['reasons'][0]['code'], 'NEEDS_DECISION')
+        blockers = questions.update('', questions.build(parallel_status.snapshot(self.repo), self.repo))
+        self.assertIn('### Q-T-1 ', blockers)
+        for decision, dated in (('deferred', f'{date.today().isoformat()}: deferred'),
+                                ('2001-02-03: deferred', '2001-02-03: deferred')):
+            with self.subTest(decision=decision):
+                self.tasks('place', 'T-1', 'Needs decision', '--decision', decision)
+                self.assertIn(f'- Owner decision: {dated}\n', self.show('T-1')['notes'])
+                updated = questions.update(blockers, questions.build(parallel_status.snapshot(self.repo), self.repo))
+                self.assertNotIn('### Q-T-1 ', updated)
 
     def test_move_changes_only_the_rank(self):
         second = self.add('Second')
@@ -281,11 +325,19 @@ class TaskCommandTests(unittest.TestCase):
         self.assertIn(f'- Superseded by: {successor}; replaced', record['notes'])
 
     def test_why_and_list_name_their_reasons(self):
-        blocked = self.add('Blocked', '--depends-on', 'T-404')
+        before = self.git('status', '--porcelain', '--', 'tasks')
+        for flags in (('--depends-on', 'T-404'), ('--depends-on', '["T-404"]')):
+            with self.subTest(flags=flags):
+                refused = self.tasks('add', '--goal', 'G-1', '--title', 'Missing dependency',
+                                     '--short', 'Missing dependency', *flags, ok=False)
+                self.assertEqual(refused.returncode, 1)
+                self.assertIn('T-404', refused.stderr)
+                self.assertEqual(self.git('status', '--porcelain', '--', 'tasks'), before)
+        blocked = self.add('Blocked', '--depends-on', 'T-1')
         self.assertEqual(self.tasks('validate', '--worktree', ok=False).returncode, 0)
         self.commit()
         reasons = json.loads(self.tasks('why', blocked).stdout)
-        self.assertEqual(reasons['reasons'], [{'code': 'DEPENDENCY_UNFINISHED', 'detail': 'T-404'}])
+        self.assertEqual(reasons['reasons'], [{'code': 'DEPENDENCY_UNFINISHED', 'detail': 'T-1'}])
         rows = {row['id']: row for row in json.loads(self.tasks('list').stdout)}
         self.assertEqual((rows['T-1']['position'], rows[blocked]['blocked_by']), (1, 'DEPENDENCY_UNFINISHED'))
 
@@ -298,6 +350,18 @@ class TaskCommandTests(unittest.TestCase):
         self.assertRegex(broken.stderr, r'tasks/items/T-1.md:\d+:')
         self.commit()
         self.assertEqual(self.tasks('validate', ok=False).returncode, 1)
+
+    def test_validate_refuses_json_encoded_list_items(self):
+        path = self.repo / 'tasks/items/T-1.md'
+        original = path.read_text()
+        for field in ('touches', 'acceptance', 'checks', 'depends_on', 'resources', 'exclusions',
+                      'verified_depends_on'):
+            with self.subTest(field=field):
+                path.write_text(edit(original, {field: ['["a", "b"]']}))
+                refused = self.tasks('validate', '--worktree', ok=False)
+                self.assertEqual(refused.returncode, 1)
+                self.assertRegex(refused.stderr, rf'tasks/items/T-1.md:\d+:.*{field}')
+                self.assertIn('JSON', refused.stderr)
 
     def test_a_write_that_breaks_the_store_is_undone(self):
         path = self.repo / 'tasks/items/T-1.md'
