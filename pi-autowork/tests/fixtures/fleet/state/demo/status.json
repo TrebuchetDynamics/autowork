@@ -1,0 +1,17 @@
+{
+  "repo": "$BASE/demo",
+  "state": "blocked",
+  "updated_at": 2000000000,
+  "since": 1999999400,
+  "active_workers": 0,
+  "waiting": 3,
+  "stopped": 1,
+  "stopped_groups": [{"label": "D-1 (outside condition or task not in Now/Next)", "count": 1, "tasks": ["T-3"]}],
+  "held": [{"task": "T-2", "cause": "conflict"}],
+  "roots": [{"id": "T-2", "kind": "held", "cause": "conflict", "blocks": 2}, {"id": "T-1", "kind": "running", "blocks": 1}],
+  "waiting_groups": [{"label": "on dependencies", "count": 3, "tasks": ["T-4", "T-5", "T-6"]}],
+  "max_workers": 4,
+  "blocker": "Merge pending",
+  "maintainer": {"at": 1999999000, "outcome": "merged", "changed": ["T-2"], "triggers": ["T-2"]},
+  "main_check": {"state": "green", "rev": "abcdef123"}
+}

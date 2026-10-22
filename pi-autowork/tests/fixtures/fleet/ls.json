@@ -1,0 +1,89 @@
+{
+  "runners": [
+    {
+      "name": "demo-escaped",
+      "repo": "$BASE/demo",
+      "mode": "service",
+      "service": "running",
+      "state": "blocked",
+      "minutes": 10,
+      "running": 0,
+      "waiting": 3,
+      "stopped": 1,
+      "stopped_groups": [
+        {
+          "label": "D-1 (outside condition or task not in Now/Next)",
+          "count": 1,
+          "tasks": [
+            "T-3"
+          ]
+        }
+      ],
+      "held": [
+        [
+          "T-2",
+          "conflict"
+        ]
+      ],
+      "roots": [
+        {
+          "id": "T-2",
+          "kind": "held",
+          "cause": "conflict",
+          "blocks": 2
+        }
+      ],
+      "state_dir": "$BASE/state/demo",
+      "lanes": [],
+      "enabled": true,
+      "model": "example/primary",
+      "fallback": "example/fallback",
+      "push": true,
+      "questions": [
+        {
+          "id": "T-2",
+          "effort": "input",
+          "unblocks": 2,
+          "needs": "choose the merge target",
+          "answer": "write an Owner decision note",
+          "kind": "held"
+        }
+      ],
+      "decisions": 0,
+      "toolset": "/opt/autowork",
+      "waiting_groups": [
+        {
+          "label": "on dependencies",
+          "count": 3,
+          "tasks": [
+            "T-4",
+            "T-5",
+            "T-6"
+          ]
+        }
+      ],
+      "blocker": "Merge pending",
+      "stop_reason": "",
+      "max_workers": 4,
+      "restarting": "",
+      "gate": "",
+      "maintainer": {
+        "at": 1999999000,
+        "outcome": "merged",
+        "changed": [
+          "T-2"
+        ],
+        "triggers": [
+          "T-2"
+        ]
+      },
+      "main_check": {
+        "state": "running",
+        "rev": "fedcba987",
+        "started": 1999999880
+      },
+      "job": null,
+      "prepare_state": null
+    }
+  ]
+}

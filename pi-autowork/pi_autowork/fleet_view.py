@@ -6,7 +6,7 @@ log lines, and the exact command behind every action. Nothing here calls a model
 and nothing here changes a runner: actions only build the argv that `autowork` or
 `pi-autowork.sh` already accept.
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import datetime
 import json
 import os
@@ -449,12 +449,13 @@ def job_text(job):
     return words.format(role=job.get('role', 'job'), task=job.get('task') or '').strip()
 
 
-def verdict(runner):
-    """(sentence, style): whether this runner is stuck, and why, in one line."""
+Verdict = tuple[str, str]
+
+
+def _service_verdict(runner: Runner) -> Verdict | None:
+    """Startup refusals, task-store setup and service lifecycle take precedence."""
     if runner.stop_reason:
         return f'Needs attention — {runner.stop_reason}', 'bold red'
-    count = len(runner.questions)
-    asks = f"{count} question{'s' if count > 1 else ''}" if count else ''
     setup = runner.setup_label
     if setup:
         return setup, 'bold yellow'
@@ -464,36 +465,54 @@ def verdict(runner):
         return 'Paused — p resumes it', 'bold yellow'
     if runner.state == 'not running':
         return 'Not running — a starts its service', 'bold red'
-    if runner.state == 'working' and runner.job and not runner.lanes:
+    return None
+
+
+def _question_count(runner: Runner) -> str:
+    count = len(runner.questions)
+    return f"{count} question{'s' if count > 1 else ''}" if count else ''
+
+
+def _working_verdict(runner: Runner) -> Verdict:
+    """Live jobs and worker lanes, rather than every commit still in flight."""
+    if runner.job and not runner.lanes:
         return f"Working — {job_text(runner.job)} ({duration(runner.minutes) or '0m'})", 'bold green'
-    if runner.state == 'working':
-        # Live workers, not every task in flight: 15 finished commits waiting to merge read as
-        # "16 of 1 workers busy".
-        heads = [status(lane)[0] for lane in runner.lanes]
-        busy = runner.running or heads.count(ACTIVE)
-        of = f' of {runner.max_workers}' if runner.max_workers else ''
-        text = f"Working — {busy}{of} worker{'s' if busy != 1 else ''} busy"
-        if heads.count(MERGEABLE):
-            text += f'; {heads.count(MERGEABLE)} mergeable'
-        if heads.count(WAITING):
-            queued = heads.count(WAITING)
-            text += f"; {queued} commit{'s' if queued != 1 else ''} waiting"
-        if runner.gate:
-            text += f'; no more start: {runner.gate}'
-        if asks:
-            text += f'; {asks} for you'
-        return text, 'bold green'
-    if runner.questions:
-        first = runner.questions[0]
-        return (f'Waiting on you — {asks}, easiest {first.id} (unblocks {first.unblocks}): {first.needs}',
-                'bold yellow')
-    if runner.state == 'idle':
-        return 'Idle — nothing left to run in Now/Next', 'bold green'
-    if runner.state == health.HOST_WAIT:
-        text = runner.waiting_groups[0]['label'] if runner.waiting_groups else health.HOST_WAIT
-        return text, 'bold yellow'
-    if runner.gate and not runner.lanes:
-        return f'Host busy — {runner.gate}', 'bold yellow'
+    # Fifteen finished commits waiting to merge must not read as "16 of 1 workers busy".
+    heads = [status(lane)[0] for lane in runner.lanes]
+    busy = runner.running or heads.count(ACTIVE)
+    of = f' of {runner.max_workers}' if runner.max_workers else ''
+    text = f"Working — {busy}{of} worker{'s' if busy != 1 else ''} busy"
+    if heads.count(MERGEABLE):
+        text += f'; {heads.count(MERGEABLE)} mergeable'
+    if heads.count(WAITING):
+        queued = heads.count(WAITING)
+        text += f"; {queued} commit{'s' if queued != 1 else ''} waiting"
+    if runner.gate:
+        text += f'; no more start: {runner.gate}'
+    asks = _question_count(runner)
+    if asks:
+        text += f'; {asks} for you'
+    return text, 'bold green'
+
+
+def _question_verdict(runner: Runner) -> Verdict:
+    first = runner.questions[0]
+    return (f'Waiting on you — {_question_count(runner)}, easiest {first.id} (unblocks {first.unblocks}): {first.needs}',
+            'bold yellow')
+
+
+def _held_verdict(runner: Runner, head: str) -> Verdict:
+    if not runner.held:
+        return head, 'bold yellow'
+    task, cause = (blocking(runner.held) or runner.held)[0]
+    if cause in WAIT_CAUSES:
+        return f"Waiting — {task}: {health.CAUSES.get(cause, cause)}", 'bold yellow'
+    asked = any(q.id == task for q in runner.questions)
+    return f'Blocker — {task}: {blocker_detail(cause, asked)}', 'bold yellow'
+
+
+def _blocked_verdict(runner: Runner) -> Verdict:
+    """Health's runner blocker, waiting groups, dependency roots and legacy holds."""
     age = duration(runner.minutes)
     head = ('Stuck ' + age).strip() if runner.state in ('stalled', 'blocked', 'not cycling') else runner.state
     if runner.blocker:
@@ -507,13 +526,26 @@ def verdict(runner):
         return f"Waiting — {health.describe(root)}", 'bold yellow'
     if runner.state == 'not cycling':
         return f'{head} — its status has not been refreshed; the runner may be busy or hung', 'bold red'
-    if runner.held:
-        task, cause = (blocking(runner.held) or runner.held)[0]
-        if cause in WAIT_CAUSES:
-            return f"Waiting — {task}: {health.CAUSES.get(cause, cause)}", 'bold yellow'
-        asked = any(q.id == task for q in runner.questions)
-        return f'Blocker — {task}: {blocker_detail(cause, asked)}', 'bold yellow'
-    return head, 'bold yellow'
+    return _held_verdict(runner, head)
+
+
+def verdict(runner: Runner) -> Verdict:
+    """(sentence, style): whether this runner is stuck, and why, in one line."""
+    service = _service_verdict(runner)
+    if service is not None:
+        return service
+    if runner.state == 'working':
+        return _working_verdict(runner)
+    if runner.questions:
+        return _question_verdict(runner)
+    if runner.state == 'idle':
+        return 'Idle — nothing left to run in Now/Next', 'bold green'
+    if runner.state == health.HOST_WAIT:
+        text = runner.waiting_groups[0]['label'] if runner.waiting_groups else health.HOST_WAIT
+        return text, 'bold yellow'
+    if runner.gate and not runner.lanes:
+        return f'Host busy — {runner.gate}', 'bold yellow'
+    return _blocked_verdict(runner)
 
 
 def maintainer_line(runner, now=None):
@@ -929,14 +961,7 @@ def paused_marker(env_dir, name):
     return Path(env_dir) / f'{name}.paused'
 
 
-def collect(state_root, env_dir, *, systemctl='systemctl', now=None, strict=False):
-    """Every runner: pi-autowork@ services and their runner state, merged by name."""
-    now = time.time() if now is None else now
-    found = {}
-
-    def get(name):
-        return found.setdefault(name, Runner(name=name))
-
+def _service_states(env_dir, systemctl: str, strict: bool) -> dict[str, str]:
     services = {}
     for line in _lines([systemctl, '--user', 'list-units', 'pi-autowork@*', '--all', '--plain', '--no-legend'], strict=strict):
         parts = line.split()
@@ -947,18 +972,22 @@ def collect(state_root, env_dir, *, systemctl='systemctl', now=None, strict=Fals
     for env_file in sorted(Path(env_dir).glob('*.env')):
         if read_env(env_file).get('PI_AUTOWORK_REPO'):
             services.setdefault(env_file.stem, 'dead')
-    for name, sub in services.items():
-        runner = get(name)
-        runner.service = sub
-        runner.mode = 'service'
-        settings = read_env(Path(env_dir) / f'{name}.env')
-        runner.repo = runner.repo or settings.get('PI_AUTOWORK_REPO', '').strip()
-        runner.model = settings.get('PI_AUTOWORK_PRIMARY') or DEFAULT_MODEL
-        runner.fallback = settings.get('PI_AUTOWORK_FALLBACK') or DEFAULT_FALLBACK
-        runner.push = settings.get('PI_AUTOWORK_PUSH', '0') == '1'
-        runner.toolset = settings.get('PI_AUTOWORK_TOOLSET', '').strip()
-        runner.enabled = subprocess.run([systemctl, '--user', 'is-enabled', '--quiet', f'pi-autowork@{name}.service'],
-                                        capture_output=True).returncode == 0
+    return services
+
+
+def _service_runner(name: str, sub: str, env_dir, systemctl: str) -> Runner:
+    settings = read_env(Path(env_dir) / f'{name}.env')
+    enabled = subprocess.run([systemctl, '--user', 'is-enabled', '--quiet', f'pi-autowork@{name}.service'],
+                             capture_output=True).returncode == 0
+    return Runner(name=name, service=sub, mode='service',
+                  repo=settings.get('PI_AUTOWORK_REPO', '').strip(),
+                  model=settings.get('PI_AUTOWORK_PRIMARY') or DEFAULT_MODEL,
+                  fallback=settings.get('PI_AUTOWORK_FALLBACK') or DEFAULT_FALLBACK,
+                  push=settings.get('PI_AUTOWORK_PUSH', '0') == '1',
+                  toolset=settings.get('PI_AUTOWORK_TOOLSET', '').strip(), enabled=enabled)
+
+
+def _state_folders(state_root) -> dict[str, str]:
     folders = {}
     for folder in Path(state_root).glob('*/'):
         for record in ('runner.json', 'status.json'):
@@ -968,54 +997,81 @@ def collect(state_root, env_dir, *, systemctl='systemctl', now=None, strict=Fals
                 continue
             if repo:
                 folders.setdefault(repo, str(folder))
+    return folders
+
+
+def _health_runner(found: dict[str, Runner], row: dict, folders: dict[str, str], now: float) -> Runner | None:
+    """Merge a health row into its installed service; orphaned state is only history."""
+    # systemd escapes instance names; health records the repository basename.
+    runner = next((r for r in found.values() if r.repo and Path(r.repo) == Path(row['repo'])),
+                  found.get(row['name']))
+    if runner is None or (runner.repo and Path(runner.repo) != Path(row['repo'])):
+        return None
+    repo = runner.repo or row['repo']
+    state_dir = folders.get(row['repo'], '')
+    minutes = int((now - row['since']) // 60) if row.get('since') and row['state'] != 'not running' else None
+    job = row.get('job')
+    if job and job.get('started'):
+        minutes = int((now - job['started']) // 60)
+    # status.json deliberately omits the PID and may outlive a stopped runner.
+    check = main_check.read(state_dir, repo, fallback=row.get('main_check'))
+    return replace(runner, repo=repo, state_dir=state_dir, state=row['state'], minutes=minutes,
+                   running=row.get('workers', 0), waiting=row.get('waiting', 0),
+                   stopped=row.get('stopped', 0), stopped_groups=row.get('stopped_groups') or [],
+                   held=[(h.get('task', '?'), h.get('cause')) for h in row.get('held', [])],
+                   roots=[r for r in row.get('roots', []) if r.get('kind') in health.NEEDS_PERSON],
+                   waiting_groups=row.get('waiting_groups') or [], blocker=row.get('blocker') or '',
+                   stop_reason=row.get('stop_reason') or '', max_workers=row.get('max_workers'),
+                   maintainer=row.get('maintainer') or {}, main_check=check, job=job)
+
+
+def _prepared_runner(runner: Runner) -> Runner:
+    if not runner.repo or not Path(runner.repo).is_dir():
+        return runner
+    report = task_prepare.prepare(runner.repo, mode='check')
+    return replace(runner, prepare_state=report.get('state'),
+                   decisions=(report.get('counts') or {}).get('open:Needs decision', 0))
+
+
+def _active_runner(runner: Runner, now: float) -> Runner:
+    """Worker transcripts and recent log events can supersede an old health snapshot."""
+    runner = replace(runner, lanes=lanes(runner, now))
+    restarting, gate = recent_events(runner, now)
+    # Status refreshes between cycles, not during a long verification: recent work wins.
+    if runner.state in ('blocked', 'stalled', 'not cycling') and any(
+            lane.activity_age is not None and lane.activity_age < health.STALE_AFTER for lane in runner.lanes):
+        runner = replace(runner, state='working', minutes=None)
+    return replace(runner, restarting=restarting, gate=gate,
+                   questions=read_questions(runner.repo, runner.state_dir) if runner.repo else [])
+
+
+def _service_lifecycle(runner: Runner, env_dir) -> Runner:
+    if runner.has_service and runner.service in RESTARTING:
+        runner = replace(runner, restarting=runner.restarting or 'service')
+    if runner.has_service and runner.service not in ('running', 'start', 'reload'):
+        if not runner.enabled and paused_marker(env_dir, runner.name).exists():
+            state = 'paused'  # paused on purpose: `autowork resume`
+        elif runner.restarting:
+            state = 'restarting'  # its own update, not a stop
+        else:
+            state = 'not running'  # its records may say otherwise
+        return replace(runner, state=state, minutes=None)
+    return runner
+
+
+def collect(state_root, env_dir, *, systemctl='systemctl', now=None, strict=False) -> list[Runner]:
+    """Every runner: pi-autowork@ services and their runner state, merged by name."""
+    now = time.time() if now is None else now
+    services = _service_states(env_dir, systemctl, strict)
+    found = {name: _service_runner(name, sub, env_dir, systemctl) for name, sub in services.items()}
+    folders = _state_folders(state_root)
     for row in health.fleet(state_root, now=now, service=lambda name: services.get(name, '-')):
-        # systemd escapes instance names; health records the repository basename.
-        runner = next((r for r in found.values() if r.repo and Path(r.repo) == Path(row['repo'])),
-                      found.get(row['name']))
-        if runner is None:
-            continue  # state left behind by a runner whose service was removed
-        if runner.repo and Path(runner.repo) != Path(row['repo']):
-            continue
-        runner.repo = runner.repo or row['repo']
-        runner.state_dir = folders.get(row['repo'], '')
-        runner.state = row['state']
-        runner.minutes = int((now - row['since']) // 60) if row.get('since') and row['state'] != 'not running' else None
-        runner.running, runner.waiting = row.get('workers', 0), row.get('waiting', 0)
-        runner.stopped, runner.stopped_groups = row.get('stopped', 0), row.get('stopped_groups') or []
-        runner.held = [(h.get('task', '?'), h.get('cause')) for h in row.get('held', [])]
-        runner.roots = [r for r in row.get('roots', []) if r.get('kind') in health.NEEDS_PERSON]
-        runner.waiting_groups = row.get('waiting_groups') or []
-        runner.blocker = row.get('blocker') or ''
-        runner.stop_reason = row.get('stop_reason') or ''
-        runner.max_workers = row.get('max_workers')
-        runner.maintainer = row.get('maintainer') or {}
-        # status.json deliberately omits the PID and may outlive a stopped runner.
-        runner.main_check = main_check.read(runner.state_dir, runner.repo, fallback=row.get('main_check'))
-        runner.job = row.get('job')
-        if runner.job and runner.job.get('started'):
-            runner.minutes = int((now - runner.job['started']) // 60)
-    for runner in found.values():
-        if runner.repo and Path(runner.repo).is_dir():
-            report = task_prepare.prepare(runner.repo, mode='check')
-            runner.prepare_state = report.get('state')
-            runner.decisions = (report.get('counts') or {}).get('open:Needs decision', 0)
-        runner.lanes = lanes(runner, now)
-        runner.restarting, runner.gate = recent_events(runner, now)
-        # The runner refreshes its status between cycles, not during a long verification it
-        # runs itself: a worker or reviewer acting now means it works, whatever the status says.
-        if runner.state in ('blocked', 'stalled', 'not cycling') and any(
-                lane.activity_age is not None and lane.activity_age < health.STALE_AFTER for lane in runner.lanes):
-            runner.state, runner.minutes = 'working', None
-        runner.questions = read_questions(runner.repo, runner.state_dir) if runner.repo else []
-        if runner.has_service and runner.service in RESTARTING:
-            runner.restarting = runner.restarting or 'service'
-        if runner.has_service and runner.service not in ('running', 'start', 'reload'):
-            if not runner.enabled and paused_marker(env_dir, runner.name).exists():
-                runner.state, runner.minutes = 'paused', None  # paused on purpose: `autowork resume`
-            elif runner.restarting:
-                runner.state, runner.minutes = 'restarting', None  # its own update, not a stop
-            else:
-                runner.state, runner.minutes = 'not running', None  # its records may say otherwise
+        runner = _health_runner(found, row, folders, now)
+        if runner is not None:
+            found[runner.name] = runner
+    for name, runner in found.items():
+        runner = _active_runner(_prepared_runner(runner), now)
+        found[name] = _service_lifecycle(runner, env_dir)
     # Put the owner's decisions and setup work first; keep each group alphabetical.
     return sorted(found.values(), key=lambda r: (not (r.questions or r.setup_required), r.name))
 
@@ -1119,55 +1175,77 @@ def pending_edits(repo):
     return {Path(p).stem for p in paths if p.startswith('tasks/items/') and p.endswith('.md')}
 
 
-def task_rows(runner, include_closed=False):
-    """Task rows in priority order, optionally including closures and their provenance."""
-    store = task_store(runner.repo) if runner.repo else None
-    if store is None:
-        return []
+@dataclass(frozen=True)
+class _TaskState:
+    """The engine's per-task state, cause and explanation (or its legacy group fallback)."""
+    state: str = ''
+    cause: str = ''
+    why: str = ''
+
+
+def _engine_task_states(runner: Runner) -> dict[str, _TaskState]:
     try:
         states = json.loads(Path(runner.state_dir, 'status.json').read_text()).get('tasks') or []
     except (OSError, TypeError, ValueError, AttributeError):
         states = []
-    engine = {row[0]: row for row in states if isinstance(row, list) and len(row) == 4}
+    engine = {row[0]: _TaskState(*row[1:]) for row in states if isinstance(row, list) and len(row) == 4}
     if not engine:  # a runner from before the per-task list: its groups name up to 20 tasks each
-        engine.update((t, (t, 'waiting', '', g['label'])) for g in runner.waiting_groups for t in g.get('tasks') or [])
-        engine.update((t, (t, 'held', cause or '', '')) for t, cause in runner.held)
+        engine.update((t, _TaskState('waiting', '', g['label'])) for g in runner.waiting_groups for t in g.get('tasks') or [])
+        engine.update((t, _TaskState('held', cause or '', '')) for t, cause in runner.held)
+    return engine
+
+
+def _task_state_words(task: str, section: str, engine: _TaskState, lane: Lane | None, asked: bool) -> tuple[str, str]:
+    state, cause = engine.state, engine.cause
+    if lane is not None or state in IN_FLIGHT:
+        return ' · '.join(status(lane or Lane(task, PHASES[state]))), 'working'
+    if state == 'held' and cause in WAIT_CAUSES:
+        return f'{WAITING} · ' + blocker_detail(cause).split(' · ')[0], 'held'
+    if state == 'held':
+        return f'{BLOCKER} · ' + blocker_detail(cause, asked), 'held'
+    if state in ('waiting', 'pending'):
+        return WAITING, 'waiting'
+    if section == 'Needs decision':
+        return f'{WAITING} · Needs decision', 'waiting'
+    return f'{WAITING} · Ready' if state in ('', 'ready') else state, 'ready'
+
+
+def _open_task_row(record, engine: _TaskState, lane: Lane | None, question: Question | None, edited: bool) -> TaskRow:
+    short = ' '.join(record.short.split()) or ' '.join(record.title.split())
+    words, kind = _task_state_words(record.id, record.section, engine, lane, bool(question))
+    if edited:
+        words += ' · Edit not committed'
+    short = short if len(short) <= 40 else short[:39].rstrip() + '…'
+    return TaskRow(task=record.id, short=short, section=record.section, state=words, kind=kind,
+                   why='you: ' + question.needs if question else engine.why, question=bool(question), pending=edited)
+
+
+def _closed_task_rows(store) -> list[TaskRow]:
+    rows = []
+    for record in sorted(store.tasks.values(), key=lambda t: t.id):
+        if record.status == 'done':
+            info = record.closure_info
+            why = (info['evidence'] if record.closure == 'coordinator_verified' else info['reason']) or 'Closure provenance not recorded'
+            rows.append(TaskRow(record.id, record.short or record.title, 'Closed', info['label'], 'closed', why))
+    return rows
+
+
+def task_rows(runner: Runner, include_closed=False) -> list[TaskRow]:
+    """Task rows in priority order, optionally including closures and their provenance."""
+    store = task_store(runner.repo) if runner.repo else None
+    if store is None:
+        return []
+    engine = _engine_task_states(runner)
     lanes = {lane.task: lane for lane in runner.lanes}
     asked = {q.id: q for q in runner.questions}
-    rows = []
     edited = pending_edits(runner.repo)
     sections = {'Now': 0, 'Next': 1, 'Needs decision': 2}
     records = sorted((t for t in store.tasks.values() if t.status == 'open' and t.section in sections),
                      key=lambda t: (sections[t.section], t.rank or 0, t.id))
-    for record in records:
-        task, section = record.id, record.section
-        short = ' '.join(record.short.split()) or ' '.join(record.title.split())
-        _, state, cause, why = engine.get(task, (task, '', '', ''))
-        question = asked.get(task)
-        if task in lanes or state in IN_FLIGHT:
-            words, kind = ' · '.join(status(lanes.get(task) or Lane(task, PHASES[state]))), 'working'
-        elif state == 'held' and cause in WAIT_CAUSES:
-            words, kind = f'{WAITING} · ' + blocker_detail(cause).split(' · ')[0], 'held'
-        elif state == 'held':
-            words, kind = f'{BLOCKER} · ' + blocker_detail(cause, bool(question)), 'held'
-        elif state in ('waiting', 'pending'):
-            words, kind = WAITING, 'waiting'
-        elif section == 'Needs decision':
-            words, kind = f'{WAITING} · Needs decision', 'waiting'
-        else:
-            words, kind = f'{WAITING} · Ready' if state in ('', 'ready') else state, 'ready'
-        if task in edited:
-            words += ' · Edit not committed'
-        short = short if len(short) <= 40 else short[:39].rstrip() + '…'
-        rows.append(TaskRow(task=task, short=short, section=section, state=words, kind=kind,
-                            why='you: ' + question.needs if question else why, question=bool(question),
-                            pending=task in edited))
+    rows = [_open_task_row(record, engine.get(record.id, _TaskState()), lanes.get(record.id),
+                           asked.get(record.id), record.id in edited) for record in records]
     if include_closed:
-        for record in sorted(store.tasks.values(), key=lambda t: t.id):
-            if record.status == 'done':
-                info = record.closure_info
-                why = (info['evidence'] if record.closure == 'coordinator_verified' else info['reason']) or 'Closure provenance not recorded'
-                rows.append(TaskRow(record.id, record.short or record.title, 'Closed', info['label'], 'closed', why))
+        rows.extend(_closed_task_rows(store))
     return rows
 
 
