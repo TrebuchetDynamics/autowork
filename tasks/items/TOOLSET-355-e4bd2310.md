@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-355-e4bd2310"
 title = "One process-liveness helper with start identity decides whether a runner or job is running"
 short = "Liveness with start identity (PID reuse)"
-status = "open"
+status = "done"
 goal = "CODE-HEALTH-2026-10"
 section = "Next"
 rank = 45000
@@ -16,6 +16,8 @@ scope = "health._alive uses os.kill(pid, 0) with no identity, main_check.alive(p
 acceptance = ["An offline test writes runner.json naming a live unrelated PID with mismatched start ticks and health.fleet reports the runner as not running; with matching ticks it reports running", "main_check.alive, health._alive and coordinator.own_process are replaced by the shared helper; no second liveness implementation remains in pi_autowork (grep in the test)", "autowork status for a runner.json whose PID is reused says the runner is not running"]
 checks = ["python3 scripts/check.py pi-autowork/tests/test_health.py pi-autowork/tests/test_main_check.py pi-autowork/tests/test_own_lock.py tests/test_pi_autowork.py"]
 exclusions = []
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-355-e4bd2310.toml"
 +++
 
 - Sources: docs/plans/structural-audit-2026-10.md#hotspots
