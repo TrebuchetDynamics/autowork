@@ -2,6 +2,7 @@
 
 No real service or model is touched.
 """
+import errno
 import http.server
 import json
 import os
@@ -12,6 +13,7 @@ import tempfile
 import threading
 import time
 import unittest
+import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 AUTOWORK = ROOT / 'pi-autowork' / 'bin' / 'autowork'
@@ -128,11 +130,33 @@ class AutoworkCommandTests(unittest.TestCase):
             def log_message(self, *args):
                 pass
 
-        server = http.server.HTTPServer(('127.0.0.1', int(os.environ.get('AUTOWORK_PORT_BASE', '20700')) + 1), Handler)
+        base = os.environ.get('AUTOWORK_PORT_BASE')
+        # Keep worker listeners inside their lease; +2 is another Portal fixture
+        # and +3 is the deliberately wrong caller endpoint below. Without a
+        # lease, let the OS allocate a port instead of sharing a host constant.
+        ports = range(int(base) + 4, int(base) + 100) if base else (0,)
+        for port in ports:
+            try:
+                server = http.server.HTTPServer(('127.0.0.1', port), Handler)
+                break  # Keep the bound socket: no probe/close/rebind race.
+            except OSError as error:
+                if error.errno != errno.EADDRINUSE or port == ports[-1]:
+                    raise
         self.addCleanup(server.server_close)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(thread.join)
         self.addCleanup(server.shutdown)
         return f'http://127.0.0.1:{server.server_port}/v1', requests
+
+    def test_portal_stubs_can_serve_independently_at_the_same_time(self):
+        first, first_requests = self.portal_stub()
+        second, second_requests = self.portal_stub()
+        self.assertNotEqual(first, second)
+        for endpoint, requests in ((first, first_requests), (second, second_requests)):
+            with urllib.request.urlopen(endpoint.removesuffix('/v1') + '/health', timeout=5) as response:
+                self.assertTrue(json.load(response)['authenticated'])
+            self.assertEqual(requests, [('/health', None)])
 
     def test_portal_setup_requires_consent_and_preserves_other_providers(self):
         agent = self.base / 'agent'
