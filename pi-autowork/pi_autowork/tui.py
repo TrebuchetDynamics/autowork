@@ -115,11 +115,18 @@ class Confirm(ModalScreen[bool]):
                 yield Button('Yes (y)', variant='warning', id='yes')
                 yield Button('No (n)', id='no')
 
+    def _answer(self, value):
+        # A button event can arrive after the confirmation was already dismissed (a double
+        # click, a queued key, or a refresh that removed the modal). dismiss() would then pop
+        # the last remaining screen and crash the whole TUI with ScreenStackError.
+        if self.is_current:
+            self.dismiss(value)
+
     def on_button_pressed(self, event):
-        self.dismiss(event.button.id == 'yes')
+        self._answer(event.button.id == 'yes')
 
     def action_answer(self, value):
-        self.dismiss(value)
+        self._answer(value)
 
 
 class TextPrompt(ModalScreen[str]):

@@ -100,6 +100,19 @@ class QuestionTests(unittest.TestCase):
         # A genuine owner-input hold with no attempt left is still a question.
         self.assertTrue(questions.exhausted(EXHAUSTED))
 
+    def test_a_report_hold_with_its_resume_used_is_asked_from_the_row_classification(self):
+        """The status row carries the slot's classification: a report hold whose report-only resume
+        was already used needs a person (the engine keeps the retained commit and has no further
+        recovery), while a fresh report hold is still the engine's to resume."""
+        fresh = {'state': 'held', 'attempt': 1, 'cause': 'report', 'reason': 'report.json does not match',
+                 'owner_decision_required': False}
+        spent = dict(fresh, owner_decision_required=True)
+        self.assertFalse(questions.exhausted(fresh))
+        self.assertTrue(questions.exhausted(spent))
+        status = {'tasks': [dict(spent, task='T-9')]}
+        found = questions.build(status, store(), now=1000)
+        self.assertEqual([(q['id'], q['effort']) for q in found], [('T-9', 'investigate')])
+
     def test_a_dependency_wait_stays_engineering_work_not_an_owner_question(self):
         status = {'tasks': [{'task': 'T-1', 'state': 'held', 'attempt': 2, 'cause': 'task_wait',
                              'waits_for': ['T-2'], 'wait_since': 1000,

@@ -57,6 +57,15 @@ class FailurePolicyTests(unittest.TestCase):
         self.assertEqual((dead['resolution_owner'], dead['state'], dead['next_action']),
                          (failure_policy.ENGINE, 'recovery_required', 'requeue_safely'))
 
+    def test_a_used_report_resume_hands_the_retained_commit_to_a_person(self):
+        self.assertEqual(failure_policy.effective_cause('report', resume_used=False), 'report')
+        self.assertEqual(failure_policy.effective_cause('report', resume_used=True), 'report_exhausted')
+        self.assertEqual(failure_policy.effective_cause('validation', resume_used=True), 'validation')
+        values = failure_policy.classify(failure_policy.effective_cause('report', True))
+        self.assertEqual((values['resolution_owner'], values['state']), (failure_policy.OWNER, 'owner_decision_required'))
+        self.assertTrue(failure_policy.owner_decision_required('report_exhausted'))
+        self.assertFalse(failure_policy.owner_decision_required('report'))
+
 
 if __name__ == '__main__':
     unittest.main()

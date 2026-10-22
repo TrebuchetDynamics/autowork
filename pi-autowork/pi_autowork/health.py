@@ -37,6 +37,8 @@ def needs_person(root):
     failure policy, not by its display kind: an exhausted technical hold is still visible, but it
     is Agent repair or engine recovery, not a question."""
     if root.get('kind') == 'held':
+        if 'owner_decision_required' in root:  # the status root already carries its classification
+            return bool(root['owner_decision_required'])
         return failure_policy.owner_decision_required(root.get('cause'), root.get('reason'))
     return root.get('kind') in NEEDS_PERSON
 

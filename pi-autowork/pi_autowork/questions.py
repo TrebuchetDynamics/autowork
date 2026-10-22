@@ -55,6 +55,8 @@ def technical(row):
     """A failure an agent or the engine can act on. The shared policy owns the boundary;
     a failed review, a dead worker or a merge conflict never becomes an owner decision merely
     because its retry budget ran out."""
+    if 'owner_decision_required' in row:  # the status row already carries the slot's classification
+        return not row['owner_decision_required']
     return failure_policy.technical(row.get('cause'), row.get('reason'))
 
 
@@ -66,7 +68,9 @@ def exhausted(row):
     adoption = row.get('merge_adoption') or {}
     return row.get('state') == 'held' and (int(row.get('attempt') or 0) >= 2 or row.get('cause') in INPUT_CAUSES
                                           or adoption.get('allowed') is False or bool(adoption.get('merged_count'))
-                                          or bool(row.get('quick_hold')))
+                                          or bool(row.get('quick_hold'))
+                                          # the status row says a person owns it (a used report resume)
+                                          or bool(row.get('owner_decision_required')))
 
 
 def build(snapshot, repo, repairs=(), resolving=(), *, now=None):
