@@ -60,7 +60,7 @@ import sys
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pi_autowork import accounting, fleet_view, portal, scorecard, service, task_commands, task_migrate  # noqa: E402
+from pi_autowork import accounting, fleet_view, portal, scorecard, service, task_commands, task_migrate, task_prepare  # noqa: E402
 
 COMPONENT = Path(__file__).resolve().parents[1]
 TOOLSET = COMPONENT.parent
@@ -459,7 +459,6 @@ def cmd_update(args, paths):
 def capabilities():
     """What this executable can do, for a skill's handshake before it writes anything: the
     resolved executable and release, every command and `tasks` verb, and the prepare API."""
-    from pi_autowork import task_prepare
     top = parser()
     commands = next(a for a in top._actions if isinstance(a, argparse._SubParsersAction)).choices
     verbs = next(a for a in commands['tasks']._actions if isinstance(a, argparse._SubParsersAction)).choices
@@ -535,9 +534,44 @@ def cmd_clear_held(args, paths):
     return 0
 
 
+def force_prepare(repo):
+    """Force a legacy conversion now, keeping work and restoring an active service.
+
+    End live workers and lease holders, set attempts aside, commit planning edits and
+    convert through a helper whose lease names this process as its parent.
+    """
+    paths = env_paths()
+    name = fleet_view.instance(str(repo))
+    was_active = service_state(paths, name) == 'active'
+    if was_active:
+        systemctl(paths, 'stop', f'pi-autowork@{name}.service')
+    script = Path(__file__).resolve()
+    result = subprocess.run([sys.executable, str(script), 'migrate', str(repo), '--after-drain', '--force',
+                             '--owner-pid', str(os.getpid())], capture_output=True, text=True, timeout=900)
+    try:
+        step = json.loads(result.stdout)
+    except ValueError:
+        step = dict(outcome='BLOCKED', detail=' '.join((result.stderr or 'no answer').split())[-300:])
+    started = False
+    if was_active:
+        started = systemctl(paths, 'start', f'pi-autowork@{name}.service').returncode == 0
+    return dict(service_stopped=was_active, service_started=started, step=step)
+
+
 def cmd_tasks(args, paths):
     """`autowork tasks ...` on the tasks/ store of a runner name, path or `.`."""
-    return task_commands.run(args, resolve(args.repo, paths)[0])
+    repo = resolve(args.repo, paths)[0]
+    if args.verb != 'prepare':
+        return task_commands.run(args, repo)
+    try:
+        out = task_prepare.prepare(repo, 'check' if args.check else 'stage' if args.no_commit
+                                   else 'force' if args.force else 'commit', force=force_prepare)
+    except (task_commands.CommandError, task_commands.StoreError, task_commands.WriteError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(json.dumps(out, indent=2))
+    # 3: deferred (the runner converts after its drain), not prepared and not an error.
+    return 0 if out['ok'] else 3 if out.get('outcome') == 'MIGRATION_DEFERRED' else 1
 
 
 def parser():
