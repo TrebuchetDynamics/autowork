@@ -1,4 +1,5 @@
 """Main's full offline check after a landing (TOOLSET-176-98)."""
+import ast
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,27 @@ from pi_autowork import main_check  # noqa: E402
 
 
 class MainCheckTests(unittest.TestCase):
+    def test_coordinator_settle_and_main_check_phases_stay_bounded(self):
+        """Keep these orchestration flows and their named phases small enough to review."""
+        source = Path(__file__).resolve().parents[1] / 'pi_autowork/coordinator.py'
+        coordinator = next(node for node in ast.parse(source.read_text()).body
+                           if isinstance(node, ast.ClassDef) and node.name == 'Coordinator')
+        roots = ('settle', 'check_main', 'finish_main_check')
+        methods = [node for node in coordinator.body if isinstance(node, ast.FunctionDef)
+                   and any(node.name == name or node.name.startswith(name + '_') for name in roots)]
+        self.assertTrue(set(roots).issubset(node.name for node in methods))
+        for method in methods:
+            with self.subTest(method=method.name):
+                complexity = 1
+                for node in ast.walk(method):
+                    if isinstance(node, (ast.If, ast.IfExp, ast.For, ast.AsyncFor, ast.While,
+                                         ast.ExceptHandler, ast.comprehension)):
+                        complexity += 1
+                    elif isinstance(node, ast.BoolOp):
+                        complexity += len(node.values) - 1
+                self.assertLessEqual(method.end_lineno - method.lineno + 1, 80)
+                self.assertLessEqual(complexity, 40)
+
     def test_failures_are_read_from_unittest_and_check_output(self):
         log = ('CHECK tests (50 modules)\n'
                'FAIL: test_core_plan (test_preflight.PreflightTests.test_core_plan)\n'
