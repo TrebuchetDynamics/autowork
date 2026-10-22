@@ -1,4 +1,6 @@
 """fleet_view: runners from systemd and status.json; blockers; actions. Fakes only."""
+import contextlib
+import io
 import json
 import os
 from pathlib import Path
@@ -67,6 +69,26 @@ class FleetViewTests(unittest.TestCase):
         self.assertEqual((sierra.service, sierra.running, sierra.held), ('running', 1, [('TASK-023', 'blocker')]))
         self.assertEqual(fleet_view.blockers(sierra), [('blocker', 'TASK-023 blocker (2)')])
         self.assertEqual(fleet_view.summary(found.values()), [('working', 1), ('stalled', 1)])
+
+    def test_ls_json_matches_the_pre_refactor_recorded_fleet(self):
+        """Keep health, settings, questions and main-check merging byte-identical."""
+        from pi_autowork import command
+        fixture = Path(__file__).with_name('fixtures') / 'fleet'
+        for folder in ('state', 'env', 'session'):
+            shutil.copytree(fixture / folder, self.base / folder, dirs_exist_ok=True)
+            for path in (self.base / folder).rglob('*'):
+                if path.is_file():
+                    path.write_text(path.read_text().replace('$BASE', str(self.base)).replace('$PID', str(os.getpid())))
+                    if path.suffix == '.in':
+                        path.rename(path.with_suffix(''))
+        units = 'pi-autowork@demo-escaped.service loaded active running demo\n'
+        with mock.patch.dict(os.environ, FAKE_UNITS=units, FAKE_ENABLED='1'), \
+                mock.patch.object(fleet_view.time, 'time', return_value=2000000000), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            result = command.cmd_ls(type('Args', (), {'json': True})(), dict(
+                state_root=self.state, env_dir=self.env, systemctl=self.systemctl))
+        self.assertEqual(result, 0)
+        self.assertEqual(output.getvalue().replace(str(self.base), '$BASE'), (fixture / 'ls.json').read_text())
 
     def test_a_dead_main_check_is_interrupted_even_when_the_health_snapshot_says_running(self):
         self.runner_state('/git/india', main_check={'state': 'running', 'rev': 'old'})
