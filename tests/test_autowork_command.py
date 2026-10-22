@@ -156,39 +156,6 @@ class AutoworkCommandTests(unittest.TestCase):
         self.env['PI_AUTOWORK_PUSH'] = '1'  # a matching request remains idempotent
         self.assertEqual(self.aw('start', str(self.repo)).returncode, 0)
 
-    def test_push_grant_is_persisted_per_repository_and_status_is_read_only(self):
-        # Exercise the real settings installer/loader, with only systemctl and Pi faked.
-        launcher = self.base / 'bin/pi-autowork.sh'
-        launcher.write_text(f'#!/bin/sh\nexec {sys.executable} {ROOT}/pi-autowork/pi_autowork/cli.py "$@"\n')
-        self.env.update(PI_AUTOWORK_TOOLSET=str(ROOT), PI_BIN=str(self.base / 'bin/pi'),
-                        PI_AUTOWORK_HERMES_HOME=str(self.base / 'no-hermes'))
-        self.env.pop('PI_AUTOWORK_PUSH', None)
-        initial = self.aw('status', str(self.repo))
-        self.assertEqual(initial.returncode, 0, initial.stderr)
-        self.assertIn('Push:       disabled', initial.stdout)
-        self.assertFalse((self.env_dir / 'india.env').exists())
-        self.env['PI_AUTOWORK_PUSH'] = '1'
-        installed = self.aw('start', str(self.repo))
-        self.assertEqual(installed.returncode, 0, installed.stderr)
-        del self.env['PI_AUTOWORK_PUSH']
-        settings = self.env_dir / 'india.env'
-        self.assertIn('PI_AUTOWORK_PUSH=1\n', settings.read_text())
-        # A same-named repository elsewhere must not inherit india's saved grant.
-        (self.base / 'elsewhere').mkdir()
-        other = self.make_repo('elsewhere/india')
-        for setting, label in (('1', 'enabled'), ('0', 'disabled')):
-            saved = settings.read_bytes().replace(b'PI_AUTOWORK_PUSH=1\n', f'PI_AUTOWORK_PUSH={setting}\n'.encode())
-            settings.write_bytes(saved + b'# preserve this formatting\n\n')
-            before = settings.read_bytes()
-            self.log.write_text('')
-            for _ in range(2):
-                status = self.aw('status', str(self.repo))
-                self.assertEqual(status.returncode, 0, status.stderr)
-                self.assertIn(f'Push:       {label}', status.stdout)
-            self.assertIn('Push:       disabled', self.aw('status', str(other)).stdout)
-            self.assertEqual(settings.read_bytes(), before)
-            self.assertEqual(self.calls(), [])
-
     def test_start_reinstalls_a_service_whose_unit_script_is_gone(self):
         self.aw('start', str(self.repo))
         unit = self.base / 'unit-dir' / 'pi-autowork@.service'

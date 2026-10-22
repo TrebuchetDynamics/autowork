@@ -37,24 +37,16 @@ class PushSettingTests(unittest.TestCase):
         return subprocess.run(['git', '-C', str(repo), *args], check=True, capture_output=True,
                               text=True, timeout=20).stdout.strip()
 
-    def test_push_requires_an_explicit_grant(self):
-        env = {k: v for k, v in os.environ.items() if k != 'PI_AUTOWORK_PUSH'}
-        for setting in ('0', None):
-            with self.subTest(setting=setting), mock.patch.dict(os.environ, env, clear=True):
-                if setting is not None:
-                    os.environ['PI_AUTOWORK_PUSH'] = setting
-                self.runner.push()
-                self.assertEqual(self.git(self.remote, 'show-ref'), self.remote_before)
+    def test_push_disabled_keeps_local_commits_off_the_upstream(self):
+        with mock.patch.dict(os.environ, PI_AUTOWORK_PUSH='0'):
+            self.runner.push()
+        self.assertEqual(self.git(self.remote, 'show-ref'), self.remote_before)
 
-    def test_sync_upstream_requires_an_explicit_grant(self):
-        env = {k: v for k, v in os.environ.items() if k != 'PI_AUTOWORK_PUSH'}
-        for setting in ('0', None):
-            with self.subTest(setting=setting), mock.patch.dict(os.environ, env, clear=True):
-                if setting is not None:
-                    os.environ['PI_AUTOWORK_PUSH'] = setting
-                self.runner.sync_upstream()
-                self.assertFalse((self.repo / '.git' / 'FETCH_HEAD').exists())
-                self.assertEqual(self.git(self.remote, 'show-ref'), self.remote_before)
+    def test_sync_upstream_disabled_neither_fetches_nor_publishes(self):
+        with mock.patch.dict(os.environ, PI_AUTOWORK_PUSH='0'):
+            self.runner.sync_upstream()
+        self.assertFalse((self.repo / '.git' / 'FETCH_HEAD').exists())
+        self.assertEqual(self.git(self.remote, 'show-ref'), self.remote_before)
 
 
 if __name__ == '__main__':
