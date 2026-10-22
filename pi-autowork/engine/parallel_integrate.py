@@ -1108,8 +1108,10 @@ def task_store_rank(record):
 
 
 def close_writes(repo, task, slot, info, checks, record):
-    """{path: text} a close writes: the task's done record, its receipt and, when live checks
-    remain, their one per-goal backlog. Nothing else; TODO.archive.md is not written."""
+    """{path: text} a close writes: the task's done record, its receipt and any pending live
+    checks. By default live checks are notes on the done record, not another owner decision;
+    PI_AUTOWORK_LIVE_FOLLOWUP=backlog keeps the per-goal backlog behavior, and =none drops the
+    notes. Nothing else; TODO.archive.md is not written."""
     # From the record as committed: a close records the verified contract, never a local edit.
     committed = git(repo, 'show', f'HEAD:{execution.task_path(task)}', raw=True).decode()
     text = task_store.edit(committed, {'status': 'done', 'closure': 'coordinator_verified',
@@ -1119,9 +1121,18 @@ def close_writes(repo, task, slot, info, checks, record):
     writes = {execution.task_path(task): text, receipt_path(task): receipt_text(repo, task, slot, info, checks, record)}
     live = live_items((slot.get('report') or {}).get('pending_live'))
     if live:
-        followup, existing = backlog_target(repo, record)
-        followup, body = followup_text(task, record, live, existing=existing, followup=followup)
-        writes[execution.task_path(followup)] = body
+        mode = os.environ.get('PI_AUTOWORK_LIVE_FOLLOWUP', 'notes').strip().lower()
+        if mode == 'backlog':
+            followup, existing = backlog_target(repo, record)
+            followup, body = followup_text(task, record, live, existing=existing, followup=followup)
+            writes[execution.task_path(followup)] = body
+        elif mode != 'none':
+            fresh = [item for item in live
+                     if f'- Pending live: {" ".join(item.split())}' not in text]
+            if fresh:
+                text = text.rstrip('\n') + '\n' + ''.join(
+                    f'- Pending live: {" ".join(item.split())}\n' for item in fresh)
+                writes[execution.task_path(task)] = text
     return writes
 
 
