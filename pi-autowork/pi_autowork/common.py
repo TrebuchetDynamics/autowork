@@ -39,9 +39,16 @@ def die(code, text):
     sys.exit(code)
 
 
+# Reads never take the owner's index lock: `git status` would refresh stale stat data in the
+# index when it can, and the runner polls the main checkout every second while it waits, so
+# an owner's `git commit` at that moment failed with "index.lock: File exists". Writes still
+# take the locks they need; only Git's optional ones are declined.
+GIT = ('git', '--no-optional-locks')
+
+
 def git(repo, *argv, check=False):
     """stdout of `git -C repo argv`, stripped; None on failure unless check."""
-    result = subprocess.run(['git', '-C', str(repo), *argv], capture_output=True, text=True)
+    result = subprocess.run([*GIT, '-C', str(repo), *argv], capture_output=True, text=True)
     if result.returncode:
         if check:
             raise RuntimeError(result.stderr.strip() or f'git {argv[0]} failed')
@@ -51,7 +58,7 @@ def git(repo, *argv, check=False):
 
 
 def git_ok(repo, *argv):
-    return subprocess.run(['git', '-C', str(repo), *argv], stdout=subprocess.DEVNULL,
+    return subprocess.run([*GIT, '-C', str(repo), *argv], stdout=subprocess.DEVNULL,
                           stderr=subprocess.DEVNULL).returncode == 0
 
 
