@@ -717,7 +717,6 @@ def blocker_updates(repo, slot, blockers):
     owner requests. Unknown wording stays with blocker triage. Workers are given a
     canonical form; the observed parser-repair wording is a narrow compatibility case.
     """
-    import parallel_plan
     updates = {'reason': blocker_reason(blockers), 'cause': 'blocker'}
     import task_queue
     snapshot = task_queue.store(Path(repo))

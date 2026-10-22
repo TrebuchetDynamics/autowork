@@ -7,7 +7,6 @@ import os
 from pathlib import Path, PurePosixPath
 import subprocess
 import re
-import sys
 import time
 
 
