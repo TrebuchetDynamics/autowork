@@ -3045,14 +3045,37 @@ class Coordinator:
         return False
 
     def cycle(self):
+        """One pass of the loop: refresh the session, dispatch, read the engine's answer, then
+        settle finished work and decide how long to wait."""
         self.plan_seen = self.plan_signature()
         if self.stop:
             self.stop_now()
+        if not self.begin_cycle():
+            return
+        resumes = self.apply_limits()
+        chosen = None
+        if not self.draining or resumes:
+            chosen, reason = self.choose_model()
+            if not chosen:
+                reason = reason or 'primary and fallback not ready'
+                if self.mode in ('once', 'until-empty'):
+                    self.finish(1, f'No usable model: {reason}')
+                LOG.say(f'No usable model ({reason}); checking again in {self.interval}s')
+                return self.blocked_pause(f'no usable model: {reason}')
+        self.runner_blocker = ''
+        outcome, result = self.dispatch(resumes, chosen)
+        outcome = self.handle_outcome(outcome, result)
+        if outcome is not None:
+            self.finish_cycle(outcome)
+
+    def begin_cycle(self):
+        """Update, follow the plan and land what is due before dispatching; False when the plan
+        is not ready and the cycle ends here."""
         if not self.draining and not self.in_flight():
             self.update_toolset()
         self.restart_if_updated()
         if not self.planning_ready():
-            return
+            return False
         self.ensure_session()
         if not self.seen.get('synced-at-start'):
             self.seen['synced-at-start'] = True
@@ -3064,6 +3087,11 @@ class Coordinator:
         self.sweep_tmp()
         self.check_main()
         self.land_planning()
+        return True
+
+    def apply_limits(self):
+        """Start draining at --max-cycles, PI_AUTOWORK_MAX_RUNTIME or a failure streak (a service
+        pauses instead). Returns the paused same-attempt resumes a drain still dispatches."""
         if not self.draining:
             if self.max_cycles and self.started_workers >= self.max_cycles:
                 self.draining = True
@@ -3082,21 +3110,15 @@ class Coordinator:
                     self.draining = True
                     LOG.say(f'Stopping after {self.failures} failed tasks in a row; finishing running tasks')
         # Draining excludes fresh work, not a paused attempt's existing unfinished work.
-        resumes = [r['task'] for r in self.tasks() if self.draining and r.get('state') == 'interrupted'
-                   and r.get('paused') and (not self.once_task or r['task'] == self.once_task)]
-        if not self.draining or resumes:
-            chosen, reason = self.choose_model()
-            if not chosen:
-                reason = reason or 'primary and fallback not ready'
-                if self.mode in ('once', 'until-empty'):
-                    self.finish(1, f'No usable model: {reason}')
-                LOG.say(f'No usable model ({reason}); checking again in {self.interval}s')
-                return self.blocked_pause(f'no usable model: {reason}')
-        self.runner_blocker = ''
+        return [r['task'] for r in self.tasks() if self.draining and r.get('state') == 'interrupted'
+                and r.get('paused') and (not self.once_task or r['task'] == self.once_task)]
+
+    def dispatch(self, resumes, chosen):
+        """Ask the engine to start work (or only ``resumes`` while draining); (outcome, answer)."""
         result = {}
         if (not self.draining or resumes) and time.monotonic() < self.pause_until:
-            outcome = 'PAUSED'  # after a failure streak: settle running work, start nothing new
-        elif not self.draining or resumes:
+            return 'PAUSED', result  # after a failure streak: settle running work, start nothing new
+        if not self.draining or resumes:
             # Workers leave the full check to the gate the runner runs on the merged tree (TOOLSET-227-a8).
             os.environ['AUTOWORK_RUNNER_FULL_CHECK'] = main_check.full_check(self.integ) if self.integ else ''
             os.environ.update(AUTOWORK_TELEMETRY_HOST='pi', AUTOWORK_TELEMETRY_MODEL=chosen)
@@ -3115,41 +3137,22 @@ class Coordinator:
                 self.note_state(task, 'closing', f'closed on {self.base}; set aside once the running review ends')
             if outcome != 'ACTION_REQUIRED':
                 self.ledger_errors = []  # an owner repair must also retire its question
-        else:
-            # --once/--max-cycles draining starts no new task, but a broken ledger also
-            # prevents the already dispatched tasks from integrating or closing.
-            self.ledger_errors = self.validate_ledger()
-            outcome = 'ACTION_REQUIRED' if self.ledger_errors else 'DRAINING'
+            return outcome, result
+        # --once/--max-cycles draining starts no new task, but a broken ledger also
+        # prevents the already dispatched tasks from integrating or closing.
+        self.ledger_errors = self.validate_ledger()
+        return ('ACTION_REQUIRED' if self.ledger_errors else 'DRAINING'), result
+
+    def handle_outcome(self, outcome, result):
+        """Record what the engine did. Returns the outcome the rest of the cycle acts on, or None
+        when the cycle ends here (a pause, a wait or a repair pass that dispatches again first)."""
         if outcome in ('DISPATCHED', 'RETRIED'):
-            started = [d.get('task') for d in result.get('dispatched') or []]
-            if isinstance(result.get('retried'), dict) and result['retried'].get('task'):
-                started.append(result['retried']['task'])
-            elif outcome == 'RETRIED' and result.get('task'):
-                started.append(result['task'])
-            for task in started:
-                self.started_workers += 1
-                if self.mode == 'once' and not self.once_task:
-                    self.once_task, self.draining = task, True  # no second task
-                self.note_state(task, 'running', 'worker started')
+            self.note_started(outcome, result)
         elif outcome == 'READOPTED':
             self.seen[result.get('task')] = ''
             LOG.say(f'{result.get("task")}: the retry made no change; re-verifying the first attempt\'s commit')
         elif outcome == 'REQUEUED':
-            task = result.get('task')
-            self.seen[task] = ''
-            kept = ', '.join(r['branch_now'] for r in result.get('renamed') or [] if r.get('branch_now'))
-            if result.get('requeued') is False:
-                LOG.say(f'{task}: its task record was removed or closed while it was held; set aside'
-                        + (f' (earlier work kept as {kept})' if kept else ''))
-            elif result.get('why') == 'review_rework':
-                LOG.say(f'{task}: its last attempt failed review; reworking it once with the findings'
-                        + (f' (earlier work kept as {kept})' if kept else ''))
-            elif result.get('why') == 'runner_merged':
-                LOG.say(f'{task}: its branch was merged past its commit by the runner; running it fresh from that tip'
-                        + (f' (earlier work kept as {kept})' if kept else ''))
-            else:
-                LOG.say(f'{task}: its task contract changed while it was held; running it fresh'
-                        + (f' (earlier work kept as {kept})' if kept else ''))
+            self.note_requeued(result)
         elif outcome in ('RESCOPED', 'RESUMED', 'REOFFERED'):
             self.seen[result.get('task')] = ''
             self.seen.pop('awaiting-' + str(result.get('task')), None)
@@ -3160,7 +3163,7 @@ class Coordinator:
             self.last_waiting = waiting
             if self.overlap_idles() and self.maintain(overlap=True):
                 self.last_waiting = ''
-                return  # dispatch again on the re-cut tasks first
+                return None  # dispatch again on the re-cut tasks first
         elif outcome == 'IDLE':
             # IDLE only means no worker is running: tasks may still be waiting on something.
             blocked = summary_list(result.get('waiting') or [])
@@ -3174,68 +3177,108 @@ class Coordinator:
                 self.last_waiting = blocked
             if self.maintain():  # also check a ledger the engine did not flag
                 self.last_waiting = ''
-                return  # dispatch again on the repaired docs first
+                return None  # dispatch again on the repaired docs first
         elif outcome in ('DRAINING', 'PAUSED'):
             pass
         elif outcome == 'BUSY':
-            reason = result.get('reason') or 'busy'
-            if own_process(result.get('holder')):
-                # This runner's own background job (a review, landing or status read) holds the
-                # lock past the engine's wait: ordinary work, not a blocker. Retry within seconds,
-                # quietly; name the job once only if it keeps the lock past the bound.
-                since = self.seen.setdefault('busy-own-since', time.monotonic())
-                bound = worker.setting('PI_AUTOWORK_OWN_LOCK_BOUND', 600, float)
-                if time.monotonic() - since < bound:
-                    return self.pause(5)
-                if not self.seen.get('busy-own-said'):
-                    self.seen['busy-own-said'] = True
-                    LOG.say(f"{result.get('lock') or 'a lock'} has been held by this runner's own "
-                            f"{process_name(result['holder'])} (PID {result['holder']}) for "
-                            f'{int((time.monotonic() - since) // 60)} min; still waiting for it')
-                return self.pause(5)
-            self.seen.pop('busy-own-said', None)
-            if self.mode in ('once', 'until-empty'):
-                # A killed runner's engine helper holds the execution lock until it finishes: under
-                # load the restart that adopts its workers exited 4 at once (TOOLSET-288-cf). A held
-                # lock gets a bounded wait; another owner (a live sequential runner) does not.
-                since = self.seen.setdefault('busy-since', time.monotonic())
-                held = reason.startswith(('Repository execution lock', 'Repository or helper publication lock'))
-                if not held or time.monotonic() - since >= worker.setting('PI_AUTOWORK_BUSY_WAIT', 60, float):
-                    self.finish(4, f'Repository busy: {reason}')
-                if self.seen.get('busy-said') != reason:
-                    self.seen['busy-said'] = reason
-                    LOG.say(f'Repository busy ({reason}); waiting for it to finish')
-                return self.pause(2)
-            LOG.say(f'Repository busy ({reason}); checking again in {self.interval}s')
-            return self.blocked_pause(f'repository busy: {reason}')
+            return self.wait_for_busy(result)
         else:
-            reason = result.get('reason') or outcome
-            # Consult the store on every refusal rather than guessing the engine's wording.
-            self.ledger_errors = self.validate_ledger(reason) if outcome == 'ACTION_REQUIRED' else []
-            if self.ledger_errors:
-                if self.maintain(ledger_errors=self.ledger_errors):
-                    return  # select again on valid docs before asking the owner
-                if self.integration:
-                    self.settle()  # reap an existing review so it cannot hold repair forever
-                reason = 'invalid task store: ' + '; '.join(self.ledger_errors)
-                self.last_waiting = 'engine:' + reason
-                if self.mode != 'continuous':
-                    self.runner_blocker = f'the engine needs attention: {reason}'
-                    self.health_update()
-                    self.finish(4, 'Ledger repair pending; see BLOCKERS.md')
-                return self.blocked_pause(f'the engine needs attention: {reason}')
-            if self.mode != 'continuous':
-                self.finish(4, f'The engine needs attention: {reason}')
+            return self.engine_needs_attention(outcome, result)
+        return outcome
+
+    def note_started(self, outcome, result):
+        started = [d.get('task') for d in result.get('dispatched') or []]
+        if isinstance(result.get('retried'), dict) and result['retried'].get('task'):
+            started.append(result['retried']['task'])
+        elif outcome == 'RETRIED' and result.get('task'):
+            started.append(result['task'])
+        for task in started:
+            self.started_workers += 1
+            if self.mode == 'once' and not self.once_task:
+                self.once_task, self.draining = task, True  # no second task
+            self.note_state(task, 'running', 'worker started')
+
+    def note_requeued(self, result):
+        task = result.get('task')
+        self.seen[task] = ''
+        kept = ', '.join(r['branch_now'] for r in result.get('renamed') or [] if r.get('branch_now'))
+        kept = f' (earlier work kept as {kept})' if kept else ''
+        if result.get('requeued') is False:
+            LOG.say(f'{task}: its task record was removed or closed while it was held; set aside' + kept)
+        elif result.get('why') == 'review_rework':
+            LOG.say(f'{task}: its last attempt failed review; reworking it once with the findings' + kept)
+        elif result.get('why') == 'runner_merged':
+            LOG.say(f'{task}: its branch was merged past its commit by the runner; running it fresh from that tip' + kept)
+        else:
+            LOG.say(f'{task}: its task contract changed while it was held; running it fresh' + kept)
+
+    def wait_for_busy(self, result):
+        """The engine found the repository busy: wait quietly for the runner's own job, a bounded
+        time for a held lock in a one-shot run, else until the next interval. Always ends the cycle."""
+        reason = result.get('reason') or 'busy'
+        if own_process(result.get('holder')):
+            # This runner's own background job (a review, landing or status read) holds the
+            # lock past the engine's wait: ordinary work, not a blocker. Retry within seconds,
+            # quietly; name the job once only if it keeps the lock past the bound.
+            since = self.seen.setdefault('busy-own-since', time.monotonic())
+            bound = worker.setting('PI_AUTOWORK_OWN_LOCK_BOUND', 600, float)
+            if time.monotonic() - since < bound:
+                return self.pause(5)
+            if not self.seen.get('busy-own-said'):
+                self.seen['busy-own-said'] = True
+                LOG.say(f"{result.get('lock') or 'a lock'} has been held by this runner's own "
+                        f"{process_name(result['holder'])} (PID {result['holder']}) for "
+                        f'{int((time.monotonic() - since) // 60)} min; still waiting for it')
+            return self.pause(5)
+        self.seen.pop('busy-own-said', None)
+        if self.mode in ('once', 'until-empty'):
+            # A killed runner's engine helper holds the execution lock until it finishes: under
+            # load the restart that adopts its workers exited 4 at once (TOOLSET-288-cf). A held
+            # lock gets a bounded wait; another owner (a live sequential runner) does not.
+            since = self.seen.setdefault('busy-since', time.monotonic())
+            held = reason.startswith(('Repository execution lock', 'Repository or helper publication lock'))
+            if not held or time.monotonic() - since >= worker.setting('PI_AUTOWORK_BUSY_WAIT', 60, float):
+                self.finish(4, f'Repository busy: {reason}')
+            if self.seen.get('busy-said') != reason:
+                self.seen['busy-said'] = reason
+                LOG.say(f'Repository busy ({reason}); waiting for it to finish')
+            return self.pause(2)
+        LOG.say(f'Repository busy ({reason}); checking again in {self.interval}s')
+        return self.blocked_pause(f'repository busy: {reason}')
+
+    def engine_needs_attention(self, outcome, result):
+        """The engine refused: repair the task store when that is the cause, else report once and
+        look again next interval. Always ends the cycle (a one-shot run exits 4)."""
+        reason = result.get('reason') or outcome
+        # Consult the store on every refusal rather than guessing the engine's wording.
+        self.ledger_errors = self.validate_ledger(reason) if outcome == 'ACTION_REQUIRED' else []
+        if self.ledger_errors:
+            if self.maintain(ledger_errors=self.ledger_errors):
+                return None  # select again on valid docs before asking the owner
             if self.integration:
-                # Read an ended review's answer: a reload onto a release that fixes the engine waits
-                # for it, and it was never read while the engine failed (a deadlock until a restart).
-                self.settle()
-            # A service that exits here stops silently (deliberate exits are not restarted):
-            # report it once, keep it visible in health, and look again next interval.
-            if self.last_waiting != 'engine:' + reason:
-                LOG.say(f'The engine needs attention: {reason}; checking again in {self.interval}s')
+                self.settle()  # reap an existing review so it cannot hold repair forever
+            reason = 'invalid task store: ' + '; '.join(self.ledger_errors)
             self.last_waiting = 'engine:' + reason
+            if self.mode != 'continuous':
+                self.runner_blocker = f'the engine needs attention: {reason}'
+                self.health_update()
+                self.finish(4, 'Ledger repair pending; see BLOCKERS.md')
             return self.blocked_pause(f'the engine needs attention: {reason}')
+        if self.mode != 'continuous':
+            self.finish(4, f'The engine needs attention: {reason}')
+        if self.integration:
+            # Read an ended review's answer: a reload onto a release that fixes the engine waits
+            # for it, and it was never read while the engine failed (a deadlock until a restart).
+            self.settle()
+        # A service that exits here stops silently (deliberate exits are not restarted):
+        # report it once, keep it visible in health, and look again next interval.
+        if self.last_waiting != 'engine:' + reason:
+            LOG.say(f'The engine needs attention: {reason}; checking again in {self.interval}s')
+        self.last_waiting = 'engine:' + reason
+        return self.blocked_pause(f'the engine needs attention: {reason}')
+
+    def finish_cycle(self, outcome):
+        """Settle finished work, then wait, dispatch again, or end a finite run."""
         self.settle()
         self.handle_requests()
         self.health_update()
