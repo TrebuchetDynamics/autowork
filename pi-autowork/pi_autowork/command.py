@@ -15,6 +15,8 @@
     autowork model [target] [provider/model] [--fallback provider/model]
                                   show or set the service's Pi model, then restart it
     autowork models [search]      Pi's model list (pi --list-models)
+    autowork setup-portal --provider NAME --model ID [--endpoint URL] [--apply] [--json]
+                                  propose a local Nous proxy entry; --apply explicitly consents
     autowork remove [target]      stop and remove the service; state and worktrees stay
     autowork run [dir]            run the runner here, in the foreground (debugging)
     autowork web [--port N] [--host H] [--view-only]
@@ -58,7 +60,7 @@ import sys
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pi_autowork import accounting, fleet_view, scorecard, service, task_commands, task_migrate  # noqa: E402
+from pi_autowork import accounting, fleet_view, portal, scorecard, service, task_commands, task_migrate  # noqa: E402
 
 COMPONENT = Path(__file__).resolve().parents[1]
 TOOLSET = COMPONENT.parent
@@ -264,11 +266,23 @@ def cmd_pause(args, paths, resume=False):
     return 0
 
 
-def pi_models(search=None):
-    found = fleet_view.models(os.environ.get('AUTOWORK_PI', 'pi'), search)
+def pi_models(search=None, *, agent_dir=None):
+    found = fleet_view.models(os.environ.get('AUTOWORK_PI', 'pi'), search, agent_dir=agent_dir)
     if not found:
         raise Fail('Pi listed no models (pi --list-models); check Pi and its logins')
     return found
+
+
+def cmd_setup_portal(args, paths):
+    proposal = portal.propose(args.provider, args.model, args.endpoint)
+    if not args.json:
+        print(proposal.text(), flush=True)
+    result = portal.apply(proposal) if args.apply else proposal.result()
+    if args.json:
+        print(json.dumps(result, indent=2))
+    elif args.apply:
+        print(result['message'])
+    return 0
 
 
 def cmd_models(args, paths):
@@ -292,7 +306,10 @@ def cmd_model(args, paths):
         print(f'{name}: model {settings.get("PI_AUTOWORK_PRIMARY") or fleet_view.DEFAULT_MODEL}, '
               f'fallback {settings.get("PI_AUTOWORK_FALLBACK") or fleet_view.DEFAULT_FALLBACK}')
         return 0
-    known = set(pi_models())
+    agent_dir = portal.service_agent_dir(settings)
+    for model in updates.values():
+        portal.check_model(model, agent_dir)
+    known = set(pi_models(agent_dir=agent_dir))
     unknown = [m for m in updates.values() if m not in known]
     if unknown:
         raise Fail(f"not in Pi's model list: {', '.join(unknown)} (see: autowork models)")
@@ -560,6 +577,12 @@ def parser():
     model.add_argument('target', nargs='?')
     model.add_argument('model', nargs='?', help='provider/model, from: autowork models')
     model.add_argument('--fallback', help='the fallback provider/model')
+    setup = sub.add_parser('setup-portal', help='propose a Nous loopback proxy provider; never starts it')
+    setup.add_argument('--provider', required=True, help='explicit Pi provider entry to prepare')
+    setup.add_argument('--model', required=True, help='exact upstream model ID from your Portal plan')
+    setup.add_argument('--endpoint', default=portal.DEFAULT_ENDPOINT)
+    setup.add_argument('--apply', action='store_true', help='consent to the displayed provider edit only')
+    setup.add_argument('--json', action='store_true', help='same effective result for automation')
     models = sub.add_parser('models', help="Pi's model list")
     models.add_argument('search', nargs='?')
     update = sub.add_parser('update', help='update the installed suite in place (install.sh update)')
@@ -582,7 +605,7 @@ COMMANDS = {'ls': cmd_ls, 'status': cmd_status, 'logs': cmd_logs, 'start': cmd_s
             'stop': cmd_stop, 'restart': cmd_restart, 'remove': cmd_remove,
             'run': cmd_run, 'web': cmd_web, 'tui': cmd_tui, 'blockers': cmd_blockers,
             'pause': cmd_pause, 'resume': lambda a, p: cmd_pause(a, p, resume=True),
-            'model': cmd_model, 'models': cmd_models, 'scorecard': cmd_scorecard,
+            'model': cmd_model, 'models': cmd_models, 'setup-portal': cmd_setup_portal, 'scorecard': cmd_scorecard,
             'clear-held': cmd_clear_held, 'update': cmd_update, 'tasks': cmd_tasks,
             'capabilities': cmd_capabilities, 'attention': cmd_attention,
             'migrate': lambda a, p: task_migrate.run(a, resolve(a.repo, p)[0])}
@@ -609,7 +632,7 @@ def main(argv=None):
         return 0
     try:
         return COMMANDS[args.command](args, env_paths()) or 0
-    except Fail as exc:
+    except (Fail, portal.SetupError) as exc:
         print(f'autowork: {exc}', file=sys.stderr)
         return 1
 

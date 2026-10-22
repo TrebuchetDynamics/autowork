@@ -40,7 +40,8 @@ name, a repository path or `.`. Nothing here calls a model.
 | `autowork restart [target] [--stop-workers]` | Reload the runner in place on its current release and settings; running workers keep running. `--stop-workers` restarts the service instead, pausing them |
 | `autowork pause` / `resume [target]` | Stop the service and keep it off, also after a reboot (disable), or start it again (enable); only a paused service is listed as `paused`, any other stopped one as `not running` |
 | `autowork model [target] [provider/model] [--fallback provider/model]` | Show or set this service's Pi model (checked against Pi's list), then reload it |
-| `autowork models [search]` | Pi's model list (`pi --list-models`) |
+| `autowork models [search]` | Pi's model list (`pi --list-models`); an empty catalog is an actionable error, never `No/models` |
+| `autowork setup-portal --provider NAME --model ID [--endpoint URL] [--apply] [--json]` | Preview a selected Pi provider for the local Hermes Nous proxy; only `--apply` consents to configuration, never a proxy/service start |
 | `autowork ls [--long]` | One colored line per runner; `--long` adds its workers in flight, blockers and model |
 | `autowork status [target]` / `logs [-f] [target]` | The runner's full status; its journal |
 | `autowork remove [target]` | Stop and remove the service; state and worktrees stay |
@@ -153,6 +154,82 @@ conversion reads `Task store needs repair`. Docs Sync prepares and reconciles th
 store; `autowork migrate` remains available as direct CLI conversion recovery.
 
 The TUI and web view run Textual 8.2.8 (and textual-serve 1.1.3) through `uv`.
+
+## Nous Portal setup (opt-in)
+
+Pi remains the executor; Hermes owns the Portal login and subscription proxy.
+Installing Autowork does not configure this route. With a current Hermes supporting
+`hermes proxy` and Pi's compatible-endpoint `models.json` format:
+
+```sh
+# Replace with an exact model ID available on your Portal plan (may contain /).
+MODEL_ID='model-from-your-plan'
+autowork setup-portal --provider nous-local --model "$MODEL_ID"
+# Review the proposal, then explicitly consent to that provider edit only:
+autowork setup-portal --provider nous-local --model "$MODEL_ID" --apply
+```
+
+In the TUI, **o — Nous Portal** opens the same setup before any service is required.
+Enter the provider, exact model ID and endpoint, then Preview. The separate Yes/No
+confirmation shows the proposal; No or Escape leaves configuration bytes unchanged.
+View-only mode disables setup. `--json` exposes the same path, provider/model,
+endpoint, prerequisite diagnostics, proxy state and applied flag to automation.
+
+The default endpoint is `http://127.0.0.1:8645/v1`. `--endpoint` accepts only literal
+`127.0.0.1` or `[::1]` HTTP addresses with a port and `/v1`; no remote hosts,
+credentials, queries or redirects. Setup reads only local `/health`, without an
+Authorization header or environment HTTP proxy. It does **not** request the upstream
+model catalog, authenticate, refresh credentials, start/stop anything or call a model.
+`available` means the expected Nous proxy reports stored authentication, **not** that
+refresh, model access, billing or inference succeeded. Missing Pi/Hermes executables,
+unavailable proxy, missing login and incompatible health responses have separate
+messages. An unavailable proxy does not prevent preparing configuration for later use.
+
+Only the selected provider under `${PI_CODING_AGENT_DIR:-~/.pi/agent}/models.json`
+is prepared, using `openai-completions`, a non-secret `local-proxy-placeholder` key
+and the exact model ID. Real credentials stay in Hermes. Other providers and settings
+are preserved as JSON values (formatting may change). Existing models in that provider
+are retained; changing its endpoint affects **all** its models. Only an existing entry
+with this placeholder, compatible API and supported structure can be updated. Retained
+model entries support `id`, `name`, `reasoning`, `input`, `contextWindow`, `maxTokens`
+and complete nonnegative `cost` metadata. Other model fields, including `baseUrl`,
+`api` and executable `headers`, are refused rather than silently overriding the
+selected provider route. Provider-level `modelOverrides` are also refused. The same
+validation runs before runtime model selection, including after manual config edits.
+Conflicting keys/headers/API settings, malformed/duplicate-key JSON, symlinked files and edits since
+the displayed proposal refuse without replacement. Writes use a private temporary file,
+fsync and atomic replacement; repeated identical application preserves the file bytes.
+No Pi defaults or runner model choices are changed by setup.
+
+Use the same **absolute** `PI_CODING_AGENT_DIR` for setup and service installation
+if you do not use Pi's default directory. The installer saves it and preserves it
+on reinstall; foreground runners load it from repository settings unless explicitly
+overridden. CLI/TUI service-model selection uses the saved directory, so it validates
+against that service's catalog. An existing service without a saved directory uses
+Pi's default directory, not the model picker's shell override. Relative agent directories
+are refused to prevent resolution differences between setup and services.
+Setup itself always targets the calling process's Pi
+directory, displayed in the proposal; it never edits an unrelated service/profile.
+Existing services need explicit reinstallation to adopt a different directory.
+
+Starting a runner is a **separate operation that makes model calls**. For a new
+service, set `PI_AUTOWORK_PRIMARY="nous-local/$MODEL_ID"` and
+`PI_AUTOWORK_NO_FALLBACK=1` when running `autowork start /path/to/project`, or supply
+an explicit available `PI_AUTOWORK_FALLBACK` instead. No Codex/OpenRouter login is
+required for a proxy-only choice. Existing services use `autowork model` and the
+supported installer for changed service settings. A missing proxy on a prepared
+entry is diagnosed before worker/model selection, never delegated to workers for
+repeated configuration approvals.
+
+Offline coverage: `tests/test_autowork_command.py`, `pi-autowork/tests/test_portal.py`
+and the headless `tui_pilot.py` use disposable configurations and health-only stubs;
+no real proxy, auth, service lifecycle or inference is qualified. For manual
+prerequisites and the separately opt-in live probe, see
+[the cross-host guide](../docs/cross-host.md#nous-portal-through-the-local-proxy).
+Contracts verified against [Hermes subscription proxy documentation](https://hermes-agent.nousresearch.com/docs/user-guide/features/subscription-proxy),
+[Hermes health implementation](https://github.com/NousResearch/hermes-agent/blob/3a9d585e4f1a60588237587a72d365d187094c74/hermes_cli/proxy/server.py)
+and [Pi compatible endpoints](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/models.md#configure-a-compatible-endpoint)
+(Pi 1.3.0 installed documentation); earlier Pi versions are not newly qualified.
 
 ## Cost and owner attention
 
