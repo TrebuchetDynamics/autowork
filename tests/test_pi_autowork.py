@@ -2170,7 +2170,7 @@ class EngineTests(Fixture):
         self.git(self.repo, 'add', 'TODO.md')
         self.git(self.repo, 'commit', '-qm', 'a repository from before the task store')
         once = self.run_runner('--once')
-        self.assertEqual(once.returncode, 2, once.stdout + once.stderr)
+        self.assertEqual(once.returncode, 4, once.stdout + once.stderr)
         self.assertIn(f'Run `autowork migrate {self.repo}`', once.stderr)
         runner = self.start_runner('--interval', '1')  # the service's mode: it waits
         self.addCleanup(lambda: runner.poll() is None and runner.kill())
@@ -3183,19 +3183,80 @@ class SetupTests(Fixture):
         self.assertEqual(out.count('does not parse'), 1, out)
 
     def test_setup_errors(self):
+        # Read the generated unit and the actual startup exit together: these
+        # failures need intervention, not a restart every minute (issue 6).
+        ctl = self.bin / 'systemctl'
+        ctl.write_text('#!/bin/sh\nexit 0\n')
+        ctl.chmod(0o755)
+        self.env.update(PI_AUTOWORK_UNIT_DIR=str(self.root / 'units'),
+                        PI_AUTOWORK_ENV_DIR=str(self.root / 'envs'))
+        installed = self.run_runner('--install-service')
+        self.assertEqual(installed.returncode, 0, installed.stderr)
+        unit = (self.root / 'units/pi-autowork@.service').read_text()
+        prevented = {int(code) for code in re.search(r'^RestartPreventExitStatus=(.*)$', unit, re.M)[1].split()}
         bare = self.root / 'bare'
         bare.mkdir()
         self.git(bare, 'init', '-q')
-        self.assertIn('No tasks/ store at', self.run_runner('--once', cwd=bare).stderr)
-        self.assertIn('Not inside a Git repository', self.run_runner('--once', cwd=self.root).stderr)
-        self.env['PI_AUTOWORK_PRIMARY'] = 'openai-codex/gpt-nope'
-        self.assertIn('not in Pi', self.run_runner('--once').stderr)
-        self.env.pop('PI_AUTOWORK_PRIMARY')
-        self.assertIn('--workers must be 1 to 16', self.run_runner('--workers', '17').stderr)
+        cases = [
+            (bare, ['--once'], {}, 'No tasks/ store at'),
+            (self.root, [], {}, 'Not inside a Git repository'),
+            (self.repo, ['--repo', str(self.root), '--once'], {}, 'Not inside a Git repository'),
+            (self.repo, [], {'PI_AUTOWORK_PRIMARY': 'openai-codex/gpt-nope'}, 'not in Pi'),
+            (self.repo, ['--workers', '17'], {}, '--workers must be 1 to 16'),
+            (self.repo, ['--workers', 'bad'], {}, 'Expected a whole number'),
+            (self.repo, [], {'PI_BIN': 'missing-pi'}, 'Pi not found'),
+        ]
+        escaped = self.make_repo(self.root / 'project with spaces', [])
+        for tool in ('git', 'timeout', 'systemd-escape'):
+            path = self.root / f'without-{tool}'
+            path.mkdir()
+            for name in ('bash', 'readlink', 'dirname', 'python3', 'git', 'timeout', 'systemd-escape', 'pi'):
+                if name != tool:
+                    (path / name).symlink_to(shutil.which(name, path=self.env['PATH']))
+            cases.append((escaped if tool == 'systemd-escape' else self.repo, [],
+                          {'PATH': str(path)}, f'Missing required command: {tool}'))
+        detached = self.make_repo(self.root / 'detached', [])
+        self.git(detached, 'checkout', '-q', '--detach')
+        cases.append((detached, [], {}, 'has a detached HEAD'))
+        for cwd, args, env, reason in cases:
+            with self.subTest(reason=reason):
+                result = self.run_runner('--repo', str(cwd), *args, env={**self.env, **env})
+                self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
+                self.assertIn(result.returncode, prevented)
+                self.assertIn(reason, result.stderr)
+                status = self.run_runner('--repo', str(cwd), *args, '--status')
+                self.assertEqual(status.returncode, 0, status.stderr)
+                self.assertIn(reason, status.stdout)
         self.git(self.repo, 'switch', '-q', '-c', 'feature')
         result = self.run_runner('--once')
-        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
+        self.assertIn(result.returncode, prevented)
         self.assertIn('is on branch feature', result.stderr)
+        self.assertIn('is on branch feature', self.run_runner('--status').stdout)
+        self.assertEqual(self.runs(), [])
+
+    def test_inherited_git_routing_cannot_write_another_repository(self):
+        other = self.make_repo(self.root / 'other', [('X', None)])
+        before = {p.relative_to(self.repo): p.read_bytes() for p in self.repo.rglob('*') if p.is_file()}
+        for injected in ({'GIT_DIR': str(self.repo / '.git')}, {'GIT_WORK_TREE': str(self.repo)},
+                         {'GIT_DIR': str(self.repo / '.git'), 'GIT_WORK_TREE': str(self.repo)}):
+            with self.subTest(injected=injected):
+                result = self.run_runner('--repo', str(other), '--once', env={**self.env, **injected})
+                self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
+                self.assertIn('Repository identity mismatch', result.stderr)
+                self.assertEqual({p.relative_to(self.repo): p.read_bytes()
+                                  for p in self.repo.rglob('*') if p.is_file()}, before)
+                self.assertEqual(self.git(other, 'status', '--porcelain'), '')
+        # The configured project can itself be the toolset. Bootstrap must
+        # reject routing before even adding release worktrees to that project.
+        metadata = ROOT / '.git'
+        before = {p.relative_to(metadata): p.read_bytes() for p in metadata.rglob('*') if p.is_file()}
+        result = self.run_runner('--repo', str(ROOT), '--once', env={**self.env,
+            'PI_AUTOWORK_STATE_DIR': str(self.root / 'fresh-state'),
+            'GIT_DIR': str(self.repo / '.git'), 'GIT_WORK_TREE': str(self.repo)})
+        self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
+        self.assertEqual({p.relative_to(metadata): p.read_bytes()
+                          for p in metadata.rglob('*') if p.is_file()}, before)
         self.assertEqual(self.runs(), [])
 
     def test_hermes_autowork_job_on_the_same_repository_needs_allow(self):
@@ -3256,7 +3317,7 @@ class ServiceTests(Fixture):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         unit = (self.units / 'pi-autowork@.service').read_text()
         for line in ('WorkingDirectory=~', f'ExecStart=/bin/bash {RUNNER} --repo ${{PI_AUTOWORK_REPO}}',
-                     'KillSignal=SIGINT', 'KillMode=mixed', 'SuccessExitStatus=130', 'Restart=on-failure', 'RestartPreventExitStatus=1 3 4',
+                     'KillSignal=SIGINT', 'KillMode=mixed', 'SuccessExitStatus=130', 'Restart=on-failure', 'RestartPreventExitStatus=1 2 3 4',
                      f'EnvironmentFile={self.envs}/%i.env', 'Description=pi-autowork for %i'):
             self.assertIn(line, unit)
         env = self.envs / 'project.env'

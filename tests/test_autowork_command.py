@@ -16,6 +16,8 @@ AUTOWORK = ROOT / 'pi-autowork' / 'bin' / 'autowork'
 sys.path.insert(0, str(ROOT / 'pi-autowork' / 'engine'))
 import store_fixture  # noqa: E402
 import task_store  # noqa: E402
+sys.path.insert(0, str(ROOT / 'pi-autowork'))
+from pi_autowork import fleet_view  # noqa: E402
 
 GOAL = ('+++\nschema = 1\nid = "G"\ntitle = "Fixture"\npriority = 1\nsource = "docs/plan.md"\n'
         'status = "unmet"\nfocus = false\n+++\n')
@@ -461,6 +463,47 @@ class AutoworkCommandTests(unittest.TestCase):
                          [('india', 'working', 1, 4)])
         self.aw('pause', 'india')
         self.assertRegex(self.aw('ls').stdout, r'india\s+service\s+paused\s')
+
+    def test_run_and_status_keep_the_requested_target_despite_git_routing(self):
+        other = self.make_repo('other')
+        self.env.update(GIT_DIR=str(other / '.git'), GIT_WORK_TREE=str(other),
+                        PI_AUTOWORK_SCRIPT=str(ROOT / 'scripts/pi-autowork.sh'),
+                        PI_AUTOWORK_TOOLSET=str(ROOT), PI_BIN=str(self.base / 'bin/pi'))
+        result = self.aw('run', str(self.repo))
+        self.assertEqual(result.returncode, 4, result.stderr)
+        self.assertIn('Repository identity mismatch', result.stderr)
+        status = self.aw('status', str(self.repo))
+        self.assertEqual(status.returncode, 0, status.stderr)
+        self.assertIn(f'Repository: {self.repo}', status.stdout)
+        self.assertIn('Repository identity mismatch', status.stdout)
+
+    def test_status_and_fleet_keep_the_reason_a_runner_stopped_during_setup(self):
+        self.env.update(PI_AUTOWORK_SCRIPT=str(ROOT / 'scripts/pi-autowork.sh'),
+                        PI_AUTOWORK_TOOLSET=str(ROOT), PI_BIN=str(self.base / 'bin/pi'))
+        for repo in (self.repo, self.make_repo('project with spaces')):
+            with self.subTest(repo=repo):
+                failed = subprocess.run([sys.executable, str(ROOT / 'pi-autowork/pi_autowork/cli.py'),
+                                         '--repo', str(repo), '--workers', '17'],
+                                        env=self.env, capture_output=True, text=True, timeout=30)
+                self.assertEqual(failed.returncode, 4, failed.stderr)
+                # Observation works with invalid settings and even without .git.
+                self.env['PI_AUTOWORK_WORKERS'] = '17'
+                name = subprocess.check_output(['systemd-escape', repo.name], text=True).strip()
+                (self.env_dir / f'{name}.env').write_text(f'PI_AUTOWORK_REPO={repo}\n')
+                (repo / '.git').rename(repo / 'saved-git')
+                status = self.aw('status', name)
+                self.assertEqual(status.returncode, 0, status.stderr)
+                self.assertIn('--workers must be 1 to 16', status.stdout)
+                fleet = json.loads(self.aw('ls', '--json').stdout)['runners']
+                runner = next(row for row in fleet if row['repo'] == str(repo))
+                self.assertIn('--workers must be 1 to 16', runner['blocker'])
+                # The TUI consumes these helpers, not the raw blocker field.
+                # A generic setup label or stopped-service action must not hide
+                # the persisted reason in its headline, Needs or Blocker detail.
+                view = fleet_view.Runner(**runner)
+                for displayed in (fleet_view.verdict(view)[0], fleet_view.needs(view),
+                                  fleet_view.blocker_parts(view)):
+                    self.assertIn('--workers must be 1 to 16', displayed)
 
     def test_logs_status_and_help(self):
         self.aw('start', str(self.repo))
