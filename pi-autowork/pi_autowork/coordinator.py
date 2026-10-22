@@ -1400,8 +1400,8 @@ class Coordinator:
         """Pull, then push: merge commits the upstream gained into the session and the main
         branch, then publish the main branch if it is ahead. Called after every landing and once
         at start, so a backlog is published and the session never drifts behind the upstream."""
-        if os.environ.get('PI_AUTOWORK_PUSH', '1') == '0':
-            return
+        if os.environ.get('PI_AUTOWORK_PUSH', '0') != '1':
+            return self.push()  # says once that main stays local
         upstream = git(self.repo, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', f'{self.base}@{{u}}')
         if not upstream or '/' not in upstream:
             return self.push()  # says once that there is no upstream
@@ -1423,9 +1423,13 @@ class Coordinator:
 
         Fast-forward only, never forced; workers and Pi's tools stay unable to push (the push
         guard), only this step runs without it. A rejected push fetches the upstream, merges
-        it into the session, lands that and pushes once more. PI_AUTOWORK_PUSH=0 turns it off.
+        it into the session, lands that and pushes once more. Only an explicit
+        PI_AUTOWORK_PUSH=1 grant enables publication; saved repository grants are reused.
         """
-        if os.environ.get('PI_AUTOWORK_PUSH', '1') == '0':
+        if os.environ.get('PI_AUTOWORK_PUSH', '0') != '1':
+            if self.seen.get('push-note') != 'no grant':
+                self.seen['push-note'] = 'no grant'
+                LOG.say(f'Not pushed: {self.base} stays local (no PI_AUTOWORK_PUSH=1 grant for this repository)')
             return
         upstream = git(self.repo, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', f'{self.base}@{{u}}')
         if not upstream or '/' not in upstream:
