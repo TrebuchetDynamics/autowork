@@ -2144,11 +2144,15 @@ class Coordinator:
         run = shlex.join([sys.executable, str(Path(main_check.__file__).resolve()), '--run', cmd,
                           os.environ.get('PI_AUTOWORK_VALIDATE_TIMEOUT') or '3600', str(progress)])
         script = f'{run}\nresult=$?\nif [ "$result" -ne 0 ]; then {retry}; fi\necho "$result" > {shlex.quote(str(done))}'
+        lease = self.main_check_port_lease()
+        ports = {'AUTOWORK_PORT_BASE': str(lease[0])} if lease else {}
         with open(self.state / 'main-check.log', 'w') as log:
             child = subprocess.Popen(['bash', '-c', script], cwd=path,
-                                     env=self.job_environment(TMPDIR=tmp),
-                                     stdout=log, stderr=subprocess.STDOUT,
+                                     env=self.job_environment(TMPDIR=tmp, **ports),
+                                     stdout=log, stderr=subprocess.STDOUT, pass_fds=[lease[1]] if lease else (),
                                      stdin=subprocess.DEVNULL, start_new_session=True)
+        if lease:
+            os.close(lease[1])  # the check keeps the block for as long as it runs
         main_check.write(self.state, dict(state='running', rev=rev, pid=child.pid,
                                           start_time=main_check.start_time(child.pid), started=time.time(), path=path,
                                           tmp=tmp, slot_status=str(progress), green=record.get('green'), failures=record.get('failures'),
@@ -2156,6 +2160,17 @@ class Coordinator:
                                           crashed=record.get('crashed'), flaky_history=record.get('flaky_history') or {},
                                           last_finished=record.get('finished') or record.get('last_finished')))
         LOG.say(f'Checking main at {rev[:7]} in the background: {cmd}')
+
+    def main_check_port_lease(self):
+        """(base, locked file) of a 100-port block for main's check, as every worker and review
+        gets; None when none is free. Without one the check's fixtures defaulted to a block a
+        worker on this host had leased (its database container answered on the fixture's port)
+        and main went red for nothing (2026-10-22). The child inherits the locked file."""
+        try:
+            dispatch, _, _ = worker.engine_modules()
+            return dispatch.port_lease(1)
+        except (ImportError, OSError, ValueError):
+            return None
 
     def batch_running(self):
         """Whether a batch check or the merge train's next car is running beside the loop."""
