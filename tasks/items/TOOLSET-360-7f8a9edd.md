@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-360-7f8a9edd"
 title = "Protect the two niceness fixtures against inherited main-check priority"
 short = "Niceness fixtures under niced checks"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 50000
@@ -16,6 +16,8 @@ scope = "Harden test_main_check.MainCheckTests.test_a_background_main_check_yiel
 acceptance = ["Add test-owned regression coverage for both named fixtures under inherited elevated niceness (at least 10, respecting an already higher inherited value and the cap of 19), without privileged renicing. Preserve the ordinary fixture checks and prove that background checks and worker children receive the configured relative priority up to that cap; do not require the impossible value 20. The regression must detect removal of the existing cap correction.", "Record observations distinguishing isolation, resource-load and fixture-timing hypotheses, including inherited parent/child niceness and child readiness. Keep every existing assertion and case; no skips, expected failures, weakened priority assertions, inflated fixed sleeps/timeouts or production test hooks. Any fixture processes, patches and temporary files are cleaned up even after an assertion failure.", "Report repeated isolated runs of both named tests, their two complete modules and the full offline check, including the elevated-niceness context and any remaining flake. A passing historical bundle is not proof of the added regression coverage."]
 checks = ["for run in 1 2 3; do python3 scripts/check.py pi-autowork/tests/test_main_check.py -k test_a_background_main_check_yields_to_reviews || exit; done", "for run in 1 2 3; do python3 scripts/check.py pi-autowork/engine/test_parallel_dispatch.py -k test_a_worker_runs_below_the_coordinators_priority || exit; done", "python3 scripts/check.py pi-autowork/tests/test_main_check.py pi-autowork/engine/test_parallel_dispatch.py", "python3 scripts/check.py", "git diff --check"]
 exclusions = ["No production changes to priority, dispatch, main-check admission, check classification or the full-check command. No live/model qualification, publication, privileged scheduling changes or edits to coordinator-owned task records."]
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-360-7f8a9edd.toml"
 +++
 
 - Sources: [main-check fixture](pi-autowork/tests/test_main_check.py); [worker fixture](pi-autowork/engine/test_parallel_dispatch.py); [offline checker](scripts/check.py); DOCS-MAINTAINER MAIN (flaky test) instruction and supplied evidence bundle; existing cap correction commit 5e72508558593189c07665e073ee76e095b94ff6.
