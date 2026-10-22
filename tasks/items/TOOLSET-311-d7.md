@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-311-d7"
 title = "Collect 30 days of evaluation data on at least two other repositories"
 short = "30-day evaluation run"
-status = "open"
+status = "done"
 goal = "EVALUATION"
 section = "Needs decision"
 rank = 2000
@@ -16,6 +16,10 @@ scope = "Run Autowork for 30 days, mostly building other products, on at least t
 acceptance = ["docs/evaluation.md records aggregate weekly results per metric for at least two repositories, the baseline used and a verdict against each proposed target, including targets missed."]
 checks = ["Live: autowork scorecard --days 30 --json on each evaluated runner, exported weekly"]
 exclusions = ["No repository names, paths, identities or raw usage records in this public repository: aggregates only.", "Offline fixture results do not count."]
+closure = "manual"
+closure_actor = "xel"
+closure_timestamp = "2026-10-22T11:50:02.883173+00:00"
+closure_reason = "2026-10-22 owner decision: manually closed this live-only qualification to clear the pending queue. Offline acceptance remains; live evidence was not produced and is not claimed. Reopen when an authorized live environment and operator window are available."
 +++
 
 - Sources: [30-day evaluation](docs/evaluation.md#30-day-evaluation)
