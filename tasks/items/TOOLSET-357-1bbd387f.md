@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-357-1bbd387f"
 title = "The worker's full-check gate is split into verdict, evidence and prompt builders with table-driven tests"
 short = "Decompose the worker gate"
-status = "open"
+status = "done"
 goal = "CODE-HEALTH-2026-10"
 section = "Next"
 rank = 47000
@@ -16,6 +16,8 @@ scope = "worker._run_gate (90 lines, cc 41), gate_note (55, cc 40) and verify_ba
 acceptance = ["A table-driven test feeds recorded gate inputs to the pure verdict function and asserts each documented reason string", "_run_gate, gate_note and verify_batch are each under 50 lines and cc 15", "tests/test_gate_command.py, tests/test_pi_autowork.py and pi-autowork/tests/test_optimistic.py pass unchanged"]
 checks = ["python3 scripts/check.py pi-autowork/tests/test_gate_command.py pi-autowork/tests/test_optimistic.py tests/test_pi_autowork.py"]
 exclusions = []
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-357-1bbd387f.toml"
 +++
 
 - Sources: docs/plans/structural-audit-2026-10.md#hotspots
