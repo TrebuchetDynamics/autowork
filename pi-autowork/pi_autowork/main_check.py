@@ -6,6 +6,7 @@ check (PI_AUTOWORK_MAIN_CHECK) has it run in the background, once per main revis
 disposable checkout of main; a failure names the failing tests and the commits since the
 last green revision, and the DOCS-MAINTAINER adds one repair task for it. Standard library only.
 """
+import ast
 import concurrent.futures
 from contextlib import contextmanager
 import fcntl
@@ -46,6 +47,50 @@ def full_check(repo, env=os.environ):
     except OSError:
         return ''
     return found[1].strip() if found else ''
+
+
+def affected_checker(repo, declared):
+    """Recognize the owned unfiltered checker and its API, not just an older file of that name."""
+    try:
+        parts = shlex.split(declared)
+    except ValueError:
+        return None
+    root = Path(repo).resolve()
+    if (len(parts) != 2 or Path(parts[0]).name not in ('python', 'python3', Path(sys.executable).name)
+            or (root / parts[1]).resolve() != root / 'scripts/check.py'
+            or not (root / 'scripts/affected_tests.py').is_file()):
+        return None
+    checker = root / 'scripts/check.py'
+    try:
+        tree = ast.parse(checker.read_text(encoding='utf-8'))
+    except (OSError, SyntaxError, ValueError, UnicodeError):
+        return None
+    if any(isinstance(node, ast.FunctionDef) and node.name == 'affected_selection' for node in tree.body):
+        return checker
+    return None
+
+
+def landing_check(repo, base, declared):
+    """The landing command and checked scope. Main retains its declared full command."""
+    checker = affected_checker(repo, declared)
+    if checker is None:
+        return declared, None
+    api = runpy.run_path(str(checker))
+    head = subprocess.run(['git', '-C', str(repo), 'rev-parse', 'HEAD'],
+                          text=True, capture_output=True, check=True).stdout.strip()
+    selection = api['affected_selection'](repo, f'{base}..{head}')
+    return declared + ' --affected ' + shlex.quote(f'{selection["base"]}..{head}'), selection
+
+
+def receipt_command_matches(receipt, declared):
+    """Bind both legacy full receipts and selected receipts to the actual producing command."""
+    selection = receipt.get('selection')
+    if selection is None:
+        return receipt.get('command') == declared
+    if not isinstance(selection, dict) or not selection.get('base') or not selection.get('head'):
+        return False
+    expected = declared + ' --affected ' + shlex.quote(f'{selection["base"]}..{selection["head"]}')
+    return receipt.get('full_command') == declared and receipt.get('command') == expected
 
 
 def command(env=os.environ, repo=None):

@@ -16,7 +16,8 @@ modules could reach; this runs those two.
 import argparse
 import ast
 from collections import deque
-import importlib.util
+import runpy
+from types import SimpleNamespace
 import json
 from pathlib import Path
 import re
@@ -27,7 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 TEXT = ('.py', '.sh', '.md', '.json', '.toml', '.yml', '.yaml', '.js', '.mjs', '.txt', '.cfg')
 # What every test depends on without naming it: the whole suite.
 FULL = ('scripts/check.py', 'scripts/affected_tests.py', 'requirements-test.txt', 'package.json', '.github/')
-MENTION = re.compile(r'[A-Za-z0-9_./-]*[A-Za-z0-9_-]\.(?:py|sh|md|json|toml|ya?ml|js|mjs)\b')
+MENTION = re.compile(r'[A-Za-z0-9_./-]*[A-Za-z0-9_-]\.(?:py|sh|md|json|toml|ya?ml|js|mjs|txt|cfg)\b')
 
 
 def git(*args):
@@ -49,10 +50,8 @@ def changed_files(base):
 
 
 def check_module():
-    spec = importlib.util.spec_from_file_location('offline_check', ROOT / 'scripts' / 'check.py')
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    # Loading the inventory must not leave bytecode in a landing checkout.
+    return SimpleNamespace(**runpy.run_path(str(ROOT / 'scripts/check.py')))
 
 
 def repository_files():
@@ -93,11 +92,11 @@ def python_references(source):
 CODE = ('.py', '.sh', '.js', '.mjs')
 
 
-def dependency_graph(files, tests=()):
+def dependency_graph(files, tests=(), *, conservative=False):
     """{file: {files it imports or names}}. Only code depends on anything: a document or data
     file is read, it does not run what it mentions (CHANGELOG.md and TODO.archive.md name
-    hundreds of files, and through them every change reached 107 of 120 test modules). A test
-    module is a dependency only when imported, never because a file names it (check.py's shards)."""
+    hundreds of files, and through them every change reached 107 of 120 test modules).
+    Conservative landing selection also retains named test-file dependencies."""
     tests = set(tests)
     stems, basenames = {}, {}
     for path in files:
@@ -105,6 +104,8 @@ def dependency_graph(files, tests=()):
         basenames.setdefault(name, set()).add(path)
         if path.endswith('.py'):
             stems.setdefault(Path(path).stem, set()).add(path)
+            if conservative and Path(path).name == '__init__.py':
+                stems.setdefault(Path(path).parent.name, set()).add(path)
     known = set(files)
     extensionless = {p for p in files if '/' in p and '.' not in Path(p).name}
     graph = {}
@@ -119,43 +120,81 @@ def dependency_graph(files, tests=()):
         except OSError:
             continue
         deps = set()
+        if conservative and path.endswith('.py'):
+            # Loading a package member executes every ancestor package initializer,
+            # including unchanged initializers that import a changed dependency.
+            deps |= {str(parent / '__init__.py') for parent in Path(path).parents
+                     if parent != Path('.') and str(parent / '__init__.py') in known}
         if path.endswith('.py'):
             # An import inside a function is a dependency of the module that makes it, not of
             # everything above it: task_prepare imports fleet_view for one path, and through the
             # shared store fixture that tied 60 engine tests to the fleet view.
             top, lazy, text = python_references(text)
-            for name in top | (lazy if path in tests else set()):
+            for name in top | (lazy if conservative or path in tests else set()):
                 deps |= stems.get(name, set())
         for token in set(MENTION.findall(text)):
             token = token.lstrip('./')
-            if token in known:
+            candidates = basenames.get(Path(token).name, set())
+            if conservative:
+                # Split paths such as ROOT / 'data' / 'config.json' can be ambiguous.
+                # All plausible targets are safer than silently discarding an edge.
+                named = ({p for p in candidates if p == token or p.endswith('/' + token)}
+                         if '/' in token else candidates)
+            elif token in known:
                 named = {token}
-            else:  # a partial path matches its tail; a bare name only when one file has it
-                candidates = basenames.get(Path(token).name, set())
+            else:  # advisory mode prefers precision over the landing gate's conservatism
                 named = ({p for p in candidates if p.endswith('/' + token)} if '/' in token
                          else candidates if len(candidates) == 1 else set())
-            deps |= named - tests
+            deps |= named if conservative else named - tests
         deps |= {p for p in extensionless if p in text}
         deps.discard(path)
         graph[path] = deps
     return graph
 
 
-def select(changed, base='HEAD'):
+def select(changed, base='HEAD', *, conservative=False):
     """(tests, reasons, full): the test modules to run, why each, and whether the whole suite."""
     checker = check_module()
     tests = {p.relative_to(ROOT).as_posix() for p in checker.discover_tests(ROOT)}
     if not changed:
         return [], {}, False
+    def whole(reason):
+        return sorted(tests), {t: reason + ': the whole suite' for t in tests}, True
+
     full = [p for p in changed if p.startswith(FULL)]
+    if conservative:
+        # Imports cannot model implicit fixture, CI and build consumers.
+        full += [p for p in changed if
+                 Path(p).name in ('conftest.py', '__init__.py', 'setup.py', 'setup.cfg',
+                                  'pyproject.toml', 'tox.ini', 'Makefile', 'Dockerfile')
+                 or Path(p).name.startswith(('requirements', 'package', 'Pipfile', 'uv.lock', 'poetry.lock'))
+                 or p.startswith(('.github/', '.gitlab', '.circleci/', 'ci/'))
+                 or any(p.startswith(d + '/') for d in checker.TEST_DIRS) and p not in tests]
     if full:
-        return sorted(tests), {t: f'{full[0]} changed: the whole suite' for t in tests}, True
+        return whole(f'{full[0]} changed')
     files = repository_files()
-    graph = dependency_graph(sorted(set(files) | set(changed)), tests)
+    graph = dependency_graph(sorted(set(files) | set(changed)), tests, conservative=conservative)
     reverse = {}
     for path, deps in graph.items():
         for dep in deps:
             reverse.setdefault(dep, set()).add(path)
+    if conservative:
+        for changed_path in changed:
+            reached, pending = set(), [changed_path]
+            while pending:
+                path = pending.pop()
+                if path in reached:
+                    continue
+                reached.add(path)
+                pending.extend(reverse.get(path, ()))
+            if not reached & tests:
+                return whole(f'{changed_path} has no resolved test mapping')
+            for path in reached:
+                if path.endswith('.py'):
+                    try:
+                        ast.parse((ROOT / path).read_text(encoding='utf-8'))
+                    except (OSError, SyntaxError, ValueError, UnicodeError):
+                        return whole(f'{path} cannot be resolved')
     reason, queue = {}, deque()
     for path in changed:
         reason[path] = [path]
@@ -167,7 +206,8 @@ def select(changed, base='HEAD'):
                 reason[user] = reason[path] + [user]
                 queue.append(user)
     chosen = sorted(t for t in tests if t in reason)
-    return chosen, {t: ' <- '.join(reversed(reason[t])) if len(reason[t]) > 1 else 'changed' for t in chosen}, False
+    return (chosen, {t: ' <- '.join(reversed(reason[t])) if len(reason[t]) > 1 else 'changed' for t in chosen},
+            conservative and bool(tests) and set(chosen) == tests)
 
 
 def main(argv=None):

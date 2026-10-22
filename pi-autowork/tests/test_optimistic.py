@@ -120,7 +120,12 @@ class LandingFlowTests(unittest.TestCase):
             here = os.getcwd()
             self.addCleanup(os.chdir, here)
             os.chdir(tmp)
-            self.assertEqual(worker.verify(tmp, 'T'), 0)
+            scripts = Path(tmp) / 'scripts'
+            scripts.mkdir()
+            (scripts / 'check.py').write_text('def main(): pass\n')
+            (scripts / 'affected_tests.py').write_text('# legacy selector without the batch API\n')
+            with mock.patch.dict(os.environ, PI_AUTOWORK_VALIDATE='python3 scripts/check.py'):
+                self.assertEqual(worker.verify(tmp, 'T'), 0)
             os.chdir(here)
             self.assertIn('optimistic landing', review.call_args[0][4])
 

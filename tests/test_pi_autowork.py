@@ -1238,7 +1238,21 @@ class EngineTests(Fixture):
         """TOOLSET-258-07: one runner landed six tasks a day, one review at a time, while nine waited."""
         self.env['PI_AUTOWORK_BATCH'] = '6'
         runs = self.root / 'full-check-runs'
-        self.env['PI_AUTOWORK_VALIDATE'] = f'echo ran >> {runs}'
+        source = Path(__file__).resolve().parents[1]
+        (self.repo / 'scripts').mkdir()
+        (self.repo / 'tests').mkdir()
+        for name in ('check.py', 'affected_tests.py'):
+            shutil.copy2(source / 'scripts' / name, self.repo / 'scripts' / name)
+        (self.repo / '.gitignore').write_text('__pycache__/\n')
+        (self.repo / 'tests/test_changed.py').write_text(
+            'import unittest\nfrom pathlib import Path\nclass Check(unittest.TestCase):\n'
+            '    def test_changes(self):\n'
+            f'        with open({str(runs)!r}, "a") as out: out.write("ran\\n")\n'
+            '        for name in ("A.txt", "B.txt", "C.txt"): Path(name)\n')
+        (self.repo / 'tests/test_unrelated.py').write_text('raise RuntimeError("unselected module ran")\n')
+        self.git(self.repo, 'add', '-A')
+        self.git(self.repo, 'commit', '-qm', 'affected gate fixtures')
+        self.env['PI_AUTOWORK_VALIDATE'] = 'python3 scripts/check.py'
         self.env['PI_AUTOWORK_MAIN_CHECK'] = 'true'  # main's own check is not counted
         self.plan({'worker:A': ['barrier'], 'worker:B': ['barrier']})  # both finish together
         result = self.run_runner('--until-empty', timeout=240)
@@ -1248,6 +1262,11 @@ class EngineTests(Fixture):
         # One run for the batch tree of A and B, one for C alone: not one per candidate.
         self.assertEqual(runs.read_text().count('ran'), 2, result.stdout)
         self.assertEqual(sorted(r['task'] for r in self.runs('verify')), ['A', 'B', 'C'])  # each reviewed once
+        receipts = [json.loads(p.read_text()) for p in self.state.glob('*/landing-check/*.json')]
+        self.assertEqual(sorted(r['task'] for r in receipts), ['A', 'B', 'C'])
+        for receipt in receipts:
+            self.assertFalse(receipt['selection']['full'])
+            self.assertEqual(receipt['selection']['tests'], ['tests/test_changed.py'])
 
     def test_stop_workers_restart_preserves_an_inflight_batch_result_unless_now(self):
         """A toolset restart must not discard the batch's full check or unread result."""

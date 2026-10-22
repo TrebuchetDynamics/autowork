@@ -6,6 +6,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from fnmatch import fnmatchcase
 import math
+import runpy
 import os
 from pathlib import Path
 import signal
@@ -161,11 +162,46 @@ def positive_int(value):
     return number
 
 
+def affected_selection(root, revision_range):
+    """Select on the merged checkout; invalid revision ranges never become empty successes."""
+    root = Path(root).resolve()
+    if revision_range.count('..') != 1 or '...' in revision_range or not all(revision_range.split('..')):
+        raise ValueError('--affected requires BASE..HEAD')
+    revisions = []
+    for rev in revision_range.split('..'):
+        result = subprocess.run(['git', '-C', str(root), 'rev-parse', '--verify', '--end-of-options',
+                                 rev + '^{commit}'], capture_output=True, text=True)
+        if result.returncode:
+            raise ValueError(f'cannot resolve affected revision: {rev}')
+        revisions.append(result.stdout.strip())
+    result = subprocess.run(['git', '-C', str(root), 'diff', '--name-only', '-z', '--no-renames',
+                             *revisions, '--'], capture_output=True, text=True, check=True)
+    changed = sorted(p for p in result.stdout.split('\0') if p)
+    selector = runpy.run_path(str(root / 'scripts/affected_tests.py'))
+    tests, reasons, full = selector['select'](changed, revisions[0], conservative=True)
+    return dict(base=revisions[0], head=revisions[1], changed=changed, tests=tests,
+                reasons=reasons, full=full, core=['tree_guard', 'docs check', 'task-store validate'])
+
+
+def affected_core(root):
+    """Cheap repository contracts, even when no test modules were selected."""
+    docs = root / 'skills/docs-sync/scripts/docs.py'
+    tasks = root / 'pi-autowork/bin/autowork'
+    commands = []
+    if docs.is_file():
+        commands.append([sys.executable, str(docs), 'check', str(root)])
+    if tasks.is_file() and (root / 'tasks').is_dir():
+        commands.append([str(tasks), 'tasks', 'validate', '--worktree', str(root)])
+    return all(subprocess.run(command, cwd=root).returncode == 0 for command in commands)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('paths', nargs='*', help='owned test modules or directories (default: all offline tests)')
     parser.add_argument('-k', dest='pattern', help='unittest name pattern for focused reproduction (default: all tests)')
     parser.add_argument('--list', action='store_true', help='list inventory without importing or running tests')
+    parser.add_argument('--affected', metavar='BASE..HEAD',
+                        help='run affected modules and core contracts; unresolved changes select the full suite')
     parser.add_argument('--timeout', type=float, default=1800, help='seconds allowed per test process (default: 1800)')
     parser.add_argument('--jobs', type=positive_int,
                         help='test processes run at once (default: idle CPUs, 4 to 8; 1 runs them in order)')
@@ -174,6 +210,19 @@ def main(argv=None):
         parser.error('--timeout must be positive')
     root = Path(__file__).resolve().parents[1]
     tests = discover_tests(root)
+    selection = None
+    if args.affected:
+        if args.paths or args.pattern:
+            parser.error('--affected cannot be combined with paths or -k')
+        try:
+            selection = affected_selection(root, args.affected)
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            parser.error(str(error))
+        print('Affected selection: ' + ('whole suite' if selection['full'] else 'affected modules'), flush=True)
+        for name in selection['tests']:
+            print(f'  {name} ({selection["reasons"][name]})', flush=True)
+        print('Always run: ' + ', '.join(selection['core']), flush=True)
+        tests = [test for test in tests if test.relative_to(root).as_posix() in selection['tests']]
     if args.paths:
         selected = set()
         for name in args.paths:
@@ -197,7 +246,7 @@ def main(argv=None):
           f'{excluded} excluded. No model/native qualification.', flush=True)
     if args.list:
         return 0
-    if not tests:
+    if not tests and (selection is None or selection['full']):
         print('FAIL: no offline tests found', flush=True)
         return 1
     # Cheap first: conflict markers, Python that does not compile or invalid JSON fail
@@ -205,6 +254,9 @@ def main(argv=None):
     guard = root / 'scripts/tree_guard.py'
     if guard.is_file() and subprocess.run([sys.executable, str(guard), '--repo', str(root)]).returncode:
         print('FAIL: the tree guard refused this tree; no tests ran', flush=True)
+        return 1
+    if selection is not None and not affected_core(root):
+        print('FAIL: an affected core contract refused this tree; no tests ran', flush=True)
         return 1
     # No live-test flags, and no settings of the runner whose worker or reviewer runs this:
     # tests start their own runners, and a service's PI_AUTOWORK_MAIN_CHECK and

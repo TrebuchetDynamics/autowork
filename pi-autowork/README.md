@@ -276,6 +276,36 @@ Contracts verified against [Hermes subscription proxy documentation](https://her
 and [Pi compatible endpoints](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/models.md#configure-a-compatible-endpoint)
 (Pi 1.3.0 installed documentation); earlier Pi versions are not newly qualified.
 
+## Affected landing checks
+
+When a repository declares `python3 scripts/check.py` as its full check, batch and
+single-candidate gates run `scripts/check.py --affected BASE..HEAD` on the merged
+tree. The command prints the selected test modules and the reason for each:
+changed tests, transitive repository Python importers (including lazy imports and
+package re-exports), and code naming a changed path. It also runs the available
+tree guard, Docs Sync document check and working-tree task-store validation.
+`--list` previews the selection without running checks.
+
+Unresolved paths, shared fixtures, checker/shard-map changes, CI and packaging
+inputs select the full offline inventory. Non-test files under the check inventory
+directories are conservatively treated as shared inputs too. Custom full-check
+commands retain their existing behavior; optimistic landing still skips unsupported custom full gates,
+while the affected checker runs before landing, including its conservative full
+fallback when needed.
+
+Private state retains the selection, reasons, range and core in
+`full-check/tree-<tree>.json`, carries it through batch verdicts and records each
+accepted supported landing in `landing-check/<task>.json`. A batch receipt names
+the selection for the combined candidate tree, not only one task's changes. The
+core list is a plan: consult the producing log to confirm which tools existed and ran.
+
+Main still runs the declared **full** suite after landing, with existing regression
+attribution and repair/revert handling. Only a passing full-inventory receipt for
+the same tree and command can replace main's check. An affected-only pass cannot
+mark main or its base green. Offline fixtures in `tests/test_check.py`,
+`tests/test_pi_autowork.py` and `pi-autowork/tests/test_main_check.py` cover selection,
+landing receipts and this full-main boundary; they do not establish live qualification.
+
 ## Cost and owner attention
 
 ```sh

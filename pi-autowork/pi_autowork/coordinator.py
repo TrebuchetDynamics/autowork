@@ -2103,8 +2103,11 @@ class Coordinator:
         except (OSError, ValueError):
             return None
         if not isinstance(receipt, dict) or receipt.get('ok') is not True or receipt.get('tree') != tree \
-                or receipt.get('command') != cmd:
+                or not main_check.receipt_command_matches(receipt, cmd):
             return None
+        selection = receipt.get('selection')
+        if selection is not None and (not isinstance(selection, dict) or selection.get('full') is not True):
+            return None  # Landing a tested subset never marks main or its base full-suite green.
         return str(receipt.get('task') or receipt.get('commit') or 'a full check')
 
     def revert_regression(self, rev, green, failures, log_text):
