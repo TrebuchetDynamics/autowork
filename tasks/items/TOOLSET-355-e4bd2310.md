@@ -7,7 +7,7 @@ status = "open"
 goal = "CODE-HEALTH-2026-10"
 section = "Next"
 rank = 45000
-depends_on = ["TOOLSET-325-d4", "TOOLSET-345-1db6f7cc"]
+depends_on = ["TOOLSET-325-d4", "TOOLSET-345-1db6f7cc", "TOOLSET-348-c29f8322"]
 touches = ["pi-autowork/pi_autowork/health.py", "pi-autowork/pi_autowork/main_check.py", "pi-autowork/pi_autowork/coordinator.py", "pi-autowork/pi_autowork/cli.py", "pi-autowork/tests/test_health.py", "pi-autowork/tests/test_main_check.py", "pi-autowork/tests/test_own_lock.py"]
 resources = []
 kind = "implementation"
@@ -19,3 +19,4 @@ exclusions = []
 +++
 
 - Sources: docs/plans/structural-audit-2026-10.md#hotspots
+- Coordination: Overlap repair: wait for TOOLSET-348-c29f8322, whose attempt-1 slot is running in the Git common execution directory (no report yet at inspection). Its active-first status rows, finished-row count and aged status.json fallback do not deliver start-identity liveness. Keep all three Acceptance items together: cli.py writes runner.json in main and reads it in status_view; the helper and its health/main_check/coordinator consumers need that identity wiring for the end-to-end contract in docs/plans/structural-audit-2026-10.md#hotspots. Splitting off cli.py would leave the identity producer and status acceptance pending, not an independent complete liveness fix. The running task is untouched; existing prerequisites, Touches, Acceptance, Checks and priority are preserved.
