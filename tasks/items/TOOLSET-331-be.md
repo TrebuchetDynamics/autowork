@@ -8,7 +8,7 @@ goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 42000
 depends_on = []
-touches = ["pi-autowork/engine/", "pi-autowork/pi_autowork/", "tests/", "pi-autowork/tests/"]
+touches = ["pi-autowork/README.md", "pi-autowork/engine/parallel_dispatch.py", "pi-autowork/engine/test_parallel_dispatch.py", "pi-autowork/pi_autowork/janitor.py", "pi-autowork/tests/test_janitor.py"]
 resources = []
 kind = "implementation"
 ownership = "worker"
@@ -19,4 +19,5 @@ exclusions = []
 +++
 
 - Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20)
-- Reopened: its landing broke the full check on main at 9cb0dfa: test_pi_autowork.EngineTests.test_a_stalled_service_says_so_once_and_the_fleet_view_shows_why; reverted by optimistic landing. Fix those tests in the next attempt
+- Touches: narrowed from four whole directories to the five files the reverted landing c64a0a20aa7e532c349631b84b7c47ac7aa18b56 changed, so this task no longer claims every path under pi-autowork/engine/, pi-autowork/pi_autowork/, tests/ and pi-autowork/tests/; a re-attempt extends them only with evidence.
+- Reopened: optimistic landing reverted c64a0a20aa7e532c349631b84b7c47ac7aa18b56 in e5e18a40, blaming test_pi_autowork.EngineTests.test_a_stalled_service_says_so_once_and_the_fleet_view_shows_why on main at 9cb0dfa. That assertion predated every affected landing, was fixed separately in a215993d and passes on main, so it is not this task's defect and needs no work here (TOOLSET-353-9db87df7 and TOOLSET-327-02 were re-landed unchanged for the same reason in e5162924). Next attempt: re-land or re-verify the reverted commit above with this contract and Acceptance unchanged.
