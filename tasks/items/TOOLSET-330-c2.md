@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-330-c2"
 title = "Status, fleet JSON and the TUI show the effective service push setting"
 short = "Show effective push setting (issue 4 follow-up)"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 22000
@@ -16,6 +16,8 @@ scope = "GitHub issue 4 display slice split from TOOLSET-324-73: autowork status
 acceptance = ["status, ls --json and the TUI show the effective push setting read from the service env"]
 checks = ["python3 scripts/check.py tests/test_autowork_command.py tests/test_pi_autowork.py pi-autowork/tests/test_fleet_view.py"]
 exclusions = []
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-330-c2.toml"
 +++
 
 - Sources: https://github.com/TrebuchetDynamics/autowork/issues/4; split from [TOOLSET-324-73](TOOLSET-324-73.md)

@@ -1,0 +1,9 @@
+schema = 1
+task = "TOOLSET-330-c2"
+candidate = "ad0921bc192e2aefee061c9e3b5cae20eae04740"
+integration = "300d63b6c18eafb05ccd0f14018e0f310f204c19"
+tree = "c55cf4206a951da23df973410d070771440ba825"
+contract_hash = "b85e31ca95fa35a3046d1f9a8f828c8feaafd13be59d341c8c5abc9097a4534f"
+checks = ["<path>", "<path>", "--verify", "<path>", "TOOLSET-330-c2"]
+result = "pass"
+review = "passed"
