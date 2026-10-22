@@ -6,6 +6,7 @@ Instruction guards do not prove compliance; routing runs the Hermes handlers off
 from pathlib import Path
 import re
 import unittest
+from unittest.mock import patch
 
 import test_plugin as fixture
 
@@ -97,6 +98,24 @@ class BlockersRouting(unittest.TestCase):
                 prompt, _ = self.ctx.messages[-1]
                 self.assertIn('skill_view(name="autowork:blockers")', prompt)
                 self.assertTrue(prompt.endswith('User arguments:\nindia'), prompt)
+
+    def test_blockers_without_a_target_names_the_repository_here(self):
+        """An empty /blockers target must not resolve to the Hermes cwd, whose empty
+        BLOCKERS.md template reported no questions while the repo had held tasks."""
+        self.register()
+        with patch.object(self.plugin, 'repository_here', return_value='/repo/here'):
+            self.ctx.commands['blockers']('')
+        prompt, _ = self.ctx.messages[-1]
+        self.assertIn('skill_view(name="autowork:blockers")', prompt)
+        self.assertTrue(prompt.endswith('User arguments:\n/repo/here'), prompt)
+
+    def test_blockers_without_a_target_or_repository_never_defaults_to_an_empty_block(self):
+        self.register()
+        with patch.object(self.plugin, 'repository_here', return_value=''):
+            self.ctx.commands['autowork']('blockers')
+        prompt, _ = self.ctx.messages[-1]
+        self.assertIn('Run `autowork ls`', prompt)
+        self.assertIn('do not report that there are no questions without a resolved target', prompt)
 
     def test_other_arguments_keep_their_skill(self):
         self.register()
