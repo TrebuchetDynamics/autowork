@@ -3110,6 +3110,68 @@ class EngineTests(Fixture):
         self.assertNotEqual((self.root / 'push.rc').read_text(), '0')
         self.assertEqual(subprocess.run(['git', '-C', str(remote), 'for-each-ref'], capture_output=True, text=True).stdout, '')
 
+    def test_status_lists_all_open_tasks_before_a_finished_count(self):
+        closed = [f'D{i:02}' for i in range(65)]
+        waiting = [f'Z{i:02}' for i in range(5)]
+        states = {'Z05': 'held', **{f'Z{i:02}': 'reported' for i in range(6, 13)},
+                  'Z13': 'integrating', 'Z14': 'integrating', 'Z15': 'running'}
+        self.write_todo(todo([(t, None) for t in [*closed, *waiting, *states]]))
+        for task in closed:
+            self.edit_task(task, {'status': 'done', 'closure': 'manual', 'closure_actor': 'fixture',
+                                  'closure_timestamp': '2026-10-21T00:00:00Z', 'closure_reason': 'fixture'})
+        self.git(self.repo, 'commit', '-qm', 'status fixture')
+        common = Path(self.git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir'))
+        slots = common / 'autowork-execution/slots'
+        slots.mkdir(parents=True)
+        for task, state in {**dict.fromkeys(closed, 'closed'), **states}.items():
+            (slots / f'{task}.json').write_text(json.dumps({
+                'task_id': task, 'state': state, 'attempt': 1, 'started_at': 0,
+                'worktree': str(self.root / task), 'reason': f'fixture {task}'}))
+        result = self.run_runner('--status')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        rows = [line.split(maxsplit=2) for line in result.stdout.splitlines() if re.match(r'^  [DZ]\d', line)]
+        self.assertEqual([row[0] for row in rows],
+                         ['Z15', 'Z13', 'Z14', *[f'Z{i:02}' for i in range(6, 13)], 'Z05', *waiting])
+        self.assertEqual([row[1] for row in rows],
+                         ['running', 'verifying', 'verifying', *['implemented'] * 7, 'failed', *['pending'] * 5])
+        self.assertTrue(all(row[2] == f'fixture {row[0]}' for row in rows[:11]))
+        self.assertEqual(result.stdout.count('Finished:   65 task(s)'), 1)
+        self.assertLess(result.stdout.index('  Z04'), result.stdout.index('Finished:'))
+
+    def test_status_uses_aged_snapshot_when_writer_lock_is_held(self):
+        import task_execution
+        sys.path.insert(0, str(ROOT / 'pi-autowork'))
+        from pi_autowork import health
+        common = Path(self.git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir'))
+        state = self.state / hashlib.sha256(str(common).encode()).hexdigest()[:16]
+        slots = common / 'autowork-execution/slots'
+        slots.mkdir(parents=True)
+        (slots / 'B.json').write_text(json.dumps({
+            'task_id': 'B', 'state': 'released', 'paused': True, 'attempt': 1, 'started_at': 0,
+            'worktree': str(self.root / 'B'), 'reason': 'stopped by a runner restart'}))
+        snapshot = json.loads(subprocess.run(
+            [sys.executable, str(ENGINE_DIR / 'owner_cycle.py'), str(self.repo), '--parallel-status', '--json'],
+            capture_output=True, text=True, check=True).stdout)
+        state.mkdir(parents=True)
+        health.update(state, snapshot, now=time.time() - 3600)
+        health.update(state, {'outcome': 'BUSY', 'reason': 'previous lock failure'})
+        before = (state / 'status.json').read_bytes()
+        with task_execution.lock(common / 'autowork-execution/writer.lock'):
+            result = self.run_runner('--status')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('unavailable', result.stdout)
+        self.assertIn(f'writer.lock is held by PID {os.getpid()}', result.stdout)
+        age = re.search(r'status.json snapshot (\d+)s old', result.stdout)
+        self.assertIsNotNone(age, result.stdout)
+        self.assertGreaterEqual(int(age[1]), 3600)
+        self.assertLess(int(age[1]), 3660)
+        rows = [line.split(maxsplit=2) for line in result.stdout.splitlines() if re.match(r'^  [ABC]\s', line)]
+        self.assertEqual([row[:2] for row in rows], [['A', 'pending'], ['C', 'pending'], ['B', 'released']])
+        self.assertIn('dependency', rows[1][2])
+        self.assertEqual(rows[2][2], 'stopped by a runner restart')
+        self.assertEqual((state / 'status.json').read_bytes(), before)
+        self.assertEqual(self.runs(), [])
+
     def test_status_and_dry_run_change_nothing(self):
         before = self.git(self.repo, 'status', '--porcelain', '--untracked-files=all')
         for option in ('--dry-run', '--status'):

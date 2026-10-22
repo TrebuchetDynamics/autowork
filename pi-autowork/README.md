@@ -412,6 +412,18 @@ successful read clears the failure episode without resetting an unchanged state'
 stall clock. In `autowork status`, an unavailable Health line shows when reads
 began failing, not when the previous healthy or blocked state began.
 
+`autowork status` lists every unfinished task, with running, integrating, reported,
+held and waiting tasks first, in that order. Rows retain the task, lifecycle and
+reason columns; closed tasks appear as one finished-task count after the rows.
+If the engine read fails (for example, while another process holds `writer.lock`),
+status keeps the read error visible and lists saved `status.json` task rows with
+that snapshot's age. The age uses the last successful observation, not the latest
+failed read; missing timestamps are labelled `age unknown`. These read-only
+fallbacks do not refresh the snapshot or establish that a saved worker is still live.
+Saved rows lack pause metadata, so interrupted/released tasks retain those raw states
+instead of being labelled failed. Offline CLI fixtures cover active-first rows and
+the held-lock fallback.
+
 ## Session merge recovery
 
 Before merging main, the coordinator tries to commit edits left in its own session.

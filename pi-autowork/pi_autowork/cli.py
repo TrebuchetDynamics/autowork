@@ -494,18 +494,33 @@ def status_view(repo, base, toolset, state):
     out = subprocess.run([sys.executable, str(Path(toolset) / 'pi-autowork/engine/owner_cycle.py'), view,
                           '--parallel-status', '--json'], capture_output=True, text=True).stdout
     try:
+        record = json.loads((state / 'status.json').read_text())
+        if not isinstance(record, dict):
+            record = {}
+    except (OSError, ValueError):
+        record = {}
+    try:
         snapshot = json.loads(out)
     except ValueError:
-        print('Workers:    unavailable — engine returned invalid status data')
-        return
+        snapshot = {'reason': 'engine returned invalid status data'}
     if not isinstance(snapshot, dict) or snapshot.get('outcome') != 'PARALLEL_STATUS':
         reason = snapshot.get('reason') if isinstance(snapshot, dict) else None
         print('Workers:    unavailable — ' + (' '.join(str(reason).split())[:300] if reason else 'engine status not available'))
-        return
-    print(f"Workers:    {snapshot.get('active_workers') or 0} running; {snapshot.get('completed') or 0} done, "
-          f"{snapshot.get('failed') or 0} failed, {snapshot.get('integration_queue') or 0} awaiting integration")
+        # Health stores compact rows, and error updates preserve the observation's timestamp.
+        rows = [dict(task=row[0], state=row[1], reason=row[3], cached=True) for row in record.get('tasks') or []
+                if isinstance(row, list) and len(row) >= 4]
+        if 'tasks' in record:
+            try:
+                stamp = record.get('snapshot_at', record.get('updated_at'))
+                age = f'{max(0, int(datetime.now().timestamp() - float(stamp)))}s old'
+            except (TypeError, ValueError, OverflowError):
+                age = 'age unknown'
+            print(f'Tasks:      status.json snapshot {age}')
+    else:
+        rows = snapshot.get('tasks') or []
+        print(f"Workers:    {snapshot.get('active_workers') or 0} running; {snapshot.get('completed') or 0} done, "
+              f"{snapshot.get('failed') or 0} failed, {snapshot.get('integration_queue') or 0} awaiting integration")
     try:
-        record = json.loads((state / 'status.json').read_text())
         since = (record.get('status_unavailable_since', record['since'])
                  if record['state'] == 'unavailable' else record['since'])
         line = f"Health:     {record['state']} since {datetime.fromtimestamp(int(since)):%Y-%m-%d %H:%M}"
@@ -524,9 +539,17 @@ def status_view(repo, base, toolset, state):
                   + (f"; changed {', '.join(run['changed'])}" if run.get('changed') else ''))
     except (OSError, ValueError, KeyError):
         pass
-    for row in (snapshot.get('tasks') or [])[:40]:
-        print(f"  {str(row.get('task')):<12} {lifecycle(row.get('state') or '', paused=row.get('paused')):<12} "
+    order = {'running': 0, 'dispatched': 0, 'integrating': 1, 'reported': 2, 'held': 3, 'waiting': 4}
+    open_rows = [row for row in rows if row.get('state') != 'closed']
+    for row in sorted(open_rows, key=lambda row: order.get(row.get('state'), 5)):
+        # Compact cache rows omit paused: do not label a possibly paused slot as failed.
+        label = (row['state'] if row.get('cached') and row.get('state') in ('interrupted', 'released')
+                 else lifecycle(row.get('state') or '', paused=row.get('paused')))
+        print(f"  {str(row.get('task')):<12} {label:<12} "
               f"{row.get('reason') or row.get('blocked_reason') or ''}")
+    finished = len(rows) - len(open_rows)
+    if finished:
+        print(f'Finished:   {finished} task(s)')
 
 
 if __name__ == '__main__':
