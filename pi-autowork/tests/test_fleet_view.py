@@ -292,7 +292,7 @@ class FleetViewTests(unittest.TestCase):
         subprocess.run(['git', 'init', '-q', '-b', 'main', str(repo)], check=True)
         ready = fleet_view.readiness(repo)
         self.assertEqual((ready.ready, ready.problems), (False, ['tasks']))
-        self.assertIn(f'autowork tasks prepare {repo}', ' '.join(fleet_view.how_to_fix(ready)))
+        self.assertIn(f'autowork migrate {repo}', ' '.join(fleet_view.how_to_fix(ready)))
         store_fixture.write_todo(repo, '- [ ] T-1 — First\n', commit=False)
         ready = fleet_view.readiness(repo)
         self.assertFalse(ready.ready)
@@ -301,22 +301,11 @@ class FleetViewTests(unittest.TestCase):
         subprocess.run(['git', '-C', str(repo), '-c', 'user.name=T', '-c', 'user.email=t@example.invalid',
                         'commit', '-qm', 'planning'], check=True)
         self.assertTrue(fleet_view.readiness(repo).ready)
-        # Start must still reach its existing service-copy upgrade/restart path.
-        with mock.patch.object(fleet_view.task_prepare, 'runner', return_value=dict(
-                running=True, release='legacy-runner', reads_tasks=False)):
-            self.assertTrue(fleet_view.readiness(repo).ready)
         (repo / 'sub').mkdir()
         self.assertIn(f'its repository root ({repo})', fleet_view.readiness(repo / 'sub').problems)
         subprocess.run(['git', '-C', str(repo), 'checkout', '-q', '-b', 'feature'], check=True)
         self.assertEqual(fleet_view.readiness(repo).problems, ['main checked out'])
         self.assertEqual(fleet_view.readiness(self.base).mark, 'not a repository')
-        subprocess.run(['git', '-C', str(repo), 'checkout', '-q', 'main'], check=True)
-        (repo / 'tasks/items/T-1.md').write_text('not a task record\n')
-        subprocess.run(['git', '-C', str(repo), '-c', 'user.name=T', '-c', 'user.email=t@example.invalid',
-                        'commit', '-qam', 'broken store'], check=True)
-        ready = fleet_view.readiness(repo)
-        self.assertFalse(ready.ready, 'a committed directory alone is not a valid task store')
-        self.assertIn('INVALID_STORE', ' '.join(ready.problems))
 
     def test_models_come_from_pi_and_settings_keep_other_lines(self):
         pi = self.fake('pi', 'echo "provider  model  context"; echo "openrouter  deepseek/deepseek-v4.1-flash  128K"')

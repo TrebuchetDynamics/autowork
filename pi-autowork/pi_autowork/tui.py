@@ -10,7 +10,6 @@ has its tasks/ store committed on its main branch.
     python3 tui.py --command PATH --script PATH [--view-only]
 """
 import argparse
-import json
 import os
 from pathlib import Path
 import subprocess
@@ -598,67 +597,21 @@ class TaskScreen(Screen):
                               [self.app.command, 'tasks', 'place', self.task_id, section, runner.name])))
 
 
-class PrepareRepository(ModalScreen[str]):
-    """Preparation may commit a legacy conversion; starting is a separate choice."""
-    BINDINGS = [Binding('escape', 'cancel', 'cancel')]
-    DEFAULT_CSS = '''
-    PrepareRepository { align: center middle; }
-    PrepareRepository > Vertical { width: 84; max-width: 100%; height: auto; border: thick $warning; background: $surface; padding: 1 2; }
-    PrepareRepository Horizontal { height: auto; margin-top: 1; }
-    PrepareRepository Button { margin-right: 1; }
-    '''
-
-    def __init__(self, ready):
-        super().__init__()
-        self.ready = ready
-
-    def compose(self) -> ComposeResult:
-        with Vertical():
-            yield Label(Text(f'{self.ready.repo}\nNot ready: {", ".join(self.ready.problems)}'))
-            yield Label('Run autowork tasks prepare? A legacy conversion makes one local commit.\n'
-                        'With no accepted intent, plan with /docs_sync; Prepare invents no goals or tasks.')
-            with Horizontal():
-                yield Button('Prepare', variant='primary', id='prepare')
-                yield Button('Prepare and start', id='prepare-start')
-                yield Button('Cancel', id='cancel')
-
-    def on_button_pressed(self, event):
-        self.dismiss(None if event.button.id == 'cancel' else event.button.id)
-
-    def action_cancel(self):
-        self.dismiss(None)
-
-
 class RepoTree(DirectoryTree):
     """Directories only; a repository is marked ready (a committed tasks/ store) or not."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.readiness_cache = {}
-
     def filter_paths(self, paths):
         return [p for p in paths if p.is_dir() and not p.name.startswith('.')]
-
-    def update_readiness(self, ready):
-        path = Path(ready.path)
-        self.readiness_cache[path] = ready
-
-        def repaint(node):
-            if node.data and node.data.path == path:
-                node.refresh()  # invalidate Textual's cached row, not just the widget's paint
-            else:
-                for child in node.children:
-                    repaint(child)
-        repaint(self.root)
 
     def render_label(self, node, base_style, style):
         label = super().render_label(node, base_style, style)
         path = node.data.path if node.data else None
         if path is not None and (path / '.git').exists():
-            if path not in self.readiness_cache:
-                self.readiness_cache[path] = fleet_view.readiness(path)
-            ready = self.readiness_cache[path]
-            label.append('  ' + ready.mark, style='bold green' if ready.ready else 'yellow')
+            have = [name for name in fleet_view.REQUIRED if (path / name).is_file()]
+            if len(have) == len(fleet_view.REQUIRED):
+                label.append('  ready', style='bold green')
+            else:
+                label.append('  needs ' + ', '.join(n for n in fleet_view.REQUIRED if n not in have), style='yellow')
         return label
 
 
@@ -674,8 +627,6 @@ class BrowseScreen(Screen):
         super().__init__()
         self.root, self.start = root, start
         self.chosen = None
-        self.preparing = False
-        self.prepare_result = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -692,14 +643,9 @@ class BrowseScreen(Screen):
         node = event.node
         if node.data is None:
             return
-        self.show_repository(node.data.path)
-
-    def show_repository(self, path):
-        self.chosen = fleet_view.readiness(path)
-        tree = self.query_one('#tree', RepoTree)
-        tree.update_readiness(self.chosen)
+        self.chosen = fleet_view.readiness(node.data.path)
         info = Text()
-        info.append(str(path) + '\n', style='bold')
+        info.append(str(node.data.path) + '\n', style='bold')
         if self.chosen.ready:
             info.append('ready', style='bold green')
             info.append(f' on {self.chosen.branch}. Press p to play (start) its service.\n')
@@ -709,71 +655,13 @@ class BrowseScreen(Screen):
             info.append(f'not ready: needs {", ".join(self.chosen.problems)}\n', style='bold yellow')
             for hint in fleet_view.how_to_fix(self.chosen):
                 info.append(f'  {hint}\n')
-            info.append('Press p for Prepare or Prepare and start.\n')
-        if self.preparing:
-            info.append('\nPreparing repository…\n', style='yellow')
-        if self.prepare_result and self.prepare_result[0] == str(path):
-            report = self.prepare_result[1]
-            info.append('\n' + report['outcome'] + '\n', style='bold')
-            for refusal in report.get('refusals', []):
-                info.append(str(refusal) + '\n')
-            info.append((report.get('next') or 'Resolve the reported problem, then run Prepare again.') + '\n')
-            if report['outcome'] == 'NO_STORE':
-                info.append('Plan accepted intent with /docs_sync; no goals or tasks were created.\n')
         self.query_one('#info', Static).update(info)
 
     def action_start(self):
-        if self.app.view_only or self.preparing:
+        if self.chosen is None or not self.chosen.ready:
+            self.notify('Choose a ready repository (tasks/ committed on its main branch).', severity='warning')
             return
-        if self.chosen is None:
-            self.notify('Choose a repository first.', severity='warning')
-            return
-        self.show_repository(self.chosen.path)  # never start from a stale readiness result
-        if not self.chosen.repo or Path(self.chosen.path).resolve() != Path(self.chosen.repo).resolve():
-            self.notify('Choose a Git repository root.', severity='warning')
-        elif self.chosen.ready:
-            self.start(self.chosen)
-        else:
-            ready = self.chosen
-            self.app.push_screen(PrepareRepository(ready),
-                                 lambda choice: choice and self.prepare(ready.path, choice == 'prepare-start'))
-
-    def prepare(self, path, start):
-        if self.app.view_only or self.preparing:
-            return
-        self.preparing = True
-        self.prepare_result = None
-        self.show_repository(path)
-        self.run_worker(lambda: self.run_prepare(path, start), thread=True, group='prepare')
-
-    def run_prepare(self, path, start):
-        """Run the supported CLI, not a second implementation of conversion or bootstrap."""
-        try:
-            result = self.app.runner_cmd([self.app.command, 'tasks', 'prepare', path],
-                                         env=dict(os.environ), capture_output=True, text=True)
-            try:
-                report = json.loads(result.stdout)
-                if not isinstance(report, dict) or not isinstance(report.get('outcome'), str) or not report['outcome']:
-                    raise ValueError('missing preparation outcome')
-            except ValueError:
-                report = dict(outcome='PREPARE_FAILED', next=(result.stdout or '') + (result.stderr or ''))
-            ok = result.returncode == 0 and report.get('ok') and report['outcome'] in ('READY', 'MIGRATED')
-        except OSError as error:
-            report, ok = dict(outcome='PREPARE_FAILED', next=str(error)), False
-        self.app.call_from_thread(self.prepared, path, report, bool(start and ok))
-
-    def prepared(self, path, report, start):
-        self.preparing = False
-        self.prepare_result = (str(path), report)
-        if not self.is_mounted:  # leaving the browser does not undo a CLI conversion in flight
-            return
-        ready = fleet_view.readiness(path)
-        tree = self.query_one('#tree', RepoTree)
-        tree.update_readiness(ready)
-        if self.chosen and self.chosen.path == str(path):
-            self.show_repository(path)
-            if start and self.chosen.ready and self.app.screen is self:
-                self.start(self.chosen)
+        self.start(self.chosen)
 
 
 class FleetApp(App):
@@ -1103,12 +991,6 @@ class FleetApp(App):
 
         def go(yes):
             if yes:
-                current = fleet_view.readiness(ready.path)
-                if not current.ready:
-                    self.notify('Repository is no longer ready: ' + ', '.join(current.problems), severity='warning')
-                    if isinstance(self.screen, BrowseScreen):
-                        self.screen.show_repository(ready.path)
-                    return
                 self.pop_screen()
                 self.execute(action)
         self.push_screen(Confirm(action.confirm), go)

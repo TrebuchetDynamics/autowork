@@ -325,7 +325,7 @@ class AutoworkCommandTests(unittest.TestCase):
         result = self.aw('start', str(bare))
         self.assertEqual(result.returncode, 1)
         self.assertIn('needs tasks', result.stderr)
-        self.assertIn('autowork tasks prepare', result.stderr)
+        self.assertIn('autowork migrate', result.stderr)
         subprocess.run(['git', '-C', str(self.repo), 'rm', '-r', '--cached', 'tasks'], check=True,
                        capture_output=True)
         subprocess.run(['git', '-C', str(self.repo), '-c', 'user.name=T', '-c', 'user.email=t@example.invalid',
