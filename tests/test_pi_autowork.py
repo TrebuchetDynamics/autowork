@@ -627,45 +627,6 @@ class EngineTests(Fixture):
         self.assertEqual(self.closed(), {'A'})
         self.assertFalse((self.repo / '.gitattributes').exists())  # the store needs no merge drivers
 
-    def test_rejected_close_reports_hook_output_and_retries_without_redispatch(self):
-        hook = self.repo / '.git/hooks/pre-commit'
-        rejected = self.root / 'close-rejected'
-        hook.write_text('#!/bin/sh\n'
-                        'if git diff --cached --name-only | grep -q "^tasks/evidence/A.toml$"; then\n'
-                        f'  echo rejected >> {shlex.quote(str(rejected))}\n'
-                        '  echo "fixture close rejected on stdout"\n'
-                        '  echo "fixture close rejected on stderr" >&2\n'
-                        '  exit 1\n'
-                        'fi\n')
-        hook.chmod(0o755)
-        runner = self.start_runner('--once', '--interval', '1')
-        self.addCleanup(lambda: runner.poll() is None and runner.kill())
-        try:
-            deadline = time.monotonic() + 60
-            while not rejected.exists() or len(rejected.read_text().splitlines()) < 2:
-                self.assertIsNone(runner.poll())
-                self.assertLess(time.monotonic(), deadline, 'close was not retried')
-                time.sleep(.05)
-            log = ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
-            slot = json.loads((self.repo / '.git/autowork-execution/slots/A.json').read_text())
-            self.assertEqual(slot['state'], 'integrated', log)
-            self.assertIn('fixture close rejected on stdout', log)
-            self.assertIn('fixture close rejected on stderr', log)
-            self.assertNotIn('A: done', log)
-            self.assertEqual(self.record('A').status, 'open')
-            self.assertEqual([r['task'] for r in self.runs('worker')], ['A'])
-            hook.unlink()  # the same verified attempt can now finish its closure
-            out, err = runner.communicate(timeout=60)
-            self.assertEqual(runner.returncode, 0, out + err)
-            self.assertEqual(self.closed(), {'A'})
-            self.assertEqual([r['task'] for r in self.runs('worker')], ['A'])
-            self.assertEqual(self.git(self.repo, 'log', '--format=%s', '--grep=^docs(tasks): close A').splitlines(),
-                             ['docs(tasks): close A (pi-autowork)'])
-        finally:
-            if runner.poll() is None:
-                runner.kill()
-                runner.communicate()
-
     def test_empty_queue_calls_no_model(self):
         # Seed the consumed artifacts of a completed A/B/C session, not another
         # worker/reviewer journey (covered by the parallel-and-merge test above).

@@ -1085,9 +1085,9 @@ def pending_writes(repo, writes):
 
 
 def close(repo, owner_pid, task):
-    """Prepare a verified closure, then retire its slot only after its files reach HEAD.
-    The coordinator commits the returned files and calls again to finalize. A rejected commit
-    leaves the slot integrated and replayable; no worker or scratch is cleaned before that."""
+    """Close one verified task: its record says done, its receipt names the exact candidate and
+    tree that passed, in files the coordinator commits as one closure commit. A replay of a
+    closure already written returns only what is still uncommitted; nothing is written twice."""
     repo, common = context(repo, owner_pid)
     with execution.lock(common / 'dispatch.lock'), execution.lock(common / 'integration.lock'), \
             execution.lock(common / 'writer.lock'):
@@ -1118,37 +1118,36 @@ def close(repo, owner_pid, task):
                 if not (repo / path).exists():
                     (repo / path).parent.mkdir(parents=True, exist_ok=True)
                     (repo / path).write_text(text)
-            if slot['state'] == 'closed' or record.status != 'done':
-                state.event(common, 'replayed_close', task_id=task)
-        else:
-            writes = close_writes(repo, task, slot, info, checks, record)
-            # Again just before the first write: a session can appear while the receipt was checked.
-            require_no_writers(repo, close_files(repo, task))
-            before = {path: (repo / path).read_bytes() if (repo / path).exists() else None for path in writes}
-            try:
-                for path, text in writes.items():
-                    target = repo / path
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    temporary = target.with_name(f'.{target.name}.{os.getpid()}.tmp')
-                    temporary.write_text(text)
-                    os.replace(temporary, target)
-            except BaseException:
-                # All or nothing: a half-written close would sit uncommitted in the session.
-                for path, data in before.items():
-                    if data is None:
-                        (repo / path).unlink(missing_ok=True)
-                    else:
-                        (repo / path).write_bytes(data)
-                raise
-        files = pending_writes(repo, writes)
-        cleaned = False
-        if not files:
             if slot['state'] != 'closed':
                 slot = state.change(common, slot, 'closed', {'telemetry_end_revision': state.journal.current_revision(repo)})
+            state.event(common, 'replayed_close', task_id=task)
             dispatch.cleanup_tmpdir(common, slot)
-            cleaned = cleanup_worker(repo, common, slot)
+            return {'outcome': 'CLOSED', 'task': task, 'cleaned': cleanup_worker(repo, common, slot),
+                    'files': pending_writes(repo, writes)}
+        writes = close_writes(repo, task, slot, info, checks, record)
+        # Again just before the first write: a session can appear while the receipt was checked.
+        require_no_writers(repo, close_files(repo, task))
+        before = {path: (repo / path).read_bytes() if (repo / path).exists() else None for path in writes}
+        try:
+            for path, text in writes.items():
+                target = repo / path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                temporary = target.with_name(f'.{target.name}.{os.getpid()}.tmp')
+                temporary.write_text(text)
+                os.replace(temporary, target)
+            slot = state.change(common, slot, 'closed', {'telemetry_end_revision': state.journal.current_revision(repo)})
+        except BaseException:
+            # All or nothing: a half-written close would sit uncommitted in the session.
+            for path, data in before.items():
+                if data is None:
+                    (repo / path).unlink(missing_ok=True)
+                else:
+                    (repo / path).write_bytes(data)
+            raise
+        dispatch.cleanup_tmpdir(common, slot)
         followup = next((path for path in writes if path.endswith('-LIVE.md')), None)
-        return {'outcome': 'CLOSED', 'task': task, 'cleaned': cleaned, 'files': files,
+        return {'outcome': 'CLOSED', 'task': task, 'cleaned': cleanup_worker(repo, common, slot),
+                'files': sorted(writes),
                 **({'live_followup': task + '-LIVE'} if followup else {})}
 
 

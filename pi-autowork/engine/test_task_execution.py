@@ -291,11 +291,9 @@ class RecoveryTests(ExecutionFixtureMixin, unittest.TestCase):
                     self.assertEqual(result['outcome'], 'INTEGRATED', result)
                     closed = integrate.close(self.repo, owner, task)
                     self.assertEqual(closed['outcome'], 'CLOSED')
-                    self.assertTrue(root.exists())
-                    git(self.repo, 'add', *closed['files'])  # the runner commits a close's files
-                    git(self.repo, 'commit', '-qm', 'close ' + task)
-                    integrate.close(self.repo, owner, task)  # now retire its slot and worktree
                     self.assertFalse(root.exists())
+                git(self.repo, 'add', *closed['files'])  # the runner commits a close's files
+                git(self.repo, 'commit', '-qm', 'close ' + task)
                 job.kill(); job.wait()
 
     def test_idle_terminal_session_does_not_block(self):

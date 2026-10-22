@@ -139,9 +139,8 @@ resources or serial work; the hold ends when the note is removed or its date pas
 ## Writing and `autowork tasks`
 
 `tomllib` only reads, so `task_store` carries its own writer. `render` writes a new record
-in canonical key order and ends it with exactly one newline, including records without
-notes; `edit` changes only the header lines it names and keeps every other byte;
-`set_note` sets one `- Label: value` line in the body. Each refuses what it
+in canonical key order; `edit` changes only the header lines it names and keeps every
+other byte; `set_note` sets one `- Label: value` line in the body. Each refuses what it
 cannot reproduce (a value spread over several lines, a trailing comment, line breaks or
 control characters, unknown keys) instead of dropping it, and checks that the result reads
 back to exactly the intended values.
@@ -272,12 +271,7 @@ The verified close writes `status = "done"`, `closure = "coordinator_verified"`,
 integration commits, tree, contract hash, checks, result, review; secrets redacted and paths
 dropped) in one commit; a live follow-up becomes `<ID>-LIVE` in Needs decision. A replayed
 close completes missing files and refuses differing ones, so a crash between writes resumes
-to one commit, and a close whose commit exists is a no-op. `--parallel-close` first returns
-`CLOSED` with the `files` to commit, leaving the slot integrated and its worker worktree and
-scratch intact. The coordinator commits those files, then calls it again with the closure
-at HEAD to mark the slot closed and clean up. A rejected commit logs Git's stdout/stderr,
-keeps the slot integrated and retries closure without dispatching another worker; it never
-reports the task done before that commit succeeds. After every merge into the
+to one commit, and a close whose commit exists is a no-op. After every merge into the
 session the runner reopens an explicitly coordinator-verified done task whose receipt
 pins another contract hash than its merged record (one side closed it, the other changed
 its acceptance), before main moves. An explicit manual closure is not reopened because

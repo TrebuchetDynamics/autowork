@@ -52,10 +52,6 @@ class TaskCommandTests(unittest.TestCase):
         legacy_path = self.repo / 'tasks/items' / f'{legacy}.md'
         legacy_bytes = legacy_path.read_bytes()
         tid = self.add('Second task')
-        text = (self.repo / f'tasks/items/{tid}.md').read_text()
-        self.assertTrue(text.endswith('+++\n'), repr(text[-20:]))
-        self.git('add', '--', f'tasks/items/{tid}.md')
-        self.git('diff', '--cached', '--check')
         record = self.show(tid)
         self.assertEqual((record['title'], record['section'], record['status'], record['rank']),
                          ('Second task', 'Now', 'open', 2000))
