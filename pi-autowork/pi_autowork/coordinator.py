@@ -23,7 +23,7 @@ import tempfile
 import time
 
 from . import (fleet_view, health, janitor, landing, main_check, maintainer, optimistic, pi_runtime, questions, release,
-               task_commands, telemetry, worker, workspaces)
+               service, task_commands, telemetry, worker, workspaces)
 from .common import LOG, dirty, git, git_ok, lifecycle, open_for_writing, safe_name, summary_list
 
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
@@ -225,6 +225,8 @@ def batchable(rows, handled=()):
 
 
 class Coordinator:
+    restart_pending = False  # a stop-workers caller holds us at a merge-safe point
+
     def __init__(self, cfg):
         self.cfg = cfg
         self.repo, self.base, self.toolset = cfg['repo'], cfg['base'], cfg['toolset']
@@ -298,6 +300,7 @@ class Coordinator:
         self.integration = {'task': task, 'proc': child, 'out': out.name, 'started': time.time(),
                             'base': git(self.integ, 'rev-parse', 'HEAD')}
         self.snapshot = None
+        self.restart_status()
 
     BATCH = 'batch'
 
@@ -394,6 +397,7 @@ class Coordinator:
         self.snapshot = None
         if on:
             self.train = job
+            self.restart_status()
             if independent:
                 LOG.say(f'Batch half: {len(tasks)} candidate(s) ({", ".join(tasks)}) checked on the base, beside '
                         'the other half, so it lands even if that half fails')
@@ -402,6 +406,7 @@ class Coordinator:
                         'batch still running, beside it')
             return
         self.integration = job
+        self.restart_status()
         self.batch_members = list(tasks)
         LOG.say(f'Batch of {len(tasks)} candidates ({", ".join(tasks)}): one full check on their merged tree, '
                 'their reviews side by side')
@@ -787,6 +792,7 @@ class Coordinator:
                 self.child = subprocess.Popen([sys.executable, str(Path(__file__).with_name('pi_runtime.py')), 'job',
                                                str(self.state), role, task, str(directory), session, str(limit),
                                                message, *extra], stdout=stream, env=env)
+                self.restart_status(operation=f'the {role} job for {task}')
                 rc = self.child.wait()
             self.child = None
             result = json.loads(Path(out.name).read_text()) if rc == 0 else {}
@@ -847,6 +853,49 @@ class Coordinator:
         """SIGHUP (`autowork restart`, `systemctl reload`): re-execute on the current release and
         settings at the next safe point, keeping the PID and every running worker."""
         self.reload = True
+
+    def merge_operation(self):
+        """Include ended jobs until their answers have been consumed, not just live PIDs."""
+        operations = []
+        if self.integration:
+            job = self.integration
+            operations.append(f'the batch check of {", ".join(job["members"])}' if job['task'] == self.BATCH
+                              else f'the integration review of {job["task"]}')
+        if self.train:
+            operations.append(f'the merge-train check of {", ".join(self.train["members"])}')
+        if self.resolvers:
+            operations.append(f'the merge resolution of {", ".join(sorted(self.resolvers))}')
+        if self.maintainer_job:
+            operations.append(f'the {maintainer.ROLE} re-cut')
+        if self.child:
+            operations.append('a Pi job')
+        if not operations and self.integ and (landing := self.batch_landing()):
+            operations.append(f'the batch landing of {", ".join(landing)}')
+        return '; '.join(operations)
+
+    def restart_status(self, requests=(), ready=False, operation=None):
+        health.write_status(self.state / 'restart-status.json', dict(
+            pid=os.getpid(), operation=self.merge_operation() if operation is None else operation,
+            ready_for=list(requests) if ready else []))
+
+    def restart_checkpoint(self):
+        """Drain merges, record their results, then hold until the caller restarts or cancels.
+
+        Acknowledging a request is not a liveness observation: no new cycle, review,
+        train car or resolver can start before that request is removed. Workers keep running.
+        """
+        requests = service.restart_requests(self.state)
+        self.restart_pending = bool(requests)
+        if not requests:
+            self.restart_status()
+            return False
+        self.restart_status()  # name what is pending even while settlement itself is busy
+        if self.integ:
+            self.settle()
+        operation = self.merge_operation()
+        self.restart_status(requests, ready=not operation, operation=operation)
+        time.sleep(0.1)
+        return True
 
     PLAN_FILES = ('BLOCKERS.md', 'TODO.archive.md')
 
@@ -914,6 +963,8 @@ class Coordinator:
             if time.monotonic() - checked < 1:
                 continue
             checked = time.monotonic()
+            if service.restart_requests(self.state):
+                return
             now = self.plan_signature()
             if now != seen:
                 seen, changed_at = now, time.monotonic()
@@ -1640,7 +1691,7 @@ class Coordinator:
         for row in rows:
             task, state, reason = row.get('task'), row.get('state') or '', row.get('reason') or ''
             before = self.seen.get(task)
-            if (not self.stop and (state == 'reported' or
+            if (not self.stop and not self.restart_pending and (state == 'reported' or
                                   (state == 'held' and row.get('cause') in ('report', 'conflict')))
                     and row.get('commit') and self.resume_report(row)):
                 self.settled = True
@@ -1651,7 +1702,7 @@ class Coordinator:
                     continue
                 if task in self.resolvers:
                     continue  # its resolution runs beside the loop
-            if (state == 'held' and row.get('cause') == 'blocker' and not self.session_busy()
+            if (state == 'held' and row.get('cause') == 'blocker' and not self.restart_pending and not self.session_busy()
                     and self.triage_blocker(row)):
                 self.settled = True
                 continue
@@ -1781,7 +1832,7 @@ class Coordinator:
         old as it finished and was set aside again, round after round."""
         hours = float(os.environ.get('PI_AUTOWORK_STALE_HOURS') or 24)
         now = time.time()
-        if hours <= 0 or self.stop or self.integration or self.batch_landing():
+        if hours <= 0 or self.stop or self.restart_pending or self.integration or self.batch_landing():
             return False
         changed = False
         for row in rows:
@@ -1845,7 +1896,7 @@ class Coordinator:
             self.close_task(task)
         elif outcome == 'HELD':
             self.settled = True
-            if (result.get('cause') == 'validation' and self.environment_hold(task)
+            if (not self.restart_pending and result.get('cause') == 'validation' and self.environment_hold(task)
                     and self.provision_and_reverify(task, self.reviewer_version())):
                 return  # reviewed again before a refill can start a fresh retry
             if result.get('cause') == 'conflict':  # before a refill can start a fresh retry
@@ -1902,6 +1953,8 @@ class Coordinator:
         """A commit an earlier reviewer held is reviewed again, once, by a changed reviewer
         (flutter TASK-006: held for want of a device before the reviewer knew
         about pending live checks). The engine refuses a second try under the same version."""
+        if self.restart_pending:
+            return
         version = self.reviewer_version()
         for row in rows:
             task = row.get('task')
@@ -2594,6 +2647,7 @@ class Coordinator:
         self.resolvers[task] = {'proc': proc, 'out': out.name, 'root': root, 'head': head, 'commit': commit,
                                 'merged_count': adoption.get('merged_count')}
         self.note_resolvers()
+        self.restart_status()
         return False
 
     def ready_to_merge(self, task, root):
@@ -2848,6 +2902,8 @@ class Coordinator:
     def reexec_due(self):
         """'reload' or 'update' when the runner should re-execute at its next safe point: an
         asked-for reload, or a package that moved past the release this process runs."""
+        if self.restart_pending:
+            return 'restart'
         if self.reload:
             return 'reload'
         if self.mode == 'continuous' and self.toolset_rev != 'unknown' and self.package:
@@ -2861,6 +2917,8 @@ class Coordinator:
 
         Existing engine/review/worker processes keep their inherited release.
         """
+        if self.restart_pending:
+            return
         if self.reload:
             return self.reexec('Reloading: settings and release re-read; running workers keep running',
                                reload=True)
@@ -3050,6 +3108,8 @@ class Coordinator:
         self.plan_seen = self.plan_signature()
         if self.stop:
             self.stop_now()
+        if self.restart_checkpoint():
+            return
         if not self.begin_cycle():
             return
         resumes = self.apply_limits()

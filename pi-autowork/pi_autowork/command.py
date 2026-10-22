@@ -6,9 +6,9 @@
     autowork logs [-f] [target]   the runner's service journal
     autowork start [dir]          install (if needed) and start the repository's service
     autowork stop [target]
-    autowork restart [target] [--stop-workers]
-                                  reload the runner in place: new release and settings, running
-                                  workers keep running; --stop-workers pauses them instead
+    autowork restart [target] [--stop-workers [--now]]
+                                  reload in place, keeping workers; --stop-workers waits for
+                                  merges (30 min), then pauses workers; --now interrupts instead
     autowork pause|resume [target]
                                   stop the service and keep it off (also after a reboot), or
                                   start it again; workers resume on the same attempt
@@ -215,23 +215,32 @@ def cmd_start(args, paths):
     return subprocess.run(['bash', target or script(paths), '--install-service', '--repo', ready.repo]).returncode
 
 
-def restart(paths, name, repo, stop_workers=False):
+def restart(paths, name, repo, stop_workers=False, now=False):
     """(code, message): reload a running runner in place, else restart its service."""
     unit = f'pi-autowork@{name}.service'
     if not stop_workers and service_state(paths, name) == 'active':
         done, text = service.reload_in_place(paths['systemctl'], unit, paths['state_root'], repo)
         if done is not None:
             return (0 if done else 1), text
-    if systemctl(paths, 'restart', unit, quiet=False).returncode:
-        raise Fail(f'could not restart {unit}')
-    return 0, f'Restarted {unit}; workers paused and resume on the same attempt.'
+    def restart_service():
+        if systemctl(paths, 'restart', unit, quiet=False).returncode:
+            raise Fail(f'could not restart {unit}')
+        return 0, f'Restarted {unit}; workers paused and resume on the same attempt.'
+
+    if stop_workers and not now:
+        with service.restart_when_idle(paths['state_root'], repo,
+                                       active=lambda: service_state(paths, name) == 'active') as (safe, text):
+            return restart_service() if safe else (1, text)
+    return restart_service()
 
 
 def cmd_restart(args, paths):
+    if args.now and not args.stop_workers:
+        raise Fail('--now requires --stop-workers; plain restart reloads in place.')
     repo, name = resolve(args.target, paths)
     if service_state(paths, name) == 'none':
         raise Fail(f'{name} has no service; start one with: autowork start {repo}')
-    code, text = restart(paths, name, repo, args.stop_workers)
+    code, text = restart(paths, name, repo, args.stop_workers, args.now)
     print(text)
     return code
 
@@ -558,7 +567,9 @@ def parser():
     again = sub.add_parser('restart', help='reload the runner in place; running workers keep running')
     again.add_argument('target', nargs='?', help='runner name, repository path or . (default: .)')
     again.add_argument('--stop-workers', action='store_true',
-                       help='restart the service instead: workers pause and resume on the same attempt')
+                       help='wait for in-flight merges (30 min), then restart the service; workers pause/resume')
+    again.add_argument('--now', action='store_true',
+                       help='with --stop-workers, interrupt in-flight merges and restart immediately')
     logs = sub.add_parser('logs', help="the runner's recent output")
     logs.add_argument('-f', '--follow', action='store_true')
     logs.add_argument('-n', '--lines', type=int, default=200)

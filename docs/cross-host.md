@@ -327,8 +327,18 @@ Stopping sends SIGINT, the runner's Ctrl+C. `autowork restart` (the TUI's `R`, a
 change and a reinstall onto the same script) reloads instead: SIGHUP, and at its next
 safe point (no review or Pi job running) the runner re-reads its settings file and
 re-executes in place, keeping its PID and every running worker. `autowork restart
---stop-workers` restarts the unit, pausing workers. Crashes and kills restart after a
-minute; the runner's own exits (failures, another runner, needs attention) do not.
+--stop-workers` waits for an in-flight batch or merge-train full check, integration
+review or merge resolution, naming what it waits for. The coordinator records the
+result and finishes batch landings before the unit restarts and workers pause.
+With no merge in flight, restart proceeds at the next safe point. The default
+30-minute bound (`PI_AUTOWORK_RESTART_WAIT=SECONDS` in the calling shell) expires
+with a nonzero refusal naming the pending operation; the service keeps running.
+Cancelling the command also releases its request. `autowork restart --stop-workers
+--now` instead interrupts immediately, even during a check; `--now` alone is refused.
+An older runner without this handshake needs a plain restart to reload first,
+or an explicit `--stop-workers --now` interruption. A stopped service needs no wait.
+Crashes and kills restart after a minute; the runner's own exits (failures, another
+runner, needs attention) do not.
 Without user lingering (`loginctl enable-linger $USER`) the service stops at logout.
 
 `autowork run` runs a repository's runner in the foreground of the current terminal
@@ -559,13 +569,17 @@ How it works:
   security boundary, and does not cover other tools such as `gh`. Pi runs with
   `--no-approve`, so a repository's own Pi extensions do not load; its `AGENTS.md`
   still does.
-- **Stopping and recovery.** Ctrl+C (and a service stop or `restart --stop-workers`) first marks the
+- **Stopping and recovery.** Ctrl+C (and a service stop or `restart --stop-workers --now`) first marks the
   running workers paused, then interrupts their process groups, merges finished work
   into the main branch and exits 130 within seconds. On the next start the engine
   reconciles: a paused worker resumes in its worktree on the same attempt, so a stop
   never spends a task's retry or holds its second attempt; other interrupted or
   released tasks restart once in the same worktree, a dead worker with a commit is
-  integrated, and live workers are adopted rather than duplicated.
+  integrated, and live workers are adopted rather than duplicated. Without `--now`,
+  `restart --stop-workers` first waits for the merge-safe point described above.
+  Offline command/coordinator fixtures check the wait and timeout, immediate
+  override and preservation of batch results; live systemd lifecycle remains
+  separately unqualified.
 
 State lives outside the repository, in
 `${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key>/`: `runner.log`,
