@@ -883,7 +883,9 @@ def retired(repo, base=None):
     ``base`` branch. A held or interrupted slot of such a task is history and occupies nothing;
     Plan For Me's supersession of a held second attempt otherwise left a must-run-alone
     successor waiting beside it for ever."""
-    return task_queue.closed(repo) | (closed_on(repo, base) if base else set())
+    snapshot = task_queue.store(repo)  # An invalid local ledger cannot authorize retirement, even from base.
+    closed = {t.id for t in snapshot.tasks.values() if t.status in ('done', 'superseded')}
+    return closed | (closed_on(repo, base) if base else set())
 
 
 def removed(repo):
@@ -1078,6 +1080,7 @@ def dispatch(args):
 
 
 def dispatch_locked(args, repo, common, count, template, host):
+    task_queue.store(repo)  # Refuse before reconciliation can change a held/reported slot.
     timeouts = enforce_timeouts(repo, args.owner_pid, common, args.worker_timeout)
     current = state.reconcile(repo, args.owner_pid)
     with execution.lock(common / 'writer.lock'):
