@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-338-82"
 title = "A batch check runs only the test modules its changes affect; main gets the full suite after landing"
 short = "Affected-tests batch checks"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 29000
@@ -16,6 +16,8 @@ scope = "Owner decision 2026-10-21: batch and landing checks are too slow (8-25 
 acceptance = ["check.py --affected prints the selected modules with the reason for each; a change to an unresolvable path selects the full suite", "A batch touching only pi-autowork/pi_autowork/fleet_view.py runs fleet_view's tests and their importers and not the whole suite (offline test on a fixture repository)", "Landing receipts name the selection; main's full check after landing still runs and a new failure there is attributed to the landed task as today", "An affected-only batch check that passes does not record its base green; the full main check of that base still runs, and a full-suite batch check still records it green (TOOLSET-336-3c)"]
 checks = ["python3 scripts/check.py tests/test_check.py pi-autowork/tests/test_main_check.py tests/test_pi_autowork.py"]
 exclusions = []
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-338-82.toml"
 +++
 
 - Owner decision: 2026-10-21 (owner): batch and landing checks run only the affected test modules; the full suite runs on main after landing, with regressions attributed to the landed task
