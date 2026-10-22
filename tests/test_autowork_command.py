@@ -20,6 +20,7 @@ import store_fixture  # noqa: E402
 import task_store  # noqa: E402
 sys.path.insert(0, str(ROOT / 'pi-autowork'))
 from pi_autowork import fleet_view  # noqa: E402
+from pi_autowork.processes import start_time  # noqa: E402
 
 GOAL = ('+++\nschema = 1\nid = "G"\ntitle = "Fixture"\npriority = 1\nsource = "docs/plan.md"\n'
         'status = "unmet"\nfocus = false\n+++\n')
@@ -385,7 +386,8 @@ class AutoworkCommandTests(unittest.TestCase):
         state = self.state / 'deadbeef'
         state.mkdir()
         (state / 'runner.json').write_text(json.dumps(
-            {'repo': str(self.repo), 'pid': os.getpid(), 'started': '2026-01-01T00:00:00', 'reloads': 0,
+            {'repo': str(self.repo), 'pid': os.getpid(), 'start_time': start_time(os.getpid()),
+             'started': '2026-01-01T00:00:00', 'reloads': 0,
              'toolset_rev': 'test'}))
         (state / 'status.json').write_text(json.dumps(
             {'schema': 1, 'repo': str(self.repo), 'state': 'working',
@@ -663,7 +665,8 @@ class AutoworkCommandTests(unittest.TestCase):
         self.aw('start', str(self.repo))
         folder = self.state / 'k'
         folder.mkdir()
-        (folder / 'runner.json').write_text(json.dumps({'pid': os.getpid(), 'repo': str(self.repo)}))
+        (folder / 'runner.json').write_text(json.dumps(
+            {'pid': os.getpid(), 'start_time': start_time(os.getpid()), 'repo': str(self.repo)}))
         (folder / 'status.json').write_text(json.dumps({'repo': str(self.repo), 'state': 'working', 'since': time.time() - 300,
                                                         'updated_at': time.time(), 'active_workers': 1, 'waiting': 4}))
         brief = self.aw('ls').stdout

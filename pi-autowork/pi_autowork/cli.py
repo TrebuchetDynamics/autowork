@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import health, main_check, pi_runtime, release, service, worker  # noqa: E402
 from pi_autowork.common import LOG, die, dirty, git, git_ok, lifecycle, model_of, provider_of, push_guard  # noqa: E402
 from pi_autowork.coordinator import Coordinator  # noqa: E402
+from pi_autowork.processes import running, start_time  # noqa: E402
 
 USAGE = """Usage: pi-autowork.sh [options]
 
@@ -426,7 +427,8 @@ def run(argv, start, identity):
         LOG.say('The other runner exited; starting.')
     health.clear_setup_stop(state)
     (state / 'runner.json').write_text(json.dumps({
-        'pid': os.getpid(), 'started': datetime.now().astimezone().isoformat(timespec='seconds'), 'repo': repo,
+        'pid': os.getpid(), 'start_time': start_time(os.getpid()),
+        'started': datetime.now().astimezone().isoformat(timespec='seconds'), 'repo': repo,
         # `autowork restart` reloads a runner that records this, and sees the reload land when it grows.
         'reloads': int(os.environ.get('PI_AUTOWORK_RELOADS') or 0),
         # The release this process runs: status compares it with the configured one (TOOLSET-236-4d).
@@ -459,23 +461,23 @@ def summarize(repo, base, toolset, rev, skill_args, opts, settings, state):
 
 def status_view(repo, base, toolset, state):
     lock = state / 'lock'
-    running = False
+    locked = False
     if lock.exists():
         with open(lock, 'a') as handle:
             try:
                 fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 fcntl.flock(handle, fcntl.LOCK_UN)
             except BlockingIOError:
-                running = True
-    if running:
-        try:
-            owner = json.loads((state / 'runner.json').read_text())
-            running_rev, current = owner.get('toolset_rev'), git(toolset, 'rev-parse', '--short', 'HEAD')
-            behind = (f'; runs {running_rev} and moves to {current} at its next reload'
-                      if running_rev and current and running_rev != current else '')
-            print(f"Runner:     running (PID {owner['pid']}, since {owner['started']}{behind})")
-        except (OSError, ValueError, KeyError):
-            print('Runner:     running ()')
+                locked = True
+    try:
+        owner = json.loads((state / 'runner.json').read_text())
+    except (OSError, ValueError):
+        owner = {}
+    if locked and running(owner):
+        running_rev, current = owner.get('toolset_rev'), git(toolset, 'rev-parse', '--short', 'HEAD')
+        behind = (f'; runs {running_rev} and moves to {current} at its next reload'
+                  if running_rev and current and running_rev != current else '')
+        print(f"Runner:     running (PID {owner['pid']}, since {owner.get('started', '?')}{behind})")
     else:
         print('Runner:     not running')
     view = repo

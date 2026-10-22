@@ -25,6 +25,7 @@ import time
 from . import (fleet_view, health, janitor, landing, main_check, maintainer, optimistic, pi_runtime, questions, release,
                service, task_commands, telemetry, worker, workspaces)
 from .common import LOG, dirty, git, git_ok, lifecycle, open_for_writing, safe_name, summary_list
+from .processes import own_process, process_name
 
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
 
@@ -53,30 +54,6 @@ MERGE_PROMPT = (
     'Run only the tests that cover the conflicted files, not the full check (the runner runs it on the merged '
     'result), and conclude the merge with a commit. Do not push, rebase, '
     'switch branches or touch {repo}. End with one line: PI_AUTOWORK_RESULT: completed|blocked, then one sentence.')
-
-
-def own_process(pid, proc='/proc'):
-    """Whether ``pid`` is this runner or one of its descendants (its engine helpers and
-    background jobs), read from /proc parent links."""
-    me = os.getpid()
-    seen = set()
-    while isinstance(pid, int) and pid > 1 and pid not in seen:
-        if pid == me:
-            return True
-        seen.add(pid)
-        try:
-            pid = int(Path(f'{proc}/{pid}/stat').read_text().rsplit(')', 1)[1].split()[1])
-        except (OSError, ValueError, IndexError):
-            return False
-    return False
-
-
-def process_name(pid):
-    try:
-        return ' '.join(Path(f'/proc/{pid}/cmdline').read_bytes().split(b'\0')[:3]).decode(errors='replace') \
-            or 'helper'
-    except OSError:
-        return 'helper'
 
 
 def merge_prompt(*, branch, base, files, tasks, repo):

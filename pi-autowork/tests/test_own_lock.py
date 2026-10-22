@@ -1,6 +1,7 @@
 """The runner tells its own helpers' locks from another process's (TOOLSET-333-34)."""
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -20,6 +21,18 @@ class OwnProcessTests(unittest.TestCase):
         self.addCleanup(lambda: subprocess.run(['kill', str(grandchild)], capture_output=True))
         self.assertTrue(coordinator.own_process(child.pid))
         self.assertTrue(coordinator.own_process(grandchild))
+        self.assertIn('sh', coordinator.process_name(child.pid))
+
+    def test_process_liveness_has_one_implementation(self):
+        """Keep PID-only probes from bypassing the shared start-identity check."""
+        package = Path(coordinator.__file__).parent
+        definitions = []
+        for path in package.glob('*.py'):
+            text = path.read_text()
+            if re.search(r'^def (?:_?alive|own_process|process_name|start_time|process_stat)\(', text, re.M):
+                definitions.append(path.name)
+            self.assertFalse(re.search(r'os\.kill\([^\n]*,\s*0\)', text), path.name)
+        self.assertEqual(definitions, ['processes.py'])
 
     def test_another_process_or_no_holder_is_not(self):
         self.assertFalse(coordinator.own_process(1))

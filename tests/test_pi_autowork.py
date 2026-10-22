@@ -4,6 +4,7 @@ with a fake Pi standing in for workers, the reviewer and merge resolution.
 These prove the runner's control flow only; they do not show that a real model
 executes tasks (docs/cross-host.md describes the live qualification).
 """
+import fcntl
 import hashlib
 import json
 import os
@@ -1671,6 +1672,8 @@ class EngineTests(Fixture):
             time.sleep(0.2)
         record = json.loads(next(self.state.glob('*/runner.json')).read_text())
         self.assertEqual((record['pid'], record['reloads']), (runner.pid, 1))
+        ticks = Path(f'/proc/{runner.pid}/stat').read_text().rsplit(')', 1)[1].split()[19]
+        self.assertEqual(record.get('start_time'), ticks)
         while not self.done('A', 'B', 'C'):
             self.assertLess(time.monotonic(), deadline, log())
             self.assertIsNone(runner.poll(), log())
@@ -3171,6 +3174,24 @@ class EngineTests(Fixture):
         self.assertEqual(rows[2][2], 'stopped by a runner restart')
         self.assertEqual((state / 'status.json').read_bytes(), before)
         self.assertEqual(self.runs(), [])
+
+    def test_runner_status_requires_matching_start_identity_even_when_locked(self):
+        common = self.git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+        state = self.state / hashlib.sha256(common.encode()).hexdigest()[:16]
+        state.mkdir(parents=True)
+        ticks = Path(f'/proc/{os.getpid()}/stat').read_text().rsplit(')', 1)[1].split()[19]
+        with (state / 'lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            for started, expected in ((str(int(ticks) + 1), 'not running'), (ticks, 'running'), (None, 'not running')):
+                with self.subTest(start_time=started):
+                    record = dict(pid=os.getpid(), started='now', repo=str(self.repo), start_time=started)
+                    path = state / 'runner.json'
+                    path.write_text(json.dumps(record))
+                    before = path.read_bytes()
+                    result = self.run_runner('--status')
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn('Runner:     ' + expected, result.stdout)
+                    self.assertEqual(path.read_bytes(), before)
 
     def test_status_and_dry_run_change_nothing(self):
         before = self.git(self.repo, 'status', '--porcelain', '--untracked-files=all')

@@ -18,6 +18,7 @@ repository, under `${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key
 | `pi_autowork/pi_runtime.py` | Runs one Pi job: model choice and fallback, bounded retries, timeouts, redacted `runs.jsonl` records of each run's tokens and billing provenance (the production CLI path; the TOOLSET-117-cb boundary is an isolated comparison spike, not wired into this runner) |
 | `pi_autowork/accounting.py`, `scorecard.py` | Private run/owner-time accounting and read-only scorecard aggregation; unknown billing is never priced or treated as zero |
 | `pi_autowork/health.py` | Per-runner `status.json`, one stall announcement per episode with its root blockers, and the `--fleet` view |
+| `pi_autowork/processes.py` | Shared Linux process start ticks, identity-aware liveness, runner ancestry and process names |
 | `pi_autowork/workspaces.py` | Mirrors `PI_AUTOWORK_LINK_PATHS` gitignored dependencies into task and review worktrees (real directories, hard-linked files) |
 | `pi_autowork/fleet_view.py` | Every runner on the machine (tmux sessions, `pi-autowork@` services, `status.json` health), its worker lanes (engine slots in flight, the runner's latest phase line, the Pi transcript's last action), its blockers grouped by kind, recent logs, and the exact existing command behind each action; standard library only |
 | `bin/autowork`, `pi_autowork/command.py` | The `autowork` command (below), standard library only |
@@ -374,6 +375,17 @@ No usage records or attention logs belong in Git. These are offline accounting
 facilities, not evidence that a live task was delivered or that a bill was paid.
 
 ## Runner health reads
+
+`runner.json` and the runner's own `job.json` record both the PID and its Linux
+process start ticks (`start_time`), separately from the wall-clock start time.
+Status, fleet health and update-checkpoint reads require matching ticks and a
+non-zombie process; a reused PID reads `not running`, and cannot keep an old job
+current. Status also requires the runner lock to be held. Older records without
+start ticks cannot establish liveness and read `not running` until the runner
+writes a new record on startup or reload. These reads do not change the records.
+Offline health and CLI fixtures cover matching, mismatched and missing identity;
+main-check and ancestry fixtures exercise the same shared process helper. These
+checks do not qualify recovery after a real host crash or live service restart.
 
 An unusable repository (not Git, detached HEAD or a non-main branch), missing
 runner tools or invalid `--workers` stops startup with exit **4 (needs attention)**.
