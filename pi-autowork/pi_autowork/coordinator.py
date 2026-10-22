@@ -1665,23 +1665,44 @@ class Coordinator:
         rows = self.tasks(snapshot)
         if self.set_aside_stale(rows):
             rows = self.tasks(self.status())
+        self.settle_reports(rows)
+        if self.stop:
+            return
+        if self.session_busy():
+            self.board_train(rows)  # the next batch, checked on top of this one beside it
+            return  # one review at a time; it is collected when it ends
+        collected = self.settle_finished_integration()
+        if collected is None:
+            return
+        handled, deferred = collected
+        self.finish_train()  # after the batch ahead recorded its landing order
+        self.reverify_held(rows)
+        for task in [r['task'] for r in rows if r.get('state') == 'integrated' and r['task'] not in handled]:
+            if self.stop:
+                return
+            self.close_task(task)
+        # A conflict resolved above changed that candidate's commit: batch on the current
+        # revisions, not the snapshot taken before the resolution.
+        rows = self.tasks(self.status())
+        if self.resolvers:
+            return  # their merged revisions batch together once they end, before the next review
+        queue, chain, conflicts = self.settle_review_queue(rows, handled)
+        if self.train and not queue:
+            return
+        batch = [] if self.train else self.batch_due(batchable(rows, handled))
+        if batch:
+            self.start_batch(batch)
+            return  # it runs beside the loop; its candidates land when it ends
+        self.settle_run_reviews(queue, chain, conflicts, handled, deferred)
+
+    def settle_reports(self, rows):
+        """Resume or resolve each report before recording its lifecycle and failure streak."""
         for row in rows:
             task, state, reason = row.get('task'), row.get('state') or '', row.get('reason') or ''
             before = self.seen.get(task)
-            if (not self.stop and not self.restart_pending and (state == 'reported' or
-                                  (state == 'held' and row.get('cause') in ('report', 'conflict')))
-                    and row.get('commit') and self.resume_report(row)):
-                self.settled = True
-                continue  # also while draining: it is unfinished work on the same attempt
-            if state == 'held' and row.get('cause') == 'conflict' and not self.session_busy():
-                if self.resolve_task_conflict(row):
-                    self.settled = True
-                    continue
-                if task in self.resolvers:
-                    continue  # its resolution runs beside the loop
-            if (state == 'held' and row.get('cause') == 'blocker' and not self.restart_pending and not self.session_busy()
-                    and self.triage_blocker(row)):
-                self.settled = True
+            if self.settle_resume_report(row):
+                continue
+            if self.settle_resolve_hold(row):
                 continue
             self.note_state(task, state, reason, quiet=not self.known_at_start, paused=row.get('paused'))
             if task == self.once_task and state == 'held':
@@ -1691,11 +1712,37 @@ class Coordinator:
             if state == 'held' and before and before != 'failed':
                 self.count_failure(task, row.get('cause'), reason)
         self.known_at_start = True
-        if self.stop:
-            return
-        if self.session_busy():
-            self.board_train(rows)  # the next batch, checked on top of this one beside it
-            return  # one review at a time; it is collected when it ends
+
+    def settle_resume_report(self, row):
+        """Resume unfinished work on the same attempt, also while draining."""
+        state = row.get('state') or ''
+        if (not self.stop and not self.restart_pending and (state == 'reported' or
+                              (state == 'held' and row.get('cause') in ('report', 'conflict')))
+                and row.get('commit') and self.resume_report(row)):
+            self.settled = True
+            return True
+        return False
+
+    def settle_resolve_hold(self, row):
+        """Resolve conflicts and triage blockers before treating a hold as final."""
+        state = row.get('state') or ''
+        if state == 'held' and row.get('cause') == 'conflict' and not self.session_busy():
+            if self.resolve_task_conflict(row):
+                self.settled = True
+                return True
+            if row.get('task') in self.resolvers:
+                return True  # its resolution runs beside the loop
+        if (state == 'held' and row.get('cause') == 'blocker' and not self.restart_pending and not self.session_busy()
+                and self.triage_blocker(row)):
+            self.settled = True
+            return True
+        return False
+
+    def settle_finished_integration(self):
+        """Collect the previous review's landing, returning handled tasks and deferred conflicts.
+
+        None means a single integration requested a stop before the train can advance.
+        """
         handled, deferred = set(), []
         finished = self.collect_integration()
         if finished and finished[0] == self.BATCH:
@@ -1708,18 +1755,11 @@ class Coordinator:
             if finished[1].get('cause') == 'conflict':
                 deferred.append(finished[0])
             if self.stop:
-                return
-        self.finish_train()  # after the batch ahead recorded its landing order
-        self.reverify_held(rows)
-        for task in [r['task'] for r in rows if r.get('state') == 'integrated' and r['task'] not in handled]:
-            if self.stop:
-                return
-            self.close_task(task)
-        # A conflict resolved above changed that candidate's commit: batch on the current
-        # revisions, not the snapshot taken before the resolution.
-        rows = self.tasks(self.status())
-        if self.resolvers:
-            return  # their merged revisions batch together once they end, before the next review
+                return None
+        return handled, deferred
+
+    def settle_review_queue(self, rows, handled):
+        """Order reported candidates behind the verified chain and its batch conflicts."""
         # The engine integrates one candidate at a time, in priority order, and names the one it
         # wants when asked for another: start that one, never every candidate in turn (13 engine
         # runs and 13 "verifying" lines after one reload, TOOLSET-238-11).
@@ -1732,12 +1772,10 @@ class Coordinator:
             # A car is checked on the tree the chain ahead lands as: only that chain lands, and
             # conflicts are held, until it ends. Any other review would move the session under it.
             queue = [t for t in queue if t in chain or t in conflicts]
-            if not queue:
-                return
-        batch = [] if self.train else self.batch_due(batchable(rows, handled))
-        if batch:
-            self.start_batch(batch)
-            return  # it runs beside the loop; its candidates land when it ends
+        return queue, chain, conflicts
+
+    def settle_run_reviews(self, queue, chain, conflicts, handled, deferred):
+        """Pass quick refusals until one review runs, preserving deferred-conflict priority."""
         while queue:
             task = queue.pop(0)
             if self.stop:
@@ -1990,6 +2028,26 @@ class Coordinator:
         if not cmd or self.stop:
             return
         record = main_check.read(self.state)
+        pid, started = self.check_main_reap(record)
+        if record.get('state') == 'running':
+            if main_check.exit_code(self.state) is not None or not main_check.alive(pid, started):
+                self.finish_main_check(record)
+            return
+        if record.get('pid') is not None:  # receipt consumed just before bash exited: reap next cycle
+            return
+        if self.check_main_revert_pending(record):
+            return
+        rev = git(self.repo, 'rev-parse', self.base)
+        if not rev or rev == record.get('rev'):
+            return
+        if self.check_main_reuse_result(record, rev, cmd):
+            return
+        if self.check_main_wait(record):
+            return
+        self.check_main_start(record, rev, cmd)
+
+    def check_main_reap(self, record):
+        """Reap an adopted child without waiting on a reused PID; retain its observed identity."""
         pid, started = record.get('pid'), record.get('start_time')
         if pid is not None:
             try:
@@ -2005,12 +2063,10 @@ class Coordinator:
                 record.pop('pid', None)
                 record.pop('start_time', None)
                 main_check.write(self.state, record)
-        if record.get('state') == 'running':
-            if main_check.exit_code(self.state) is not None or not main_check.alive(pid, started):
-                self.finish_main_check(record)
-            return
-        if record.get('pid') is not None:  # receipt consumed just before bash exited: reap next cycle
-            return
+        return pid, started
+
+    def check_main_revert_pending(self, record):
+        """Retry an optimistic regression revert once the session is free."""
         if record.get('state') == 'red' and record.get('revert_pending') and optimistic.enabled():
             # A review was running when main went red: revert once the session is free.
             try:
@@ -2018,19 +2074,20 @@ class Coordinator:
             except OSError:
                 log_text = ''
             if self.revert_regression(record['rev'], record.get('green'), record.get('failures') or [], log_text):
-                return
+                return True
             if not self.session_busy():
                 main_check.write(self.state, dict(record, revert_pending=False))  # nothing to revert: repair task
-        rev = git(self.repo, 'rev-parse', self.base)
-        if not rev or rev == record.get('rev'):
-            return
+        return False
+
+    def check_main_reuse_result(self, record, rev, cmd):
+        """Carry green across planning-only changes or reuse a full check of this exact tree."""
         if record.get('state') == 'green' and record.get('rev'):
             # The runner's own questions and planning commits moved main: a full check for each
             # (8 of 39 in a day) took a host check slot that a waiting review needed.
             changed = (git(self.repo, 'diff', '--name-only', record['rev'], rev) or '').split()
             if changed and all(planning_path(p) for p in changed):
                 main_check.write(self.state, dict(record, rev=rev, green=rev))
-                return
+                return True
         # A batch or merge-train check that passed on exactly main's tree already ran this check:
         # record main green from it instead of running the suite a second time (TOOLSET-336-3c).
         if passed := self.passed_on_tree(rev, cmd):
@@ -2038,7 +2095,11 @@ class Coordinator:
                                               checked_rev=rev, from_receipt=passed, flaky=[],
                                               flaky_history=record.get('flaky_history') or {}))
             LOG.say(f'Main is green at {rev[:7]}: the full check already passed on its tree ({passed})')
-            return
+            return True
+        return False
+
+    def check_main_wait(self, record):
+        """Yield to batches, reviews and host load within the existing bounded wait."""
         # A batch (or the merge train) is checking main plus its candidates right now: it covers
         # main's code and lands as main, so main's own check waits for it rather than running a
         # second full suite beside it, up to twice MAIN_CHECK_WAIT since the last main check.
@@ -2046,17 +2107,21 @@ class Coordinator:
         # restart read 'never checked' and ran main's suite beside the batch anyway.
         last = record.get('finished') or record.get('last_finished') or 0
         if self.batch_running() and time.time() - float(last) < 2 * self.MAIN_CHECK_WAIT:
-            return
+            return True
         # It waits for room at most MAIN_CHECK_WAIT: with eight workers and batches a review or a
         # loaded host was nearly always there, and main went unchecked for hours while it was red.
         if time.time() - float(record.get('finished') or 0) < self.MAIN_CHECK_WAIT:
             try:
                 if os.getloadavg()[0] >= (os.cpu_count() or 1):
-                    return
+                    return True
             except OSError:
                 pass
             if any(t.get('state') == 'integrating' for t in self.tasks()):
-                return
+                return True
+        return False
+
+    def check_main_start(self, record, rev, cmd):
+        """Launch the isolated background check and persist the receipt used after reloads."""
         path = self.scratch_checkout('main-check', rev)
         if not path:
             return
@@ -2138,15 +2203,7 @@ class Coordinator:
             git(self.repo, 'worktree', 'remove', '--force', path)
         if tmp and Path(tmp).name.startswith('aw-main-'):
             shutil.rmtree(tmp, ignore_errors=True)
-        rev, green = record.get('rev', ''), record.get('green')
-
-        def finished(value):
-            value.setdefault('result_class', main_check.result_class(log_text, code))
-            common = git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')
-            if common and rev and code is not None:
-                main_check.publish_evidence(self.state, common, rev, value)
-            return main_check.write(self.state, value)
-
+        green = record.get('green')
         history = record.get('flaky_history') or {}
         # The receipt can precede bash's exit. Retain its identity until a later cycle reaps it.
         child = {k: record[k] for k in ('pid', 'start_time') if k in record}
@@ -2159,6 +2216,12 @@ class Coordinator:
             log_text = (self.state / 'main-check.log').read_text(errors='replace')
         except OSError:
             log_text = ''
+        self.finish_main_check_result(record, code, log_text, child)
+
+    def finish_main_check_failures(self, record, code, log_text):
+        """Separate persistent failures from completed isolated reruns and remember flaky revisions."""
+        rev = record.get('rev', '')
+        history = record.get('flaky_history') or {}
         failures = named = main_check.failures(log_text, limit=None) if code else []
         flaky, incomplete = [], False
         if code:
@@ -2175,6 +2238,20 @@ class Coordinator:
                 revisions = history.setdefault(test_id, [])
                 if rev not in revisions and len(revisions) < 3:
                     revisions.append(rev)
+        return failures, named, flaky, incomplete, history
+
+    def finish_main_check_result(self, record, code, log_text, child):
+        """Publish the verdict, then trigger the same repair, revert or green-only push."""
+        rev, green = record.get('rev', ''), record.get('green')
+
+        def finished(value):
+            value.setdefault('result_class', main_check.result_class(log_text, code))
+            common = git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+            if common and rev and code is not None:
+                main_check.publish_evidence(self.state, common, rev, value)
+            return main_check.write(self.state, value)
+
+        failures, named, flaky, incomplete, history = self.finish_main_check_failures(record, code, log_text)
         if code and not failures and (not named or incomplete):
             # It crashed before naming a test, or was cut short with only flaky ones named
             # (TOOLSET-237-35): no placeholder test IDs for the maintainer to repair. Once more;
