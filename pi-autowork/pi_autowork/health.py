@@ -17,6 +17,9 @@ import subprocess
 import sys
 import time
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from pi_autowork.processes import running, start_time  # noqa: E402
+
 SCHEMA = 1
 STALL_AFTER = 1800      # seconds with nothing running while work waits
 STALE_AFTER = 600       # a status this old means the runner is not cycling
@@ -166,7 +169,7 @@ def setup_stop(state_dir):
         runner = json.loads((Path(state_dir) / 'runner.json').read_text())
     except (OSError, ValueError):
         runner = {}
-    if _alive(runner.get('pid')):
+    if running(runner):
         return None
     try:
         return json.loads((Path(state_dir) / 'status.json').read_text()).get('stop_reason')
@@ -181,7 +184,7 @@ def record_setup_stop(state_dir, repo, reason):
         runner = json.loads((path / 'runner.json').read_text())
     except (OSError, ValueError):
         runner = {}
-    if _alive(runner.get('pid')):
+    if running(runner):
         return
     now = time.time()
     try:
@@ -294,14 +297,6 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
     return announce
 
 
-def _alive(pid):
-    try:
-        os.kill(int(pid), 0)
-        return True
-    except (OSError, ValueError, TypeError):
-        return False
-
-
 def _service(name):
     try:
         result = subprocess.run(['systemctl', '--user', 'is-active', f'pi-autowork@{name}.service'],
@@ -316,7 +311,7 @@ def job_started(state_dir, role, task, now=None):
     path = Path(state_dir) / 'job.json'
     tmp = path.with_suffix('.tmp')
     tmp.write_text(json.dumps({'role': role, 'task': task, 'started': time.time() if now is None else now,
-                               'pid': os.getpid()}) + '\n')
+                               'pid': os.getpid(), 'start_time': start_time(os.getpid())}) + '\n')
     os.replace(tmp, path)
 
 
@@ -330,7 +325,7 @@ def current_job(folder):
         job = json.loads((Path(folder) / 'job.json').read_text())
     except (OSError, ValueError):
         return None
-    return job if isinstance(job, dict) and _alive(job.get('pid')) else None
+    return job if running(job) else None
 
 
 def fleet(state_root, *, now=None, service=_service):
@@ -352,7 +347,7 @@ def fleet(state_root, *, now=None, service=_service):
         name = Path(repo).name
         state = status.get('state', 'unknown')
         job = current_job(folder)
-        if not _alive(runner.get('pid')):
+        if not running(runner):
             state = 'not running'
         elif job:
             state = 'working'  # busy with its own job: the status is old because the loop waits on it

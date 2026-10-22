@@ -3,11 +3,13 @@ import json
 import os
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import health  # noqa: E402
+from pi_autowork.processes import start_time  # noqa: E402
 
 HELD = {'id': 'T-9', 'kind': 'held', 'blocks': 4, 'cause': 'blocker', 'reason': 'needs a device'}
 
@@ -100,7 +102,7 @@ class HealthTests(unittest.TestCase):
         reason = 'resource gate: load average 27.16 >= 24 CPUs'
         snap = {'outcome': 'PARALLEL_STATUS', 'active_workers': 0, 'integration_queue': 0,
                 'tasks': [dict(task=t, state='waiting', reason=reason) for t in ('A', 'B')], 'roots': []}
-        runner = dict(repo='/x/repo', pid=os.getpid())
+        runner = dict(repo='/x/repo', pid=os.getpid(), start_time=start_time(os.getpid()))
         folder = self.state / 'repo'
         folder.mkdir()
         (folder / 'runner.json').write_text(json.dumps(runner))
@@ -156,7 +158,7 @@ class HealthTests(unittest.TestCase):
         from pi_autowork import fleet_view
         folder = self.state / 'repo'
         folder.mkdir()
-        runner = dict(repo='/x/repo', pid=os.getpid())
+        runner = dict(repo='/x/repo', pid=os.getpid(), start_time=start_time(os.getpid()))
         (folder / 'runner.json').write_text(json.dumps(runner))
         health.update(folder, snapshot(), now=1000, runner=runner)
         busy = {'outcome': 'ACTION_REQUIRED', 'reason': 'Repository execution lock is held by a live operation.'}
@@ -192,7 +194,7 @@ class HealthTests(unittest.TestCase):
     def test_one_failed_read_preserves_working_but_repeated_failures_are_unavailable(self):
         folder = self.state / 'repo'
         folder.mkdir()
-        runner = dict(repo='/x/repo', pid=os.getpid())
+        runner = dict(repo='/x/repo', pid=os.getpid(), start_time=start_time(os.getpid()))
         (folder / 'runner.json').write_text(json.dumps(runner))
         busy = {'outcome': 'BUSY', 'reason': 'writer lock busy'}
         working = snapshot(workers=1)
@@ -278,30 +280,46 @@ class HealthTests(unittest.TestCase):
         """TOOLSET-177-d0: a five-minute DOCS-MAINTAINER run read as `not cycling 3h46m`."""
         folder = self.state / 'busy'
         folder.mkdir()
-        (folder / 'runner.json').write_text(json.dumps({'pid': os.getpid(), 'repo': '/x/busy'}))
+        (folder / 'runner.json').write_text(json.dumps(
+            {'pid': os.getpid(), 'start_time': start_time(os.getpid()), 'repo': '/x/busy'}))
         (folder / 'status.json').write_text(json.dumps({'state': 'stalled', 'since': 0, 'repo': '/x/busy',
                                                         'updated_at': 1000 - health.STALE_AFTER - 1}))
         health.job_started(folder, 'maintainer', 'DOCS-MAINTAINER', now=700)
         row = health.fleet(self.state, now=1000, service=lambda name: 'active')[0]
         self.assertEqual((row['state'], row['job']['role']), ('working', 'maintainer'))
         job = json.loads((folder / 'job.json').read_text())
+        ticks = Path(f'/proc/{os.getpid()}/stat').read_text().rsplit(')', 1)[1].split()[19]
+        self.assertEqual(job.get('start_time'), ticks)
+        (folder / 'job.json').write_text(json.dumps(dict(job, start_time=str(int(ticks) + 1))))
+        self.assertIsNone(health.current_job(folder), 'a reused PID does not own the job')
         (folder / 'job.json').write_text(json.dumps(dict(job, pid=2 ** 22 + 7)))  # its runner died mid-job
         self.assertEqual(health.fleet(self.state, now=1000, service=lambda name: 'active')[0]['state'], 'not cycling')
         health.job_finished(folder)
         self.assertFalse((folder / 'job.json').exists())
 
     def test_fleet_flags_dead_and_silent_runners(self):
-        def runner(key, repo, pid, updated, state='working'):
+        def runner(key, repo, pid, updated, state='working', **identity):
             folder = self.state / key
             folder.mkdir()
-            (folder / 'runner.json').write_text(json.dumps({'pid': pid, 'repo': repo}))
+            (folder / 'runner.json').write_text(json.dumps(
+                {'pid': pid, 'repo': repo, 'start_time': start_time(pid), **identity}))
             (folder / 'status.json').write_text(json.dumps({
                 'state': state, 'since': 0, 'updated_at': updated, 'active_workers': 0, 'waiting': 3,
                 'repo': repo, 'roots': [HELD]}))
         runner('a', '/x/alive', os.getpid(), 1000)
         runner('b', '/x/dead', 2 ** 22 + 7, 1000)
         runner('c', '/x/silent', os.getpid(), 1000 - health.STALE_AFTER - 1, state='blocked')
+        unrelated = subprocess.Popen(['sleep', '30'])
+        self.addCleanup(unrelated.wait)
+        self.addCleanup(unrelated.terminate)
+        ticks = Path(f'/proc/{unrelated.pid}/stat').read_text().rsplit(')', 1)[1].split()[19]
+        runner('d', '/x/reused', unrelated.pid, 1000, start_time=str(int(ticks) + 1))
+        runner('e', '/x/matching', unrelated.pid, 1000, start_time=ticks)
+        runner('f', '/x/legacy', unrelated.pid, 1000, start_time=None)
         rows = {r['name']: r for r in health.fleet(self.state, now=1000, service=lambda name: 'active')}
+        self.assertEqual(rows['reused']['state'], 'not running')
+        self.assertEqual(rows['matching']['state'], 'working')
+        self.assertEqual(rows['legacy']['state'], 'not running')
         self.assertEqual(rows['alive']['state'], 'working')
         self.assertEqual(rows['dead']['state'], 'not running')
         self.assertEqual(rows['silent']['state'], 'not cycling')

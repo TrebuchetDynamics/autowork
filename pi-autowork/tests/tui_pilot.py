@@ -12,6 +12,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'engine'))
 from pi_autowork import fleet_view, portal  # noqa: E402
+from pi_autowork.processes import start_time  # noqa: E402
 import store_fixture  # noqa: E402
 from pi_autowork.tui import (REFRESH, BrowseScreen, FleetApp, LogScreen, TaskScreen, TasksScreen,  # noqa: E402
                              WorkerScreen, doing)
@@ -39,7 +40,8 @@ async def main():
         store_fixture.write_todo(india, '# TODO\n\n## Now\n\n- [ ] TASK-034 — Ship the thing\n- Short: Ship it\n\n'
                                         '- [ ] T-9 — Held task\n\n- [ ] TASK-040 — Waits\n')
         (env / 'india.env').write_text(f'PI_AUTOWORK_REPO={india}\nPI_AUTOWORK_PRIMARY=openai-codex/gpt-6.1-sol\n')
-        (state / 'runner.json').write_text(json.dumps({'pid': os.getpid(), 'repo': str(india)}))
+        (state / 'runner.json').write_text(json.dumps(
+            {'pid': os.getpid(), 'start_time': start_time(os.getpid()), 'repo': str(india)}))
         (state / 'status.json').write_text(json.dumps({
             'repo': str(india), 'state': 'stalled', 'since': time.time() - 3600, 'updated_at': time.time(),
             'waiting': 23, 'held': [{'task': 'T-9', 'cause': 'blocker'}],

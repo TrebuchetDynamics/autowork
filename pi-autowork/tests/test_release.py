@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import release  # noqa: E402
+from pi_autowork.processes import start_time  # noqa: E402
 
 STATE = 'pi-autowork/engine/parallel_state.py'
 
@@ -46,7 +47,8 @@ class ReleaseCheckTests(unittest.TestCase):
     def runner(self, name, in_flight, pid):
         folder = self.state_root / name
         folder.mkdir()
-        (folder / 'runner.json').write_text(json.dumps({'pid': pid, 'repo': '/x/' + name}))
+        (folder / 'runner.json').write_text(json.dumps(
+            {'pid': pid, 'start_time': start_time(pid), 'repo': '/x/' + name}))
         (folder / 'status.json').write_text(json.dumps({'in_flight': in_flight}))
 
     def test_late_imports_keep_the_selected_release_while_unused_releases_are_pruned(self):

@@ -23,6 +23,7 @@ import time
 
 from . import main_check, optimistic, pi_runtime, workspaces
 from .common import dirty, git, push_guard, safe_name
+from .processes import alive, start_time
 
 REVIEW = ('You are an independent reviewer verifying task {task} in {checkout}, which holds a worker\'s commit '
           'merged onto the session branch (see git log -1 and git diff HEAD^1 HEAD). Read the task\'s record, '
@@ -741,24 +742,14 @@ def drop_dead_scratch(checkout, folder):
         shutil.rmtree(old, ignore_errors=True)
 
 
-def alive(pid):
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        pass
-    return True
-
-
 def started_after(pid, path):
     """Whether ``pid`` started after ``path`` was last changed: a reused PID, not the scratch's owner,
     which started before it made the folder. Unknown is False, so the scratch is kept."""
     try:
-        ticks = int(Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[19])
+        ticks = int(start_time(pid))
         boot = next(int(l.split()[1]) for l in Path('/proc/stat').read_text().splitlines() if l.startswith('btime '))
         return boot + ticks / os.sysconf('SC_CLK_TCK') > path.stat().st_mtime + 1
-    except (OSError, ValueError, IndexError, StopIteration):
+    except (OSError, ValueError, TypeError, IndexError, StopIteration):
         return False
 
 

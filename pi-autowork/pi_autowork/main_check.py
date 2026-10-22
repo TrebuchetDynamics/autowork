@@ -22,6 +22,9 @@ import sys
 import tempfile
 import time
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from pi_autowork.processes import alive, start_time  # noqa: E402,F401
+
 FAILURE = re.compile(r'^(FAIL|ERROR|UNEXPECTED SUCCESS): (\S+) \(([^)]+)\)', re.M)
 TIMEOUT = re.compile(r'^TIMEOUT: (\S+) after', re.M)
 
@@ -496,28 +499,6 @@ def rerun_failures(log, root, receipt, rev, timeout=600, cmd=None, only=None, wo
 def gate_skips(log_text):
     """Tests the host's resource gate skipped (TOOLSET-193-54): not failures, but not checked."""
     return log_text.count('RESOURCE_GATE_SKIP:')
-
-
-def process_stat(pid):
-    """Linux process state and start ticks; comm may itself contain spaces and ')'."""
-    try:
-        pid = int(pid)
-        if pid <= 0:
-            return None
-        fields = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()
-        return fields[0], fields[19]
-    except (OSError, ValueError, TypeError, IndexError):
-        return None
-
-
-def start_time(pid):
-    stat = process_stat(pid)
-    return stat[1] if stat else None
-
-
-def alive(pid, started=None):
-    stat = process_stat(pid)
-    return bool(stat and stat[0] not in ('Z', 'X') and (started is None or stat[1] == str(started)))
 
 
 def line(record, now=None):

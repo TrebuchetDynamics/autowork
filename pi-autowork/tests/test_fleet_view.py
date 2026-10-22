@@ -16,6 +16,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'engine'))
 from pi_autowork import fleet_view  # noqa: E402
+from pi_autowork.processes import start_time  # noqa: E402
 import store_fixture  # noqa: E402
 
 PILOT = Path(__file__).with_name('tui_pilot.py')
@@ -40,7 +41,8 @@ class FleetViewTests(unittest.TestCase):
     def runner_state(self, repo, **status):
         folder = self.state / Path(repo).name
         folder.mkdir(parents=True)
-        (folder / 'runner.json').write_text(json.dumps({'pid': os.getpid(), 'repo': repo}))
+        (folder / 'runner.json').write_text(json.dumps(
+            {'pid': os.getpid(), 'start_time': start_time(os.getpid()), 'repo': repo}))
         (folder / 'status.json').write_text(json.dumps({'repo': repo, 'updated_at': time.time(), **status}))
 
     def collect(self, units=''):
@@ -78,7 +80,8 @@ class FleetViewTests(unittest.TestCase):
             shutil.copytree(fixture / folder, self.base / folder, dirs_exist_ok=True)
             for path in (self.base / folder).rglob('*'):
                 if path.is_file():
-                    path.write_text(path.read_text().replace('$BASE', str(self.base)).replace('$PID', str(os.getpid())))
+                    path.write_text(path.read_text().replace('$BASE', str(self.base)).replace('$PID', str(os.getpid()))
+                                    .replace('$START', start_time(os.getpid())))
                     if path.suffix == '.in':
                         path.rename(path.with_suffix(''))
         units = 'pi-autowork@demo-escaped.service loaded active running demo\n'

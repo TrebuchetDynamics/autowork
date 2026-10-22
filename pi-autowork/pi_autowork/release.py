@@ -21,15 +21,10 @@ import shutil
 import subprocess
 import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from pi_autowork.processes import running  # noqa: E402
+
 STATE_FILE = 'pi-autowork/engine/parallel_state.py'
-
-
-def _alive(pid):
-    try:
-        os.kill(int(pid), 0)
-        return True
-    except (OSError, ValueError, TypeError):
-        return False
 
 
 def busy_runners(state_root, own):
@@ -42,7 +37,7 @@ def busy_runners(state_root, own):
             runner = json.loads((folder / 'runner.json').read_text())
         except (OSError, ValueError):
             continue
-        if _alive(runner.get('pid')) and int(status.get('in_flight') or 0) > 0:
+        if running(runner) and int(status.get('in_flight') or 0) > 0:
             found.append(f"{Path(runner.get('repo', folder.name)).name} ({status['in_flight']} in flight)")
     return found
 
