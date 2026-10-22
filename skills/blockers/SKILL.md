@@ -38,8 +38,18 @@ Do not announce a plan or ask whether to begin: gather and filter, then put the
 first genuine question in the same turn if one remains. Otherwise report the
 planning repairs and remaining execution work without inventing a question.
 
-Resolve the target: a path, `.` (default), or a runner name, whose repository is the
-`Repository:` line of `autowork status NAME`. The runner's questions live in its
+**Profile-bound invocations never ask which runner.** Telegram, CLI and cron
+invocations carry the active Hermes profile and its configured repository, and a
+local invocation starts in its checkout. Resolve that repository first and begin
+there. Do not present the fleet as a multiple-choice question or ask the owner to
+pick a runner when their profile already owns one; that is friction, not a blocker.
+Only an explicitly fleet-wide request, or a genuinely unresolvable target after
+checking the profile and checkout, may name candidates, and then in prose rather
+than a runner-selection question.
+
+Resolve the target: the active profile's configured repository (the default), a
+path, or a runner name, whose repository is the `Repository:` line of
+`autowork status NAME`. The runner's questions live in its
 session worktree, which can be ahead of the main checkout; read them there, and save
 answers in the main checkout, which the runner merges into its session. Always inspect
 both the questions and engine task states: an empty questions block does not mean no
