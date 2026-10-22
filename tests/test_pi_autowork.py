@@ -2578,7 +2578,7 @@ sys.exit(result.returncode)
         self.assertIn('MediaStore read-back on a physical Android device', reviews['A'])
         self.assertIn('Do not fail for those', reviews['A'])
         self.assertIn('recorded no pending live checks', reviews['B'])  # strict when nothing was recorded
-        self.assertIn('A: done offline; its live checks are recorded as A-LIVE', result.stdout)
+        self.assertIn('A: done offline; its live checks are recorded as LIVE-FIXTURE', result.stdout)
 
     def test_reviewer_version_tracks_only_verdict_code_prompts_and_settings(self):
         from unittest.mock import patch

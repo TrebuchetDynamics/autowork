@@ -1039,17 +1039,66 @@ def receipt_text(repo, task, slot, info, checks, record):
     return '\n'.join(lines) + '\n'
 
 
-def followup_text(task, record, items):
-    """A Needs decision task for the live checks an offline close left pending."""
-    followup = task + '-LIVE'
-    fields = dict(schema=1, id=followup, title='Live checks for ' + task, short='Live checks for ' + task,
-                  status='open', goal=record.goal, section='Needs decision', rank=task_store_rank(record),
-                  depends_on=[task], touches=list(record.touches) or ['**'], resources=list(record.resources),
+def live_backlog_id(record):
+    """One live-qualification backlog per goal, never one Needs-decision task per close."""
+    goal = record.goal or 'UNASSIGNED'
+    return 'LIVE-' + re.sub(r'[^A-Za-z0-9._-]+', '-', goal)
+
+
+def followup_text(task, record, items, *, existing=None, followup=None):
+    """A per-goal Needs decision backlog for live checks offline closes left pending.
+
+    The old one-task-per-close follow-up turned a fleet's ordinary offline delivery into
+    dozens of owner questions. One backlog per goal keeps every live obligation visible
+    without multiplying Decision rows. ``existing`` is (path, text) when the backlog is
+    already present in the worktree or at HEAD.
+    """
+    followup = followup or live_backlog_id(record)
+    proof = [' '.join(f'{task}: {item}'.split()) for item in items]
+    if existing is not None:
+        path, text = existing
+        parsed = task_store._Document(path, text.encode()).record(text.encode(), False)
+        fields = dict(
+            depends_on=sorted(set(parsed.depends_on) | {task}),
+            touches=list(dict.fromkeys([*parsed.touches, *(record.touches or ['**'])])),
+            resources=list(dict.fromkeys([*parsed.resources, *record.resources])),
+            acceptance=list(dict.fromkeys([*parsed.acceptance, *proof])))
+        return followup, task_store.edit(text, fields)
+    fields = dict(schema=1, id=followup, title='Live qualifications for ' + (record.goal or 'unassigned work'),
+                  short='Live qualifications', status='open', goal=record.goal,
+                  section='Needs decision', rank=task_store_rank(record), depends_on=[task],
+                  touches=list(record.touches) or ['**'], resources=list(record.resources),
                   kind='implementation', ownership='owner', exclusions=['Offline evidence does not count'],
-                  scope=f'Run the live checks the offline work for {task} left pending.',
-                  acceptance=[' '.join(item.split()) for item in items],
-                  checks=['Live qualification by an authorized person'])
+                  scope='Owner-authorized live checks accumulated from offline task closures in this goal.',
+                  acceptance=proof, checks=['Live qualification by an authorized person'])
     return followup, task_store.render(fields, '\n')
+
+
+def existing_backlog(repo, followup):
+    """(path, text) of a backlog in the worktree or at HEAD, or None."""
+    path = execution.task_path(followup)
+    target = Path(repo) / path
+    try:
+        return path, target.read_text()
+    except OSError:
+        try:
+            return path, git(repo, 'show', f'HEAD:{path}', raw=True).decode()
+        except ValueError:
+            return None
+
+
+def backlog_target(repo, record):
+    """The open backlog to append to, or the first free backlog ID if earlier ones closed."""
+    base = live_backlog_id(record)
+    for number in range(1, 100):
+        followup = base if number == 1 else f'{base}-{number}'
+        found = existing_backlog(repo, followup)
+        if found is None:
+            return followup, None
+        parsed = task_store._Document(found[0], found[1].encode()).record(found[1].encode(), False)
+        if parsed.status == 'open':
+            return followup, found
+    raise ValueError(f'too many closed live backlogs for {record.goal or "unassigned work"}')
 
 
 def task_store_rank(record):
@@ -1058,7 +1107,7 @@ def task_store_rank(record):
 
 def close_writes(repo, task, slot, info, checks, record):
     """{path: text} a close writes: the task's done record, its receipt and, when live checks
-    remain, their follow-up task. Nothing else; TODO.archive.md is not written."""
+    remain, their one per-goal backlog. Nothing else; TODO.archive.md is not written."""
     # From the record as committed: a close records the verified contract, never a local edit.
     committed = git(repo, 'show', f'HEAD:{execution.task_path(task)}', raw=True).decode()
     text = task_store.edit(committed, {'status': 'done', 'closure': 'coordinator_verified',
@@ -1068,9 +1117,9 @@ def close_writes(repo, task, slot, info, checks, record):
     writes = {execution.task_path(task): text, receipt_path(task): receipt_text(repo, task, slot, info, checks, record)}
     live = live_items((slot.get('report') or {}).get('pending_live'))
     if live:
-        followup, body = followup_text(task, record, live)
-        if task_queue.record(repo, followup) is None:
-            writes[execution.task_path(followup)] = body
+        followup, existing = backlog_target(repo, record)
+        followup, body = followup_text(task, record, live, existing=existing, followup=followup)
+        writes[execution.task_path(followup)] = body
     return writes
 
 
@@ -1123,7 +1172,8 @@ def close(repo, owner_pid, task):
         else:
             writes = close_writes(repo, task, slot, info, checks, record)
             # Again just before the first write: a session can appear while the receipt was checked.
-            require_no_writers(repo, close_files(repo, task))
+            # Guard the files this close actually writes, including the per-goal live backlog.
+            require_no_writers(repo, list(writes))
             before = {path: (repo / path).read_bytes() if (repo / path).exists() else None for path in writes}
             try:
                 for path, text in writes.items():
@@ -1147,9 +1197,10 @@ def close(repo, owner_pid, task):
                 slot = state.change(common, slot, 'closed', {'telemetry_end_revision': state.journal.current_revision(repo)})
             dispatch.cleanup_tmpdir(common, slot)
             cleaned = cleanup_worker(repo, common, slot)
-        followup = next((path for path in writes if path.endswith('-LIVE.md')), None)
+        followup = next((path for path in writes if path.startswith('tasks/items/')
+                         and path != execution.task_path(task)), None)
         return {'outcome': 'CLOSED', 'task': task, 'cleaned': cleaned, 'files': files,
-                **({'live_followup': task + '-LIVE'} if followup else {})}
+                **({'live_followup': Path(followup).stem} if followup else {})}
 
 
 CONTRACT_CHANGED = 'task contract changed since integration; no close'

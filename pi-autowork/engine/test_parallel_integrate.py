@@ -1286,35 +1286,60 @@ finally:
             worker_timeout=10, min_free_mem_mb=0, tasks=None, plan=None)
         self.assertEqual(module.retry_held(args)['outcome'], 'IDLE')
 
-    def test_pending_live_checks_integrate_and_close_into_one_live_followup(self):
-        """flutter TASK-013: offline work passed twice but was held for device checks."""
+    def test_pending_live_checks_close_into_one_goal_backlog_not_one_task_per_close(self):
+        """flutter TASK-013: offline work passed twice but was held for device checks. Repeated
+        live follow-ups must not turn every close into another owner question."""
         self.worker()
         self.report(pending_live=['TalkBack scrolling on a physical phone', 'Hardware GPU frame rate'])
         module = self.module()
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
         result = module.close(self.repo, self.owner, 'A')
-        self.assertEqual((result['outcome'], result['live_followup']), ('CLOSED', 'A-LIVE'))
-        self.assertIn('tasks/items/A-LIVE.md', result['files'])
-        self.assertTrue(self.task_text('A-LIVE').endswith('+++\n'))
-        # A partial commit must not retire the slot before its receipt and live task land.
+        live_id = module.live_backlog_id(self.record('A'))
+        self.assertEqual((result['outcome'], result['live_followup']), ('CLOSED', live_id))
+        self.assertIn(f'tasks/items/{live_id}.md', result['files'])
+        self.assertTrue(self.task_text(live_id).endswith('+++\n'))
+        # A partial commit must not retire the slot before its receipt and live backlog land.
         self.git('add', 'tasks/items/A.md')
         self.git('commit', '-qm', 'interrupted partial close')
         remaining = module.close(self.repo, self.owner, 'A')
-        self.assertEqual(remaining['files'], ['tasks/evidence/A.toml', 'tasks/items/A-LIVE.md'])
+        self.assertEqual(remaining['files'], ['tasks/evidence/A.toml', f'tasks/items/{live_id}.md'])
         self.assertEqual(state.slots(self.common)[0]['state'], 'integrated')
         self.assertFalse(remaining['cleaned'])
         self.git('add', *result['files'])
         self.git('diff', '--cached', '--check')
         self.git('commit', '-qm', 'close A')
-        live = self.record('A-LIVE')
+        live = self.record(live_id)
         self.assertEqual((live.section, live.status, live.depends_on, live.ownership.value),
                          ('Needs decision', 'open', ('A',), 'owner'))
-        self.assertIn('TalkBack scrolling on a physical phone', live.acceptance)
+        self.assertIn('A: TalkBack scrolling on a physical phone', live.acceptance)
         self.assertEqual(self.record('A').status, 'done')
         # A live check is never dispatched to an offline worker.
-        self.assertNotIn('A-LIVE', [t['id'] for t in dispatch.contracts(self.repo)])
+        self.assertNotIn(live_id, [t['id'] for t in dispatch.contracts(self.repo)])
 
-    def test_a_retried_close_adds_no_second_live_followup(self):
+    def test_a_second_close_in_the_same_goal_appends_to_the_same_live_backlog(self):
+        module = self.module()
+        self.worker()
+        self.report(pending_live=['First device check'])
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        first = module.close(self.repo, self.owner, 'A')
+        self.git('add', *first['files'])
+        self.git('commit', '-qm', 'close A')
+        self.worker('B', files={'B.txt': 'worker B\n'})
+        slot_b = next(s for s in state.slots(self.common) if s['task_id'] == 'B')
+        report_b = dispatch.data_dir(self.common, slot_b) / 'report.json'
+        execution.save(report_b, dict(execution.read(report_b), pending_live=['Second device check']))
+        self.assertEqual(module.integrate(self.repo, self.owner, 'B', ['true'], 10)['outcome'], 'INTEGRATED')
+        second = module.close(self.repo, self.owner, 'B')
+        live_id = module.live_backlog_id(self.record('A'))
+        self.assertEqual(second['live_followup'], live_id)
+        self.git('add', *second['files'])
+        self.git('commit', '-qm', 'close B')
+        self.assertEqual(len(list((self.repo / 'tasks/items').glob('LIVE-*.md'))), 1)
+        live = self.record(live_id)
+        self.assertEqual(live.depends_on, ('A', 'B'))
+        self.assertEqual(live.acceptance, ('A: First device check', 'B: Second device check'))
+
+    def test_a_retried_close_adds_no_second_live_backlog_entry(self):
         self.worker()
         self.report(pending_live=['Production smoke test'])
         module = self.module()
@@ -1323,7 +1348,7 @@ finally:
         self.assertEqual(first['outcome'], 'CLOSED')
         again = module.close(self.repo, self.owner, 'A')  # a replay before the commit
         self.assertEqual(again['files'], first['files'])
-        self.assertEqual(len(list((self.repo / 'tasks/items').glob('A-LIVE*'))), 1)
+        self.assertEqual(len(list((self.repo / 'tasks/items').glob('LIVE-*.md'))), 1)
 
     def test_retry_refill_enforces_running_retry_timeout(self):
         import time
