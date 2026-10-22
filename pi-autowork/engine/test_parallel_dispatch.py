@@ -349,14 +349,41 @@ class DispatchTests(unittest.TestCase):
         prompt.write_text('x')
         output = data / 'niceness'
         script = 'import os, sys, time; open(sys.argv[1], "w").write(str(os.nice(0))); time.sleep(30)'
-        child = dispatch.launch([sys.executable, '-c', script, str(output)], self.repo, data, 1, prompt)
+        popen = subprocess.Popen
+
+        def retain_process(*args, **kwargs):
+            process = popen(*args, **kwargs)
+            self.addCleanup(process.wait, timeout=10)
+            return process
+
+        with patch('subprocess.Popen', side_effect=retain_process):
+            child = dispatch.launch([sys.executable, '-c', script, str(output)], self.repo, data, 1, prompt)
         self.addCleanup(dispatch.stop, child, str(self.repo))
+        started = time.monotonic()
         for _ in range(200):
             if output.exists() and output.read_text():
                 break
             time.sleep(.01)
+        self.assertTrue(output.exists() and output.read_text(),
+                        f'child not ready after {time.monotonic() - started:.3f}s; '
+                        f'parent nice={os.nice(0)}, worker={child}; '
+                        f'log={(data / "worker.log").read_text()}')
         # The kernel caps niceness at 19: inside main's own niced check this test starts at 10.
-        self.assertEqual(int(output.read_text()), min(19, os.nice(0) + dispatch.WORKER_NICE))
+        self.assertEqual(int(output.read_text()), min(19, os.nice(0) + dispatch.WORKER_NICE),
+                         f'parent={os.nice(0)}, ready child={output.read_text()}')
+
+    def test_a_worker_runs_below_the_coordinators_priority_with_inherited_niceness(self):
+        """Keep the cap assertion exercised even when this module is run at nice 0."""
+        script = ('import os, sys, unittest; '
+                  'print(os.nice(max(0, int(sys.argv[1]) - os.nice(0))), flush=True); '
+                  'unittest.main(module="test_parallel_dispatch", argv=["unittest", '
+                  '"DispatchTests.test_a_worker_runs_below_the_coordinators_priority"])')
+        for niceness in (10, 19):
+            with self.subTest(niceness=niceness):
+                result = subprocess.run([sys.executable, '-c', script, str(niceness)],
+                                        cwd=SCRIPTS, capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(int(result.stdout), max(niceness, os.nice(0)))
 
     def test_worker_gets_main_evidence_location_and_repair_instructions(self):
         data = self.common / 'slot-data/A/attempt-1'

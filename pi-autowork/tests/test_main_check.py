@@ -34,11 +34,28 @@ class MainCheckTests(unittest.TestCase):
             seen = {}
             for background in (False, True):
                 out = Path(folder) / f'nice-{background}'
-                main_check.run_command(f'{sys.executable} -c "import os; print(os.nice(0))" > {out}', folder, 30,
-                                       Path(folder) / 'progress.json', background=background)
+                result = main_check.run_command(f'{sys.executable} -c "import os; print(os.nice(0))" > {out}', folder, 30,
+                                                Path(folder) / 'progress.json', background=background)
+                self.assertEqual(result, (0, False), f'child did not finish: background={background}')
                 seen[background] = int(out.read_text())
+            self.assertEqual(seen[False], os.nice(0))
             # The kernel caps niceness at 19: inside main's own niced check this test starts at 10.
-            self.assertEqual(seen[True], min(19, seen[False] + main_check.BACKGROUND_NICE))
+            self.assertEqual(seen[True], min(19, seen[False] + main_check.BACKGROUND_NICE),
+                             f'parent={os.nice(0)}, ready children={seen}')
+
+    def test_a_background_main_check_yields_to_reviews_with_inherited_niceness(self):
+        """Re-run the ordinary fixture as main does; never renice the suite itself."""
+        script = ('import os, sys, unittest; '
+                  'print(os.nice(max(0, int(sys.argv[1]) - os.nice(0))), flush=True); '
+                  'unittest.main(module="test_main_check", argv=["unittest", '
+                  '"MainCheckTests.test_a_background_main_check_yields_to_reviews"])')
+        for niceness in (10, 19):
+            with self.subTest(niceness=niceness):
+                result = subprocess.run([sys.executable, '-c', script, str(niceness)],
+                                        cwd=Path(__file__).resolve().parent, capture_output=True, text=True,
+                                        timeout=90)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(int(result.stdout), max(niceness, os.nice(0)))
 
     def test_the_full_check_comes_from_validate_or_agents_md(self):
         """TOOLSET-180-72: the repository declares its whole offline suite once."""
