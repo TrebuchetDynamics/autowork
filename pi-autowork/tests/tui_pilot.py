@@ -64,21 +64,38 @@ async def main():
                 {'type': 'toolCall', 'name': 'bash', 'arguments': json.dumps({'command': f'echo step {i}'})}]}}) + '\n'
         transcript.write_text(''.join(step(i) for i in range(30)))
         tree = base / 'git'
-        for name, files in (('ready', ('tasks/items/T.md',)), ('half', ('TODO.md',))):
+        legacy = Path(__file__).resolve().parents[2] / 'tests/fixtures/task_migrate'
+        for name in ('ready', 'legacy', 'fresh', 'busy', 'startable', 'invalid', 'toolchain'):
             repo = tree / name
             repo.mkdir(parents=True)
             subprocess.run(['git', 'init', '-q', '-b', 'main', str(repo)], check=True)
-            for f in files:
-                (repo / f).parent.mkdir(parents=True, exist_ok=True)
-                (repo / f).write_text('x\n')
+            for key, value in (('user.name', 'T'), ('user.email', 't@example.invalid')):
+                subprocess.run(['git', '-C', str(repo), 'config', key, value], check=True)
+            if name in ('ready', 'invalid'):
+                store_fixture.write_todo(repo, '- [ ] T-1 — Ready task\n')
+                if name == 'invalid':
+                    (repo / 'tasks/items/T-1.md').write_text('not a task record\n')
+            elif name == 'fresh':
+                (repo / 'README.md').write_text('# Unplanned repository\n')
+            else:
+                for filename in ('TODO.md', 'TODO.archive.md', 'goals.json'):
+                    (repo / filename).write_bytes((legacy / filename).read_bytes())
             subprocess.run(['git', '-C', str(repo), 'add', '-A'], check=True)
-            subprocess.run(['git', '-C', str(repo), '-c', 'user.name=T', '-c', 'user.email=t@example.invalid',
-                            'commit', '-qm', 'planning'], check=True)
+            subprocess.run(['git', '-C', str(repo), 'commit', '--allow-empty', '-qm', 'planning'], check=True)
+        slots = tree / 'busy/.git/autowork-execution/slots'
+        slots.mkdir(parents=True)
+        (slots / 'T-001.json').write_text(json.dumps({'task_id': 'T-001', 'state': 'running', 'attempt': 1}))
         calls, slow = [], {'seconds': 0}
 
         def run(argv, **kwargs):
             time.sleep(slow['seconds'])
             calls.append(argv)
+            if argv[1:3] == ['tasks', 'prepare']:
+                if Path(argv[-1]).name == 'toolchain':
+                    return subprocess.CompletedProcess(argv, 1, json.dumps(dict(
+                        ok=False, outcome='TOOLCHAIN_MISMATCH', next='Run autowork update, then retry.')), '')
+                command = Path(__file__).resolve().parents[1] / 'pi_autowork/command.py'
+                return subprocess.run([sys.executable, str(command), *argv[1:]], **kwargs)
             return Result()
 
         app = FleetApp(command='aw', script='pa.sh', state_root=base / 'state', env_dir=env,
@@ -250,20 +267,73 @@ async def main():
             assert after[:30] == shown and 'step 30' in after[-1] and len(after) == 31, after
             await pilot.press('escape')
             await pilot.pause()
-            await pilot.press('n')                      # new: browse; half is not ready, ready plays after a yes
-            await pilot.pause()
-            assert isinstance(app.screen, BrowseScreen), app.screen
-            screen = app.screen
-            await pilot.press('down', 'down')
-            await pilot.pause()
-            path = screen.chosen.path if screen.chosen else ''
-            if path.endswith('half'):
+            # Play offers preparation, never starts on NO_STORE or an in-flight conversion.
+            for name, button, outcome, starts in (
+                    ('legacy', 'prepare', 'MIGRATED', False),
+                    ('fresh', 'prepare-start', 'NO_STORE', False),
+                    ('busy', 'prepare-start', 'MIGRATION_DEFERRED', False),
+                    ('invalid', 'prepare-start', 'INVALID_STORE', False),
+                    ('toolchain', 'prepare-start', 'TOOLCHAIN_MISMATCH', False),
+                    ('startable', 'prepare-start', 'MIGRATED', True)):
+                await pilot.press('n')
+                await pilot.pause()
+                assert isinstance(app.screen, BrowseScreen), app.screen
+                screen = app.screen
+                tree_widget = screen.query_one('#tree')
+                node = next(n for n in tree_widget.root.children if n.data.path.name == name)
+                tree_widget.select_node(node)
+                await pilot.pause()
+                assert screen.chosen and not screen.chosen.ready, screen.chosen
+                before = len(calls)
+                task_files = lambda: {str(p): p.read_bytes() for p in (tree / name / 'tasks').rglob('*.md')}
+                original_tasks = task_files()
                 await pilot.press('p')
                 await pilot.pause()
-                assert len(calls) == 2, calls          # not ready: nothing runs
-                await pilot.press('down')
+                assert app.screen.query_one('#prepare').label.plain == 'Prepare'
+                assert app.screen.query_one('#prepare-start').label.plain == 'Prepare and start'
+                if name == 'legacy':
+                    await pilot.press('escape')
+                    await pilot.pause()
+                    assert len(calls) == before, 'cancel must not prepare or start'
+                    await pilot.press('p')
+                    await pilot.pause()
+                app.screen.query_one('#' + button).press()
                 await pilot.pause()
-            assert screen.chosen and screen.chosen.ready and screen.chosen.path.endswith('ready'), screen.chosen
+                # DirectoryTree keeps a loader worker alive while the browser is open.
+                for worker in list(app.workers):
+                    if worker.group == 'prepare':
+                        await worker.wait()
+                await pilot.pause()
+                info = str(screen.query_one('#info').render())
+                assert outcome in info, info
+                assert calls[before] == ['aw', 'tasks', 'prepare', str(tree / name)], calls
+                if outcome == 'MIGRATED':
+                    assert screen.chosen.ready and (tree / name / 'tasks/items/T-001.md').is_file(), info
+                    assert 'ready' in tree_widget.render_line(node.line).text, 'node was not refreshed'
+                else:
+                    assert not screen.chosen.ready and task_files() == original_tasks, info
+                    assert 'ready' not in tree_widget.render_line(node.line).text
+                    if outcome == 'NO_STORE':
+                        assert '/docs_sync' in info and 'no heading is marked Status: Accepted' in info, info
+                    elif outcome == 'MIGRATION_DEFERRED':
+                        assert 'conversion deferred' in info, info
+                if starts:
+                    await pilot.press('y')              # starting still asks for confirmation
+                    await pilot.pause()
+                    await app.workers.wait_for_complete()
+                    assert calls[before + 1:] == [['aw', 'start', str(tree / name)]], calls
+                else:
+                    assert app.screen is screen, 'Prepare must not offer Start before readiness passes'
+                    assert len(calls) == before + 1, calls
+                    await pilot.press('escape')
+                    await pilot.pause()
+            await pilot.press('n')                      # already ready: Play still starts after a yes
+            await pilot.pause()
+            screen = app.screen
+            tree_widget = screen.query_one('#tree')
+            tree_widget.select_node(next(n for n in tree_widget.root.children if n.data.path.name == 'ready'))
+            await pilot.pause()
+            assert screen.chosen.ready, screen.chosen
             await pilot.press('p')
             await pilot.pause()
             await pilot.press('y')
@@ -271,7 +341,8 @@ async def main():
             await app.workers.wait_for_complete()
             assert calls[-1] == ['aw', 'start', str(tree / 'ready')], calls
         narrow = FleetApp(command='aw', script='pa.sh', state_root=base / 'state', env_dir=env,
-                          systemctl=str(systemctl), journalctl=str(journal), agent=None, runner_cmd=run)
+                          systemctl=str(systemctl), journalctl=str(journal), agent=None, runner_cmd=run,
+                          browse_root=str(tree))
         async with narrow.run_test(size=(80, 30)) as pilot:   # an 80-column terminal: wrapped, not cut
             await pilot.pause()
             words = ' '.join(str(narrow.query_one('#detail').render()).split())
@@ -280,6 +351,18 @@ async def main():
             table = narrow.query_one('#runners')
             width = sum(c.get_render_width(table) for c in table.columns.values())
             assert width <= 80, (width, [str(c) for c in table.get_row_at(0)])
+            await pilot.press('n')
+            await pilot.pause()
+            tree_widget = narrow.screen.query_one('#tree')
+            tree_widget.select_node(next(n for n in tree_widget.root.children if n.data.path.name == 'busy'))
+            await pilot.pause()
+            await pilot.press('p')
+            await pilot.pause()
+            dialog = narrow.screen.query_one('PrepareRepository > Vertical')
+            assert dialog.region.x >= 0 and dialog.region.right <= 80, dialog.region
+            for button in narrow.screen.query('Button'):
+                assert button.region.right <= 80, button.region
+            await pilot.press('escape', 'escape')
         viewer = FleetApp(command='aw', script='pa.sh', state_root=base / 'state', env_dir=env,
                           systemctl=str(systemctl), journalctl=str(journal), agent=['claude'], runner_cmd=run,
                           view_only=True)

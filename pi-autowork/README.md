@@ -35,7 +35,7 @@ name, a repository path or `.`. Nothing here calls a model.
 | Command | What it does |
 |---|---|
 | `autowork` | The live TUI on a terminal (help otherwise) |
-| `autowork start [dir]` | Install (if needed) and start the repository's service; refuses a directory without a committed `tasks/` store and its main branch checked out, saying what is missing (an unconverted repository: `autowork migrate`). Services run from the Pi package installed from `git:github.com/TrebuchetDynamics/autowork`; a service on another copy (a package under an older name) is moved onto it and restarted, and the others follow at their next restart |
+| `autowork start [dir]` | Install (if needed) and start the repository's service; refuses a directory without a committed `tasks/` store and its main branch checked out, saying what is missing (`autowork tasks prepare` converts legacy planning or reports the next step). Services run from the Pi package installed from `git:github.com/TrebuchetDynamics/autowork`; a service on another copy (a package under an older name) is moved onto it and restarted, and the others follow at their next restart |
 | `autowork stop [target]` | Stop the service; workers pause and resume on the same attempt |
 | `autowork restart [target] [--stop-workers]` | Reload the runner in place on its current release and settings; running workers keep running. `--stop-workers` restarts the service instead, pausing them |
 | `autowork pause` / `resume [target]` | Stop the service and keep it off, also after a reboot (disable), or start it again (enable); only a paused service is listed as `paused`, any other stopped one as `not running` |
@@ -62,15 +62,47 @@ For example, `PI_AUTOWORK_PUSH=0 autowork start` cannot silently start a service
 with push enabled. The error names the conflicting settings and file and prints the
 `--install-service` command to apply them; run it with the requested environment.
 A refusal leaves the service and its pause marker unchanged. Matching settings keep
-start idempotent; the default remains push enabled.
+start idempotent. Without a saved or explicitly supplied `PI_AUTOWORK_PUSH=1` grant,
+automatic publication is disabled, including upstream-sync publication; local commits
+and merges still proceed.
+
+Grant automatic push once when installing a new repository's runner:
+
+```sh
+PI_AUTOWORK_PUSH=1 autowork start /path/to/my-project
+```
+
+The installer saves the grant in that repository's settings file; later cycles and
+launches reuse it without asking again. It does not grant permission to another
+repository, even one with the same directory name. For an existing service, use the
+`--install-service --repo /path/to/my-project` command above with `PI_AUTOWORK_PUSH=1`
+to grant, or `PI_AUTOWORK_PUSH=0` to revoke; reinstalling applies the settings and
+reloads/restarts that service. A shell-only override is not a persisted grant.
+
+`autowork status /path/to/my-project` (or `pi-autowork.sh --status`) shows
+`Push: enabled` or `Push: disabled` after loading repository settings, with an explicitly
+set environment value taking precedence. This read does not edit settings or change
+service lifecycle; it describes the next launch, not an unreloaded process's environment.
+Existing saved `1`/`0` settings remain enabled/disabled and are not migrated or rewritten
+by a settings load or status read. No live service migration is part of this default change.
 
 In the TUI each key is the first letter of its word, highlighted in the detail pane:
 `l` (or Enter) **L**og, `p` **P**lay/**P**ause (starts a stopped service, resumes a
 paused one, pauses a running one), `s` **S**top, `r` **R**estart, `m` **M**odel and
 `f` **F**allback (from Pi's list, type to filter), `t` **T**asks, `u` **U**ninstall the
 service, `n` **N**ew: browse directories (from `~/git`, `AUTOWORK_BROWSE_ROOT`), see which
-repositories are ready or what they need, and `p` there plays one; `q` **Q**uit. The Tasks
-window lists open tasks in priority order (section, then rank) with their short title, state and reason,
+repositories are ready or what they need, and `p` there plays one; `q` **Q**uit.
+On an unready repository, Play offers **Prepare** or **Prepare and start**, which run
+`autowork tasks prepare` without blocking the TUI. Prepare can commit a legacy
+conversion; it displays the outcome code, refusals and next step, then refreshes
+the repository's readiness and tree label. `NO_STORE` directs you to plan accepted
+intent with `/docs_sync`; it creates no goals or tasks. Deferred, blocked, invalid
+and toolchain outcomes are not readiness. Prepare and start asks to start only
+after successful preparation and a fresh readiness check; Prepare alone never
+starts a service. A deferred conversion stays unavailable until it completes.
+The existing headless pilot exercises this flow on disposable repositories with
+real preparation commands and faked service starts; it does not qualify a live service.
+The Tasks window lists open tasks in priority order (section, then rank) with their short title, state and reason,
 followed in All by closed tasks: **Verified** with the receipt, or **Manual** with the reason
 (a missing/invalid verified receipt is explicitly warned, never relabelled Manual);
 `1`–`5` (or Tab) show All, Working, Held, Waiting or Questions; on the selected task `u`/`d`

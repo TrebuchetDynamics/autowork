@@ -8,20 +8,12 @@ no extra approval step or execution authority.
 
 <!-- pi-autowork:questions:start -->
 
-### Q-TOOLSET-318-17 — USER_DECISION — effort investigate — unblocks 0
+### Q-TOOLSET-337-e0 — USER_DECISION — effort investigate — unblocks 1
 
-- Task: TOOLSET-318-17 — Convert TODO.md without overlooking consumers or losing non-task content
-- Needs: integration validation failed or changed the integration tree: PI_AUTOWORK_VERIFY: fail — same-line Goal annotations are silently lost instead of preserved or refused.; this was its one rework after review, and the earlier review found: `pi-autowork/pi_autowork/legacy/conversion_audit.py:103–109` incorrectly counts all indented field continuations as preserved. Reproduced by adding an indented checklist beneath `- Goal: G2`: dry-run reports no preservation, conversion succeeds, deletes TODO.md, and loses the checklist entirely. The mapper takes Goal from the ledger and discards that continuation. This violates the every-line accounting requirement; preserve or refuse content the mapper does not retain.
-- Since: 2026-10-22T00:38:20Z
-- Answer: Read the evidence (the worker's report and validation log under .git/autowork-execution/slot-data/TOOLSET-318-17/), then rescope or split TOOLSET-318-17 in tasks/items/TOOLSET-318-17.md. The runner reruns it when the record changes.
-- Kind: held
-
-### Q-TOOLSET-338-82 — USER_DECISION — effort investigate — unblocks 0
-
-- Task: TOOLSET-338-82 — A batch check runs only the test modules its changes affect; main gets the full suite after landing
-- Needs: dead worker without a commit or changes
-- Since: 2026-10-21T23:59:57Z
-- Answer: Read the evidence (the worker's report and validation log under .git/autowork-execution/slot-data/TOOLSET-338-82/), then rescope or split TOOLSET-338-82 in tasks/items/TOOLSET-338-82.md. The runner reruns it when the record changes.
+- Task: TOOLSET-337-e0 — The runner end-to-end tests (tests/test_pi_autowork.py) run in a fraction of their time
+- Needs: integration validation failed or changed the integration tree: PI_AUTOWORK_VERIFY: fail — Affected checks failed: test_a_batched_candidate_that_fails_its_review_is_held_and_the_other_lands never formed the expected batch. Commit evidence also explicitly leaves the required 50% idle-host speedup and three consecutive full-check passes unqualified.; this was its one rework after review, and the earlier review found: TOOLSET-337-e0’s performance and verification acceptance criteria remain unmet.
+- Since: 2026-10-22T01:36:00Z
+- Answer: Read the evidence (the worker's report and validation log under .git/autowork-execution/slot-data/TOOLSET-337-e0/), then rescope or split TOOLSET-337-e0 in tasks/items/TOOLSET-337-e0.md. The runner reruns it when the record changes.
 - Kind: held
 
 <!-- pi-autowork:questions:end -->

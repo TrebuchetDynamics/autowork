@@ -32,6 +32,7 @@ class LandingFixture(unittest.TestCase):
         runner.repo, runner.base, runner.integ, runner.integ_branch = str(self.repo), 'main', str(self.integ), 'pi-autowork/s'
         runner.integration, runner.child = {'proc': Review()}, None
         runner.land_soon, runner.landed_at, runner.land_every = True, time.monotonic(), 600
+        runner.seen = {}
         self.runner = runner
         patcher = mock.patch.dict(os.environ, {'PI_AUTOWORK_PUSH': '0'})  # no upstream in this fixture
         patcher.start()
@@ -264,17 +265,17 @@ class DirtyLandingTests(LandingFixture):
 
     def test_identical_rewrites_become_quiet_but_new_content_restarts_the_clock(self):
         with mock.patch.dict(os.environ, {'PI_AUTOWORK_PLANNING_QUIET': '600'}):
-            with mock.patch('pi_autowork.coordinator.time.time', return_value=1000):
+            with mock.patch('pi_autowork.landing.time.time', return_value=1000):
                 self.assertTrue(self.runner.commit_owner_changes())
             self.note.write_text(self.parked + 'another edit\n')
-            with mock.patch('pi_autowork.coordinator.time.time', return_value=1500):
+            with mock.patch('pi_autowork.landing.time.time', return_value=1500):
                 self.assertTrue(self.runner.commit_owner_changes())
             for now in (1600, 2000):
                 self.note.write_bytes(self.note.read_bytes())
-                with mock.patch('pi_autowork.coordinator.time.time', return_value=now):
+                with mock.patch('pi_autowork.landing.time.time', return_value=now):
                     self.assertTrue(self.runner.commit_owner_changes())
             self.note.write_bytes(self.note.read_bytes())
-            with mock.patch('pi_autowork.coordinator.time.time', return_value=2101):
+            with mock.patch('pi_autowork.landing.time.time', return_value=2101):
                 self.assertEqual(self.runner.commit_owner_changes(), '')
         self.assertEqual(self.git(self.repo, 'status', '--porcelain'), '')
         self.assertEqual(self.note.read_text(), self.parked + 'another edit\n')

@@ -22,7 +22,7 @@ import sys
 import tempfile
 import time
 
-from . import (fleet_view, health, janitor, main_check, maintainer, optimistic, pi_runtime, questions, release,
+from . import (fleet_view, health, janitor, landing, main_check, maintainer, optimistic, pi_runtime, questions, release,
                task_commands, telemetry, worker, workspaces)
 from .common import LOG, dirty, git, git_ok, lifecycle, open_for_writing, safe_name, summary_list
 
@@ -1165,20 +1165,12 @@ class Coordinator:
         self.sync_upstream()
         return True
 
-    def checkout_operation(self):
-        """Never land through an unfinished operation in the owner's checkout."""
-        for marker in ('MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-merge', 'rebase-apply'):
-            found = git(self.repo, 'rev-parse', '--path-format=absolute', '--git-path', marker)
-            if found and Path(found).exists():
-                return f'a {marker.split("_")[0].split("-")[0].lower()} is in progress in the main checkout'
-        return ''
-
     def fast_forward_main(self):
         """Land the already merged session; return the reason main must wait, or ''."""
         current = git(self.repo, 'symbolic-ref', '--short', '-q', 'HEAD')
         if current != self.base:
             return f'{self.repo} is on {current or "a detached HEAD"}, not {self.base}'
-        reason = self.checkout_operation()
+        reason = landing.checkout_operation(self.repo)
         if reason:
             return reason
         old, new = git(self.repo, 'rev-parse', self.base), git(self.repo, 'rev-parse', self.integ_branch)
@@ -1197,11 +1189,14 @@ class Coordinator:
             # main. A conflict, a staged or binary edit, or a file open for writing still waits. A
             # runner retried every minute for hours on quiet documentation edits.
             quiet = float(os.environ.get('PI_AUTOWORK_PLANNING_QUIET', '600'))
-            recent = self.recent_owner_paths(owned, quiet) if owned else []
+            recent = landing.recent_owner_paths(self.repo, self.state, owned, quiet) if owned else []
             if recent:
                 return ('uncommitted changes overlap the landing: ' + ', '.join(owned)
                         + f'; it lands around them once they are unchanged for {int(quiet // 60)} min')
-            reason = self.land_around_edits(old, new)
+            try:
+                reason = landing.land_around_edits(self.repo, self.base, old, new)
+            except landing.LandingBroken as exc:
+                raise Finish(1, str(exc)) from exc
             if not reason:
                 telemetry.observe(self.repo, self.base)
             return reason
@@ -1214,194 +1209,12 @@ class Coordinator:
             telemetry.observe(self.repo, self.base)
         return '' if result.returncode == 0 else (result.stdout + result.stderr).strip()
 
-    def land_around_edits(self, old, new):
-        """Prepare an index without checking out, rebase dirty regular files, then CAS main.
-
-        No stash/reset/checkout touches the owner's work. Unsupported file kinds, staged
-        overlapping edits and any conflict wait rather than guessing at their meaning.
-        The real index is locked throughout; all files are prepared and checked before
-        moving the ref, then checked again before installing any output. Snapshot and
-        /proc checks detect races, but are not a lock shared by arbitrary external editors.
-        """
-        index = Path(git(self.repo, 'rev-parse', '--path-format=absolute', '--git-path', 'index'))
-        lock = Path(str(index) + '.lock')
-        try:
-            lock_fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        except OSError:
-            return 'the main index is locked; another Git writer may be active'
-        prepared, snapshots, outputs = {}, {}, []
-        moved = finished = installed = False
-        ref = f'refs/heads/{self.base}'
-        path = 'main index'
-        try:
-            with tempfile.TemporaryDirectory(prefix='autowork-land-') as scratch:
-                scratch = Path(scratch)
-                env = dict(os.environ, GIT_INDEX_FILE=str(scratch / 'index'))
-                shutil.copyfile(index, env['GIT_INDEX_FILE'])
-                def run(*args, **kwargs):
-                    return subprocess.run(['git', '-C', str(self.repo), *args],
-                                          capture_output=True, env=env, **kwargs)
-
-                def tree(rev):
-                    entries = run('ls-tree', '-rz', rev, check=True).stdout.split(b'\0')
-                    return {os.fsdecode(e.split(b'\t', 1)[1]): e.split(b'\t', 1)[0].split()
-                            for e in entries if e}
-
-                before, after = tree(old), tree(new)
-                changed = sorted(p for p in before.keys() | after.keys() if before.get(p) != after.get(p))
-                # Raw blobs are correct only without checkout conversions. Do not silently
-                # drop CRLF, smudge filters, encodings or ident expansion in this fallback.
-                if (git(self.repo, 'config', '--get', 'core.autocrlf') not in (None, 'false')
-                        or git(self.repo, 'config', '--get', 'core.eol') == 'crlf'):
-                    return f'{changed[0]}: checkout conversion requires a normal Git landing'
-                if git(self.repo, 'config', '--get', 'core.sparseCheckout') == 'true':
-                    return f'{changed[0]}: sparse checkout requires a normal Git landing'
-                staged = run('diff', '--cached', '--name-only', '-z', old, check=True).stdout.split(b'\0')
-                result = run('read-tree', '-i', '-m', old, new)
-                if result.returncode:
-                    return 'the main index cannot take the landing: ' + result.stderr.decode(errors='replace').strip()
-                # Check both the current working attributes and the destination's index:
-                # the session may itself introduce a conversion in .gitattributes.
-                for source in ((), ('--cached',)):
-                    attrs = run('check-attr', *source, '-z', 'filter', 'working-tree-encoding', 'eol', 'text',
-                                'ident', '--', *changed, check=True).stdout.split(b'\0')
-                    for name, attr, value in zip(attrs[0::3], attrs[1::3], attrs[2::3]):
-                        if value not in (b'unspecified', b'unset'):
-                            return f'{os.fsdecode(name)}: checkout conversion ({os.fsdecode(attr)}) is unsupported'
-                for path in sorted(changed):
-                    file = Path(self.repo) / path
-                    # Refuse symlinks, gitlinks and paths through symlink directories.
-                    if any(p.is_symlink() for p in (file, *file.parents)):
-                        return f'{path}: symlink path cannot be landed around safely'
-                    a, b = before.get(path), after.get(path)
-                    if any(e and e[0] not in (b'100644', b'100755') for e in (a, b)):
-                        return f'{path}: unsupported file kind'
-                    if os.fsencode(path) in staged:
-                        return f'{path}: staged edit overlaps the landing'
-                    if file.exists() and not file.is_file():
-                        return f'{path}: not a regular file'
-                    info = file.stat() if file.exists() else None
-                    content = file.read_bytes() if info else None
-                    snapshots[path] = (info, content)
-                    base = run('cat-file', 'blob', a[2].decode(), check=True).stdout if a else None
-                    target = run('cat-file', 'blob', b[2].decode(), check=True).stdout if b else None
-                    mode = (info.st_mode & 0o777) if info else None
-                    dirty_file = content != base or (a and bool(mode & 0o111) != (a[0] == b'100755'))
-                    output = target
-                    if dirty_file:
-                        if (content is None or base is None or target is None or a[0] != b[0]
-                                or bool(mode & 0o111) != (a[0] == b'100755')):
-                            return f'{path}: uncommitted add/delete or mode change overlaps the landing'
-                        for name, data in (('ours', target), ('base', base), ('theirs', content)):
-                            (scratch / name).write_bytes(data)
-                        merged = run('merge-file', '-p', str(scratch / 'ours'), str(scratch / 'base'),
-                                     str(scratch / 'theirs'))
-                        if merged.returncode:
-                            return f'{path}: uncommitted edit conflicts with the landing'
-                        output = merged.stdout
-                    # Prepare destination-filesystem outputs before moving main: permission,
-                    # disk-space or cross-device errors must not leave a half-written file.
-                    file.parent.mkdir(parents=True, exist_ok=True)
-                    with tempfile.NamedTemporaryFile(dir=file.parent, prefix='.autowork-land-', delete=False) as out:
-                        staged_file = Path(out.name)
-                        outputs.append(staged_file)
-                        if output is not None:
-                            out.write(output)
-                            if mode is not None:
-                                permissions = (mode if a and a[0] == b[0]
-                                               else (mode & ~0o111) | (int(b[0], 8) & 0o111))
-                            else:
-                                # Linux is the runner's platform. Read rather than change
-                                # the process-wide umask while preparing new files.
-                                mask = next((line.split()[1] for line in Path('/proc/self/status').read_text().splitlines()
-                                             if line.startswith('Umask:')), '077')
-                                permissions = (0o777 if b[0] == b'100755' else 0o666) & ~int(mask, 8)
-                            os.fchmod(out.fileno(), permissions)
-                        out.flush()
-                        os.fsync(out.fileno())
-                    prepared[path] = staged_file if output is not None else None
-                # Fill the real lockfile too before CAS: ENOSPC/flush failures must not
-                # advance HEAD or leave an old index describing staged reversions.
-                path = 'main index'
-                with os.fdopen(lock_fd, 'wb') as stream:
-                    lock_fd = None
-                    stream.write(Path(env['GIT_INDEX_FILE']).read_bytes())
-                    stream.flush()
-                    os.fsync(stream.fileno())
-                # Validate after the expensive merge work, not just when we first read.
-                def unchanged():
-                    reason = self.checkout_operation()
-                    if reason:
-                        return reason
-                    if git(self.repo, 'symbolic-ref', '--short', '-q', 'HEAD') != self.base:
-                        return 'the main checkout changed branches during landing'
-                    held = open_for_writing([Path(self.repo) / p for p in snapshots])
-                    if held:
-                        return f'{os.path.relpath(sorted(held)[0], self.repo)} is open for writing'
-                    def identity(st):
-                        return ((st.st_dev, st.st_ino, st.st_mode, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
-                                if st else None)
-                    for name, (info, content) in snapshots.items():
-                        file = Path(self.repo) / name
-                        if any(p.is_symlink() for p in (file, *file.parents)):
-                            return f'{name}: path changed to a symlink during landing'
-                        now = file.lstat() if file.exists() else None
-                        if identity(now) != identity(info) or (now and file.read_bytes() != content):
-                            return f'{name}: working file changed during landing'
-                    return ''
-
-                reason = unchanged()
-                if reason:
-                    return reason
-                if not git_ok(self.repo, 'update-ref', ref, new, old):
-                    return f'{self.base} changed during landing; compare-and-swap refused'
-                moved = True
-                reason = unchanged()
-                if reason:
-                    if not git_ok(self.repo, 'update-ref', ref, old, new):
-                        raise Finish(1, f'Cannot restore {self.base} after refused landing: {reason}')
-                    moved = False
-                    return reason
-                for path, output in prepared.items():
-                    file = Path(self.repo) / path
-                    if output is None:
-                        file.unlink(missing_ok=True)
-                    else:
-                        os.replace(output, file)
-                    installed = True
-                # Only the committed session tree goes into the index. The rebased owner
-                # edit stays a working-tree diff, never part of a commit.
-                os.replace(lock, index)
-                finished = True
-                return ''
-        except (OSError, subprocess.CalledProcessError) as exc:
-            # A file may disappear between lstat/read in the post-CAS validation.
-            # Nothing has been installed yet: restore the ref just as for a changed
-            # snapshot, rather than retaining an advanced HEAD with the old index.
-            if moved and not installed:
-                if not git_ok(self.repo, 'update-ref', ref, old, new):
-                    raise Finish(1, f'Cannot restore {self.base} after refused landing: {exc}') from exc
-                moved = False
-            if moved:
-                raise Finish(1, f'Landing moved {self.base} but could not finish writing {path}: {exc}; '
-                             f'prepared index kept at {lock}; remaining .autowork-land-* outputs kept') from exc
-            if isinstance(exc, OSError) and exc.filename:
-                path = os.path.relpath(exc.filename, self.repo)
-            return f'{path}: cannot prepare landing: {exc}'
-        finally:
-            if lock_fd is not None:
-                os.close(lock_fd)
-            if not moved or finished:
-                lock.unlink(missing_ok=True)
-                for output in outputs:
-                    output.unlink(missing_ok=True)
-
     def sync_upstream(self):
         """Pull, then push: merge commits the upstream gained into the session and the main
         branch, then publish the main branch if it is ahead. Called after every landing and once
         at start, so a backlog is published and the session never drifts behind the upstream."""
-        if os.environ.get('PI_AUTOWORK_PUSH', '1') == '0':
-            return
+        if os.environ.get('PI_AUTOWORK_PUSH', '0') != '1':
+            return self.push()  # says once that main stays local
         upstream = git(self.repo, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', f'{self.base}@{{u}}')
         if not upstream or '/' not in upstream:
             return self.push()  # says once that there is no upstream
@@ -1423,9 +1236,13 @@ class Coordinator:
 
         Fast-forward only, never forced; workers and Pi's tools stay unable to push (the push
         guard), only this step runs without it. A rejected push fetches the upstream, merges
-        it into the session, lands that and pushes once more. PI_AUTOWORK_PUSH=0 turns it off.
+        it into the session, lands that and pushes once more. Only an explicit
+        PI_AUTOWORK_PUSH=1 grant enables publication; saved repository grants are reused.
         """
-        if os.environ.get('PI_AUTOWORK_PUSH', '1') == '0':
+        if os.environ.get('PI_AUTOWORK_PUSH', '0') != '1':
+            if self.seen.get('push-note') != 'no grant':
+                self.seen['push-note'] = 'no grant'
+                LOG.say(f'Not pushed: {self.base} stays local (no PI_AUTOWORK_PUSH=1 grant for this repository)')
             return
         upstream = git(self.repo, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', f'{self.base}@{{u}}')
         if not upstream or '/' not in upstream:
@@ -1498,7 +1315,7 @@ class Coordinator:
         """
         if git(self.repo, 'symbolic-ref', '--short', '-q', 'HEAD') != self.base:
             return f'the main checkout is not on {self.base}'
-        reason = self.checkout_operation()
+        reason = landing.checkout_operation(self.repo)
         if reason:
             return reason
         entries = iter([e for e in (git(self.repo, 'status', '--porcelain', '-z', '--untracked-files=all') or '')
@@ -1514,7 +1331,7 @@ class Coordinator:
         planning = self.owner_planning_paths()
         paths = self.publishable([p for p in paths if planning(p)])
         quiet = float(os.environ.get('PI_AUTOWORK_PLANNING_QUIET', '600'))
-        recent = self.recent_owner_paths(paths, quiet)
+        recent = landing.recent_owner_paths(self.repo, self.state, paths, quiet)
         if not paths:
             return ''
         files = [Path(self.repo) / p for p in paths]
@@ -1528,47 +1345,10 @@ class Coordinator:
                       '-m', 'Uncommitted planning changes in the main checkout, quiet and open nowhere, '
                             'committed so finished work can merge (auto work).', '--', *paths):
             return 'the commit of uncommitted changes failed'
-        self.recent_owner_paths([], quiet)
+        landing.recent_owner_paths(self.repo, self.state, [], quiet)
         shown = ', '.join(paths[:6]) + (f' (+{len(paths) - 6} more)' if len(paths) > 6 else '')
         LOG.say(f'Committed uncommitted changes in {self.repo} ({shown}) so the session can merge')
         return ''
-
-    def recent_owner_paths(self, paths, quiet):
-        """Quiet means unchanged bytes since our last observation, not an old mtime.
-
-        Persist observations so a service restart does not restart the quiet interval.
-        Clean paths disappear from the record; a later edit starts a fresh interval.
-        """
-        record = self.state / 'owner-content.json'
-        try:
-            previous = json.loads(record.read_text())
-            if not isinstance(previous, dict):
-                previous = {}
-        except (OSError, ValueError):
-            previous = {}
-        now, observed, recent = time.time(), {}, []
-        for path in paths:
-            file = Path(self.repo) / path
-            try:
-                data = os.fsencode(os.readlink(file)) if file.is_symlink() else file.read_bytes()
-                digest = hashlib.sha256(data).hexdigest()
-            except FileNotFoundError:
-                digest = 'deleted'
-            except OSError:
-                recent.append(path)
-                continue
-            old = previous.get(path)
-            since = (old.get('since') if isinstance(old, dict) and old.get('hash') == digest else now)
-            if not isinstance(since, (int, float)) or since > now:
-                since = now
-            observed[path] = {'hash': digest, 'since': since}
-            if now - since < quiet:
-                recent.append(path)
-        if observed != previous:
-            with tempfile.NamedTemporaryFile(mode='w', dir=self.state, prefix='owner-content.', delete=False) as out:
-                json.dump(observed, out)
-            os.replace(out.name, record)
-        return recent
 
     def sweep_tmp(self):
         """Stale agent scratch in RAM-backed /tmp goes, at most every 30 minutes per host

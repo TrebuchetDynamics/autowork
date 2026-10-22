@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-353-9db87df7"
 title = "Make automatic push opt-in for new repository runners"
 short = "New repositories: explicit push grant"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 45000
@@ -16,7 +16,12 @@ scope = "Implement the owner decision on TOOLSET-326-fb: new repository runners 
 acceptance = ["A new repository fixture without a grant cannot push through either normal publication or upstream-sync publication.", "An explicit grant persists for one repository only, survives a later load, and does not require approval on each cycle.", "Existing saved on/off settings are byte-preserved unless explicitly edited for that repository; the effective setting is visible without lifecycle changes."]
 checks = ["python3 scripts/check.py tests/test_autowork_push_setting.py tests/test_autowork_command.py"]
 exclusions = ["No actual push or network publication, service lifecycle change, live profile/job settings, credential access or installed-runtime migration."]
+closure = "manual"
+closure_actor = "owner interactive session (Claude)"
+closure_timestamp = "2026-10-22T01:17:03.762109+00:00"
+closure_reason = "Re-landed unchanged in e5162924 after the misattributed revert 6ef6c826; main's red check was the stalled-service assertion fixed in a215993d"
+closure_evidence = "commit e5162924 re-lands the reviewed landing (reverted by misattributed optimistic-landing blame; the failing test predated it and was fixed in a215993d); scripts/affected_tests.py --base HEAD --run passed on the staged change"
 +++
 
 - Sources: tasks/items/TOOLSET-326-fb.md
-- Reopened: its landing broke the full check on main at a9926d3: test_pi_autowork.EngineTests.test_a_stalled_service_says_so_once_and_the_fleet_view_shows_why; reverted by optimistic landing. Fix those tests in the next attempt
+- Reopened: optimistic landing reverted 6ef6c826 at a9926d3, blaming test_pi_autowork.EngineTests.test_a_stalled_service_says_so_once_and_the_fleet_view_shows_why. The blame was misattributed: that assertion predated this landing and was fixed in a215993d, and this task was re-landed unchanged in e5162924 (see the closure above). No test work belongs to this task.
