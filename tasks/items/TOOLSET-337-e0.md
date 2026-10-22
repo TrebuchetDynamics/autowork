@@ -5,8 +5,8 @@ title = "The runner end-to-end tests (tests/test_pi_autowork.py) run in a fracti
 short = "Faster runner end-to-end tests"
 status = "open"
 goal = "RELIABILITY-2026-10"
-section = "Next"
-rank = 28000
+section = "Needs decision"
+rank = 38000
 depends_on = []
 touches = ["tests/test_pi_autowork.py", "scripts/check.py"]
 resources = []
@@ -18,3 +18,4 @@ checks = ["python3 scripts/check.py tests/test_pi_autowork.py"]
 exclusions = []
 +++
 
+- Owner decision: 2026-10-22: deferred. Two attempts could not qualify the idle-host halving because the fleet host is never idle while runners work (host busy 46 to 93 percent during both measurements); the acceptance needs a quiet window the owner schedules. Dependents that only shared its files (TOOLSET-338-82, TOOLSET-361-6e5f6471) no longer wait for it while it is deferred.
