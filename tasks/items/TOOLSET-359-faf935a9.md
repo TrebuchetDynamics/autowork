@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-359-faf935a9"
 title = "Remove the command/task_prepare/fleet_view import cycle"
 short = "Break the task_prepare import cycle"
-status = "open"
+status = "done"
 goal = "CODE-HEALTH-2026-10"
 section = "Next"
 rank = 49000
@@ -16,6 +16,8 @@ scope = "task_prepare.prepare imports command and fleet_view inside the function
 acceptance = ["A test imports every pi_autowork module in isolation and asserts the import graph (module-level and function-level) has no cycle", "tests/test_task_prepare.py, pi-autowork/tests/test_fleet_view.py and tests/test_autowork_command.py pass unchanged"]
 checks = ["python3 scripts/check.py tests/test_task_prepare.py pi-autowork/tests/test_fleet_view.py tests/test_autowork_command.py"]
 exclusions = []
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-359-faf935a9.toml"
 +++
 
 - Sources: docs/plans/structural-audit-2026-10.md#hotspots
