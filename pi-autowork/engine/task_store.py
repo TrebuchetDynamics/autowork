@@ -456,9 +456,8 @@ def toml_value(key, value) -> str:
     if isinstance(value, int):
         return str(value)
     if isinstance(value, str):
-        if _CONTROL.search(value.replace('\n', '').replace('\r', '').replace('\t', '')):
-            raise WriteError(f'{key}: control characters cannot be written')
-        # JSON escapes line breaks/tabs in the same form as TOML basic strings.
+        if _CONTROL.search(value):
+            raise WriteError(f'{key}: control characters and line breaks cannot be written; use one line')
         return json.dumps(value, ensure_ascii=False)
     if isinstance(value, (list, tuple)) and all(isinstance(v, str) for v in value):
         return '[' + ', '.join(toml_value(key, v) for v in value) + ']'

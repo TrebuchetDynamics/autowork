@@ -49,19 +49,14 @@ class WriterTests(unittest.TestCase):
         removed = edit(text, {'live': None})
         self.assertNotIn('live =', removed)
         self.assertEqual(split(removed)[1], split(text)[1])
-        # Literal JSON input permits TOML-escaped prose, not lossy normalization.
-        changes = {'scope': 'two\nlines', 'title': 'tab\there'}
-        fields, body = split(text)
-        edited = edit(text, changes)
-        expected = ({**fields, **changes}, body)
-        self.assertEqual(split(edited), expected)
-        self.assertEqual(split(render(*split(edited))), expected)
 
     def test_refuses_input_it_cannot_preserve(self):
         text = (FIXTURES / 'items/T-1.md').read_text()
         refusals = (
             (text.replace('rank = 1', 'rank = 1 # keep'), {'rank': 2}, 'comment'),
             (text.replace('touches = ["src/"]', 'touches = [\n  "src/",\n]'), {'touches': ['a/']}, 'several lines'),
+            (text, {'scope': 'two\nlines'}, 'line breaks'),
+            (text, {'title': 'tab\there'}, 'control characters'),
             (text, {'id': 'T-2'}, 'cannot be set'),
             (text, {'unknown': 'x'}, 'cannot be set'),
             (text, {'rank': 1.5}, 'unsupported'),
