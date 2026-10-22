@@ -49,6 +49,37 @@ class TaskCommandTests(unittest.TestCase):
                          '--acceptance', 'done', '--checks', 'true', '--touches', 'src/', *extra).stdout
         return out.split()[-1]
 
+    def test_worktree_validation_and_writes_leave_no_git_objects(self):
+        # Exercise common-dir lookup and C-quoted alternates in a linked checkout.
+        origin = self.repo.with_name('repo:\x01with-"quotes"')
+        self.repo.rename(origin)
+        self.repo = origin
+        linked = origin / '.worktrees/validation'
+        self.git('worktree', 'add', '-qb', 'validation', str(linked))
+        self.repo = linked
+        index_path = Path(self.git('rev-parse', '--absolute-git-dir').strip()) / 'index'
+        # A private index alone still leaks add/write-tree/commit-tree objects.
+        (self.repo / 'staged.txt').write_text('unrelated staged content\n')
+        self.git('add', 'staged.txt')
+        index = index_path.read_bytes()
+        refs = self.git('show-ref', '--head')
+        objects = self.git('count-objects', '-v')
+        path = self.repo / 'tasks/items/T-1.md'
+        path.write_text(path.read_text().replace('Read tasks', 'Edited task'))
+        for args in (('validate', '--worktree'), ('prepare',),
+                     ('field', 'T-1', 'title', 'Written task'),
+                     ('show', 'T-1', '--worktree')):
+            with self.subTest(command=args):
+                result = self.tasks(*args)
+                if args[0] == 'show':
+                    self.assertEqual(json.loads(result.stdout)['title'], 'Written task')
+                self.assertEqual(self.git('count-objects', '-v'), objects)
+                self.assertEqual(index_path.read_bytes(), index)
+                self.assertEqual(self.git('show-ref', '--head'), refs)
+        path.write_text('invalid frontmatter\n')
+        self.assertNotEqual(self.tasks('validate', '--worktree', ok=False).returncode, 0)
+        self.assertEqual(self.git('count-objects', '-v'), objects)
+
     def test_add_then_show(self):
         legacy = self.add('Legacy task', '--id', 'T-010-ab')
         legacy_path = self.repo / 'tasks/items' / f'{legacy}.md'

@@ -139,22 +139,25 @@ def expect(repo, tid, rev, goal=False):
 
 @_serialized
 def worktree_store(repo):
-    """The store as the working tree has it, read through a throwaway commit; the real
-    index, HEAD and refs are untouched."""
+    """Read the worktree through an isolated throwaway commit; real objects, index,
+    HEAD and refs are untouched. The returned records outlive the temporary objects."""
     if not (Path(repo) / 'tasks').is_dir():
         raise StoreError('tasks/:1: no task store in the working tree')
-    with tempfile.TemporaryDirectory() as tmp:
-        env = {'GIT_INDEX_FILE': str(Path(tmp) / 'index')}
-        head = subprocess.run(['git', '-C', str(repo), 'rev-parse', '--verify', '-q', 'HEAD'],
-                              capture_output=True, text=True).stdout.strip()
+    with tempfile.TemporaryDirectory() as tmp, task_store.temporary_objects(repo) as objects:
+        env = {**objects, 'GIT_INDEX_FILE': str(Path(tmp) / 'index')}
+        try:
+            head = _git(repo, 'rev-parse', '--verify', '-q', 'HEAD', env=env)
+        except CommandError:
+            head = ''  # An unborn repository can still bootstrap a task store.
         if head:
             _git(repo, 'read-tree', head, env=env)
         _git(repo, 'add', '-A', '--', 'tasks', env=env)
         tree = _git(repo, 'write-tree', env=env)
         ident = {'GIT_AUTHOR_NAME': 'autowork', 'GIT_AUTHOR_EMAIL': 'autowork@localhost',
                  'GIT_COMMITTER_NAME': 'autowork', 'GIT_COMMITTER_EMAIL': 'autowork@localhost'}
-        commit = _git(repo, 'commit-tree', tree, *(['-p', head] if head else []), '-m', 'worktree tasks', env=ident)
-    return TaskStore.at(repo, commit)
+        commit = _git(repo, 'commit-tree', tree, *(['-p', head] if head else []), '-m', 'worktree tasks',
+                      env={**env, **ident})
+        return TaskStore.at(repo, commit, env=objects)
 
 
 def _path(repo, tid, goal=False):

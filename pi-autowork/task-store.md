@@ -15,6 +15,9 @@ through it, at a pinned commit. Nothing reads TODO.md or goals.json; only
   batches, and check integration ancestry at the same pinned revision. The returned `rev` is that pinned SHA, not the input
   branch name. Working-tree edits never become records. Git replacement refs
   are disabled so they cannot substitute content for the pinned object IDs.
+  Internal validation can pass an explicit `env` selecting a temporary object
+  database; inherited `GIT_*` settings remain ignored. All records, receipts and
+  ancestry checks are read eagerly before that database is removed.
 - `store.tasks` and `store.goals` are immutable mappings keyed by ID, containing
   frozen `TaskRecord` and `GoalRecord` values. Collections inside records are
   tuples; `body` retains the Markdown after the closing delimiter.
@@ -149,8 +152,9 @@ header strings are escaped on one physical TOML line and read back unchanged.
 
 `autowork tasks` reads at HEAD (`list`, `show`, `why`, `validate`; `--worktree` on `list`,
 `show` and `validate` reads uncommitted edits through a throwaway commit that leaves the
-index and refs alone) and edits the working tree (`add`, `field`, `place`, `move`, `hold`,
-`release`, `done`, `supersede`, `goal`; `new-id` allocates an ID); it never commits. A write
+repository's objects, index and refs alone) and edits the working tree (`add`, `field`,
+`place`, `move`, `hold`, `release`, `done`, `supersede`, `goal`; `new-id` allocates an ID);
+it never commits. A write
 holds the repository's task lock (`<git dir>/autowork-tasks.lock`), so two writers never
 interleave; refuses a file that changed since it was read, or since the `record_revision`
 given as `--expect REV`; and is undone when the resulting store does not validate.
@@ -158,6 +162,14 @@ The Python command entry points and working-tree reads share that lock too. A `m
 that rebalances neighbours, or a `goal --focus` that clears another goal, compares all
 inputs before writing and validates the resulting set once. Rendering or validation
 failure, an I/O error or a Python interruption undoes the whole set.
+
+Working-tree validation (including task writes and `prepare` reads of pending edits)
+uses a temporary index and object database. The repository's existing objects are
+read-only alternates, including in linked worktrees. New blobs, trees and proof commits
+are removed on success or exception, not left loose and unreachable in the repository.
+Returned records remain usable, but a working-tree result's `rev` is an ephemeral proof
+ID, not a durable revision to read again. This does not remove existing objects or
+change GC configuration; a process killed without cleanup may leave temporary files.
 
 Before replacing any record, the writer flushes an undo journal at
 `<git dir>/autowork-tasks.transaction`. Removing that journal commits the set. If the
@@ -255,7 +267,10 @@ finished commit, not a repeated quick hold) does not stop it: the runner that wo
 answer cannot run before conversion, so the proven conversion sets that attempt aside, as
 `--parallel-set-aside` does, and the task dispatches fresh from its converted record. It builds
 every record, reads them back through a throwaway commit and requires the same task set and
-the same selection order as the current queue before writing. The converted commit (records
+the same selection order as the current queue before writing. The proof's objects live
+only in a temporary object database: `--dry-run` adds no repository objects. An actual
+conversion rebuilds the proven tree in the repository before creating its durable
+candidate; the throwaway proof commit is never persisted. The converted commit (records
 added, TODO.md and goals.json removed with no stub, TODO.archive.md kept) is recorded as
 `refs/autowork/migration` before any file changes; its paths are then staged in the working
 tree and index, HEAD moves to it by compare-and-swap, and the ref is deleted. A run
@@ -416,4 +431,11 @@ backtick and command-substitution payloads never create their marker files. `tes
 repair, concurrency and repeat runs on disposable repositories), the engine's dispatch and
 integration tests and `tests/test_task_store_qualification.py` cover conversion, the CLI,
 admission, closure and one runner journey on a fixture repository. None of them is
-live-service acceptance.
+live-service acceptance. The CLI object-isolation case checks `count-objects`, index
+bytes and refs across worktree validation, pending-edit preparation and task writes
+in a linked checkout, plus rejected validation. Migration cases check that dry-run
+proofs add no objects and an actual conversion leaves no unreachable proof commit.
+
+The [October 2026 object audit](../docs/plans/unreachable-objects-2026-10.md) records
+remaining object-producing paths and preservation/candidate ref reachability. It does
+not establish safety to re-enable automatic GC or authorize cleanup.
