@@ -1,6 +1,8 @@
 """`autowork tasks ...` against a real Git repository built from the TaskStore fixture."""
 import json
 from pathlib import Path
+import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -73,12 +75,71 @@ class TaskCommandTests(unittest.TestCase):
         self.assertFalse((self.repo / 'TODO.md').exists())
         self.assertFalse((self.repo / 'goals.json').exists())
 
+    def test_json_input_round_trips_literal_prose_without_shell_execution(self):
+        # Run the documented shell form; expanding either command would leave a marker.
+        prose = '  `touch backtick-ran` $(touch substitution-ran) $VAR "double" \'single\' café\nnext line  '
+        bin_dir = self.repo / 'bin'
+        bin_dir.mkdir()
+        wrapper = bin_dir / 'autowork'
+        wrapper.write_text(f'#!/bin/sh\nexec {shlex.quote(sys.executable)} {shlex.quote(str(COMMAND))} "$@"\n')
+        wrapper.chmod(0o755)
+        env = {**os.environ, 'PATH': str(bin_dir) + os.pathsep + os.environ['PATH'], 'VAR': 'expanded'}
+        for index, source in enumerate(('payload.json', '- < payload.json')):
+            with self.subTest(source=source):
+                def invoke(verb, payload):
+                    (self.repo / 'payload.json').write_text(json.dumps(payload), encoding='utf-8')
+                    result = subprocess.run(['/bin/sh', '-c', f'autowork tasks {verb} --json {source}'],
+                                            cwd=self.repo, env=env, capture_output=True, text=True, timeout=60)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertFalse((self.repo / 'backtick-ran').exists())
+                    self.assertFalse((self.repo / 'substitution-ran').exists())
+                    return result.stdout.strip()
+
+                gid = f'JSON-{index}'
+                invoke(f'goal {gid}', dict(title=prose, source='docs/plan.md#json', priority=2))
+                tid = invoke('add', dict(goal=gid, title=f'Literal {index}', short='Literal', scope=prose,
+                                         acceptance=[prose], notes=prose, checks=['true'], touches=['src/'])).split()[-1]
+                record = json.loads(self.tasks('show', tid, '--worktree').stdout)
+                self.assertEqual((record['scope'], record['acceptance'], record['notes']), (prose, [prose], prose))
+                changed = prose + '\nupdated'
+                for label, value in (('scope', changed), ('acceptance', [changed]), ('notes', changed)):
+                    invoke(f'field {tid}', dict(label=label, value=value))
+                record = self.show(tid)
+                self.assertEqual((record['scope'], record['acceptance'], record['notes']),
+                                 (changed, [changed], changed))
+                self.assertEqual(TaskStore.at(self.repo, 'HEAD').goals[gid].title, prose)
+
+    def test_json_input_refuses_invalid_or_ambiguous_values_without_writing(self):
+        path = self.repo / 'payload.json'
+        before = self.git('status', '--porcelain', '--', 'tasks')
+        for verb, payload in (
+            (['add'], '{'), (['add'], '[]'), (['add'], '{"goal": "G-1"}'),
+            (['add'], '{"goal": "G-1", "title": "x", "short": "x", "acceptance": "not an array"}'),
+            (['add', '--title', 'flag'], '{"goal": "G-1", "title": "json", "short": "x"}'),
+            (['field', 'T-1'], '{"label": "rank", "value": true}'),
+            (['field', 'T-1'], '{"label": "scope", "value": 1}'),
+            (['field', 'T-1'], '{"label": "acceptance", "value": [1]}'),
+            (['goal', 'G-1'], '{"focus": "false"}'),
+            (['goal', 'G-1'], '{"priority": true}'),
+            (['goal', 'G-1'], '{"unknown": "x"}'),
+            (['add'], '{"goal": "G-1", "title": "x", "short": "x", "notes": "raw", "sources": "docs/plan.md"}'),
+        ):
+            with self.subTest(verb=verb, payload=payload):
+                path.write_text(payload)
+                refused = self.tasks(*verb, '--json', str(path), ok=False)
+                self.assertNotEqual(refused.returncode, 0)
+                self.assertNotIn('Traceback', refused.stderr)
+                self.assertEqual(self.git('status', '--porcelain', '--', 'tasks'), before)
+        self.assertNotEqual(self.tasks('field', 'T-1', '--json', 'missing.json', ok=False).returncode, 0)
+
     def test_field_sets_a_typed_field_or_a_note(self):
         self.tasks('field', 'T-1', 'touches', 'src/, docs/')
         self.tasks('field', 'T-1', 'Held by', 'the owner; until 2026-10-27')
+        self.tasks('field', 'T-1', 'notes', 'legacy note')
         record = self.show('T-1')
         self.assertEqual(record['touches'], ['src/', 'docs/'])
         self.assertIn('- Held by: the owner; until 2026-10-27', record['notes'])
+        self.assertIn('- notes: legacy note', record['notes'])
         self.assertEqual(self.tasks('field', 'T-1', 'rank', 'high', ok=False).returncode, 1)
         self.assertEqual(self.tasks('field', 'T-1', 'status', 'done', ok=False).returncode, 1)
 

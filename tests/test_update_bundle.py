@@ -588,7 +588,7 @@ class UpdateTests(unittest.TestCase):
 
 
 class ScopedUpdateTests(unittest.TestCase):
-    """Real Git and file publication; the native installer is the external boundary."""
+    """Real Git/publication/admission; native install and process inventory are injected."""
     git = UpdateTests.git
     advance = UpdateTests.advance
 
@@ -600,6 +600,13 @@ class ScopedUpdateTests(unittest.TestCase):
         self.calls = []
         self.native = patch.object(self.mod, 'native_call', self.fake_native, create=True)
         self.native.start(); self.addCleanup(self.native.stop)
+        # Only inspect helpers deliberately launched by this fixture, not unrelated
+        # host processes that can disappear with ESRCH during a /proc scan.
+        self.helper_processes = []
+        iterdir = Path.iterdir
+        def fixture_processes(path):
+            return iter(self.helper_processes) if path == Path('/proc') else iterdir(path)
+        self.enterContext(patch.object(Path, 'iterdir', fixture_processes))
 
     def fake_native(self, action, home, stage, revision, python):
         if action == 'inventory':
@@ -628,7 +635,9 @@ class ScopedUpdateTests(unittest.TestCase):
         self.assertEqual((Path(result['backup'])/'default/original-source/skills/demo/SKILL.md').read_text(), 'old\n')
 
     def test_unchanged_retry_is_noop_with_original_backup(self):
-        first = self.deploy(); self.calls.clear()
+        first = self.deploy()
+        self.assertEqual(first['status'], 'updated', first)
+        self.calls.clear()
         second = self.deploy()
         self.assertEqual(second['status'], 'up_to_date')
         self.assertEqual(first['backup'], second['backup'])
@@ -802,8 +811,10 @@ class ScopedUpdateTests(unittest.TestCase):
         process = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)',
                                     str(self.home/'skills/demo/SKILL.md')])
         self.addCleanup(lambda: (process.terminate(), process.wait()))
+        self.helper_processes.append(Path(f'/proc/{process.pid}'))
         result = self.deploy()
         self.assertEqual(result['profiles']['default']['status'], 'deferred')
+        self.assertIn('Active helper process', result['profiles']['default']['error'])
         self.assertTrue((self.home/'plugins/autowork').is_symlink())
 
     def test_helper_launch_lock_defers_install_without_changing_profile(self):
@@ -826,6 +837,7 @@ class ScopedUpdateTests(unittest.TestCase):
                                            str(self.home/'plugins/autowork/update_bundle.py')])
                 processes.append(process)
                 self.addCleanup(lambda: (process.terminate(), process.wait()))
+                self.helper_processes.append(Path(f'/proc/{process.pid}'))
             return self.fake_native(action, *args)
         with patch.object(self.mod, 'native_call', race):
             result = self.deploy()
@@ -1031,7 +1043,7 @@ class ScopedUpdateTests(unittest.TestCase):
             with self.subTest(names=names), self.assertRaises(ValueError): self.deploy(names)
 
 class ManagedRecoveryTests(unittest.TestCase):
-    """Automatic recovery at the all-profile CLI seam; only native admission is faked."""
+    """All-profile CLI recovery; native admission and process inventory are injected."""
     git = UpdateTests.git
 
     def fake_native(self, action, home, stage, revision, python):
@@ -1045,6 +1057,12 @@ class ManagedRecoveryTests(unittest.TestCase):
 
     def setUp(self):
         UpdateTests.setUp(self)
+        # These disposable homes launch no helpers. Keep real admission checks,
+        # but never scan unrelated host processes that can vanish mid-inventory.
+        iterdir = Path.iterdir
+        def fixture_processes(path):
+            return iter(()) if path == Path('/proc') else iterdir(path)
+        self.enterContext(patch.object(Path, 'iterdir', fixture_processes))
         (self.remote / 'skills/demo/SKILL.md').write_text('old\none\ntwo\nthree\n')
         self.git(self.remote, 'commit', '-am', 'multiline base')
         self.git(self.repo, 'pull', '--ff-only')
@@ -1225,10 +1243,6 @@ class ManagedRecoveryTests(unittest.TestCase):
                 fixture = ManagedRecoveryTests()
                 cleanup.callback(fixture.doCleanups)
                 fixture.setUp()
-                # These disposable homes launch no consumers. Keep this interruption
-                # matrix independent of host /proc churn (including ESRCH mid-scan);
-                # separate admission tests exercise real live/unknown consumers.
-                fixture.enterContext(patch.object(fixture.mod, 'active_consumers', return_value=None))
                 independent = fixture.home / 'profiles/independent'
                 (independent / 'plugins').mkdir(parents=True)
                 fixture.git(independent, 'clone', str(fixture.remote), str(independent / 'plugins/autowork'))

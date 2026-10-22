@@ -186,6 +186,20 @@ store; `autowork migrate` remains available as direct CLI conversion recovery.
 
 The TUI and web view run Textual 8.2.8 (and textual-serve 1.1.3) through `uv`.
 
+## Retained attempt files
+
+The stale `/tmp` sweep (`PI_AUTOWORK_TMP_STALE`) preserves scratch allocated to
+unfinished engine slots, including held and interrupted attempts with no live
+worker. It reads current slots for all registered runners, including stopped
+runners, rather than relying on cached health; incomplete reservation discovery
+defers the sweep. Released, closed and set-aside slots no longer reserve scratch;
+close and set-aside also remove their allocated temp directories directly.
+
+When a task runs fresh after set-aside, its prompt lists earlier task branches
+and any retained set-aside worktrees with their uncommitted paths. These files
+are not restored automatically: inspect them and reuse only work relevant to the
+current task, without modifying the retained worktree.
+
 ## Nous Portal setup (opt-in)
 
 Pi remains the executor; Hermes owns the Portal login and subscription proxy.

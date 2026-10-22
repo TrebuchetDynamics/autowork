@@ -60,6 +60,19 @@ distinct; priority is section, then rank. Only typed fields (`ownership`,
 `resources`, `live`) grant authority; live authorization is the owner's to grant.
 Preserve existing IDs, completed work, holds and priorities; never manufacture work.
 
+For any prose containing quotes, backticks, `$` (including `$(...)` and `$VAR`)
+or newlines, write one UTF-8 JSON object with a file-writing tool and use
+`autowork tasks add --json task.json`, `autowork tasks field ID --json field.json`,
+or `autowork tasks goal ID --json goal.json` from the consumer repository.
+Use `--json - < task.json` for stdin, never interpolated shell arguments, `echo`
+or an unquoted heredoc. Keys mirror options with underscores; lists take arrays.
+Field input is `{"label": "scope", "value": "text"}` (an array for `acceptance`).
+Add's `notes`, or field label `notes`, is the complete literal Markdown body:
+read and retain Sources, holds and other notes before replacing it. Do not mix
+JSON with value flags or label/value arguments. See the
+[literal input reference](../../../pi-autowork/task-store.md#literal-prose-input---json)
+for keys and types; all validation and `--expect REV` guards still apply.
+
 Each `autowork tasks` write changes only the working tree, never commits, takes the
 task lock, refuses a file changed since it was read (or since `--expect REV`, the
 `record_revision` of `show ID --worktree`) and validates the whole store; `add`

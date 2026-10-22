@@ -116,9 +116,15 @@ class QuietRestartTests(unittest.TestCase):
         self.assertEqual(latest['gateway_restart'], 'pending')
 
     def test_live_waiter_counts_as_a_pending_restart_and_reports_progress(self):
-        waiter = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)', '--restart-when-quiet'])
+        waiter = subprocess.Popen(
+            [sys.executable, '-c', "import sys; print('ready', flush=True); sys.stdin.read()", '--restart-when-quiet'],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        self.addCleanup(waiter.stdin.close)
+        self.addCleanup(waiter.stdout.close)
         self.addCleanup(waiter.wait)
         self.addCleanup(waiter.kill)
+        # The child has reached its wait, and stays alive until this fixture stops it.
+        self.assertEqual(waiter.stdout.readline().strip(), 'ready')
         (self.state / 'restart.json').write_text(json.dumps(
             {'mode': 'deferred', 'waiter_pid': waiter.pid, 'deferred_ns': 1, 'window_s': 21600,
              'chat_turns': 2, 'checked_ns': 5, 'covers': [1, 2]}))
