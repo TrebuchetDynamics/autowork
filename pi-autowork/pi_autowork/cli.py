@@ -557,6 +557,11 @@ def status_view(repo, base, toolset, state):
 if __name__ == '__main__':
     try:
         sys.exit(main(sys.argv[1:]))
+    except KeyboardInterrupt:
+        # Ctrl+C or the unit's SIGINT before the coordinator installed its handler (startup reads
+        # the model catalog and the task store): a deliberate stop, said in one line, not a traceback.
+        print('pi-autowork: stopped during startup.', file=sys.stderr, flush=True)
+        sys.exit(130)
     except Exception:  # a crash, not a deliberate stop: exit 70 so the service restarts (TOOLSET-210-53)
         import traceback
         traceback.print_exc()
