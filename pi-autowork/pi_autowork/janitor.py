@@ -4,9 +4,8 @@ Workers and reviewers copied whole repositories into /tmp and left them: on one 
 7,839 entries, which made the memory gate start no new worker (TOOLSET-162-d2). A top-level
 /tmp entry is removed only when every rule holds: the runner's user owns it, it is not a
 socket or a system name, nothing inside it changed for PI_AUTOWORK_TMP_STALE seconds (default
-7200; 0 turns the janitor off), no unfinished slot reserves it, and no process uses it as
-its working directory or holds a file in it open. One sweep runs per host at most every
-SWEEP_EVERY seconds, under a lock; incomplete slot discovery defers cleanup.
+7200; 0 turns the janitor off), and no process uses it as its working directory or holds a
+file in it open. One sweep runs per host at most every SWEEP_EVERY seconds, under a lock.
 Standard library only.
 
     janitor.py sweep [TMP]   # sweep now and print what was freed
@@ -132,68 +131,14 @@ def prune_build_caches(worktrees, busy=(), **options):
     return count, freed
 
 
-def reserved_tmp(tmp, state_root=None):
-    """Top-level scratch reserved by unfinished slots, or None if discovery failed.
-
-    A sweep is host-wide: consult every registered runner, including stopped ones,
-    but read current engine slots, not potentially stale health snapshots or history.
-    Incomplete discovery must never turn a held allocation into disposable scratch.
-    """
-    root = Path(state_root or os.environ.get('PI_AUTOWORK_STATE_DIR') or
-                Path(os.environ.get('XDG_STATE_HOME') or Path.home() / '.local/state') / 'pi-autowork')
-    repos, reserved = set(), set()
-    for record in [*root.glob('*/runner.json'), *root.glob('*/status.json')]:
-        try:
-            repo = json.loads(record.read_text()).get('repo')
-            if repo:
-                repos.add(repo)
-        except (OSError, ValueError, AttributeError, TypeError):
-            return None
-    for repo in repos:
-        try:
-            result = subprocess.run(['git', '-C', repo, 'rev-parse', '--path-format=absolute', '--git-common-dir'],
-                                    env={k: v for k, v in os.environ.items() if not k.startswith('GIT_')},
-                                    capture_output=True, text=True, timeout=10)
-            if result.returncode:
-                return None
-            common = Path(result.stdout.strip()) / 'autowork-execution'
-            for slot in (common / 'slots').glob('*.json'):
-                try:
-                    phase = json.loads(slot.read_text()).get('state')
-                    if phase not in ('held', 'interrupted', 'dispatched', 'running', 'reported', 'integrating', 'integrated'):
-                        continue
-                    data = common / 'slot-data' / slot.stem
-                    try:
-                        paths = [Path(json.loads((data / 'tmp.json').read_text())['path'])]
-                    except FileNotFoundError:  # old slots allocated scratch beside each attempt's report
-                        paths = list(data.glob('attempt-*/tmp'))
-                    for path in paths:
-                        try:
-                            relative = path.resolve().relative_to(Path(tmp).resolve())
-                        except ValueError:  # an allocation on disk, outside the swept root
-                            continue
-                        if relative.parts:
-                            reserved.add(relative.parts[0])
-                except FileNotFoundError:
-                    continue  # a slot retired while being read
-                except (OSError, ValueError, KeyError, TypeError, AttributeError):
-                    return None
-        except (OSError, subprocess.TimeoutExpired):
-            return None
-    return reserved
-
-
-def candidates(tmp='/tmp', *, stale=None, now=None, uid=None, used=None, state_root=None):
+def candidates(tmp='/tmp', *, stale=None, now=None, uid=None, used=None):
     """Top-level entries of ``tmp`` that every rule allows removing."""
     stale = stale_after() if stale is None else stale
     if stale <= 0:
         return []
     now = time.time() if now is None else now
     uid = os.getuid() if uid is None else uid
-    reserved = reserved_tmp(tmp, state_root)
-    if reserved is None:
-        return []  # no destructive cleanup without a complete reservation inventory
-    used = (in_use(tmp) if used is None else used) | reserved
+    used = in_use(tmp) if used is None else used
     cutoff = now - stale
     out = []
     try:
@@ -252,7 +197,7 @@ def sweep_if_due(state_root, tmp='/tmp', now=None):
             last = 0
         if now - last < SWEEP_EVERY:
             return None
-        count, freed = sweep(tmp, now=now, state_root=root)
+        count, freed = sweep(tmp, now=now)
         record.write_text(json.dumps({'at': now, 'removed': count, 'freed_bytes': freed}))
         return count, freed
 

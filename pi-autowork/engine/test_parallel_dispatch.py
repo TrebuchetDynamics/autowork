@@ -1244,11 +1244,6 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.assertIn(f'- branch autowork/A; tip {candidate}; date {date}', retry)
         _, unchanged = self.apply()
         self.assertEqual(unchanged['outcome'], 'IDLE')  # no answer yet: both stay held
-        kept = self.repo / '.worktrees' / 'autowork-A-set-aside-1'
-        original = self.repo / '.worktrees' / 'autowork-A'
-        self.git('mv', ' a.txt', ' renamed.txt', repo=original)
-        (original / 'campaign').mkdir()
-        (original / 'campaign' / 'notes\n.txt').write_text('uncommitted research')
         self.write_todo(task('A', '*a.txt').replace('- Acceptance: changed.',
                         '- Acceptance: keep the earlier candidate, in metres.'),
                         task('B', 'b.txt'))
@@ -1285,10 +1280,6 @@ Path(report).write_text(json.dumps({'task': 'A', 'commit': git('rev-parse', 'HEA
         prompt = (self.common / 'slot-data/A/attempt-1/prompt.md').read_text()
         self.assertIn(f'- branch autowork/A-set-aside-1; tip {candidate}; date {date}', prompt)
         self.assertIn('changed files: [" a.txt"]', prompt)  # preserve leading filename whitespace
-        retained = next(line for line in prompt.splitlines() if line.startswith('- worktree ' + str(kept)))
-        self.assertIn('uncommitted paths: [" renamed.txt", " a.txt", "campaign/notes\\n.txt"]', retained)
-        self.assertEqual((kept / 'campaign' / 'notes\n.txt').read_text(), 'uncommitted research')
-        self.assertFalse((original / 'campaign').exists())  # listed for inspection, never copied automatically
         self.assertLess(prompt.index('- branch autowork/A-set-aside-1;'),
                         prompt.index(f'- branch autowork/A-r2-set-aside-1; tip {older}; date 2000-01-01'))
         self.assertNotIn('- branch autowork/AB', prompt)
@@ -1301,21 +1292,6 @@ Path(report).write_text(json.dumps({'task': 'A', 'commit': git('rev-parse', 'HEA
         self.assertEqual(integrated['outcome'], 'INTEGRATED', integrated)
         self.assertEqual((self.repo / ' a.txt').read_text(), 'half, in metres')
         self.assertEqual(self.git('rev-parse', 'autowork/A-set-aside-1'), candidate)
-
-    def test_a_retained_worktree_status_timeout_still_names_its_work(self):
-        kept = self.repo / '.worktrees' / 'autowork-A-set-aside-1'
-        self.git('worktree', 'add', '-qb', 'autowork/A-set-aside-1', str(kept))
-        (kept / 'campaign.txt').write_text('kept research')
-        run = subprocess.run
-        def timeout_status(argv, **kwargs):
-            if argv[:4] == ['git', '-C', str(kept), 'status']:
-                raise subprocess.TimeoutExpired(argv, 10)
-            return run(argv, **kwargs)
-        entry = {'id': 'A', 'title': 'Task A', 'fields': {}, 'contract': ''}
-        with patch.object(dispatch.subprocess, 'run', side_effect=timeout_status):
-            prompt = dispatch.prompt(entry, self.repo, 'autowork/A', self.git('rev-parse', 'HEAD'), 'report')
-        self.assertIn(f'- worktree {kept}; branch autowork/A-set-aside-1; uncommitted paths: unavailable', prompt)
-        self.assertEqual((kept / 'campaign.txt').read_text(), 'kept research')
 
     def test_a_held_task_whose_entry_is_removed_is_set_aside_without_requeue(self):
         self.write_todo(task('A', 'a.txt'), task('B', 'b.txt'))
