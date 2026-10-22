@@ -3,10 +3,10 @@ schema = 1
 id = "TOOLSET-339-54"
 title = "Two CI-only flakes pass regardless of timing: a conflicting owner plan test and the live restart waiter test"
 short = "Owner-plan and restart-waiter CI flakes"
-status = "done"
+status = "open"
 goal = "RELIABILITY-2026-10"
 section = "Next"
-rank = 30000
+rank = 39000
 depends_on = []
 touches = ["tests/test_pi_autowork.py", "tests/test_update_quiet_restart.py"]
 resources = []
@@ -16,7 +16,6 @@ scope = "CI on 5f9c2767 failed two tests that passed unchanged on the next commi
 acceptance = ["Each test decides from fixture state or an explicit event and not a race with a background process", "Each passes 30 consecutive runs under parallel load (for example 8 concurrent copies)"]
 checks = ["python3 scripts/check.py tests/test_update_quiet_restart.py tests/test_pi_autowork.py"]
 exclusions = []
-closure = "coordinator_verified"
-closure_evidence = "tasks/evidence/TOOLSET-339-54.toml"
 +++
 
+- Reopened: its landing broke the full check on main at 9cb0dfa: test_pi_autowork.EngineTests.test_a_stalled_service_says_so_once_and_the_fleet_view_shows_why; reverted by optimistic landing. Fix those tests in the next attempt

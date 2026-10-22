@@ -3,10 +3,10 @@ schema = 1
 id = "TOOLSET-314-23"
 title = "Pass task text to autowork tasks without shell quoting"
 short = "Shell-safe task input"
-status = "done"
+status = "open"
 goal = "TASK-STORE-HARDENING"
 section = "Next"
-rank = 10000
+rank = 38000
 depends_on = ["TOOLSET-304-2c", "TOOLSET-305-7b"]
 touches = ["pi-autowork/pi_autowork/task_commands.py", "tests/", "skills/docs-sync/", "adapters/skills/", "skills/shared/TODO-WORKCENTER.md", "pi-autowork/task-store.md"]
 resources = []
@@ -16,10 +16,9 @@ scope = "Agents write task prose into shell command lines, where backticks and $
 acceptance = ["Scope, acceptance and notes containing backticks, $(...), $VAR, quotes and a newline round-trip byte for byte through --json from a file and from stdin, and no subprocess is started.", "A test runs the documented command form with a value that contains a backtick command and asserts the command never runs.", "skills/docs-sync/SKILL.md, adapters/skills/docs-sync/SKILL.md and skills/shared/TODO-WORKCENTER.md name the JSON input for prose."]
 checks = ["python3 -m unittest discover -s tests -p test_task_*.py", "python3 scripts/check.py"]
 exclusions = ["No shell execution added anywhere; the existing flags keep working."]
-closure = "coordinator_verified"
-closure_evidence = "tasks/evidence/TOOLSET-314-23.toml"
 +++
 
 - Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20)
 - Coordination: Overlap repair: wait for TOOLSET-304-2c atomic writes in task_commands.py, then the earlier-ranked TOOLSET-305-7b closure CLI and skill changes. Task Store v2 uses this one CLI for add, field and goal; literal JSON input must be implemented there before its documented commands and round-trip tests can be verified. A docs-only split would depend on the same unfinished input contract, not run independently. Preserve all Acceptance and existing priority.
 - Next action: 2026-10-21 blocker repair: preserve candidate eae7bd1917410f8e7c95da331fe73302ac2a8b9c and reuse its descendant 4d534ece41dbf7ce97b9151de557b0b73ec0b873 from autowork/TOOLSET-314-23. The one-file repair replaces obsolete newline/tab refusal assertions with exact field/body round-trip checks; CLI/store/writer/transaction modules pass (18,10,4,3 tests). Existing runner must adopt this repair in the same task rework and run the required integration gate/review, including the prior interruption-test failures. Do not reverify the unchanged old commit, reimplement JSON input, rewrite the old report or mark this delivered from the focused pass.
+- Reopened: its landing broke the full check on main at 9cb0dfa: test_pi_autowork.EngineTests.test_a_stalled_service_says_so_once_and_the_fleet_view_shows_why; reverted by optimistic landing. Fix those tests in the next attempt

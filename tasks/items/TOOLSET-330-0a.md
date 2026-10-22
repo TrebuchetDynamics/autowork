@@ -3,10 +3,10 @@ schema = 1
 id = "TOOLSET-330-0a"
 title = "Task records end without a trailing blank line"
 short = "No blank line at end of records"
-status = "done"
+status = "open"
 goal = "RELIABILITY-2026-10"
 section = "Next"
-rank = 24000
+rank = 43000
 depends_on = []
 touches = ["pi-autowork/engine/", "pi-autowork/pi_autowork/", "tests/", "pi-autowork/tests/"]
 resources = []
@@ -16,8 +16,7 @@ scope = "task_store.render(fields, '\\n') writes a blank line at the end of any 
 acceptance = ["A record rendered with no notes, by add and by the -LIVE follow-up, ends with exactly one newline and passes git diff --check.", "On a fixture repository whose pre-commit hook rejects the close commit, the runner reports the hook's failure, keeps the task's slot integrated rather than closed, and does not re-dispatch it."]
 checks = ["python3 -m unittest discover -s pi-autowork/engine -p test_task_store.py", "python3 scripts/check.py"]
 exclusions = []
-closure = "coordinator_verified"
-closure_evidence = "tasks/evidence/TOOLSET-330-0a.toml"
 +++
 
 - Sources: [Task Store v2](docs/project.md#task-store-v2-2026-10-20)
+- Reopened: its landing broke the full check on main at 9cb0dfa: test_pi_autowork.EngineTests.test_a_stalled_service_says_so_once_and_the_fleet_view_shows_why; reverted by optimistic landing. Fix those tests in the next attempt
