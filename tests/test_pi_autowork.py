@@ -527,15 +527,9 @@ class Fixture(unittest.TestCase):
         path.write_text(task_store.set_note(text, *note) if note else text)
         self.git(repo, 'add', '--', path.relative_to(repo).as_posix())
 
-    def git(self, repo, *args, retry_index_lock=False):
-        deadline = time.monotonic() + 30
-        while True:
-            result = subprocess.run(['git', '-C', str(repo), '-c', 'user.email=t@example.invalid', '-c', 'user.name=T',
-                                     *args], capture_output=True, text=True)
-            if (not retry_index_lock or result.returncode == 0 or 'index.lock' not in result.stderr
-                    or 'File exists' not in result.stderr or time.monotonic() >= deadline):
-                break
-            time.sleep(0.05)  # an owner waits for the runner's Git write, never removes its lock
+    def git(self, repo, *args):
+        result = subprocess.run(['git', '-C', str(repo), '-c', 'user.email=t@example.invalid', '-c', 'user.name=T',
+                                 *args], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0,
                          f'fixture Git {args} in {repo}: {result.stdout}\n{result.stderr}')
         return result.stdout.strip()
@@ -2910,10 +2904,10 @@ class EngineTests(Fixture):
         integ = Path(session['path'])
         with open(integ / 'tasks/items/B.md', 'a') as out:
             out.write('\nSession note.\n')
-        self.git(integ, 'commit', '-qam', 'session bookkeeping', retry_index_lock=True)
+        self.git(integ, 'commit', '-qam', 'session bookkeeping')
         with open(self.repo / 'tasks/items/B.md', 'a') as out:
             out.write('\nOwner decision: B needs no device.\n')
-        self.git(self.repo, 'commit', '-qam', 'owner plan', retry_index_lock=True)
+        self.git(self.repo, 'commit', '-qam', 'owner plan')
         deadline = time.monotonic() + 60
         while not (self.done('A') and 'session bookkeeping' in self.git(self.repo, 'log', '--format=%s', 'main')):
             self.assertLess(time.monotonic(), deadline, log())
@@ -2928,8 +2922,8 @@ class EngineTests(Fixture):
         (self.repo / 'tasks/items/C.md').write_text(
             record.replace('id = "B"', 'id = "C"').replace('B.txt', 'C.txt').replace('Task B', 'Task C'))
         (self.repo / 'C.txt').write_text('')
-        self.git(self.repo, 'add', 'tasks/items/C.md', 'C.txt', retry_index_lock=True)
-        self.git(self.repo, 'commit', '-qm', 'add C', retry_index_lock=True)
+        self.git(self.repo, 'add', 'tasks/items/C.md', 'C.txt')
+        self.git(self.repo, 'commit', '-qm', 'add C')
         deadline = time.monotonic() + 60
         while not (self.root / 'busy-C').exists():
             self.assertLess(time.monotonic(), deadline, log())
@@ -2938,10 +2932,10 @@ class EngineTests(Fixture):
         integ = Path(session['path'])
         with open(integ / 'tasks/items/B.md', 'a') as out:
             out.write('\nSecond session note.\n')
-        self.git(integ, 'commit', '-qam', 'second bookkeeping', retry_index_lock=True)
+        self.git(integ, 'commit', '-qam', 'second bookkeeping')
         with open(self.repo / 'tasks/items/B.md', 'a') as out:
             out.write('\nSecond owner decision.\n')
-        self.git(self.repo, 'commit', '-qam', 'second owner plan', retry_index_lock=True)
+        self.git(self.repo, 'commit', '-qam', 'second owner plan')
         deadline = time.monotonic() + 60
         while 'second bookkeeping' not in self.git(self.repo, 'log', '--format=%s', 'main'):
             self.assertLess(time.monotonic(), deadline, log())
