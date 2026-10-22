@@ -270,6 +270,81 @@ class MainCheckTests(unittest.TestCase):
                     for path in evidence.iterdir():
                         path.chmod(0o700)  # allow TemporaryDirectory to remove read-only snapshots
 
+    def test_a_validation_hold_is_cleared_once_when_main_repairs_its_named_failures(self):
+        from pi_autowork.coordinator import Coordinator
+
+        failure = 'test_sample.Sample.test_fail'
+        prefix = 'the full check has new failures the base does not: '
+        long_failure = 'test_' + 'x' * (600 - len(prefix) - 5)
+        cases = [
+            ('intervening reused green', [failure], prefix + failure, 'validation', 20, 'green', False),
+            ('truncated at name boundary', [long_failure], prefix + long_failure, 'validation', 20, 'green', False),
+            ('retained full verdict', [long_failure], prefix + long_failure, 'validation', 20, 'green', True),
+            ('retained unmatched failure', [long_failure], prefix + long_failure, 'validation', 20, 'green', False),
+            ('matching subset', [failure, 'test_other.Other.test_fail'], prefix + failure, 'validation', 20, 'green', True),
+            ('unrelated red', ['test_other.Other.test_fail'], prefix + failure, 'validation', 20, 'green', False),
+            ('one unmatched failure', [failure], prefix + failure + ', test_new.New.test_fail', 'validation', 20, 'green', False),
+            ('unnamed failure', [failure], 'the full check crashed', 'validation', 20, 'green', False),
+            ('truncated failures', [failure], prefix + failure + ' (+1 more)', 'validation', 20, 'green', False),
+            ('other cause', [failure], prefix + failure, 'blocker', 20, 'green', False),
+            ('hold predates red', [failure], prefix + failure, 'validation', 5, 'green', False),
+            ('hold follows green', [failure], prefix + failure, 'validation', 40, 'green', False),
+            ('main still red', [failure], prefix + failure, 'validation', 20, 'red', False),
+        ]
+        for label, failures, reason, cause, held_at, state, cleared in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                runner = Coordinator.__new__(Coordinator)
+                runner.state, runner.cfg = root, {'git_common': str(root / 'common')}
+                runner.stop = runner.restart_pending = False
+                runner.reviewer_version = lambda: 'unchanged-reviewer'
+                runner.provision_and_reverify = lambda *args: False
+                runner.seen = {'reverify-T': 'unchanged-reviewer'}
+                row = dict(task='T', state='held', cause=cause, reason=reason, commit='candidate', attempt=2)
+                slots = root / 'common/autowork-execution/slots'
+                slots.mkdir(parents=True)
+                (slots / 'T.json').write_text(json.dumps(dict(row, held_at=held_at)))
+                evidence = root / 'common/autowork-execution/main-evidence'
+                for rev, record in [('red-revision', dict(state='red', failures=failures, finished=10)),
+                                    ('green-revision', dict(state=state, finished=30))]:
+                    bundle = evidence / rev
+                    bundle.mkdir(parents=True)
+                    main_check.write(bundle, dict(record, rev=rev))
+                if label == 'intervening reused green':
+                    runner.passed_on_tree = lambda *args: 'batch'
+                    with patch('pi_autowork.coordinator.time.time', return_value=15), \
+                            patch('pi_autowork.coordinator.LOG.say'):
+                        runner.check_main_reuse_result({'state': 'red'}, 'intermediate-green', 'check')
+                if label.startswith('retained'):
+                    verdict = prefix + long_failure
+                    if label == 'retained unmatched failure':
+                        verdict += ', test_new.New.test_fail'
+                    log_path = root / 'validation.log'
+                    log_path.write_text('AUTOWORK_HOLD_REASON: ' + verdict + '\n')
+                    row['checks'] = {'command_receipt': {'log': str(log_path)}}
+                main_check.write(root, dict(state=state, rev='green-revision', finished=30))
+                calls = []
+
+                def engine(*argv):
+                    calls.append(argv)
+                    return {'outcome': 'CLEARED', 'tasks': ['T']}
+
+                runner.engine = engine
+                with patch('pi_autowork.coordinator.LOG.say') as log:
+                    runner.reverify_held([row])
+                    self.assertEqual(calls, [('--parallel-clear-held', 'T')] if cleared else [])
+                    if cleared:
+                        self.assertEqual(runner.seen['T'], 'pending')
+                        self.assertTrue(runner.settled)
+                        self.assertIn('green-r', log.call_args.args[0])
+                        self.assertIn('T', log.call_args.args[0])
+                    # Even if validation holds again, including after a coordinator reload,
+                    # the same green revision must not clear the slot a second time.
+                    runner.seen = {'reverify-T': 'unchanged-reviewer'}
+                    runner.reverify_held([row])
+                    self.assertEqual(len(calls), int(cleared))
+                    self.assertEqual(log.call_count, int(cleared))
+
     def test_three_distinct_flaky_revisions_make_one_hardening_trigger(self):
         from pi_autowork import maintainer
         from pi_autowork.coordinator import Coordinator

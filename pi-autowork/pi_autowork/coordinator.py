@@ -1975,9 +1975,12 @@ class Coordinator:
         about pending live checks). The engine refuses a second try under the same version."""
         if self.restart_pending:
             return
+        recovered = self.reverify_main_repaired(rows)
         version = self.reviewer_version()
         for row in rows:
             task = row.get('task')
+            if task in recovered:
+                continue  # the snapshot still shows the hold we just cleared
             if row.get('state') == 'held' and row.get('cause') == 'timeout' and not self.stop:
                 self.reverify_after_timeout(task, version)
                 continue
@@ -1994,6 +1997,90 @@ class Coordinator:
                 self.seen[task] = ''
                 self.settled = True
                 LOG.say(f'{task}: the reviewer changed since this commit was held; verifying it again')
+
+    def reverify_main_repaired(self, rows):
+        """Return validation-held commits to integration when main repaired their named failures.
+
+        Use main's recorded verdict at the time of the hold, not any old red result with
+        coincidentally matching names. Keep the per-slot green revisions across reloads:
+        a candidate that still fails must not loop through clear-held on the same green.
+        """
+        main = main_check.read(self.state)
+        rev = main.get('rev')
+        if self.stop or main.get('state') != 'green' or not rev:
+            return set()
+        common = Path(self.cfg['git_common']) / 'autowork-execution'
+        records = [main_check.read(path.parent) for path in (common / 'main-evidence').glob('*/main_check.json')]
+        # Receipt reuse does not publish a full evidence bundle (its logs belong to another
+        # run), but those green transitions still invalidate an earlier red verdict.
+        reused = main_check.slot_status(self.state / 'main-green-history.json')
+        records.extend(dict(state='green', rev=revision, finished=stamp) for revision, stamp in reused.items())
+        receipt = self.state / 'main-green-reverified.json'
+        done = main_check.slot_status(receipt)
+        recovered = set()
+        for row in rows:
+            task = row.get('task')
+            if (self.stop or row.get('state') != 'held' or row.get('cause') != 'validation'
+                    or not row.get('commit') or row.get('worker_live') or task in self.resolvers):
+                continue
+            key = f'{task}:{row.get("attempt")}'
+            if rev in done.get(key, []):
+                continue
+            slot = main_check.slot_status(common / 'slots' / f'{task}.json')
+            held = slot.get('held_at') or 0
+            prior = [r for r in records if 0 < (r.get('finished') or 0) <= held]
+            red = max(prior, key=lambda r: r['finished'], default={})
+            if (red.get('state') != 'red' or red.get('rev') == rev
+                    or not held < (main.get('finished') or 0)):
+                continue
+            failures = self.held_new_failures(row)
+            if not failures or not failures.issubset(red.get('failures') or []):
+                continue
+            result = self.engine('--parallel-clear-held', task)
+            recovered.add(task)  # do not also try a changed reviewer against this stale row
+            if result.get('outcome') != 'CLEARED':
+                continue  # a busy integration or unclaimed lease can recover next cycle
+            done.setdefault(key, []).append(rev)
+            temporary = receipt.with_suffix('.tmp')
+            temporary.write_text(json.dumps(done) + '\n')
+            temporary.replace(receipt)
+            for name in result.get('tasks') or []:
+                self.seen[name] = 'pending'
+            self.settled = True
+            LOG.say(f'{task}: main is green at {rev[:7]} after repairing its named validation failures; '
+                    'cleared its hold so its commit goes back to integration')
+        return recovered
+
+    @staticmethod
+    def held_new_failures(row):
+        """Only named new failures qualify; truncated/unnamed verdicts cannot prove a subset."""
+        reason = str(row.get('reason') or '')
+        reasons = []
+        # Status reasons are shortened; prefer the validation's full hold line when retained.
+        try:
+            path = ((row.get('checks') or {}).get('command_receipt') or {}).get('log')
+            lines = Path(path).read_text(errors='replace').splitlines() if path else []
+            reasons = [line.removeprefix('AUTOWORK_HOLD_REASON: ') for line in lines
+                       if line.startswith('AUTOWORK_HOLD_REASON: ')]
+            reason = reasons[-1] if reasons else reason
+        except (OSError, TypeError):
+            pass
+        prefix = 'the full check has new failures the base does not: '
+        named = reason.partition(prefix)[2]
+        # validation_reason silently cuts at 600 characters. Without the original log,
+        # even a cut exactly at a name boundary cannot establish the complete subset.
+        if not reasons and len(prefix + named) >= 600:
+            return set()
+        return {name.strip() for name in named.split(',') if name.strip()}
+
+    def remember_reused_main_green(self, revision, finished):
+        """Keep green transitions not backed by a new main-check evidence bundle."""
+        path = self.state / 'main-green-history.json'
+        history = main_check.slot_status(path)
+        history[revision] = finished
+        temporary = path.with_suffix('.tmp')
+        temporary.write_text(json.dumps(history) + '\n')
+        temporary.replace(path)
 
     def reverify_after_timeout(self, task, version):
         """A review that ran out of time is run again on the same commit, with twice the limit it
@@ -2091,12 +2178,15 @@ class Coordinator:
             # (8 of 39 in a day) took a host check slot that a waiting review needed.
             changed = (git(self.repo, 'diff', '--name-only', record['rev'], rev) or '').split()
             if changed and all(planning_path(p) for p in changed):
+                self.remember_reused_main_green(rev, record.get('finished') or time.time())
                 main_check.write(self.state, dict(record, rev=rev, green=rev))
                 return True
         # A batch or merge-train check that passed on exactly main's tree already ran this check:
         # record main green from it instead of running the suite a second time (TOOLSET-336-3c).
         if passed := self.passed_on_tree(rev, cmd):
-            main_check.write(self.state, dict(state='green', rev=rev, green=rev, finished=time.time(),
+            finished = time.time()
+            self.remember_reused_main_green(rev, finished)
+            main_check.write(self.state, dict(state='green', rev=rev, green=rev, finished=finished,
                                               checked_rev=rev, from_receipt=passed, flaky=[],
                                               flaky_history=record.get('flaky_history') or {}))
             LOG.say(f'Main is green at {rev[:7]}: the full check already passed on its tree ({passed})')
