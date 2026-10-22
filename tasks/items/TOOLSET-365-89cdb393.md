@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-365-89cdb393"
 title = "Repair main's Portal command tests when their shared stub port is occupied"
 short = "Portal stub port isolation main repair"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Now"
 rank = 0
@@ -16,6 +16,8 @@ scope = "Repair the reproducible offline failures test_autowork_command.Autowork
 acceptance = ["Both named tests pass without sharing a fixed listener with another test/check invocation; an offline regression or controlled concurrent fixture run demonstrates that occupying the former stub port or running independent Portal fixtures together cannot cause the recorded bind failure. Fixture listeners and threads are shut down and closed even when assertions fail.", "Retain the existing assertions proving consent-first preview leaves configuration unchanged, opted-in writes preserve unrelated providers without secret logging or lifecycle calls, and model selection uses the saved/default service directory rather than the caller's. Do not skip tests, suppress bind errors, weaken assertions, or require stopping another host process to pass.", "The full offline check completes successfully on the repaired tree. Report causal evidence, exact commands/results and any unrelated failures honestly; offline fixtures do not qualify a live proxy, model or service."]
 checks = ["python3 scripts/check.py tests/test_autowork_command.py", "python3 scripts/check.py", "git diff --check"]
 exclusions = ["No task/goal record edits, reopening completed work, evidence repinning, runtime-state edits, remote publication, credential access, paid requests, real proxy/service lifecycle changes, or live/model calls. Do not copy the main-evidence bundle into worktrees or commits.", "No unrelated update-lock or Portal product behavior changes; no test skips, expected-failure markers or weakened safety assertions merely to turn main green."]
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-365-89cdb393.toml"
 +++
 
 - Sources: DOCS-MAINTAINER MAIN (main red) instruction; [accepted reliability work](docs/project.md#reliability-bug-harvest-2026-10-15); [offline check contract](docs/testing.md#verify); tests/test_autowork_command.py:119-206; completed tasks/items/TOOLSET-354-338c939f.md and its saved attempt-1/report.json and attempt-2/report.json in the Git common execution directory.
