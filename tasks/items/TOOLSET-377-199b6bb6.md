@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-377-199b6bb6"
 title = "Fleet controls no longer offer Fallback or Nous Portal shortcuts"
 short = "Remove extra fleet hotkeys"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 1000
@@ -17,6 +17,8 @@ acceptance = ["Extend existing tui_pilot.py rendered-menu assertions at 80/120 c
 checks = ["python3 scripts/check.py pi-autowork/tests/test_fleet_view.py pi-autowork/tests/test_tui_mouse.py", "python3 scripts/affected_tests.py --run"]
 exclusions = ["No fallback engine/provider/CLI removal, model or profile configuration changes, full-suite policy repair, task-count/blocker cleanup, live service/Play/restart action, remote-host operation, new dependency, timer, install or publication. This invocation plans only."]
 live = "denied"
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-377-199b6bb6.toml"
 +++
 - Sources: docs/project.md#fleet-tui-action-surface
 - Owner decision: Remove Fallback and Nous Research hotkeys from the shown TUI. Planner interpretation: Nous Research refers to the displayed Nous Portal action; only interaction surface changes, backend support stays.

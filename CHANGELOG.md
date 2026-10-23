@@ -57,6 +57,7 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Removed global fleet Fallback and Nous Portal controls while preserving CLI/backend capabilities, read-only fallback details and isolated Portal consent coverage. (TOOLSET-377-199b6bb6)
 - Add two Unreleased/Changed entries: **Confirmed TUI Force conversion** (TOOLSET-369-b3e896c2): the not-ready dialog offers Force with confirmation, preparation displays every refusal and available stopped/set_aside/landed/committed/commit fields, and paired legacy files show legacy planning with prepare --force guidance; **Lone legacy files bootstrap** (TOOLSET-371-7795a447, TOOLSET-372-a9fe0116): TODO.md-only or goals.json-only reports none/NO_STORE with legacy_content to reconcile and needs tasks readiness, preserving the lone file without synthesizing its partner or changing explicit migrate refusals; offline coverage only, not live qualification.
 - Git metadata references are reported as informational git_metadata with path/line/names and never refuse conversion; real script consumers still block plain conversion (TOOLSET-373-9eb7b08f, TOOLSET-374-1a612dab).
 - **Forced conversion preserves invalid queue entries** (TOOLSET-370-af80834d).
