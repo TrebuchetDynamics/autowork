@@ -243,9 +243,10 @@ def preservation(repo, converted):
     return snapshot, ranges
 
 
-def preserve_content(repo, files):
-    """Add the line-accounted snapshot to a conversion, not to the shared record mapper."""
-    active = {t['id']: t for t in reader.ledger(repo)['tasks'] if t['status'] in ('open', 'in_progress')}
+def preserve_content(repo, files, *, force=False):
+    """Account only for full records actually written, never omitted entry lines."""
+    active = {t['id']: t for t in reader.ledger(repo, force=force)['tasks'] if t['status'] in ('open', 'in_progress')
+              and f'tasks/items/{t["id"]}.md' in files}
     snapshot, ranges = preservation(repo, active)
     if snapshot is not None:
         files[conversion_audit.PRESERVED] = snapshot
@@ -448,7 +449,7 @@ def convert_after_drain(repo, owner_pid, force=False):
         try:
             with task_commands.locked(repo):
                 result = convert(repo, commit=True, owner_pid=owner_pid, released=claimed(repo),
-                                 accept_consumers=force)
+                                 accept_consumers=force, force=force)
         except Refused as exc:
             found = refusals(repo, owner_pid, claimed(repo))
             return dict(outcome='WAITING' if deferrable(found) else 'BLOCKED', set_aside=drained['set_aside'],
@@ -549,16 +550,18 @@ def _notes(tid, notes):
     return '\n' + ''.join(lines)
 
 
-def build(repo, released=()):
+def build(repo, released=(), *, force=False, audit=None):
     """{relative path: text} for the whole store, plus the legacy order it must reproduce.
     ``released`` claims count as open in that order too: their attempts were set aside."""
     repo = Path(repo)
     try:
-        inputs = reader.inputs(repo)
+        inputs = reader.inputs(repo, force=force)
+        reopened = set()  # released claims: open in the ledger from here on, in_progress in TODO.md
         for task in inputs['ledger'].get('tasks', []):
             if task.get('status') == 'in_progress' and task.get('id') in set(released):
                 task['status'] = 'open'
-        legacy = reader.order(repo, inputs)
+                reopened.add(task.get('id'))
+        legacy = reader.order(repo, inputs, released=reopened)
     except reader.Drift as exc:
         raise Refused(f'TODO.md order differs from the recorded priority ({exc}); reconcile it first') from None
     except (ValueError, SystemExit) as exc:
@@ -571,19 +574,37 @@ def build(repo, released=()):
     todo_order = [tid for tid in bodies if tasks.get(tid, {}).get('status') in ('open', 'in_progress')]
     human = [tid for tid in record.get('tasks', []) if tid in todo_order] or todo_order
     human += [tid for tid in todo_order if tid not in human]
-    human = sorted(human, key=lambda tid: (sections.index(tasks[tid]['section']), human.index(tid)))
-    files = {}
+    if not force and (invalid := [tid for tid in human if tasks[tid]['section'] not in sections]):
+        raise Refused('active tasks have invalid queue sections: ' + ', '.join(invalid))
+    human = sorted(human, key=lambda tid: (sections.index(tasks[tid]['section'])
+                                          if tasks[tid]['section'] in sections else len(sections), human.index(tid)))
+    files, omitted = {}, dict(inputs['rejected'])
     duplicated = sorted(tid for tid in human if len(bodies[tid]) != 1)
-    if duplicated:
+    if duplicated and not force:
         raise Refused('more than one TODO.md entry for ' + ', '.join(duplicated) + '; keep one, then convert')
-    for index, tid in enumerate(human):
-        body, _mark, _section = bodies[tid][0]
-        fields = reader.task_fields(body)
-        title = body.splitlines()[0].split('—', 1)[-1].strip(' —:-') or tid
-        header, notes = _task_record(tid, title, tasks[tid], fields, STEP * (index + 1), known,
-                                     reader.task_field_list(body))
-        files[f'tasks/items/{tid}.md'] = _render(tid, header, notes)
+    if force:
+        for tid in bodies:
+            if tid not in tasks:
+                omitted.setdefault(tid, f'{tid} is missing from goals.json')
+        for tid, entry in tasks.items():
+            if entry['status'] in ('open', 'in_progress') and tid not in bodies:
+                omitted[tid] = 'missing TODO contract'
     archived = reader.archived_done(repo)
+    for index, tid in enumerate(human):
+        try:
+            if force and (reason := reader.contract_error(tid, inputs, archived, released=reopened)):
+                raise Refused(reason)
+            body, _mark, _section = bodies[tid][0]
+            fields = reader.task_fields(body)
+            title = body.splitlines()[0].split('—', 1)[-1].strip(' —:-') or tid
+            header, notes = _task_record(tid, title, tasks[tid], fields, STEP * (index + 1), known,
+                                         reader.task_field_list(body))
+            files[f'tasks/items/{tid}.md'] = _render(tid, header, notes, validate=force)
+        except Refused as exc:
+            if not force:
+                raise
+            omitted[tid] = str(exc)
+    human = [tid for tid in human if tid not in omitted]
     for tid, entry in tasks.items():
         if entry['status'] in ('done', 'superseded'):
             header = dict(schema=1, id=tid, title=entry.get('title') or tid, status=entry['status'], goal=entry['goal'])
@@ -591,11 +612,16 @@ def build(repo, released=()):
             if entry['status'] == 'superseded':
                 notes.append(('Superseded by', ', '.join(entry.get('superseded_by') or []) + '; '
                               + (entry.get('supersession_reason') or '')))
-            files[f'tasks/items/{tid}.md'] = _render(tid, header, _notes(tid, notes))
+            try:
+                files[f'tasks/items/{tid}.md'] = _render(tid, header, _notes(tid, notes), validate=force)
+            except Refused as exc:
+                if not force:
+                    raise
+                omitted[tid] = str(exc)
     # Dependencies on tasks that exist only in the archive stay satisfied.
     needed = {d for tid in human for d in parallel_plan.dependency_ids(
         reader.task_fields(bodies[tid][0][0]).get('Dependencies', 'None.'), known)}
-    for tid in sorted(needed & archived - set(tasks)):
+    for tid in sorted(needed & archived - set(tasks) - set(omitted)):
         files[f'tasks/items/{tid}.md'] = _render(tid, dict(schema=1, id=tid, title=tid, status='done'),
                                                  _notes(tid, [('Archived', 'TODO.archive.md')]))
     focus = ledger.get('primary_milestone')
@@ -609,13 +635,29 @@ def build(repo, released=()):
             files[f'tasks/goals/{goal["id"]}.md'] = task_store.render(header, _notes(goal['id'], notes), goal=True)
         except WriteError as exc:
             raise Refused(f'{goal["id"]}: {exc}') from None
-    return files, legacy, set(tasks)
+    if force and omitted:
+        # Mapping can reject a closed prerequisite too. Re-evaluate eligibility on
+        # the surviving ledger so its dependents do not become runnable by accident.
+        surviving = dict(ledger, tasks=[t for t in ledger['tasks'] if t['id'] not in omitted])
+        legacy = reader.order(repo, dict(inputs, ledger=surviving,
+                              indexed={t['id']: t for t in surviving['tasks']},
+                              ordered=[t['id'] for t, _ in reader.goals_queue.eligible(surviving)]),
+                              released=reopened)
+    if audit is not None:
+        if inputs['drift']:
+            audit['drift'] = inputs['drift']
+        if omitted:
+            audit['entries'] = conversion_audit.omitted_entries((repo / 'TODO.md').read_bytes(), omitted)
+    return files, legacy, set(tasks) - set(omitted)
 
 
-def _render(tid, header, body):
+def _render(tid, header, body, *, validate=False):
     try:
-        return task_store.render(header, body)
-    except WriteError as exc:
+        text = task_store.render(header, body)
+        if validate:
+            task_store._Document(f'tasks/items/{tid}.md', text.encode('utf-8')).validate()
+        return text
+    except (WriteError, StoreError) as exc:
         raise Refused(f'{tid}: {exc}') from None
 
 
@@ -649,6 +691,7 @@ def prove(repo, tree, legacy, ids, *, env):
     missing = sorted(ids - set(store.tasks))
     if missing:
         raise Refused('tasks missing from the converted store: ' + ', '.join(missing))
+    legacy = [tid for tid in legacy if tid in ids]
     new = [t.id for t in task_select.order(store)]
     if new != legacy:
         raise Refused(f'selection order differs: TODO.md queue {legacy}, converted {new}')
@@ -762,7 +805,7 @@ def migrate(repo, dry_run=False, commit=True, accept_consumers=False):
         return convert(repo, dry_run, commit, accept_consumers=accept_consumers)
 
 
-def convert(repo, dry_run=False, commit=True, owner_pid=None, released=(), accept_consumers=False):
+def convert(repo, dry_run=False, commit=True, owner_pid=None, released=(), accept_consumers=False, force=False):
     """Convert, or finish a recorded conversion; the caller holds the task lock. A draining
     runner passes its own pid (its lease is not in flight) and the claims it released."""
     candidate = pending(repo)
@@ -782,6 +825,9 @@ def convert(repo, dry_run=False, commit=True, owner_pid=None, released=(), accep
         summary = dict(outcome=outcome, candidate=candidate, resumed=True, **inventory)
         if committed(repo, candidate, conversion_audit.PRESERVED):
             summary['preserved'] = dict(path=conversion_audit.PRESERVED)
+        message = _git(repo, 'show', '-s', '--format=%B', candidate)
+        if audit := re.search(r'^Migration-audit: (.+)$', message, re.M):
+            summary.update(json.loads(audit[1]))
         if outcome == 'CONVERTED':
             summary['commit'] = _git(repo, 'rev-parse', '--short', 'HEAD')
         return summary
@@ -789,13 +835,17 @@ def convert(repo, dry_run=False, commit=True, owner_pid=None, released=(), accep
         raise Refused('; '.join(found))
     if not dry_run and not accept_consumers and (reason := consumer_refusal(inventory)):
         raise Refused(reason)
-    files, legacy, ids = build(repo, released)
-    kept = preserve_content(repo, files)
+    audit = {}
+    files, legacy, ids = build(repo, released, force=force, audit=audit)
+    legacy = [tid for tid in legacy if tid in ids]
+    kept = preserve_content(repo, files, force=force)
+    if audit.get('entries'):
+        kept = {**(kept or {}), 'entries': audit.pop('entries')}
     with task_store.temporary_objects(repo) as env:
         tree = converted_tree(repo, files, env=env)
         store = prove(repo, tree, legacy, ids, env=env)
     summary = dict(outcome='DRY_RUN' if dry_run else 'CONVERTED', tasks=len(store.tasks), goals=len(store.goals),
-                   order=legacy, **inventory)
+                   order=legacy, **inventory, **audit)
     if kept:
         summary['preserved'] = kept
     if reason := consumer_refusal(inventory):
@@ -810,9 +860,12 @@ def convert(repo, dry_run=False, commit=True, owner_pid=None, released=(), accep
     # Only an actual conversion persists the proven tree; its proof commit never does.
     tree = converted_tree(repo, files)
     head = _git(repo, 'rev-parse', 'HEAD')
-    candidate = _git(repo, 'commit-tree', tree, '-p', head, '-m', SUBJECT, '-m',
-                     f'{len(store.tasks)} tasks and {len(store.goals)} goals; selection order unchanged. '
-                     'TODO.archive.md stays as history.')
+    message = (f'{len(store.tasks)} tasks and {len(store.goals)} goals; selection order unchanged '
+               'over converted IDs. TODO.archive.md stays as history.')
+    if force:
+        durable = {key: summary[key] for key in ('tasks', 'goals', 'order', 'drift', 'preserved') if key in summary}
+        message += '\n\nMigration-audit: ' + json.dumps(durable, ensure_ascii=True)
+    candidate = _git(repo, 'commit-tree', tree, '-p', head, '-m', SUBJECT, '-m', message)
     _git(repo, 'update-ref', '-m', 'autowork migrate: candidate', CANDIDATE, candidate, '')
     summary.update(outcome=finish(repo, candidate, commit), candidate=candidate)
     if summary['outcome'] == 'CONVERTED':
