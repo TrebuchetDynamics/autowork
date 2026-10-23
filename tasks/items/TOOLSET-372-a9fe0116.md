@@ -7,7 +7,7 @@ status = "open"
 goal = "FORCE-CONVERSION"
 section = "Next"
 rank = 3000
-depends_on = ["TOOLSET-368-51141b74", "TOOLSET-369-b3e896c2", "TOOLSET-370-af80834d", "TOOLSET-371-7795a447"]
+depends_on = ["TOOLSET-368-51141b74", "TOOLSET-369-b3e896c2", "TOOLSET-370-af80834d", "TOOLSET-371-7795a447", "TOOLSET-374-1a612dab", "TOOLSET-375-913f561f"]
 touches = ["pi-autowork/pi_autowork/fleet_view.py", "pi-autowork/tests/test_fleet_view.py", "pi-autowork/task-store.md", "CHANGELOG.md"]
 resources = []
 kind = "implementation"
@@ -18,3 +18,4 @@ checks = ["python3 scripts/check.py pi-autowork/tests/test_fleet_view.py", "git 
 exclusions = ["No new conversion behavior or change to tasks prepare itself", "No synthesis of a missing goals.json or TODO.md", "No change to the autowork migrate command refusal", "No automatic or unconfirmed Force action"]
 +++
 - Sources: docs/plans/2026-10-22-force-conversion.md#decision
+- Overlap resolution: Keep the accepted contract, Touches, Checks and Next rank; make the remaining shared-file order explicit after TOOLSET-374 and TOOLSET-375. TOOLSET-374 is running and owns pi-autowork/task-store.md as well as CHANGELOG.md, so splitting off only the release note would not free this documentation work. TOOLSET-375's independent implementation can run beside TOOLSET-374 after its coordinator-owned changelog write is routed to a report proposal; finish it before this task touches fleet_view.py. Evidence: the three task records; docs/plans/2026-10-22-force-conversion.md#decision; archived TOOLSET-372 attempt-2 report at candidate dd08eb4c2c310e350f09e58bb77942ea1d234c61, and its review finding. That candidate changed only test_fleet_view.py and task-store.md: readiness and documentation passed review, but Acceptance 3's CHANGELOG.md entry was absent. The current source already inherits lone-file readiness from TOOLSET-371; the candidate supplies regression coverage, not a new production behavior. Splitting another worker-only changelog task would reproduce the worker's protected-history prohibition, so retain the release-note acceptance here rather than inventing publication proof or granting write authority. The review finding remains an explicit closeout requirement: the confirmed TUI Force/refusal/legacy-mark and lone-file bootstrap entries must actually be present before Acceptance 3 is met; a report proposal alone is not publication. TOOLSET-372 has only an archived held attempt, no current slot; do not replay its candidate automatically or claim it is integrated.
