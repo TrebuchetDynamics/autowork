@@ -1191,6 +1191,36 @@ finally:
         self.set_todo(self.todo.replace('Acceptance: offline fixture', 'Acceptance: a rewritten scope', 1))
         self.assertEqual(module.entry_changes(self.repo, self.common, state.slots(self.common)[0]), ['Acceptance'])
 
+    def test_a_close_writes_the_reported_changelog_line_under_unreleased(self):
+        """Workers never edit CHANGELOG.md; their one-line proposal from the report lands in the
+        closure commit. Reviews had failed task after task for an entry the tree could not hold."""
+        changelog = '# Changelog\n\n## [Unreleased]\n\n### Added\n\n- earlier\n\n## [1.0]\n\n- old\n'
+        (self.repo / 'CHANGELOG.md').write_text(changelog)
+        self.git('add', 'CHANGELOG.md')
+        self.git('commit', '-qm', 'changelog')
+        self.worker()
+        module = self.module()
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        result = module.close(self.repo, self.owner, 'A')
+        self.assertEqual(result['outcome'], 'CLOSED')
+        self.assertIn('CHANGELOG.md', result['files'])
+        text = (self.repo / 'CHANGELOG.md').read_text()
+        self.assertEqual(text, '# Changelog\n\n## [Unreleased]\n\n### Changed\n\n- fixture (A)\n\n'
+                               '### Added\n\n- earlier\n\n## [1.0]\n\n- old\n')
+        self.git('add', *result['files'])
+        self.git('commit', '-qm', 'close A')
+        final = module.close(self.repo, self.owner, 'A')  # the finalizing call writes nothing twice
+        self.assertEqual((final['outcome'], final['files']), ('CLOSED', []))
+        self.assertEqual((self.repo / 'CHANGELOG.md').read_text(), text)
+        # Another writer's uncommitted changelog edit is never folded into a close.
+        self.worker('B')
+        self.assertEqual(module.integrate(self.repo, self.owner, 'B', ['true'], 10)['outcome'], 'INTEGRATED')
+        (self.repo / 'CHANGELOG.md').write_text(text + '- someone else, uncommitted\n')
+        result = module.close(self.repo, self.owner, 'B')
+        self.assertEqual(result['outcome'], 'CLOSED')
+        self.assertNotIn('CHANGELOG.md', result['files'])
+        self.assertEqual((self.repo / 'CHANGELOG.md').read_text(), text + '- someone else, uncommitted\n')
+
     def test_a_display_only_line_added_after_integration_still_closes(self):
         """Adding `Short:` to every entry left integrated tasks unable to close or recover."""
         self.worker()

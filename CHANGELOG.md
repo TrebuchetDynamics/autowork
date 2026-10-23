@@ -509,6 +509,14 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- **A close writes the worker's changelog line; the reviewer judges the proposal.** Workers may
+  not edit the coordinator-owned CHANGELOG.md and put a one-line proposal in their report, but
+  nothing wrote it and the reviewer checked the merged tree, so every task whose acceptance
+  named the changelog failed review (four in a row on 2026-10-23). The close now writes the
+  report's line as the first item under `## [Unreleased]` / `### Changed` in the closure
+  commit (skipped when the task is already named there or someone else has an uncommitted
+  changelog edit), and the review prompt names the proposal and says not to fail for its
+  absence from the tree.
 - The Hermes step of `autowork update` no longer hangs for two minutes on a prompt. Its plugin
   fetch never prompts (`GIT_TERMINAL_PROMPT=0`, no terminal input) and runs SSH in batch mode
   with a 15 s connect timeout, so a `url.insteadOf` rewrite to SSH that needs a passphrase or a
