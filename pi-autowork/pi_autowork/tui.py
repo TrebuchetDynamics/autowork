@@ -1372,7 +1372,8 @@ class FleetApp(App):
         errors = (*(self.fleet_snapshot.errors if self.fleet_snapshot else ()),
                   *(f'{kind}: stale / unavailable: {message}' for kind, message in self.__dict__.get('_read_errors', {}).items()))
         self.sub_title = ('discovery unavailable: ' + ' · '.join(errors)) if errors else (
-            f'{len(self.runners)} runners: {counts}' if self.runners else 'no runners')
+            f'{len(self.runners)} runners: {counts}' if self.runners else
+            ('loading runners…' if self.fleet_snapshot is None else 'no runners'))
         self.show_detail()
 
     def current(self):
@@ -1397,9 +1398,15 @@ class FleetApp(App):
         runner = self.current()
         menubar = self.query_one('#menubar', MenuBar)
         if runner is None:
-            errors = self.fleet_snapshot.errors if self.fleet_snapshot else ()
-            detail.update(('Discovery unavailable: ' + ' · '.join(errors)) if errors else
-                          'No pi-autowork runners yet. Press n for a new one: choose a repository and play its service.')
+            errors = (*(self.fleet_snapshot.errors if self.fleet_snapshot else ()),
+                      *(f'{kind}: stale / unavailable: {message}'
+                        for kind, message in self.__dict__.get('_read_errors', {}).items()))
+            if errors:
+                detail.update('Discovery unavailable: ' + ' · '.join(errors))
+            elif self.fleet_snapshot is None:
+                detail.update('Loading pi-autowork runners…')
+            else:
+                detail.update('No pi-autowork runners yet. Press n for a new one: choose a repository and play its service.')
             self.query_one('#lanes', DataTable).display = False
             menubar.show([] if self.view_only else [('n', 'New'), ('q', 'Quit')])
             return
