@@ -364,6 +364,19 @@ def paint(text, color, enabled):
     return f'\033[{COLORS.get(color, "31")}m{text}\033[0m' if enabled else text
 
 
+DISPLAY_ONLY_RUNNER_FIELDS = ('snapshot', 'preparation', 'question_provenance', 'acquisition_errors')
+
+
+def runner_json(runner):
+    """The legacy `ls --json` runner record: recursive as before, without display-only state."""
+    plain = dataclasses.replace(runner, snapshot=None, preparation=None,
+                                question_provenance={}, acquisition_errors=[])
+    record = dataclasses.asdict(plain)
+    for key in DISPLAY_ONLY_RUNNER_FIELDS:
+        record.pop(key, None)
+    return record
+
+
 def cmd_ls(args, paths):
     try:
         found = runners(paths, strict=True)
@@ -371,7 +384,7 @@ def cmd_ls(args, paths):
         raise Fail(str(error)) from error
     if args.json:
         # Everything the TUI shows, for a script or an agent watching the fleet.
-        print(json.dumps({'runners': [dataclasses.asdict(r) for r in found]}, indent=2, default=str))
+        print(json.dumps({'runners': [runner_json(r) for r in found]}, indent=2, default=str))
         return 0
     color = os.environ.get('NO_COLOR') is None and (os.environ.get('AUTOWORK_COLOR') == 'always'
                                                     or (os.environ.get('AUTOWORK_COLOR') != 'never' and sys.stdout.isatty()))

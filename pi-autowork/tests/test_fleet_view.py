@@ -64,6 +64,24 @@ class FleetViewTests(unittest.TestCase):
         runner.snapshot = task_snapshot.capture(repo, engine_observation=observation, generation=1)
         return runner
 
+    def test_runner_display_observation_is_explicit_and_absent_from_ls_json(self):
+        from dataclasses import replace
+        from pi_autowork import command, task_snapshot
+        snapshot = task_snapshot.TaskSnapshot('/repo', '/repo/.git', 'abc', 1, time.time())
+        runner = fleet_view.Runner(
+            name='repo', repo='/repo', snapshot=snapshot, preparation='prepared',
+            question_provenance={'source': 'session'}, acquisition_errors=['read failed'])
+        copied = replace(runner, name='copy')
+        self.assertIs(copied.snapshot, snapshot)
+        self.assertEqual(copied.preparation, 'prepared')
+        self.assertEqual(copied.question_provenance, {'source': 'session'})
+        self.assertEqual(copied.acquisition_errors, ['read failed'])
+        self.assertIs(fleet_view.snapshot_for(copied), snapshot)
+        record = command.runner_json(copied)
+        for key in command.DISPLAY_ONLY_RUNNER_FIELDS:
+            self.assertNotIn(key, record)
+        self.assertEqual(record['name'], 'copy')
+
     def runner_state(self, repo, **status):
         folder = self.state / Path(repo).name
         folder.mkdir(parents=True)

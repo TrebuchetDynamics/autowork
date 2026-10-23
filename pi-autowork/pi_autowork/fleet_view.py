@@ -134,9 +134,12 @@ class Runner:
 
     prepare_state: str | None = None  # one read-only preparation probe per fleet refresh
 
-    # Display-only attachment, deliberately outside the legacy CLI dataclass/JSON contract.
-    snapshot = None
-    preparation = None
+    # Display-only fleet observation. Explicit fields, so dataclasses.replace() keeps the
+    # provenance the TUI depends on; command.runner_json excludes them from the CLI contract.
+    snapshot: task_snapshot.TaskSnapshot | None = field(default=None, repr=False, compare=False)
+    preparation: 'Preparation | None' = field(default=None, repr=False, compare=False)
+    question_provenance: dict = field(default_factory=dict, repr=False, compare=False)
+    acquisition_errors: list = field(default_factory=list, repr=False, compare=False)
 
     @property
     def color(self):
@@ -1078,9 +1081,8 @@ def _active_runner(runner: Runner, now: float) -> Runner:
         runner = replace(runner, state='working', minutes=None)
     provenance, errors = {}, []
     questions = read_questions(runner.repo, runner.state_dir, provenance=provenance, errors=errors) if runner.repo else []
-    runner = replace(runner, restarting=restarting, gate=gate, questions=questions)
-    runner.question_provenance, runner.acquisition_errors = provenance, errors
-    return runner
+    return replace(runner, restarting=restarting, gate=gate, questions=questions,
+                   question_provenance=provenance, acquisition_errors=errors)
 
 
 def _service_lifecycle(runner: Runner, env_dir) -> Runner:
@@ -1116,12 +1118,11 @@ def collect(state_root, env_dir, *, systemctl='systemctl', now=None, strict=Fals
             runner = _prepared_runner(runner)
         active = _active_runner(runner, now)
         runner = _service_lifecycle(active, env_dir)
-        runner.question_provenance, runner.acquisition_errors = active.question_provenance, active.acquisition_errors
         snap = snapshot_for(runner, generation=_generation, last_good=previous.get(str(Path(runner.repo).resolve())))
         if _errors is not None:
             _errors.extend(f'{name}: {error}' for error in snap.errors)
-            runner.preparation = _preparation(runner, env_dir, now, audits, _errors)
-            runner.prepare_state = runner.preparation.state
+            preparation = _preparation(runner, env_dir, now, audits, _errors)
+            runner = replace(runner, preparation=preparation, prepare_state=preparation.state)
         # Both public consumers use current committed Decision membership.
         runner.decisions = snap.counts[4] if snap.counts is not None else 0
         found[name] = runner
@@ -1313,9 +1314,8 @@ def snapshot_for(runner, *, generation=0, last_good=None):
                     raise ValueError('status is not an object')
             except (OSError, ValueError) as exc:
                 observation = {'errors': ['engine observation: ' + str(exc)]}
-        observation.update(lanes=runner.lanes, questions=runner.questions,
-                           **getattr(runner, 'question_provenance', {}))
-        observation['errors'] = [*(observation.get('errors') or []), *getattr(runner, 'acquisition_errors', [])]
+        observation.update(lanes=runner.lanes, questions=runner.questions, **runner.question_provenance)
+        observation['errors'] = [*(observation.get('errors') or []), *runner.acquisition_errors]
         runner.snapshot = task_snapshot.capture(runner.repo, engine_observation=observation,
                                                generation=generation, last_good=last_good)
     return runner.snapshot
