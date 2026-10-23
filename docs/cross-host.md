@@ -397,10 +397,31 @@ release. A different verdict or new commit resets this limit (see
 [`reverify`](../pi-autowork/engine/parallel_integrate.py)); the same reviewer
 version never gets a second try.
 
-A held task is answered by editing its task record (`autowork tasks field` for scope,
-Touches, acceptance, dependencies or an `Owner decision:` note): the runner notices the
-changed contract and runs the task fresh, keeping its earlier work on `-set-aside-N`
-branches. No runner command is needed.
+An ordinary held task is answered by editing its task record (`autowork tasks field`
+for scope, Touches, acceptance, dependencies or an `Owner decision:` note): the runner
+notices the changed contract and runs the task fresh, keeping its earlier work on
+`-set-aside-N` branches. Repeated quick holds require a fresh `Blocker resolution:`
+note naming their fingerprint and evidence, rather than cosmetic edits.
+
+After bounded review rework is exhausted (`reviewed_twice`), the existing
+DOCS-MAINTAINER gets one engineering-repair opportunity per incident/evidence set.
+It reads the retained candidate, both findings and `review-rework/<task>.json`;
+its durable item receipt prevents identical retries across restarts or cosmetic
+edits. A supported new approach goes in `docs/tasks/<task>-repair.md` and an
+`Engineering repair: <incident ID>; <new evidence and approach; plan path>` task
+note, written with `autowork tasks field`. The proposal must preserve the typed
+contract, acceptance, checks, prerequisites and authority. That fresh note permits
+execution, but does not erase the spent review-rework budget or retained evidence.
+No useful new approach leaves a visible engineering incident, not an invented owner
+question. See [maintainer receipts and contract guards](../pi-autowork/pi_autowork/maintainer.py)
+and [incident-specific requeue admission](../pi-autowork/engine/parallel_integrate.py).
+
+[Failure policy](../pi-autowork/engine/failure_policy.py) admits owner questions only
+for owner-owned causes. Invalid task stores, incomplete contracts, dependency
+cycles and exhausted technical repairs remain technical work. Unresolved technical
+roots still block their downstream tasks; they are not counted as ordinary waiting
+merely because no person is needed. Genuine owner authorization and external-input
+gates remain in force.
 
 A task someone works on outside the runner carries a `Held by:` note
 (`autowork tasks hold TASK --by WHO [--until YYYY-MM-DD]`). The runner never starts it,

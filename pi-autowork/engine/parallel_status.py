@@ -132,18 +132,10 @@ def failure_fields(cause, reason='', resume_used=False):
 
 
 def root_failure_fields(root):
-    kind = root.get('kind')
-    if kind == 'held':
-        return failure_fields(root.get('cause'), root.get('reason'), bool(root.get('resume_used')))
-    if kind in ('contract', 'outside', 'cycle'):
-        return dict(failure_class='TASK_CONTRACT_OR_INPUT', resolution_owner=failure_policy.OWNER,
-                    failure_state='owner_decision_required', next_action='answer_owner_question',
-                    owner_decision_required=True)
-    if kind == 'claim':
-        return dict(failure_class='SESSION_CLAIM', resolution_owner=failure_policy.ENGINE,
-                    failure_state='recovery_required', next_action='wait_for_session_release',
-                    owner_decision_required=False)
-    return failure_fields(root.get('cause'), root.get('reason'), bool(root.get('resume_used')))
+    values = failure_policy.disposition(root)
+    return dict(failure_class=values['failure_class'], resolution_owner=values['resolution_owner'],
+                failure_state=values['state'], next_action=values['next_action'],
+                owner_decision_required=values['owner_decision_required'])
 
 
 ROOT_KINDS = {'held': 'held', 'interrupted': 'restarting', 'released': 'restarting', 'dispatched': 'running',

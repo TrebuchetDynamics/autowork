@@ -111,7 +111,7 @@ message = args[-1]
 files = [a[1:] for a in args if a.startswith('@')]
 prompt = open(files[0]).read() if files else ''
 field = lambda name: (re.search(rf'^{name}: (.+)$', prompt, re.M) or [None, None])[1]
-if 'PI_AUTOWORK_VERIFY' in message:
+if message.startswith('You are an independent reviewer verifying task '):
     role, task = 'verify', re.search(r'verifying task (\S+) ', message)[1]
 elif message.startswith('Plan the file scope of task'):
     role, task = 'touches', re.search(r'of task (\S+) ', message)[1]
@@ -243,6 +243,13 @@ elif role == 'maintainer':
     elif behavior == 'add_checks':  # restate A's contract: the checks it was missing
         edit_task('A', {'checks': ['test -s A.txt']})
         git('commit', '-qm', 'docs(tasks): restate A with the Checks line its sources give')
+    elif behavior == 'repair_review':
+        incident = re.search(r'- A \(engineering repair\): ([^;]+);', message)[1]
+        os.makedirs('docs/tasks', exist_ok=True)
+        open('docs/tasks/A-repair.md', 'w').write('Use the retained findings to repair A; rerun its unchanged checks.\n')
+        edit_task('A', {}, ('Engineering repair', incident + '; concrete new approach in docs/tasks/A-repair.md'))
+        git('add', 'docs/tasks/A-repair.md')
+        git('commit', '-qm', 'docs(tasks): evidence-backed engineering repair for A')
     elif behavior == 'repair_main':  # the red main gets one repair task, first in its section
         add_task('FIX', 'Repair main')
         git('commit', '-qm', 'docs(tasks): FIX repairs the red main')
@@ -759,6 +766,35 @@ class EngineTests(Fixture):
         self.assertEqual((self.repo / 'A.txt').read_text(), '')
         self.assertTrue(self.done('B'))  # independent work still lands
         self.assertEqual(self.record('A').status, 'open')
+        self.assertEqual(held['cause'], 'reviewed_twice')
+        repairs = [r for r in self.runs('maintainer') if 'A (engineering repair)' in r['message']]
+        self.assertEqual(len(repairs), 1, result.stdout + result.stderr)
+        marker = self.repo / '.git/autowork-execution/review-rework/A.json'
+        retained = marker.read_bytes()
+        incident = json.loads(retained)['stuck']['incident']
+        self.assertIn(incident, repairs[0]['message'])
+        self.assertIn(held['commit'], repairs[0]['message'])
+        blockers = self.repo / 'BLOCKERS.md'
+        self.assertNotIn('### Q-A ', blockers.read_text() if blockers.exists() else '')
+        workers = len(self.runs('worker'))
+        self.run_runner('--until-empty', '--workers', '1')
+        self.assertEqual(len(self.runs('worker')), workers)
+        self.assertEqual(len([r for r in self.runs('maintainer') if 'A (engineering repair)' in r['message']]), 1)
+        self.assertEqual(marker.read_bytes(), retained)
+
+    def test_engineering_repair_requeues_with_the_original_review_budget_and_contract(self):
+        original = self.record('A')
+        self.plan({'verify:A': ['fail', 'fail', 'fail', 'pass'], 'maintainer': ['repair_review']})
+        result = self.run_runner('--until-empty', '--workers', '1')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(self.done('A', 'B', 'C'))
+        marker = json.loads((self.repo / '.git/autowork-execution/review-rework/A.json').read_text())
+        self.assertEqual(marker['stuck']['cause'], 'reviewed_twice')
+        self.assertIn(marker['stuck']['incident'], self.record('A').body)
+        self.assertTrue(self.git(self.repo, 'cat-file', '-e', marker['stuck']['tip']) is not None)
+        self.assertEqual(len([r for r in self.runs('worker') if r['task'] == 'A']), 4)
+        for field in ('scope', 'acceptance', 'checks', 'depends_on', 'ownership', 'live'):
+            self.assertEqual(getattr(self.record('A'), field), getattr(original, field))
 
     def test_invalid_touches_are_no_hint_and_never_hold_the_task(self):
         """TOOLSET-161-17: Touches schedule work; an invalid list only ranks the task lower."""
@@ -2177,7 +2213,7 @@ sys.exit(result.returncode)
                 self.assertIn('record remaining ledger proof', self.git(self.repo, 'log', '--format=%s'))
                 self.assertNotIn('The engine needs attention', result.stdout)
 
-    def test_a_maintainer_change_that_leaves_an_invalid_ledger_is_refused_and_asked_once(self):
+    def test_an_invalid_ledger_repair_is_refused_without_an_owner_question_or_repeat(self):
         for behavior in ('invalid_ledger', 'drop_ledger'):
             with self.subTest(behavior=behavior):
                 self.repo = self.make_repo(self.root / behavior, [('A', None)])
@@ -2191,11 +2227,11 @@ sys.exit(result.returncode)
                 again = self.run_runner('--until-empty')
                 self.assertNotIn('DOCS-MAINTAINER: repairing', again.stdout)
                 self.assertNotIn('The engine needs attention', again.stdout)
-                blockers = (self.repo / 'BLOCKERS.md').read_text()
-                self.assertEqual(blockers.count('### Q-LEDGER'), 1, blockers)
-                self.assertIn('tasks/items/PROOF-1.md:7: unknown goal PROOF', blockers)
+                path = self.repo / 'BLOCKERS.md'
+                self.assertNotIn('### Q-LEDGER', path.read_text() if path.exists() else '')
+                self.assertIn('unknown goal PROOF', result.stdout + result.stderr)
 
-    def test_structural_ledger_errors_also_get_a_repair_attempt_and_question(self):
+    def test_structural_ledger_errors_get_a_repair_attempt_and_remain_technical(self):
         for old, new, error in [('+++\n', '+++\n[[', 'malformed TOML'), ('schema = 1', 'schema = 2', 'schema must be 1')]:
             with self.subTest(error=error):
                 self.repo = self.make_repo(self.root / error.replace(' ', '-'), [('A', None)])
@@ -2204,7 +2240,9 @@ sys.exit(result.returncode)
                 self.git(self.repo, 'commit', '-qam', 'structurally broken task file')
                 result = self.run_runner('--until-empty')
                 self.assertIn('DOCS-MAINTAINER: repairing the task docs of LEDGER', result.stdout)
-                self.assertIn(error, (self.repo / 'BLOCKERS.md').read_text())
+                self.assertIn(error, result.stdout + result.stderr)
+                path = self.repo / 'BLOCKERS.md'
+                self.assertNotIn('### Q-LEDGER', path.read_text() if path.exists() else '')
 
     def test_a_service_stays_up_and_reports_when_the_engine_needs_attention(self):
         """A refused ledger must recover even when a reported worker waits for integration."""
@@ -2216,7 +2254,7 @@ sys.exit(result.returncode)
         self.addCleanup(lambda: runner.poll() is None and runner.kill())
         log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
         deadline = time.monotonic() + 60
-        while not (self.repo / 'BLOCKERS.md').exists():
+        while 'DOCS-MAINTAINER: no change' not in log():
             self.assertLess(time.monotonic(), deadline, log())
             self.assertIsNone(runner.poll(), log())
             time.sleep(0.2)
@@ -2226,18 +2264,19 @@ sys.exit(result.returncode)
         listing = self.git(self.repo, 'worktree', 'list', '--porcelain')
         session = next(Path(b.splitlines()[0].removeprefix('worktree ')) for b in listing.split('\n\n')
                        if 'branch refs/heads/pi-autowork/' in b)
-        blockers = (session / 'BLOCKERS.md').read_text()
-        self.assertEqual(blockers.count('### Q-LEDGER'), 1, blockers)
-        self.assertIn('unknown goal PROOF', blockers)
-        # The question has landed, so the session is no longer ahead. Owner fixes on
-        # main must still reach it even though A remains reported (an in-flight slot).
+        blocker_path = session / 'BLOCKERS.md'
+        blockers = blocker_path.read_text() if blocker_path.exists() else ''
+        self.assertNotIn('### Q-LEDGER', blockers)
+        self.assertIn('unknown goal PROOF', log())
+        # Technical failure does not create a question. An explicit correction on
+        # main must still reach the session even though A remains an in-flight slot.
         (self.repo / 'tasks/goals/PROOF.md').write_text(task_store.render(dict(
             schema=1, id='PROOF', title='Remaining proof', priority=2, source='docs/plan.md#proof',
             status='unmet', focus=False, depends_on=[]), goal=True))
         self.git(self.repo, 'add', 'tasks/goals/PROOF.md')
         self.git(self.repo, 'commit', '-qm', 'owner records the goal PROOF-1 names')
         deadline = time.monotonic() + 60
-        while not self.done('A', 'B', 'C') or '### Q-LEDGER' in (self.repo / 'BLOCKERS.md').read_text():
+        while not self.done('A', 'B', 'C'):
             self.assertLess(time.monotonic(), deadline, log())
             self.assertIsNone(runner.poll(), log())
             time.sleep(0.2)

@@ -55,9 +55,7 @@ def technical(row):
     """A failure an agent or the engine can act on. The shared policy owns the boundary;
     a failed review, a dead worker or a merge conflict never becomes an owner decision merely
     because its retry budget ran out."""
-    if 'owner_decision_required' in row:  # the status row already carries the slot's classification
-        return not row['owner_decision_required']
-    return failure_policy.technical(row.get('cause'), row.get('reason'))
+    return failure_policy.disposition(row)['resolution_owner'] != failure_policy.OWNER
 
 
 def exhausted(row):
@@ -89,9 +87,17 @@ def build(snapshot, repo, repairs=(), resolving=(), *, now=None):
         record = store.tasks.get(task) if store else None
         return record.title if record else ''
 
-    def add(qid, kind, effort, needs, answer, task_line, unblocks):
+    def add(qid, kind, effort, needs, answer, task_line, unblocks, *, source=None):
+        # Every producer passes this admission gate, including exhausted maintainer work.
+        # Never infer an owner decision from retry counts or human-readable failure text.
+        source = source or ((roots.get(qid) or {'kind': kind}) if kind in ('ledger', 'cycle', 'contract', 'outside')
+                            else rows.get(qid) or roots.get(qid) or {})
+        disposition = failure_policy.disposition(source)
+        if disposition['resolution_owner'] != failure_policy.OWNER:
+            return
         qid = _question_id(qid)
-        found[qid] = dict(id=qid, type='USER_INPUT' if effort == 'input' else 'USER_DECISION', effort=effort,
+        found[qid] = dict(id=qid, resolution_owner=failure_policy.OWNER,
+                          type='USER_INPUT' if effort == 'input' else 'USER_DECISION', effort=effort,
                           unblocks=unblocks, task=_one_line(task_line), needs=_one_line(needs),
                           answer=_one_line(answer), kind=kind)
 
@@ -185,7 +191,7 @@ def build(snapshot, repo, repairs=(), resolving=(), *, now=None):
                             f'Run it yourself, set `live = "authorized"` in tasks/items/{task}.md with an '
                             '`Owner decision:` note (who authorized which live scope and when), or move it to '
                             'Needs decision. Only the owner grants it; a worker\'s edit to the record never does.'),
-                        f'{task} — {title}' if title else task, blocks)
+                        f'{task} — {title}' if title else task, blocks, source=root)
                 continue
             if qid in deferred:
                 continue  # the dated owner deferral is already the answer; its dependents wait

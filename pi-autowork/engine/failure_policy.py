@@ -45,6 +45,12 @@ POLICY = {
     'empty': ('PROCESS_INTERRUPTED', ENGINE, 'recovery_required', 'requeue_safely'),
     'diverged': ('PROCESS_INTERRUPTED', ENGINE, 'recovery_required', 'requeue_safely'),
     'launch': ('PROCESS_INTERRUPTED', ENGINE, 'recovery_required', 'requeue_safely'),
+    # Planning/runtime defects do not acquire human ownership when a repair is exhausted.
+    'invalid_store': ('TASK_STORE_INVALID', AGENT_REPAIR, 'repair_required', 'repair_task_store'),
+    'invalid_contract': ('CONTRACT_MISMATCH', AGENT_REPAIR, 'repair_required', 'repair_task_contract'),
+    'dependency_cycle': ('DEPENDENCY_CYCLE', AGENT_REPAIR, 'repair_required', 'repair_dependency_cycle'),
+    'session_claim': ('SESSION_CLAIM', ENGINE, 'waiting', 'wait_for_session_release'),
+    'external_prerequisite': ('EXTERNAL_INPUT', OWNER, 'owner_decision_required', 'answer_owner_question'),
     # The worker asked for a human-supplied input or authorization.
     'blocker': ('EXTERNAL_INPUT', OWNER, 'owner_decision_required', 'answer_owner_question'),
 }
@@ -70,6 +76,21 @@ def classify(cause, reason=''):
     return dict(failure_class=failure_class, resolution_owner=owner, state=state,
                 next_action=next_action, owner_decision_required=owner == OWNER,
                 reason_code=str(cause or 'unknown'))
+
+
+def disposition(item):
+    """Classify a status row/root at every consumer, including legacy snapshots.
+
+    Typed causes/kinds win over stale display booleans. Older report rows carried only
+    the spent-resume owner flag, so retain that specific safety gate until migration.
+    """
+    kinds = {'ledger': 'invalid_store', 'contract': 'invalid_contract', 'cycle': 'dependency_cycle',
+             'claim': 'session_claim', 'outside': 'external_prerequisite'}
+    if item.get('kind') in kinds:
+        return classify(kinds[item['kind']])
+    cause = item.get('cause')
+    spent = item.get('resume_used') or (cause == 'report' and item.get('owner_decision_required') is True)
+    return classify(effective_cause(cause, spent), item.get('reason', ''))
 
 
 def owner_decision_required(cause, reason=''):

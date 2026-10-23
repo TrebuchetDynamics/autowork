@@ -158,13 +158,35 @@ class QuestionTests(unittest.TestCase):
             self.assertIn(option, text)
         self.assertNotIn('### Q-', questions.update(text, questions.build({}, store()), now=NOW))
 
-    def test_a_refused_ledger_gets_one_question_until_validation_is_fixed(self):
+    def test_technical_producers_cannot_bypass_owner_admission(self):
+        import parallel_state
+        import failure_policy
+        attempts = [dict(task_id='T-1', state='held', cause='contract_changed',
+                         reason='task contract changed', branch='fixture', attempt=n,
+                         held_seconds=1, held_at=n) for n in (1, 2, 3)]
+        with tempfile.TemporaryDirectory() as folder:
+            hold = parallel_state.quick_hold(Path(folder), dict(attempts[-1], previous_attempts=attempts[:-1]))
+        self.assertIsNotNone(hold)
+        row = dict(task='T-1', state='held', cause='contract_changed', attempt=3,
+                   quick_hold=hold, **{'owner_decision_required': False})
+        cases = [({'tasks': [row]}, ()),
+                 ({'tasks': [dict(task='T-1', state='waiting')]},
+                  [dict(task='T-1', reason='missing checks', fields=['Checks'])])]
+        cases.extend(({'roots': [dict(id='T-1', kind=kind, blocks=1,
+                                     resolution_owner='OWNER', owner_decision_required=True)]}, ())
+                     for kind in ('cycle', 'contract'))
+        for status, repairs in cases:
+            with self.subTest(status=status):
+                self.assertEqual(questions.build(status, store(), repairs=repairs), [])
+        self.assertEqual(failure_policy.classify('contract_changed')['resolution_owner'], 'ENGINE')
+
+    def test_a_refused_ledger_remains_engineering_work(self):
         status = {'outcome': 'ACTION_REQUIRED', 'ledger_errors': ['G: unverified goal has no open task']}
         found = questions.build(status, store())
         text = questions.update(OWNER, found, now=NOW)
-        self.assertEqual(text.count('### Q-LEDGER'), 1)
-        self.assertIn('G: unverified goal has no open task', text)
-        self.assertIn('autowork tasks validate --worktree', text)
+        self.assertEqual(found, [])
+        self.assertNotIn('### Q-LEDGER', text)
+        self.assertIn('Intro the owner wrote.', text)
         self.assertEqual(questions.update(text, found, now=NOW), text)
         self.assertNotIn('### Q-LEDGER', questions.update(text, questions.build({}, store()), now=NOW))
 
@@ -182,9 +204,9 @@ class QuestionTests(unittest.TestCase):
         self.assertEqual(first.count('### Q-T-1 '), 1)
         later = datetime(2026, 10, 17, tzinfo=timezone.utc)
         self.assertEqual(questions.update(first, found, now=later), first)
-        # Waiting tasks need the same question even when they are not a root blocker.
+        # The same unsuccessful repair is not authority to invent an owner decision.
         waiting = {'tasks': [{'task': 'T-1', 'state': 'waiting', 'reason': repairs[0]['reason']}]}
-        self.assertEqual([q['id'] for q in questions.build(waiting, store(), repairs=repairs)], ['T-1'])
+        self.assertEqual(questions.build(waiting, store(), repairs=repairs), [])
         self.assertNotIn('### Q-T-1 ', questions.update(first, questions.build(waiting, store()), now=later))
 
     def test_repeated_quick_holds_keep_one_question_with_attempt_times_and_resolution(self):
