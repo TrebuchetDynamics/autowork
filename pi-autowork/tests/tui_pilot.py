@@ -23,6 +23,82 @@ class Result:
     returncode, stdout, stderr = 0, 'ok', ''
 
 
+async def task_inventory_viewport(app, pilot):
+    """Unknown must not paint empty counts; freshness/errors must occupy visible space."""
+    original = app.current()
+    good = original.snapshot
+    cases = (
+        ('unavailable', replace(good, counts=None, rows=(), closed_rows=(), question_rows=(),
+                                freshness='unavailable', errors=('inventory read denied',))),
+        ('empty', replace(good, counts=(0, 0, 0, 0, 0, 0), rows=(), closed_rows=(), question_rows=(),
+                          freshness='fresh', errors=(), annotations=())),
+        ('stale', replace(good, captured_at=time.time() - 900, freshness='stale',
+                          errors=('inventory read denied: ' + 'unreadable task record ' * 28 + 'END OF INVENTORY ERROR',))),
+    )
+    def painted(widget):
+        # Read only on-screen cell rows, not the underlying Static's unbounded Text.
+        region = widget.region
+        top, bottom = region.y, region.bottom
+        left, right = region.x, region.right
+        parent = widget.parent
+        while parent is not None and parent is not app:
+            clip = parent.content_region
+            top, bottom = max(top, clip.y), min(bottom, clip.bottom)
+            left, right = max(left, clip.x), min(right, clip.right)
+            parent = parent.parent
+        assert 0 <= top < bottom <= app.screen.region.bottom, (region, top, bottom)
+        assert 0 <= left < right <= app.screen.region.right, (region, left, right)
+        return ' '.join(' '.join(widget.render_line(y - region.y).text[left - region.x:right - region.x]
+                                for y in range(top, bottom)).split())
+    for state, snapshot in cases:
+        selected = replace(original)
+        selected.snapshot = snapshot
+        envelope = fleet_view.FleetSnapshot((selected,), (snapshot,), 7, time.time())
+        with mock.patch.object(fleet_view, 'collect_for_tui', return_value=envelope):
+            app.action_refresh()
+            app.push_screen(TasksScreen(selected.name))
+            await pilot.pause()
+            screen = app.screen
+            # Include layout: a giant freshness field must not push the table/detail off-screen.
+            table = screen.query_one('#tasks')
+            assert table.region.height >= 3 and table.region.bottom <= screen.region.bottom, table.region
+            widgets = [screen.query_one('#task-views'), screen.query_one('#task-detail'),
+                       *screen.query('#task-freshness'), *screen.query('#task-diagnostics')]
+            visible = ' '.join(painted(w) for w in widgets)
+            assert snapshot.freshness in visible, (state, visible)
+            if state != 'empty':
+                assert 'inventory read denied' in visible, (state, visible)
+            counts = painted(screen.query_one('#task-views'))
+            for label in ('All', 'Active', 'Blocker', 'Waiting', 'Questions'):
+                if state == 'unavailable':
+                    assert label + ' ?' in counts and label + ' 0' not in counts, counts
+                elif state == 'empty':
+                    assert label + ' 0' in counts, counts
+            if state == 'unavailable':
+                detail = painted(screen.query_one('#task-detail'))
+                assert 'unavailable' in detail.lower() and 'No task in this view' not in detail, detail
+                await pilot.press('4')  # filtering must preserve the unknown, not invent a verified empty view
+                await pilot.pause()
+                assert 'unavailable' in painted(screen.query_one('#task-detail')).lower()
+            elif state == 'empty':
+                assert table.row_count == 0
+                assert 'No task in this view' in painted(screen.query_one('#task-detail'))
+            else:
+                assert snapshot.revision in visible and '15m ago' in visible, visible
+                assert 'All 3' in counts and table.row_count == 3, counts
+                await pilot.press('i', 'end')  # keyboard users must reach the rest of a long acquisition error
+                await pilot.pause()
+                assert screen.query_one('#task-diagnostics-scroll').scroll_y > 0
+                assert 'END OF INVENTORY ERROR' in painted(screen.query_one('#task-diagnostics'))
+                pinned = painted(screen.query_one('#task-freshness'))
+                assert snapshot.revision in pinned and '15m ago' in pinned, pinned
+                await pilot.press('i')  # return to task navigation
+                assert table.has_focus
+            app.pop_screen()
+            await pilot.pause()
+    app.action_refresh()
+
+
 async def main():
     # A worker's own words, without what its row already says; cut mid-word only to keep far more.
     lane = fleet_view.Lane(task='T-1', phase='verifying', detail='', attempt=1, minutes=1,
@@ -43,7 +119,17 @@ async def main():
         (env / 'india.env').write_text(f'PI_AUTOWORK_REPO={india}\nPI_AUTOWORK_PRIMARY=openai-codex/gpt-6.1-sol\n')
         (state / 'runner.json').write_text(json.dumps(
             {'pid': os.getpid(), 'start_time': start_time(os.getpid()), 'repo': str(india)}))
+        import task_queue
+        store = task_queue.store(india)
+        source = dict(workspace=str(india), repository_identity=str(india / '.git'),
+                      revision=store.rev, observed_at=time.time())
+        observations = [dict(task=t, state=s, cause=c, reason=r, contract_hash=store.tasks[t].contract_hash,
+                             admitted_contract_hash=store.tasks[t].contract_hash, attempt=1)
+                        for t, s, c, r in [('TASK-034', 'waiting', '', 'on dependencies'),
+                                           ('T-9', 'held', 'blocker', ''),
+                                           ('TASK-040', 'waiting', '', 'wait for TASK-036 (overlapping files)')]]
         (state / 'status.json').write_text(json.dumps({
+            'task_source': source, 'task_observations': observations,
             'repo': str(india), 'state': 'stalled', 'since': time.time() - 3600, 'updated_at': time.time(),
             'waiting': 23, 'held': [{'task': 'T-9', 'cause': 'blocker'}],
             'roots': [{'id': 'TASK-036', 'kind': 'outside', 'blocks': 19}],
@@ -126,18 +212,42 @@ async def main():
             assert app.query_one('#runners').row_count == 1
             detail = str(app.query_one('#detail').render())
             # TOOLSET-166-b4: the verdict first, then why tasks wait, grouped.
-            assert detail.lstrip().startswith('india  Waiting — 19 wait for TASK-036 (overlapping files)'), detail
+            assert detail.lstrip().startswith('india  Blocker — 1: T-9 Blocker · Agent repair'), detail
             assert 'on you' not in detail and 'Model      gpt-6.1-sol' in detail, detail
-            assert 'Waiting    23: 19 wait for TASK-036 (overlapping files) · 4 on dependencies' in detail, detail
+            assert 'Waiting    2: 1 on dependencies · 1 wait for TASK-036 (overlapping files)' in detail, detail
             runners = app.query_one('#runners')
             # TOOLSET-289-71 (test_runner_columns): the owner's four headlines.
             assert [str(c.label) for c in runners.columns.values()] == ['Runner', 'State', 'Active', 'Mergeable',
                                                                         'Waiting', 'Blocker', 'Decision', 'Total',
                                                                         'Needs', 'Now']
-            assert [str(c) for c in runners.get_row_at(0)[2:8]] == ['0', '0', '23', '1', '0', '24']
-            assert '19 wait for TASK-036 (overlap' in str(runners.get_row_at(0)[8]), runners.get_row_at(0)  # cut to fit
-            assert 'Tasks      24 open · 0 active · 0 mergeable · 23 waiting · 1 blocker' in detail, detail
+            assert [str(c) for c in runners.get_row_at(0)[2:8]] == ['0', '0', '2', '1', '0', '3']
+            assert '1 on dependencies' in str(runners.get_row_at(0)[8]), runners.get_row_at(0)
+            assert 'Tasks      3 open · 0 active · 0 mergeable · 2 waiting · 1 blocker' in detail, detail
+            assert 'revision ' + store.rev in detail and 'execution fresh' in detail, detail
             assert 'Push       disabled' in detail, detail  # no saved grant: local only
+            # Raw orphan activity is visible, but cannot contradict committed counts
+            # in the verdict or label an unmatched slot as verified/Mergeable.
+            original_runner = app.current()
+            observed = replace(original_runner, state='working', lanes=[fleet_view.Lane('ORPHAN', 'integrated')])
+            fleet_view.snapshot_for(observed)
+            envelope = fleet_view.FleetSnapshot((observed,), (observed.snapshot,), 7, time.time())
+            with mock.patch.object(fleet_view, 'collect_for_tui', return_value=envelope):
+                app.action_refresh()
+                shown = str(app.query_one('#detail').render())
+                assert '1 mergeable' not in shown and '2 waiting' in shown, shown
+                assert str(app.query_one('#lanes').get_row_at(0)[1]).startswith('Annotation'), shown
+                observed.snapshot = replace(observed.snapshot, counts=None, rows=(), freshness='unavailable',
+                                            errors=('inventory read denied',))
+                app.action_refresh()
+                shown = str(app.query_one('#detail').render())
+                assert [str(c) for c in app.query_one('#runners').get_row_at(0)[2:8]] == ['?'] * 6
+                assert 'unknown / unavailable' in shown and 'inventory read denied' in shown, shown
+                observed.snapshot = replace(original_runner.snapshot, captured_at=time.time() - 900, freshness='stale')
+                app.action_refresh()
+                shown = str(app.query_one('#detail').render())
+                assert 'stale · revision ' + store.rev in shown and '15m' in shown, shown
+            app.action_refresh()
+            await task_inventory_viewport(app, pilot)
             settings = env / 'india.env'
             saved = settings.read_text()
             for value, label in (('1', 'enabled'), ('0', 'disabled')):
@@ -174,7 +284,9 @@ async def main():
                             ('stopped', 'paused', 'Log  Play  Model  Tasks  Uninstall  New  Quit'),
                             ('', '', 'New  Quit')):
                         selected = replace(runner, service=service, state=state_name) if service else None
-                        with mock.patch.object(fleet_view, 'collect', return_value=[selected] if selected else []), \
+                        envelope = fleet_view.FleetSnapshot((selected,) if selected else (),
+                            (fleet_view.snapshot_for(selected),) if selected else (), 1, time.time())
+                        with mock.patch.object(fleet_view, 'collect_for_tui', return_value=envelope), \
                                 mock.patch.object(portal, 'probe', side_effect=AssertionError('fleet key probed Portal')):
                             app.action_refresh()
                             await pilot.pause()
@@ -270,6 +382,7 @@ async def main():
                                                '### Q-T-9 — USER_INPUT — effort input — unblocks 1\n\n'
                                                '- Needs: the worker asked for a key\n- Answer: Answer in T-9\'s entry.\n'
                                                '- Kind: held\n\n<!-- pi-autowork:questions:end -->\n')
+            app.action_refresh()  # publish questions and rows in the same completed capture
             await pilot.press('t')                      # Tasks: every open task in priority order
             await pilot.pause()
             assert isinstance(app.screen, TasksScreen), app.screen
@@ -281,7 +394,7 @@ async def main():
             await pilot.pause()
             assert [str(tasks.get_row_at(i)[1]) for i in range(tasks.row_count)] == ['T-9'], tasks.row_count
             keys = str(app.screen.query_one('#menubar').render())
-            assert keys.rstrip().endswith('enter Open  Up  Down  Section  Clear  Aside  New  esc Back'), keys
+            assert keys.rstrip().endswith('enter Open  Up  Down  Section  Clear  Aside  New  Inventory  esc Back'), keys
             await pilot.press('u')                      # re-sort: an autowork move
             await pilot.pause()
             await app.workers.wait_for_complete()
@@ -458,11 +571,13 @@ async def main():
         async with narrow.run_test(size=(80, 30)) as pilot:   # an 80-column terminal: wrapped, not cut
             await pilot.pause()
             words = ' '.join(str(narrow.query_one('#detail').render()).split())
-            assert 'Waiting — 19 wait for TASK-036 (overlapping files)' in words and 'on you' not in words, words
+            assert 'Blocker — 1: T-9 Blocker · Agent repair' in words and 'on you' not in words, words
+            assert 'Waiting 2: 1 on dependencies · 1 wait for TASK-036 (overlapping files)' in words, words
             # Every count stays on screen: the text columns shrink instead (they scrolled off before).
             table = narrow.query_one('#runners')
             width = sum(c.get_render_width(table) for c in table.columns.values())
             assert width <= 80, (width, [str(c) for c in table.get_row_at(0)])
+            await task_inventory_viewport(narrow, pilot)
             await pilot.press('n')
             await pilot.pause()
             tree_widget = narrow.screen.query_one('#tree')

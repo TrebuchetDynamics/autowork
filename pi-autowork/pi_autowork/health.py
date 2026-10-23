@@ -310,6 +310,8 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
                  waiting_groups=waiting_groups([t for t in snapshot.get('tasks', []) if t.get('task') not in stuck_ids]),
                  merge_backlog=backlog,
                  # Every task, for the TUI's Tasks window: the groups above keep 20 of each.
+                 # Additive display provenance; keep the legacy compact tasks rows intact.
+                 task_observations=[dict(t) for t in snapshot.get('tasks', []) if t.get('task')],
                  tasks=[[t['task'], t.get('state') or '', t.get('cause') or '',
                           ' '.join(str(t.get('reason') or '').split())[:200]]
                         for t in snapshot.get('tasks', []) if t.get('task')],

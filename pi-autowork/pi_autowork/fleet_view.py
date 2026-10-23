@@ -9,6 +9,7 @@ and nothing here changes a runner: actions only build the argv that `autowork` o
 from dataclasses import dataclass, field, replace
 import datetime
 import json
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -16,14 +17,12 @@ import subprocess
 import sys
 import time
 
-from pi_autowork import health, main_check, portal, questions as owner_questions, task_prepare
+from pi_autowork import health, main_check, portal, questions as owner_questions, task_prepare, task_snapshot, task_status
 from pi_autowork.common import safe_name
 
 KINDS = {'runner': 'runner', 'cycle': 'dependency cycle', 'held': 'blocker', 'contract': 'not runnable',
          'claim': 'claimed elsewhere', 'outside': 'outside Now/Next'}
-CAUSES = {'blocker': 'blocker', 'scope': 'outside Touches', 'scope_request': 'needs files', 'overlap': 'overlap',
-          'report': 'bad report', 'conflict': 'conflict', 'validation': 'validation', 'crash': 'crashed', 'empty': 'no result',
-          'launch': 'launch failed', 'contract_changed': 'entry changed', 'moved': 'main moved'}
+CAUSES = task_status.CAUSES
 ORDER = ['runner', 'cycle', 'held', 'contract', 'claim', 'outside']
 COLORS = {'working': 'green', 'idle': 'green', 'blocked': 'yellow', 'paused': 'yellow', 'starting': 'yellow',
           'restarting': 'cyan', health.HOST_WAIT: 'yellow'}
@@ -45,11 +44,13 @@ SETUP_LABELS = {
 }
 
 
-def read_env(path):
+def read_env(path, *, errors=None):
     """KEY=value lines of a service settings file."""
     try:
         lines = Path(path).read_text().splitlines()
-    except OSError:
+    except (OSError, UnicodeError) as exc:
+        if errors is not None:
+            errors.append(f'environment {path}: {exc}')
         return {}
     return dict(line.split('=', 1) for line in lines if '=' in line and not line.lstrip().startswith('#'))
 
@@ -133,6 +134,10 @@ class Runner:
 
     prepare_state: str | None = None  # one read-only preparation probe per fleet refresh
 
+    # Display-only attachment, deliberately outside the legacy CLI dataclass/JSON contract.
+    snapshot = None
+    preparation = None
+
     @property
     def color(self):
         return COLORS.get(self.state, 'red')
@@ -156,9 +161,7 @@ class Runner:
         return bool(self.setup_label)
 
 
-IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
-PHASES = {'dispatched': 'starting', 'running': 'implementing', 'reported': 'implemented',
-          'integrating': 'integrating', 'integrated': 'integrated'}
+IN_FLIGHT, PHASES = task_status.IN_FLIGHT, task_status.PHASES
 
 
 @dataclass
@@ -189,7 +192,11 @@ def _phases(state_dir):
     for line in _tail(Path(state_dir) / 'runner.log'):
         match = re.match(r'^\S+ ([A-Za-z0-9][A-Za-z0-9._-]*): (.*)$', line)
         if match:
-            found[match.group(1)] = _split_phase(match.group(2))
+            try:
+                stamp = datetime.datetime.fromisoformat(line.split()[0].replace('Z', '+00:00')).timestamp()
+            except ValueError:
+                stamp = 0
+            found[match.group(1)] = (*_split_phase(match.group(2)), stamp)
     return found
 
 
@@ -399,6 +406,16 @@ def doing(lane):
     return text or ('starting' if lane.phase in ('starting', 'running', 'implementing') else lane.phase)
 
 
+def lane_status(runner, lane):
+    """An execution annotation must never masquerade as verified inventory status."""
+    if runner.snapshot is not None:
+        row = next((r for r in runner.snapshot.rows if r.task == lane.task), None)
+        if row is not None and (lane.task, lane.attempt, lane.phase) in runner.snapshot.joined_lanes:
+            return row.state, state_style(row)
+        return 'Annotation · ' + lane.phase + ' (unmatched execution)', 'dim'
+    return ' · '.join(status(lane)), ''
+
+
 def quiet(lane):
     """'quiet 12m' when the worker's last action is QUIET_AFTER seconds or older, else ''."""
     if (lane.activity_age is None or lane.activity_age < QUIET_AFTER
@@ -478,8 +495,9 @@ def _working_verdict(runner: Runner) -> Verdict:
     if runner.job and not runner.lanes:
         return f"Working — {job_text(runner.job)} ({duration(runner.minutes) or '0m'})", 'bold green'
     # Fifteen finished commits waiting to merge must not read as "16 of 1 workers busy".
-    heads = [status(lane)[0] for lane in runner.lanes]
-    busy = runner.running or heads.count(ACTIVE)
+    heads = ([row.bucket for row in runner.snapshot.rows] if runner.snapshot is not None else
+             [status(lane)[0] for lane in runner.lanes])
+    busy = heads.count(ACTIVE) if runner.snapshot is not None else runner.running or heads.count(ACTIVE)
     of = f' of {runner.max_workers}' if runner.max_workers else ''
     text = f"Working — {busy}{of} worker{'s' if busy != 1 else ''} busy"
     if heads.count(MERGEABLE):
@@ -534,6 +552,21 @@ def verdict(runner: Runner) -> Verdict:
     service = _service_verdict(runner)
     if service is not None:
         return service
+    if runner.snapshot is not None:
+        snap = runner.snapshot
+        if snap.counts is None:
+            return ('Task inventory unavailable — ' + (runner.blocker or 'see acquisition errors')), 'bold yellow'
+        if snap.counts[0] or snap.counts[1] or runner.job:
+            return _working_verdict(runner)
+        if runner.questions:
+            return _question_verdict(runner)
+        if snap.counts[3]:
+            return 'Blocker — ' + blocker_parts(runner), 'bold yellow'
+        if snap.counts[2]:
+            return 'Waiting — ' + waiting_line(runner), 'bold yellow'
+        if snap.counts[4]:
+            return f'{snap.counts[4]} tasks need your decision', 'bold yellow'
+        return 'Idle — nothing left to run in Now/Next', 'bold green'
     if runner.state == 'working':
         return _working_verdict(runner)
     if runner.questions:
@@ -564,39 +597,21 @@ def maintainer_line(runner, now=None):
 
 def waiting_line(runner, limit=4):
     """'23 wait for X (overlapping files) · 12 on dependencies · …', or ''."""
-    parts = [f"{g['count']} {g['label']}" for g in runner.waiting_groups[:limit]]
-    more = len(runner.waiting_groups) - limit
+    groups = waiting_parts(runner) if runner.snapshot is not None else [(g['count'], g['label']) for g in runner.waiting_groups]
+    parts = [f'{n} {label}' for n, label in groups[:limit]]
+    more = len(groups) - limit
     return ' · '.join(parts) + (f' · +{more} more reasons' if more > 0 else '')
 
 
 # Each task shows one headline and a detail (docs/project.md, "Task status vocabulary"):
 # the headline says whether it moves, the detail how far it got. Engine states stay internal.
-ACTIVE, MERGEABLE, WAITING, BLOCKER = 'Active', 'Mergeable', 'Waiting', 'Blocker'
-# An implemented commit has not been checked: it waits, it is not Mergeable.
-WAIT_PHASES = {'implemented': 'Implemented', 'waiting to integrate': 'Merge turn', 'batch check': 'Batch check',
-               'waiting for a check slot': 'Check slot', 'paused': 'Paused', 'pending': 'Pending'}
-ACTIVE_PHASES = {'starting': 'Starting', 'running': 'Implementing', 'implementing': 'Implementing',
-                 'verifying': 'Verifying', 'integrating': 'Merging', 'landing': 'Merging'}
-
-
-def status(lane):
-    """(headline, detail) of a task in flight. Only an integrated commit, whose checks and review
-    passed and which is on the session branch, is Mergeable: main is all that remains."""
-    if lane.phase == 'integrated':
-        return MERGEABLE, 'Verified'
-    if lane.phase in WAIT_PHASES:
-        return WAITING, WAIT_PHASES[lane.phase]
-    return ACTIVE, ACTIVE_PHASES.get(lane.phase, lane.phase.capitalize())
-
-
-def resolver(asked):
-    """Who clears a Blocker: the owner only when the task has an open question in BLOCKERS.md;
-    a conflict, a failed check or a missing report is the runner's own repair."""
-    return 'Needs you' if asked else 'Agent repair'
+ACTIVE, MERGEABLE, WAITING, BLOCKER = task_status.ACTIVE, task_status.MERGEABLE, task_status.WAITING, task_status.BLOCKER
+WAIT_PHASES, ACTIVE_PHASES = task_status.WAIT_PHASES, task_status.ACTIVE_PHASES
+status, resolver = task_status.status, task_status.resolver
 
 
 # A hold the engine lifts by itself once another task's files are free: a wait, not an obstacle.
-WAIT_CAUSES = ('overlap',)
+WAIT_CAUSES = task_status.WAIT_CAUSES
 
 
 def blocking(held):
@@ -604,10 +619,7 @@ def blocking(held):
     return [(task, cause) for task, cause in held if cause not in WAIT_CAUSES]
 
 
-def blocker_detail(cause, asked=False):
-    """'Conflict · Agent repair'."""
-    text = CAUSES.get(cause, cause or 'held')
-    return f'{text[:1].upper()}{text[1:]} · {resolver(asked)}'
+blocker_detail = task_status.blocker_detail
 
 
 def question_summary(runner):
@@ -635,51 +647,32 @@ def task_counts(runner):
     for the owner, not the engine. Blocker is the held tasks and the waiting tasks stopped behind
     something that needs a person or a repair: a blocked runner showed Blocker 0 and its stuck
     task as Waiting, as if nothing were wrong."""
-    heads = [status(lane)[0] for lane in runner.lanes]
-    active = heads.count(ACTIVE) if runner.lanes else runner.running
-    mergeable = heads.count(MERGEABLE)
-    held = len(blocking(runner.held))
-    blocker = held + runner.stopped
-    waiting = heads.count(WAITING) + runner.waiting + len(runner.held) - held
-    return active, mergeable, waiting, blocker, runner.decisions, active + mergeable + waiting + blocker + runner.decisions
+    return snapshot_for(runner).counts
 
 
 # Why a task in flight waits, as a label of the Waiting row ("7 implemented, waiting for review").
-WAIT_LABELS = {'Implemented': 'implemented, waiting for review', 'Merge turn': 'reviewed, waiting for their merge turn',
-               'Batch check': 'in a batch check', 'Check slot': 'waiting for a check slot',
-               'Paused': 'paused by a restart', 'Pending': 'pending'}
+WAIT_LABELS = task_status.WAIT_LABELS
 
 
 def waiting_parts(runner):
     """[(count, label)] of every Waiting task, so the parts add up to the Waiting count: commits in
     flight by phase, then the queue's reasons, then overlap holds. The row showed only the queue's
     reasons, '8: 6 on dependencies · 2 …' beside '15 waiting'."""
-    phases = {}
-    for lane in runner.lanes:
-        head, detail = status(lane)
-        if head == WAITING:
-            phases[detail] = phases.get(detail, 0) + 1
-    parts = [(n, WAIT_LABELS.get(detail, detail.lower())) for detail, n in phases.items()]
-    parts += [(g['count'], g['label']) for g in runner.waiting_groups]
-    grouped = sum(g['count'] for g in runner.waiting_groups)
-    if runner.waiting > grouped:
-        parts.append((runner.waiting - grouped, 'waiting for another reason'))
-    overlap = len(runner.held) - len(blocking(runner.held))
-    if overlap:
-        parts.append((overlap, "waiting for another task's files"))
-    return parts
+    groups = {}
+    for row in snapshot_for(runner).rows:
+        if row.bucket == WAITING:
+            groups[row.why] = groups.get(row.why, 0) + 1
+    return [(n, label) for label, n in groups.items()]
 
 
 def blocker_parts(runner, asked=()):
     """'3: B Conflict · Agent repair · 2 behind X (outside condition or task not in Now/Next)', or '':
     the Blocker count, then each held task and what stops the waiting ones, adding up to it."""
+    rows = [row for row in snapshot_for(runner).rows if row.bucket == BLOCKER]
+    details = [f'{row.task} {row.why}' for row in rows]
     if runner.stop_reason:
-        return f'Runner: {runner.stop_reason}'
-    held = [f'{task} {blocker_detail(cause, task in asked)}' for task, cause in blocking(runner.held)]
-    behind = [f"{g['count']} behind {g['label']}" for g in runner.stopped_groups]
-    if not held and not behind:
-        return ''
-    return f'{len(held) + runner.stopped}: ' + ' · '.join(held + behind)
+        details.append(f'Runner: {runner.stop_reason}')
+    return (f'{len(rows)}: ' + ' · '.join(details)) if details else ''
 
 
 def waiting_detail(runner):
@@ -717,9 +710,8 @@ def lanes(runner, now=None):
     if not runner.repo:
         return []
     try:
-        common = subprocess.run(['git', '-C', runner.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir'],
-                                capture_output=True, text=True, timeout=10).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
+        common = task_snapshot._git(runner.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir').decode().strip()
+    except (OSError, ValueError, subprocess.SubprocessError):
         return []
     phases = _phases(runner.state_dir) if runner.state_dir else {}
     single, batch = reviews(runner.state_dir) if runner.state_dir else (set(), set())
@@ -732,7 +724,7 @@ def lanes(runner, now=None):
         if slot.get('state') not in IN_FLIGHT:
             continue
         task = slot.get('task_id', path.stem)
-        phase, detail = phases.get(task, (PHASES[slot['state']], ''))
+        phase, detail, phase_at = phases.get(task, (PHASES[slot['state']], '', 0))
         if slot['state'] == 'integrating' and runner.state_dir:
             # Both the merged and base suites publish here; a dead invocation is never a live wait.
             progress = main_check.slot_status(Path(runner.state_dir) / 'full-check' / f'{task}.status.json')
@@ -748,8 +740,17 @@ def lanes(runner, now=None):
                              ('waiting to integrate', 'its review is not running'))
         started = slot.get('started_at')
         activity, age = _activity(runner.state_dir, task, now) if runner.state_dir else ('', None)
-        out.append(Lane(task=task, phase=phase, detail=detail, attempt=slot.get('attempt', 1),
-                        minutes=int((now - started) // 60) if started else None, activity=activity, activity_age=age))
+        lane = Lane(task=task, phase=phase, detail=detail, attempt=slot.get('attempt', 1),
+                    minutes=int((now - started) // 60) if started else None, activity=activity, activity_age=age)
+        lane.slot_state = slot['state']
+        lane.started_at, lane.phase_at = started, phase_at
+        try:
+            contract = Path(common, 'autowork-execution', 'slot-data', str(task),
+                            f'attempt-{lane.attempt}', 'contract.json')
+            lane.contract_hash = json.loads(contract.read_text()).get('contract_hash')
+        except (OSError, ValueError, AttributeError):
+            lane.contract_hash = None
+        out.append(lane)
     # Twenty finished commits listed first hid the eight tasks actually running.
     return sorted(out, key=lambda lane: status(lane)[0] != ACTIVE)
 
@@ -788,7 +789,7 @@ def short(text, limit=32):
     return cut + '...'
 
 
-@dataclass
+@dataclass(frozen=True)
 class Question:
     id: str
     effort: str
@@ -813,20 +814,30 @@ def _planning_questions(text):
     return found
 
 
-def read_questions(repo, state_dir=''):
+def read_questions(repo, state_dir='', *, provenance=None, errors=None):
     """Engine questions followed by maintainer planning stops, without changing BLOCKERS.md.
     They reach the repository when the session merges, so prefer the session worktree's copy,
     including when it has only planning-stop questions and no engine block."""
     block, planning = None, []
     try:
         session = json.loads((Path(state_dir) / 'session.json').read_text())['path'] if state_dir else ''
-    except (OSError, ValueError, KeyError, TypeError):
+    except FileNotFoundError:
         session = ''
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        session = ''
+        if errors is not None:
+            errors.append(f'question session source: {exc}')
     for folder in (session, repo):
         try:
             text = (Path(folder) / 'BLOCKERS.md').read_text() if folder else ''
-        except OSError:
+        except FileNotFoundError:
             continue
+        except (OSError, UnicodeError) as exc:
+            if errors is not None:
+                errors.append(f'questions {folder}: {exc}')
+            continue
+        if provenance is not None:
+            provenance.update(questions_workspace=str(folder), questions_at=time.time())
         block, planning = owner_questions.block_of(text), _planning_questions(text)
         if block is not None or planning:
             break
@@ -836,11 +847,11 @@ def read_questions(repo, state_dir=''):
         if head:
             found.append(Question(head[1], head[2], int(head[3]), ''))
         elif found and line.startswith('- Needs: '):
-            found[-1].needs = line[len('- Needs: '):].strip()
+            found[-1] = replace(found[-1], needs=line[len('- Needs: '):].strip())
         elif found and line.startswith('- Answer: '):
-            found[-1].answer = line[len('- Answer: '):].strip()
+            found[-1] = replace(found[-1], answer=line[len('- Answer: '):].strip())
         elif found and line.startswith('- Kind: '):
-            found[-1].kind = line[len('- Kind: '):].strip()
+            found[-1] = replace(found[-1], kind=line[len('- Kind: '):].strip())
     return found + planning
 
 
@@ -977,7 +988,7 @@ def paused_marker(env_dir, name):
     return Path(env_dir) / f'{name}.paused'
 
 
-def _service_states(env_dir, systemctl: str, strict: bool) -> dict[str, str]:
+def _service_states(env_dir, systemctl: str, strict: bool, errors=None) -> dict[str, str]:
     services = {}
     for line in _lines([systemctl, '--user', 'list-units', 'pi-autowork@*', '--all', '--plain', '--no-legend'], strict=strict):
         parts = line.split()
@@ -986,15 +997,23 @@ def _service_states(env_dir, systemctl: str, strict: bool) -> dict[str, str]:
     # A stopped, disabled (paused) service may not be loaded, so systemd does not list it;
     # every installed service has a settings file.
     for env_file in sorted(Path(env_dir).glob('*.env')):
-        if read_env(env_file).get('PI_AUTOWORK_REPO'):
+        if read_env(env_file, errors=errors).get('PI_AUTOWORK_REPO'):
             services.setdefault(env_file.stem, 'dead')
     return services
 
 
-def _service_runner(name: str, sub: str, env_dir, systemctl: str) -> Runner:
-    settings = read_env(Path(env_dir) / f'{name}.env')
-    enabled = subprocess.run([systemctl, '--user', 'is-enabled', '--quiet', f'pi-autowork@{name}.service'],
-                             capture_output=True).returncode == 0
+def _service_runner(name: str, sub: str, env_dir, systemctl: str, errors=None) -> Runner:
+    settings = read_env(Path(env_dir) / f'{name}.env', errors=errors)
+    try:
+        result = subprocess.run([systemctl, '--user', 'is-enabled', '--quiet', f'pi-autowork@{name}.service'],
+                                capture_output=True, timeout=10)
+        enabled = result.returncode == 0
+        if result.returncode not in (0, 1) and errors is not None:
+            errors.append(f'{name}: service enabled query exited {result.returncode}')
+    except (OSError, subprocess.SubprocessError) as exc:
+        enabled = False
+        if errors is not None:
+            errors.append(f'{name}: service enabled query: {exc}')
     return Runner(name=name, service=sub, mode='service',
                   repo=settings.get('PI_AUTOWORK_REPO', '').strip(),
                   model=settings.get('PI_AUTOWORK_PRIMARY') or DEFAULT_MODEL,
@@ -1057,8 +1076,11 @@ def _active_runner(runner: Runner, now: float) -> Runner:
     if runner.state in ('blocked', 'stalled', 'not cycling') and any(
             lane.activity_age is not None and lane.activity_age < health.STALE_AFTER for lane in runner.lanes):
         runner = replace(runner, state='working', minutes=None)
-    return replace(runner, restarting=restarting, gate=gate,
-                   questions=read_questions(runner.repo, runner.state_dir) if runner.repo else [])
+    provenance, errors = {}, []
+    questions = read_questions(runner.repo, runner.state_dir, provenance=provenance, errors=errors) if runner.repo else []
+    runner = replace(runner, restarting=restarting, gate=gate, questions=questions)
+    runner.question_provenance, runner.acquisition_errors = provenance, errors
+    return runner
 
 
 def _service_lifecycle(runner: Runner, env_dir) -> Runner:
@@ -1075,21 +1097,141 @@ def _service_lifecycle(runner: Runner, env_dir) -> Runner:
     return runner
 
 
-def collect(state_root, env_dir, *, systemctl='systemctl', now=None, strict=False) -> list[Runner]:
+def collect(state_root, env_dir, *, systemctl='systemctl', now=None, strict=False,
+            _generation=0, _cached=None, _last_good=None, _errors=None) -> list[Runner]:
     """Every runner: pi-autowork@ services and their runner state, merged by name."""
     now = time.time() if now is None else now
-    services = _service_states(env_dir, systemctl, strict)
-    found = {name: _service_runner(name, sub, env_dir, systemctl) for name, sub in services.items()}
+    services = _service_states(env_dir, systemctl, strict, _errors)
+    found = {name: _service_runner(name, sub, env_dir, systemctl, _errors) for name, sub in services.items()}
     folders = _state_folders(state_root)
     for row in health.fleet(state_root, now=now, service=lambda name: services.get(name, '-')):
         runner = _health_runner(found, row, folders, now)
         if runner is not None:
             found[runner.name] = runner
+    retained = _last_good or _cached
+    previous = {s.workspace: s for s in retained.snapshots} if retained else {}
+    audits = {p.workspace: p for p in _cached.preparation} if _cached else {}
     for name, runner in found.items():
-        runner = _active_runner(_prepared_runner(runner), now)
-        found[name] = _service_lifecycle(runner, env_dir)
+        if _errors is None:  # Full CLI diagnostics remain uncached.
+            runner = _prepared_runner(runner)
+        active = _active_runner(runner, now)
+        runner = _service_lifecycle(active, env_dir)
+        runner.question_provenance, runner.acquisition_errors = active.question_provenance, active.acquisition_errors
+        snap = snapshot_for(runner, generation=_generation, last_good=previous.get(str(Path(runner.repo).resolve())))
+        if _errors is not None:
+            _errors.extend(f'{name}: {error}' for error in snap.errors)
+            runner.preparation = _preparation(runner, env_dir, now, audits, _errors)
+            runner.prepare_state = runner.preparation.state
+        # Both public consumers use current committed Decision membership.
+        runner.decisions = snap.counts[4] if snap.counts is not None else 0
+        found[name] = runner
     # Put the owner's decisions and setup work first; keep each group alphabetical.
     return sorted(found.values(), key=lambda r: (not (r.questions or r.setup_required), r.name))
+
+
+@dataclass(frozen=True)
+class Preparation:
+    workspace: str
+    key: str | None
+    observed_at: float
+    state: str
+    errors: tuple = ()
+
+
+@dataclass(frozen=True)
+class FleetSnapshot:
+    runners: tuple
+    snapshots: tuple
+    generation: int
+    captured_at: float
+    errors: tuple = ()
+    preparation: tuple = ()
+
+
+def _preparation_key(runner, env_dir):
+    """Invalidate diagnostics for dirty content, revision, settings and environment.
+
+    No pending/readiness result is cached by HEAD. Status plus dirty-file stat
+    signatures distinguish repeated edits to an already-dirty source file.
+    """
+    snap = runner.snapshot
+    status = task_snapshot._git(runner.repo, 'status', '--porcelain=v1', '-z', '--untracked-files=all')
+    dirty = []
+    for item in status.decode(errors='replace').split('\0'):
+        if not item:
+            continue
+        path = Path(runner.repo, item[3:])
+        try:
+            stat = path.stat()
+            dirty.append((str(path), stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size))
+        except FileNotFoundError:
+            dirty.append((str(path), 'absent'))
+    settings = Path(env_dir, f'{runner.name}.env').read_bytes()
+    return hashlib.sha256(repr((snap.workspace, snap.repository_identity, snap.revision,
+                                status, dirty, settings, sorted(os.environ.items()))).encode()).hexdigest()
+
+
+def _preparation(runner, env_dir, now, cached, errors):
+    key = None
+    try:
+        key = _preparation_key(runner, env_dir)
+    except (OSError, ValueError) as exc:
+        errors.append(f'{runner.name}: preparation invalidation read: {exc}')
+    previous = cached.get(runner.snapshot.workspace)
+    if key is not None and previous and previous.key == key and 0 <= now - previous.observed_at < 30:
+        errors.extend(previous.errors)
+        return previous
+    problems = []
+    try:
+        report = task_prepare.prepare(runner.repo, mode='check')
+        state = report.get('state') or 'unknown'
+        if state == 'unknown' or report.get('outcome') in ('INVALID_STORE', 'TOOLCHAIN_MISMATCH'):
+            problems.append(f'{runner.name}: preparation: {report}')
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        state = 'unknown'
+        problems.append(f'{runner.name}: preparation: {exc}')
+    errors.extend(problems)
+    return Preparation(runner.snapshot.workspace, key, now, state, tuple(problems))
+
+
+def collect_for_tui(state_root, env_dir, *, generation, cached_preparation=None, last_good=None,
+                    systemctl='systemctl', now=None):
+    """Current inventory plus explicitly aged, <=30s display-only preparation audit.
+
+    Pass the previous envelope to reuse audits/retain last-good inventories. Omit
+    it after an action, preparation, interactive return or explicit refresh. The
+    separate last_good argument can retain inventory without reusing any audit.
+    Confirmed Start continues to use the uncached readiness() path.
+    """
+    now = time.time() if now is None else now
+    errors = []
+    try:
+        # Directory acquisition errors must not turn into a successful empty glob.
+        for label, path in (('service settings', env_dir), ('runner state', state_root)):
+            try:
+                list(Path(path).iterdir())
+            except FileNotFoundError:
+                pass  # no settings/state yet is a valid empty installation
+            except OSError as exc:
+                errors.append(f'{label}: {exc}')
+        runners = tuple(collect(state_root, env_dir, systemctl=systemctl, now=now, strict=True,
+                                _generation=generation, _cached=cached_preparation, _last_good=last_good, _errors=errors))
+    except (DiscoveryUnavailable, OSError, ValueError, subprocess.SubprocessError) as exc:
+        errors.append(str(exc))
+        runners = ()
+        previous = last_good or cached_preparation
+        if previous:
+            retained = []
+            for old in previous.runners:
+                runner = replace(old)
+                runner.snapshot = replace(old.snapshot, generation=generation, freshness='stale',
+                                          errors=old.snapshot.errors + tuple(errors),
+                                          engine_freshness='stale' if old.snapshot.engine_source.observed_at is not None else 'unknown')
+                runner.preparation = old.preparation
+                retained.append(runner)
+            runners = tuple(retained)
+    return FleetSnapshot(runners, tuple(r.snapshot for r in runners), generation, now, tuple(errors),
+                         tuple(r.preparation for r in runners if r.preparation is not None))
 
 
 def summary(runners):
@@ -1157,17 +1299,44 @@ def actions(runner, *, command, script, agent=None):
 TASK_VIEWS = ('all', 'working', 'held', 'waiting', 'questions')
 
 
-@dataclass
-class TaskRow:
-    """One open task of a runner's task store, in its priority order."""
-    task: str
-    short: str          # its `short` (at most 40 characters), cut to 40
-    section: str        # Now, Next or Needs decision
-    state: str          # in plain words: implementing, implemented, held, waiting, ready, ...
-    kind: str           # working, held, waiting, ready: what a TASK_VIEWS filter matches
-    why: str = ''       # the hold or wait reason, or the owner's question
-    question: bool = False
-    pending: bool = False  # its file has an uncommitted edit: the runner reads it once committed
+TaskRow = task_snapshot.TaskRow
+
+
+def snapshot_for(runner, *, generation=0, last_good=None):
+    """The attached capture is shared by every renderer; direct API callers capture once."""
+    if runner.snapshot is None:
+        observation = {}
+        if runner.state_dir:
+            try:
+                observation = json.loads(Path(runner.state_dir, 'status.json').read_text())
+                if not isinstance(observation, dict):
+                    raise ValueError('status is not an object')
+            except (OSError, ValueError) as exc:
+                observation = {'errors': ['engine observation: ' + str(exc)]}
+        observation.update(lanes=runner.lanes, questions=runner.questions,
+                           **getattr(runner, 'question_provenance', {}))
+        observation['errors'] = [*(observation.get('errors') or []), *getattr(runner, 'acquisition_errors', [])]
+        runner.snapshot = task_snapshot.capture(runner.repo, engine_observation=observation,
+                                               generation=generation, last_good=last_good)
+    return runner.snapshot
+
+
+def freshness(runner, now=None):
+    """Human-readable provenance, keeping inventory/runtime/pending ages separate."""
+    snap = snapshot_for(runner)
+    now = time.time() if now is None else now
+    text = (f'{snap.freshness} · revision {snap.revision or "unknown"} · generation {snap.generation}'
+            f' · captured {ago(max(0, int(now - snap.captured_at)))}'
+            f' · execution {snap.engine_freshness}')
+    if snap.engine_source.observed_at is not None:
+        text += ' ' + ago(max(0, int(now - snap.engine_source.observed_at)))
+    if snap.pending_paths is None:
+        text += ' · pending paths unknown'
+    else:
+        text += f' · {len(snap.pending_paths)} pending paths (working tree, independently observed)'
+    if snap.questions_workspace:
+        text += f' · questions: {snap.questions_workspace}/BLOCKERS.md (working tree, independently observed)'
+    return ' · '.join((text, *snap.errors, *snap.annotations))
 
 
 def task_store(repo):
@@ -1183,94 +1352,13 @@ def task_store(repo):
         return None
 
 
-def pending_edits(repo):
-    """IDs of tasks whose file has an uncommitted edit (staged, unstaged or untracked)."""
-    from task_store import TaskStore, StoreError
-    try:
-        paths = TaskStore.pending(Path(repo))
-    except (StoreError, OSError, subprocess.SubprocessError):
-        return set()
-    return {Path(p).stem for p in paths if p.startswith('tasks/items/') and p.endswith('.md')}
-
-
-@dataclass(frozen=True)
-class _TaskState:
-    """The engine's per-task state, cause and explanation (or its legacy group fallback)."""
-    state: str = ''
-    cause: str = ''
-    why: str = ''
-
-
-def _engine_task_states(runner: Runner) -> dict[str, _TaskState]:
-    try:
-        states = json.loads(Path(runner.state_dir, 'status.json').read_text()).get('tasks') or []
-    except (OSError, TypeError, ValueError, AttributeError):
-        states = []
-    engine = {row[0]: _TaskState(*row[1:]) for row in states if isinstance(row, list) and len(row) == 4}
-    if not engine:  # a runner from before the per-task list: its groups name up to 20 tasks each
-        engine.update((t, _TaskState('waiting', '', g['label'])) for g in runner.waiting_groups for t in g.get('tasks') or [])
-        engine.update((t, _TaskState('held', cause or '', '')) for t, cause in runner.held)
-    return engine
-
-
-def _task_state_words(task: str, section: str, engine: _TaskState, lane: Lane | None, asked: bool) -> tuple[str, str]:
-    state, cause = engine.state, engine.cause
-    if lane is not None or state in IN_FLIGHT:
-        return ' · '.join(status(lane or Lane(task, PHASES[state]))), 'working'
-    if state == 'held' and cause in WAIT_CAUSES:
-        return f'{WAITING} · ' + blocker_detail(cause).split(' · ')[0], 'held'
-    if state == 'held':
-        return f'{BLOCKER} · ' + blocker_detail(cause, asked), 'held'
-    if state in ('waiting', 'pending'):
-        return WAITING, 'waiting'
-    if section == 'Needs decision':
-        return f'{WAITING} · Needs decision', 'waiting'
-    return f'{WAITING} · Ready' if state in ('', 'ready') else state, 'ready'
-
-
-def _open_task_row(record, engine: _TaskState, lane: Lane | None, question: Question | None, edited: bool) -> TaskRow:
-    short = ' '.join(record.short.split()) or ' '.join(record.title.split())
-    words, kind = _task_state_words(record.id, record.section, engine, lane, bool(question))
-    if edited:
-        words += ' · Edit not committed'
-    short = short if len(short) <= 40 else short[:39].rstrip() + '…'
-    return TaskRow(task=record.id, short=short, section=record.section, state=words, kind=kind,
-                   why='you: ' + question.needs if question else engine.why, question=bool(question), pending=edited)
-
-
-def _closed_task_rows(store) -> list[TaskRow]:
-    rows = []
-    for record in sorted(store.tasks.values(), key=lambda t: t.id):
-        if record.status == 'done':
-            info = record.closure_info
-            why = (info['evidence'] if record.closure == 'coordinator_verified' else info['reason']) or 'Closure provenance not recorded'
-            rows.append(TaskRow(record.id, record.short or record.title, 'Closed', info['label'], 'closed', why))
-    return rows
-
-
 def task_rows(runner: Runner, include_closed=False) -> list[TaskRow]:
     """Task rows in priority order, optionally including closures and their provenance."""
-    store = task_store(runner.repo) if runner.repo else None
-    if store is None:
-        return []
-    engine = _engine_task_states(runner)
-    lanes = {lane.task: lane for lane in runner.lanes}
-    asked = {q.id: q for q in runner.questions}
-    edited = pending_edits(runner.repo)
-    sections = {'Now': 0, 'Next': 1, 'Needs decision': 2}
-    records = sorted((t for t in store.tasks.values() if t.status == 'open' and t.section in sections),
-                     key=lambda t: (sections[t.section], t.rank or 0, t.id))
-    rows = [_open_task_row(record, engine.get(record.id, _TaskState()), lanes.get(record.id),
-                           asked.get(record.id), record.id in edited) for record in records]
-    # Planning stops name the just-closed plan, not its open continuation task. Keep the
-    # question visible in the Questions view without reopening or duplicating that record.
-    open_ids = {row.task for row in rows}
-    stops = [q for q in runner.questions if q.kind == 'decision' and q.id not in open_ids]
-    rows.extend(TaskRow(q.id, 'Planning stopped', 'Needs decision', f'{WAITING} · Needs decision',
-                        'waiting', why='you: ' + q.needs, question=True) for q in stops)
+    snap = snapshot_for(runner)
+    rows = list(snap.rows) + list(snap.question_rows)
     if include_closed:
-        stop_ids = {q.id for q in stops}
-        rows.extend(row for row in _closed_task_rows(store) if row.task not in stop_ids)
+        annotated = {row.task for row in snap.question_rows}
+        rows.extend(row for row in snap.closed_rows if row.task not in annotated)
     return rows
 
 
@@ -1286,8 +1374,7 @@ def task_entry(runner, task):
 
 def open_goals(runner):
     """(id, title) of the goals in ``runner``'s task store not yet met: a new task's choices."""
-    store = task_store(runner.repo) if runner.repo else None
-    return [(g.id, g.title) for g in store.goals.values() if g.status != 'met'] if store else []
+    return list(snapshot_for(runner).goals)
 
 
 def task_view(rows, view):
