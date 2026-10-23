@@ -1335,23 +1335,37 @@ def blocker_resolved(repo, common, slot, hold):
     The runner cannot judge prose semantically. Require a fresh, blocker-specific
     resolution field; the maintainer/owner supplies the evidence, normal checks judge it.
     """
-    if 'Blocker resolution' not in (entry_changes(repo, common, slot) or []):
+    return resolution_changed(repo, common, slot, 'Blocker resolution', hold['fingerprint'])
+
+
+def resolution_changed(repo, common, slot, label, identity):
+    """Fresh incident-specific evidence, never a cosmetic edit or a bare retry request."""
+    if not identity or label not in (entry_changes(repo, common, slot) or []):
         return False
     current = task_queue.record(repo, slot['task_id'])
     if current is None:
         return False
-    value = ' '.join(task_queue.notes(current).get('Blocker resolution', '').split())
+    value = ' '.join(task_queue.notes(current).get(label, '').split())
     previous = slot.get('rescoped_contract') or dispatched_contract(common, slot)
-    before = ' '.join(task_queue.parse_contract(previous or '').get('Blocker resolution', '').split())
-    prefix = hold['fingerprint'] + ';'
+    before = ' '.join(task_queue.parse_contract(previous or '').get(label, '').split())
+    prefix = identity + ';'
     return (value.casefold() != before.casefold() and value.startswith(prefix)
             and bool(value[len(prefix):].strip()))
 
 
 def entry_changed(repo, common, slot):
-    """A changed entry, or for a repeated quick hold, an answer to its named blocker."""
+    """A changed entry, with fresh incident-specific evidence after bounded recovery."""
+    if not entry_changes(repo, common, slot):
+        return False
+    stuck = (dispatch.rework_record(common, slot['task_id']) or {}).get('stuck')
+    if slot.get('cause') == 'reviewed_twice' or stuck:
+        # The next failed execution can temporarily be `validation` again. Its spent
+        # budget still applies; do not let a cosmetic edit outrun review_rework().
+        incident = stuck.get('incident') if isinstance(stuck, dict) else None
+        if not resolution_changed(repo, common, slot, 'Engineering repair', incident):
+            return False
     hold = state.quick_hold(common, slot)
-    return bool(entry_changes(repo, common, slot)) and (not hold or blocker_resolved(repo, common, slot, hold))
+    return not hold or blocker_resolved(repo, common, slot, hold)
 
 
 def _retire(repo, common, slot, requeued):
@@ -1926,7 +1940,11 @@ def retry_held(args):
             changed_slot = next((s for s in current if s['state'] == 'held' and not s.get('waits_for')
                                  and not state.worker_live(s) and entry_changed(repo, common, s)), None)
             if changed_slot is not None:
-                rework_path(common, changed_slot['task_id']).unlink(missing_ok=True)  # a person's answer resets it
+                # A new engineering approach may requeue execution, but must not buy a second
+                # review-rework budget or erase the original findings/incident.
+                spent = (dispatch.rework_record(common, changed_slot['task_id']) or {}).get('stuck')
+                if changed_slot.get('cause') != 'reviewed_twice' and not spent:
+                    rework_path(common, changed_slot['task_id']).unlink(missing_ok=True)
                 present = task_queue.record(repo, changed_slot['task_id']) is not None
                 state.event(common, 'task_entry_changed', task_id=changed_slot['task_id'],
                             changed_fields=entry_changes(repo, common, changed_slot), action='requeue')

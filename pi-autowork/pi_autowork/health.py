@@ -27,7 +27,7 @@ STALL_AFTER = 1800      # seconds with nothing running while work waits
 STALE_AFTER = 600       # a status this old means the runner is not cycling
 MOVING = ('running', 'integrating', 'restarting')
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')  # unsafe to update under
-NEEDS_PERSON = ('runner', 'held', 'claim', 'contract', 'outside', 'cycle')
+ACTION_ROOTS = ('runner', 'held', 'claim', 'contract', 'outside', 'cycle')
 HOST_WAIT = 'waiting for the host'
 LOAD_WAIT = r'^resource gate: load average (\S+) >= (\S+) CPUs$'
 
@@ -36,11 +36,13 @@ def needs_person(root):
     """Whether a root genuinely needs an owner decision. A held root is judged by the shared
     failure policy, not by its display kind: an exhausted technical hold is still visible, but it
     is Agent repair or engine recovery, not a question."""
-    if root.get('kind') == 'held':
-        if 'owner_decision_required' in root:  # the status root already carries its classification
-            return bool(root['owner_decision_required'])
-        return failure_policy.owner_decision_required(root.get('cause'), root.get('reason'))
-    return root.get('kind') in NEEDS_PERSON
+    return failure_policy.disposition(root)['resolution_owner'] == failure_policy.OWNER
+
+
+def requires_action(root):
+    """A dependency cannot clear by ordinary waiting, regardless of who repairs its root."""
+    return (root.get('kind') in ACTION_ROOTS
+            and not (root.get('kind') == 'held' and root.get('cause') in ('overlap', 'task_wait')))
 
 
 def classify(snapshot, *, paused=False, stuck=0):
@@ -85,7 +87,7 @@ def describe(root):
         kind = 'deferred by owner'
     if root['kind'] == 'held' and root.get('cause') == 'overlap':
         kind = 'held'  # the engine offers it again by itself; no person is needed
-    elif root['kind'] == 'held' and root.get('cause') and not needs_person(root):
+    elif root['kind'] == 'held' and not needs_person(root):
         kind = 'engineering hold'  # visible, but an agent or the engine clears it
     if root['kind'] == 'held' and root.get('cause'):
         kind += ': ' + CAUSES.get(root['cause'], root['cause'])
@@ -140,7 +142,7 @@ def stopped(tasks, roots):
     waiting = [t.get('task') for t in tasks if t.get('state') == 'waiting' and t.get('task')]
     ids, groups = set(), []
     for root in roots:
-        if not needs_person(root) or (root.get('kind') == 'held' and root.get('cause') == 'overlap'):
+        if not requires_action(root):
             continue
         held = waiting if root.get('kind') == 'runner' else [t for t in root.get('tasks') or [] if t in waiting]
         fresh = [t for t in held if t not in ids]
@@ -264,7 +266,7 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
         waiting = sum(t.get('state') == 'waiting' for t in snapshot.get('tasks', [])) \
             + int(runner.get('stuck_integrations') or 0)
         roots.insert(0, dict(id=runner['blocker'], kind='runner', blocks=waiting, cause=None, reason=''))
-    stuck = [r for r in roots if r.get('kind') in NEEDS_PERSON]
+    stuck = [r for r in roots if r.get('kind') in ACTION_ROOTS]
     if state == 'blocked' and now - since >= stall_after and stuck:
         state = 'stalled'
     keys = sorted(label(r) for r in stuck)

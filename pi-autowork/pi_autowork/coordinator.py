@@ -2456,7 +2456,7 @@ class Coordinator:
         cause or are not runnable as written, one Pi job restates them from the repository's own
         evidence in a disposable checkout. Its commit merges into the session only if it changed
         planning files alone and the task store still validates. Only unhandled trigger items enter
-        the prompt; an unchanged unsuccessful repair needs an owner, not another run.
+        the prompt; an unchanged unsuccessful technical repair stays an engineering incident, not another run.
         True when its repair merged, or another ledger-proposal batch still waits."""
         if self.stop or not self.integ or self.maintainer_job:
             return False
@@ -2479,12 +2479,13 @@ class Coordinator:
             rows = [r for r in rows if r.get('state') in ('integrated', 'closing', 'closed')
                     and r.get('ledger_edit_dropped')]
         findings = {r['task']: worker.review_findings(self.state, r['task']) for r in rows
-                    if r.get('state') == 'held' and r.get('cause') == 'validation' and r.get('task')}
+                    if r.get('state') == 'held' and r.get('cause') in ('validation', 'reviewed_twice') and r.get('task')}
+        dispatch = dispatch_module(self.toolset)
         main = {} if ledger_edits_only else main_check.read(self.state)
         found = (maintainer.overlaps(rows) if overlap and not self.ledger_errors else
                  maintainer.triggers(rows, main, findings, ledger_errors=self.ledger_errors, limit=None,
-                                     reported_flakes=maintainer.last(self.state).get('flaky_tests', [])))
-        dispatch = dispatch_module(self.toolset)
+                                     reported_flakes=maintainer.last(self.state).get('flaky_tests', []),
+                                     common=dispatch.state.common_dir(self.repo)))
         queue = dispatch.task_queue
 
         def entries(snapshot):
@@ -2620,6 +2621,8 @@ class Coordinator:
                 outcome = 'refused: it changed more than planning files'
             elif invalid:
                 outcome = 'refused: invalid task store: ' + invalid
+            elif (repair_error := maintainer.repair_error(found, before, entries(proposed))):
+                outcome = 'refused: ' + repair_error
             elif self.merge_planning(head):
                 outcome = 'merged'
                 self.settled = self.land_soon = True
@@ -3005,11 +3008,12 @@ class Coordinator:
             try:
                 entries = maintainer.entries(dispatch.task_queue.store(Path(self.integ)), dispatch.task_queue)
             except dispatch.task_queue.StoreError:
-                entries = {}  # an invalid store is the LEDGER question
+                entries = {}  # invalid stores remain technical incidents
             rows = self.tasks(snapshot)
             findings = {r['task']: worker.review_findings(self.state, r['task']) for r in rows
-                        if r.get('state') == 'held' and r.get('cause') == 'validation' and r.get('task')}
-            triggers = maintainer.triggers(rows, findings=findings, limit=None)
+                        if r.get('state') == 'held' and r.get('cause') in ('validation', 'reviewed_twice') and r.get('task')}
+            triggers = maintainer.triggers(rows, findings=findings, limit=None,
+                                          common=dispatch.state.common_dir(self.repo))
             reasons = {r['task']: r.get('reason') or '' for r in rows if r.get('task')}
             repairs = maintainer.stalled(self.state, triggers, entries=entries, reasons=reasons)
             found = questions.build(snapshot, self.integ, repairs=repairs, resolving=self.resolving(rows))
