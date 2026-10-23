@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-382-fcc9aa05"
 title = "Separate open tasks from closed history and disclose unknown closures"
 short = "Separate open tasks and history"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 6000
@@ -16,6 +16,8 @@ scope = "Adopt the already implemented and reviewed code-only candidate 27e8ca54
 acceptance = ["Default Open rows/count exclude all closed records and independent question annotations; Closed remains accessible via numeric/Tab navigation with full retained records.", "Explicit manual and valid/invalid coordinator closures remain distinguishable; legacy missing provenance says Unknown closure with honest context and no backfill, reopening or verification promotion.", "Closed-history detail cannot execute section/answer/repair actions; independently actionable questions remain accessible outside history and normal open-task controls/view-only restrictions are preserved.", "Real committed-store tests and actual pinned Textual 80/120x24 normal/view-only pilots pass with unchanged record bytes, related closed questions and visible tabs; affected and docs/task checks pass."]
 checks = ["python3 scripts/check.py pi-autowork/tests/test_task_history.py pi-autowork/tests/test_task_snapshot.py pi-autowork/tests/test_fleet_view.py", "python3 scripts/affected_tests.py --base 53c049a2ad7aedfc7b2a1eb3be5e135c79b1345a --run", "autowork tasks validate --worktree .", "python3 skills/docs-sync/scripts/docs.py check ."]
 exclusions = ["No actual historical task/status/receipt changes or invented closure actor/date/reason/verification.", "No live service, external project/device, model/provider/scheduler or publication operations; preserve admitted 379/380/381 contracts and candidates."]
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-382-fcc9aa05.toml"
 +++
 - Sources: docs/plans/task-history-view.md#open-tasks-and-closed-history-in-the-fleet-tui
 - Candidate: 27e8ca54 code-only commit on fix/task-history, based on committed snapshot candidate 53c049a2. Preserve the existing implementation and tests; cherry-pick/reconcile only this code commit after the prerequisite and overlap gates permit. Source/task bookkeeping is delivered separately.
