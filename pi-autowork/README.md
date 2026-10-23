@@ -43,7 +43,7 @@ name, a repository path or `.`. Nothing here calls a model.
 | `autowork model [target] [provider/model] [--fallback provider/model]` | Show or set this service's Pi model (checked against Pi's list), then reload it |
 | `autowork models [search]` | Pi's model list (`pi --list-models`); an empty catalog is an actionable error, never `No/models` |
 | `autowork setup-portal --provider NAME --model ID [--endpoint URL] [--apply] [--json]` | Preview a selected Pi provider for the local Hermes Nous proxy; only `--apply` consents to configuration, never a proxy/service start |
-| `autowork ls [--long]` | One colored line per runner; `--long` adds its workers in flight, blockers and model |
+| `autowork ls [--long]` | One colored line per runner; `--long` adds its workers in flight, blockers, open owner-question count and model |
 | `autowork status [target]` / `logs [-f] [target]` | The runner's full status; its journal |
 | `autowork remove [target]` | Stop and remove the service; state and worktrees stay |
 | `autowork run [dir]` | Run the runner in the foreground here, for debugging |
@@ -196,6 +196,25 @@ or interrupted conversion reads `Task store needs repair`. Docs Sync prepares an
 reconciles the store; `autowork migrate` remains available as direct CLI conversion recovery.
 
 The TUI and web view run Textual 8.2.8 (and textual-serve 1.1.3) through `uv`.
+
+## Questions
+
+The fleet reads owner questions from `BLOCKERS.md`, preferring the runner's session
+worktree until it merges into the repository. It lists both engine-generated
+questions inside `<!-- pi-autowork:questions:start -->` / `<!-- pi-autowork:questions:end -->`
+and maintainer sections headed `### Q-<planning task ID> — Planning stopped` outside
+that block. Planning stops appear after engine questions as kind `decision`, effort
+`decision`, unblocking one goal-continuation task. Their need includes the `Task:`
+and `Question:` lines; a prose-only section uses its body instead.
+
+`autowork ls --long` counts both kinds. The TUI shows both in the runner's question
+detail and the Tasks window's Questions filter. A stop question stays visible under
+its planning task ID even after that planning task closes; this does not reopen it
+or add to the open-task count. Listing or refreshing questions never rewrites
+`BLOCKERS.md` or answers a question. The engine still writes only its marked block.
+Offline coverage in `tests/test_fleet_view.py` exercises mixed and planning-only
+session files, CLI counts, the TUI's question-row filter and unchanged file bytes;
+it does not qualify a live runner or terminal session.
 
 ## Retained attempt files
 

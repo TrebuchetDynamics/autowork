@@ -400,6 +400,8 @@ def cmd_ls(args, paths):
                       + (f'  {lane.activity} ({fleet_view.ago(lane.activity_age)})' if lane.activity else '')))
         for kind, items in fleet_view.blockers(r):
             print(fit(f'  {kind}: {items}'))
+        if r.questions:
+            print(fit('  ' + fleet_view.question_summary(r)))
     print(fit('\nMore: autowork ls --long   autowork status <name>   autowork (the TUI)'))
     return 0
 
