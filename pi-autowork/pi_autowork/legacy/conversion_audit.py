@@ -14,13 +14,15 @@ PRESERVED = 'CHECKLIST.md'
 
 def _group(path):
     target = Path(path)
+    if target.name in ('.gitattributes', '.gitignore') or path == '.git-blame-ignore-revs':
+        return 'git_metadata'
     document = target.suffix.lower() in DOCUMENTS or (path.startswith('docs/') and target.suffix == '.txt')
     return 'documentation_drift' if document else 'consumers'
 
 
 def retained_references(output, revision):
     """Inventory `git grep -n -z` hits in the snapshot the transaction retains."""
-    found = dict(consumers=[], documentation_drift=[])
+    found = dict(consumers=[], documentation_drift=[], git_metadata=[])
     pattern = re.escape(revision) + r':([^\0]+)\0([0-9]+)\0([^\n]*)(?:\n|$)'
     for match in re.finditer(pattern, output):
         path, number, line = match.groups()
@@ -33,10 +35,11 @@ def retained_references(output, revision):
 def references(repo, tracked):
     """Tracked working-tree text hits, without quoting potentially private source content.
 
-    Planning inputs/history are not consumers. Everything else, including task contracts,
-    is scanned. Symlinks are never followed outside the repository; binary files are skipped.
+    Planning inputs/history are excluded. Git metadata and documentation are inventoried
+    separately; all other files, including task contracts, remain consumers. Symlinks are
+    never followed outside the repository; binary files are skipped.
     """
-    found = dict(consumers=[], documentation_drift=[])
+    found = dict(consumers=[], documentation_drift=[], git_metadata=[])
     for path in sorted(tracked):
         if path in (*NAMES, 'TODO.archive.md'):
             continue
