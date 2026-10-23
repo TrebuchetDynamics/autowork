@@ -1,0 +1,27 @@
++++
+schema = 1
+id = "TOOLSET-379-cf40090d"
+title = "Fleet counts and task rows share one committed snapshot with explicit freshness and errors"
+short = "Unify committed task snapshots"
+status = "open"
+goal = "RELIABILITY-2026-10"
+section = "Next"
+rank = 3000
+depends_on = ["TOOLSET-378-faaf7ed8"]
+touches = ["pi-autowork/pi_autowork/task_snapshot.py", "pi-autowork/pi_autowork/fleet_view.py", "pi-autowork/pi_autowork/tui.py", "pi-autowork/tests/test_task_snapshot.py", "pi-autowork/tests/test_fleet_view.py", "pi-autowork/tests/tui_pilot.py"]
+resources = []
+kind = "implementation"
+ownership = "worker"
+scope = "Implement task_snapshot.capture(repo,engine_observation,generation)->TaskSnapshot and fleet_view.collect_for_tui(...generation,cached_preparation)->FleetSnapshot. One current committed open-ID membership drives rows, counts and Waiting/Blocker details; join only same-repository compatible contracts. Disclose session/canonical divergence and independent pending/working-data provenance; unmatched activity is annotation. Valid-empty differs from unavailable/stale. Update synchronous TUI count/freshness rendering, bounded enabled read and labelled 30s-max preparation cache; inventory/Start authority never comes from cached audits. Preserve full CLI/readiness behavior."
+acceptance = ["Proposed test_task_snapshot.py and existing fleet tests prove committed add/close/section changes, stopped/paused/no-health inventories, stale/duplicate/orphan slots and compatible versus mismatched session contracts. Five buckets sum exactly to committed open membership; ready work is Waiting with explicit reason, stopped waits Blocker, unrelated questions annotations.", "Counts, rows and details share revision/generation/order; no planning-branch/uncommitted union. Valid empty is zero; missing/invalid/read/pending/discovery failures expose unknown or original-age last-good data, never false zero/clean. Retain existing bucket/mergeability assertions with explicit inventory fixtures.", "New collector envelope preserves source/error/provenance, bounded enabled query and separate preparation audit age/invalidation. Fresh Start checks and existing CLI/provider/task authority remain; rendered pilot/affected checks actually run with skipped coverage disclosed."]
+checks = ["python3 scripts/check.py pi-autowork/tests/test_task_snapshot.py pi-autowork/tests/test_fleet_view.py pi-autowork/tests/test_health.py", "python3 scripts/affected_tests.py --run"]
+exclusions = ["No task/attempt/receipt schema or authority changes, branch-task union, skipped required review/checks, restored removed fleet shortcuts, unrelated Src migration, service/job/profile/model operations, SSH/network tuning, dependency additions or publication. Preserve active contracts and existing pauses."]
+live = "denied"
++++
+- Sources: docs/plans/tui-responsiveness.md#one-committed-task-snapshot
+- Planner call: Source-backed repair design, not a proven remote SSH diagnosis; routine defaults and exact interfaces are in the accepted source. Future tests are task-owned inputs to create, not unavailable external prerequisites.
+- Produces: Immutable TaskSnapshot rows/counts/goals/questions/pending/freshness/errors plus FleetSnapshot collector envelope; synchronous renderer accepts unknown/stale explicitly.
+- Consumes: Task TOOLSET-378-faaf7ed8 task_source and current/admitted identity; missing older metadata degrades honestly, never fabricated compatibility.
+- Next action: Add/extend the named deterministic private fixture at the public data/event seam before changing implementation, then run Checks on the actual implementation base.
+- Evidence: Read-only source reviews at 911d1b2855c94eaedfa07102434d95d139f0ab13; planning base 614bdf8e after canonical delivery of the hotkey task. Existing worker receipt is distinct from implementation acceptance.
+- Delivery: Branch-local planning until canonical inclusion and consumer readback; no implementation, rendered or SSH pass claimed.
