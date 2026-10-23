@@ -2693,6 +2693,8 @@ sys.exit(result.returncode)
         folder.mkdir()
         path = folder / 'worker.py'
         path.write_text(source)
+        policy = folder / 'review_policy.py'
+        policy.write_text((ROOT / 'pi-autowork/pi_autowork/review_policy.py').read_text())
         with patch.object(coordinator, '__file__', str(folder / 'coordinator.py')):
             original = runner.reviewer_version()
             for before, after, changes in (
@@ -2711,6 +2713,10 @@ sys.exit(result.returncode)
                     path.write_text(source.replace(before, after, 1))
                     self.assertEqual(runner.reviewer_version() != original, changes)
             path.write_text(source)
+            original_policy = policy.read_text()
+            policy.write_text(original_policy.replace('> 400', '> 300'))
+            self.assertNotEqual(runner.reviewer_version(), original)
+            policy.write_text(original_policy)
             for setting in ('PI_AUTOWORK_VALIDATE', 'PI_AUTOWORK_REVIEW'):
                 with self.subTest(setting=setting), patch.dict(os.environ, {setting: 'changed'}):
                     self.assertNotEqual(runner.reviewer_version(), original)

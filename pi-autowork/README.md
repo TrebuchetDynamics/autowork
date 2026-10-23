@@ -434,6 +434,59 @@ mark main or its base green. Offline fixtures in `tests/test_check.py`,
 `tests/test_pi_autowork.py` and `pi-autowork/tests/test_main_check.py` cover selection,
 landing receipts and this full-main boundary; they do not establish live qualification.
 
+## Selective review pilot
+
+Model review remains on by default. `PI_AUTOWORK_REVIEW=auto` is an opt-in,
+conservative pilot: skip the model only for small **ordinary prose** changes whose
+committed task checks are already proved by a successful, source/log-bound gate.
+It does not skip the gate, change full-main checks, grant publication, or treat a
+timeout as a pass. Review findings about style, preferred abstractions, repetitive
+tests or table-driven organization are advisory unless they demonstrate a concrete
+defect or violate an explicit task requirement. Acceptance failures, regressions,
+security issues and credible data-loss risks still block.
+
+The pilot inspects the full candidate diff from the session baseline (first
+parent) of the engine's two-parent integration merge, not the task's `touches` or
+a worker's risk label. Ordinary commits and other unsupported merge shapes retain
+review: their first-parent diff cannot establish the authorized candidate range.
+Eligible files are ordinary `.md` and `.rst` files in
+`docs/`, plus root `README.md` and `CHANGELOG.md`, at most ten files and 400
+added/deleted lines. Deletions, renames, special file modes, sensitive paths/text
+(including review, security, authority, planning and contract language), and
+executable markup retain review. **Tests, source code and configuration always
+retain review** in this first version; path names alone cannot prove them safe.
+
+The task contract must be unchanged from the parent. Any review mention in the
+task conservatively retains review. Repository instruction files may contain only
+full-check declarations matching the executed command; any other instruction text
+retains review rather than guessing which obligations it creates. CODEOWNERS,
+indirect instruction files, and tasks requiring live/manual/owner acceptance also
+retain review. Every declared task check must exactly match the gate's full
+command, with a complete successful
+result and no recorded skips; uncovered commands, affected-only selections,
+missing/legacy evidence and unknown inventory retain review. Optimistic landing
+without a pre-landing gate therefore still invokes the reviewer in `auto` mode.
+Unknown setting values also retain review. Explicit `PI_AUTOWORK_REVIEW=0` remains
+the broader operator opt-out; it is not the selective policy and is not recommended
+as a fleet-wide speed shortcut.
+
+Each decision records its reason, mode, policy version, commit and tree under the
+private state's `review-policy/<task>.json`. Single and batch paths share the
+policy. Skipping requires a clean checkout and exact-tree evidence: a later batch
+step's passing gate cannot prove an earlier step passes. A skipped-review batch
+verdict is invalidated by tree, policy, mode or validation-command drift; it cannot
+reuse the broader docs/task drift allowance.
+A skip is a policy decision, not an independent model approval.
+
+For a pilot, record `autowork scorecard --days 7 <target>` before enabling `auto` in
+one repository's saved service settings and reloading at a safe point. After a
+week compare dispatch-to-integration time, repeated attempts, regressions and
+owner attention; inspect decision records to see how often review was actually
+skipped. Return to `PI_AUTOWORK_REVIEW=1` if quality worsens. Enabling this on a
+running service is a separate operator action; installing the code does not opt
+existing services in. Offline fixtures cover the policy and receipt boundaries,
+not live model compliance or a measured throughput improvement.
+
 ## Cost and owner attention
 
 ```sh

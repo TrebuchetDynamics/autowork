@@ -1970,13 +1970,15 @@ class Coordinator:
         parts = {}
         for node in ast.parse(source).body:
             if isinstance(node, ast.FunctionDef) and node.name in ('review', 'full_suite_gate', 'run_gate', '_run_gate', 'quiet_reruns',
-                                                                   'main_green_base'):
+                                                                   'main_green_base', 'review_decision', 'review_gate_evidence',
+                                                                   'batch_review', 'batched_verdict', 'batch_gate'):
                 parts[node.name] = ast.get_source_segment(source, node)
             elif isinstance(node, ast.Assign):
                 for target in node.targets:
                     if isinstance(target, ast.Name) and target.id in ('REVIEW', 'LIVE', 'NO_LIVE', 'GATE'):
                         parts[target.id] = ast.literal_eval(node.value)
         digest = hashlib.sha256(json.dumps(parts, sort_keys=True).encode())
+        digest.update(Path(__file__).with_name('review_policy.py').read_bytes())
         for name in ('PI_AUTOWORK_VALIDATE', 'PI_AUTOWORK_REVIEW'):
             digest.update(f'{name}={os.environ.get(name, "")}'.encode())
         return 'review-' + digest.hexdigest()[:12]

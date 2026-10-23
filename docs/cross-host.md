@@ -289,7 +289,9 @@ subsequent release preparation. Do not edit release directories. `--dry-run` and
 Environment variables tune the rest (`--help` lists them): the models, worker and
 review timeouts (90 and 30 minutes), `PI_AUTOWORK_VALIDATE` (a command that must pass
 on every integrated task before the review), `PI_AUTOWORK_REVIEW=0` (skip the Pi
-review), retries, the failure limit, the fallback cooldown, total runtime, the
+review), `PI_AUTOWORK_REVIEW=auto` (the opt-in
+[checked-prose review pilot](../pi-autowork/README.md#selective-review-pilot)),
+retries, the failure limit, the fallback cooldown, total runtime, the
 memory one more worker needs (`PI_AUTOWORK_MIN_FREE_MB`, default 3000; twice it must be
 available), the repository's full offline check to run on main after each landing
 (`PI_AUTOWORK_MAIN_CHECK`, for example `python3 scripts/check.py`; a red result gets one
