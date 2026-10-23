@@ -8,7 +8,7 @@ goal = "FORCE-CONVERSION"
 section = "Now"
 rank = 2000
 depends_on = []
-touches = ["pi-autowork/pi_autowork/tui.py", "pi-autowork/pi_autowork/fleet_view.py", "pi-autowork/tests/tui_pilot.py", "pi-autowork/tests/test_fleet_view.py", "pi-autowork/README.md", "CHANGELOG.md"]
+touches = ["pi-autowork/pi_autowork/tui.py", "pi-autowork/pi_autowork/fleet_view.py", "pi-autowork/tests/tui_pilot.py", "pi-autowork/tests/test_fleet_view.py", "pi-autowork/README.md"]
 resources = []
 kind = "implementation"
 ownership = "worker"
@@ -18,3 +18,4 @@ checks = ["python3 scripts/check.py pi-autowork/tests/test_fleet_view.py", "cd p
 exclusions = ["Force is never run without the confirmation", "No change to tasks prepare itself"]
 +++
 - Sources: docs/plans/2026-10-22-force-conversion.md#decision
+- Overlap repair: CHANGELOG.md work moves to TOOLSET-372-a9fe0116, which depends on this task and TOOLSET-368/370/371. The accepted plan calls for the TUI slice in parallel with TOOLSET-368; its TUI, fleet-view, pilot, unit-test and README scope and every Acceptance item remain here. This task does not edit CHANGELOG.md.
