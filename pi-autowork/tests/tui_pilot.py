@@ -165,13 +165,13 @@ async def task_inventory_viewport(app, pilot):
             table = screen.query_one('#tasks')
             assert table.region.height >= 3 and table.region.bottom <= screen.region.bottom, table.region
             widgets = [screen.query_one('#task-views'), screen.query_one('#task-detail'),
-                       *screen.query('#task-freshness'), *screen.query('#task-diagnostics')]
+                       *screen.query('#task-freshness'), *screen.query('#task-provenance')]
             visible = ' '.join(painted(w) for w in widgets)
             assert snapshot.freshness in visible, (state, visible)
             if state != 'empty':
                 assert 'inventory read denied' in visible, (state, visible)
             counts = painted(screen.query_one('#task-views'))
-            for label in ('All', 'Active', 'Blocker', 'Waiting', 'Questions'):
+            for label in ('Open', 'Active', 'Blocker', 'Waiting', 'Questions', 'Closed'):
                 if state == 'unavailable':
                     assert label + ' ?' in counts and label + ' 0' not in counts, counts
                 elif state == 'empty':
@@ -187,11 +187,11 @@ async def task_inventory_viewport(app, pilot):
                 assert 'No task in this view' in painted(screen.query_one('#task-detail'))
             else:
                 assert snapshot.revision in visible and '15m ago' in visible, visible
-                assert 'All 3' in counts and table.row_count == 3, counts
+                assert 'Open 3' in counts and table.row_count == 3, counts
                 await pilot.press('i', 'end')  # keyboard users must reach the rest of a long acquisition error
                 await pilot.pause()
-                assert screen.query_one('#task-diagnostics-scroll').scroll_y > 0
-                assert 'END OF INVENTORY ERROR' in painted(screen.query_one('#task-diagnostics'))
+                assert screen.query_one('#task-provenance').scroll_y > 0
+                assert 'END OF INVENTORY ERROR' in painted(screen.query_one('#task-provenance'))
                 pinned = painted(screen.query_one('#task-freshness'))
                 assert snapshot.revision in pinned and '15m ago' in pinned, pinned
                 await pilot.press('i')  # return to task navigation
@@ -507,7 +507,7 @@ async def main():
             await pilot.pause()
             assert [str(tasks.get_row_at(i)[1]) for i in range(tasks.row_count)] == ['T-9'], tasks.row_count
             keys = str(app.screen.query_one('#menubar').render())
-            assert keys.rstrip().endswith('enter Open  Up  Down  Section  Clear  Aside  New  Inventory  esc Back'), keys
+            assert keys.rstrip().endswith('enter Open  Up  Down  Section  Clear  Aside  New  Info  esc Back'), keys
             await pilot.press('u')                      # re-sort: an autowork move
             await pilot.pause()
             await app.workers.wait_for_complete()
@@ -598,6 +598,7 @@ async def main():
                 tree_widget = screen.query_one('#tree')
                 node = next(n for n in tree_widget.root.children if n.data.path.name == name)
                 tree_widget.select_node(node)
+                await drain_reads(app)
                 await pilot.pause()
                 assert screen.chosen and not screen.chosen.ready, screen.chosen
                 before = len(calls)
@@ -646,6 +647,7 @@ async def main():
                 for worker in list(app.workers):
                     if worker.group == 'prepare':
                         await worker.wait()
+                await drain_reads(app)
                 await pilot.pause()
                 info = str(screen.query_one('#info').render())
                 assert outcome in info, info
@@ -683,6 +685,7 @@ async def main():
             screen = app.screen
             tree_widget = screen.query_one('#tree')
             tree_widget.select_node(next(n for n in tree_widget.root.children if n.data.path.name == 'ready'))
+            await drain_reads(app)
             await pilot.pause()
             assert screen.chosen.ready, screen.chosen
             await pilot.press('p')
@@ -710,6 +713,7 @@ async def main():
             screen = app.screen
             tree_widget = screen.query_one('#tree')
             tree_widget.select_node(next(n for n in tree_widget.root.children if n.data.path.name == 'ready'))
+            await drain_reads(app)
             await pilot.pause()
             await pilot.press('p')
             await pilot.pause()
@@ -768,7 +772,7 @@ async def main():
                           view_only=True)
         before = len(calls)
         async with viewer.run_test(size=(140, 40)) as pilot:
-            await pilot.pause()
+            await refresh(viewer, pilot)
             assert 'view only' in str(viewer.query_one('#menubar').render())
             for key in ('s', 'p', 'm', 'f', 'r', 'u', 'n', 'o'):
                 await pilot.press(key)
@@ -782,19 +786,19 @@ async def main():
                             systemctl=str(systemctl), journalctl=str(journal), agent=['claude'], runner_cmd=run,
                             view_only=True)
         async with reloader.run_test(size=(140, 40)) as pilot:
-            await pilot.pause()
-            reloader.reload_if_updated()
+            await refresh(reloader, pilot)
+            await reloader.reload_if_updated().wait()
             await pilot.pause()
             assert reloader.return_value is None    # unchanged code: it stays
             await pilot.press('enter')
             await pilot.pause()
             reloader.code = -1                      # an update replaced the files
-            reloader.reload_if_updated()
+            await reloader.reload_if_updated().wait()
             await pilot.pause()
             assert reloader.return_value is None    # the log screen is open: not now
             await pilot.press('escape')
             await pilot.pause()
-            reloader.reload_if_updated()
+            await reloader.reload_if_updated().wait()
             await pilot.pause()
         assert reloader.return_value == 'reload'
     print('PILOT OK')
