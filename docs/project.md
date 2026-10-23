@@ -2114,3 +2114,37 @@ uncached dependency as a visual pass. These checks are unrun during planning; no
 new dependency is requested. Source/registration checks alone are not visual or
 installed-host delivery proof. Reuse existing RELIABILITY-2026-10 without changing
 priority/focus or completed Portal acceptance.
+
+## Fleet blockers report
+
+Status: Accepted
+
+Owner request: add a **Blockers** hotkey that only shows copyable information about
+the selected runner's repository, blockers, questions and anything recorded as
+slowing or stopping it. This is a read-only diagnostic view, not the interactive
+`autowork blockers` repair agent.
+
+Use **b Blockers**, also clickable in mouse/browser mode, in the main fleet and
+view-only menus. Preserve the former setup-only Backlog action as **g Backlog**.
+Show full recorded questions/reasons/IDs without the fleet pane's display limits,
+startup and dispatch refusals, resource gates, main-check state, holds, dependency
+roots, worker waits/quiet observations and committed task eligibility/owner notes.
+Keep fleet/runtime observations visibly separate from committed selection rules;
+missing, invalid or old observations must not claim a healthy runner or live
+admission. A quiet worker is not thereby dead. Do not dump environment, credentials,
+provider configuration or whole logs/transcripts into the report.
+
+The text is read-only, selectable and scrollable; **c / Copy report** copies the
+whole plain-text report, **r** explicitly refreshes it, and **Esc** returns. Preserve
+default terminal drag selection and opt-in mouse handling. Clipboard delivery over
+SSH depends on the terminal; do not claim it was received from a source-only test.
+Opening, refreshing and copying run no repair agent, write no repository/task/
+service/provider state, answer no question and start/stop no runner. Existing
+repair commands remain separate. Collect off the event loop, serialize physical
+reads even across close/reopen, coalesce waiting requests, and reject closed-screen
+results. Do not resurrect the removed Fallback/Portal global controls.
+
+Offline proof owns real committed-store/read-only/error fixtures and a pinned
+Textual pilot at 80/120 columns for keyboard/click/copy, view-only, empty fleet,
+control denial and an Event-barrier stalled-reader/closed-screen/runner-identity
+regression. Actual remote SSH clipboard transport is not offline acceptance.
