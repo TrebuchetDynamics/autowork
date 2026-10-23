@@ -538,6 +538,25 @@ class FleetViewTests(unittest.TestCase):
         # Claude Code namespaces plugin skills; the others take /blockers directly.
         self.assertEqual(fleet_view.blockers_prompt(['/usr/bin/claude'], '/r'), '/autowork:blockers /r')
         self.assertEqual(fleet_view.blockers_prompt(['pi', '--model', 'x'], '/r'), '/blockers /r')
+        # `autowork plan` (the TUI's Plan) is /plan_for_me with Docs Sync, in the same spelling.
+        claude, pi = fleet_view.plan_prompt(['claude'], '/r'), fleet_view.plan_prompt(['pi'], '/r')
+        self.assertTrue(claude.startswith('/autowork:plan-for-me Plan the work of /r'), claude)
+        self.assertIn('/autowork:docs-sync', claude)
+        self.assertTrue(pi.startswith('/plan_for_me Plan the work of /r'), pi)
+        self.assertIn('/docs_sync', pi)
+        self.assertIn('Do not invent intent', pi)
+
+    def test_a_runner_without_tasks_offers_planning_in_an_agent(self):
+        repo = self.base / 'unplanned'
+        repo.mkdir()
+        keys = lambda runner, **kw: {a.key: a for a in fleet_view.actions(runner, command='aw', script='pa.sh', **kw)}
+        unplanned = fleet_view.Runner(name='unplanned', repo=str(repo), prepare_state='none')
+        backlog = keys(unplanned, agent=['claude'])['b']
+        self.assertEqual((backlog.label, backlog.argv, backlog.interactive),
+                         ('Backlog', ['aw', 'plan', str(repo)], True))
+        self.assertNotIn('b', keys(unplanned), 'no agent, no planning session')
+        planned = fleet_view.Runner(name='planned', repo=str(repo), prepare_state='converted')
+        self.assertNotIn('b', keys(planned, agent=['claude']), 'a prepared store is planned through its tasks')
 
     def test_lanes_show_what_each_task_in_flight_is_doing(self):
         repo = self.base / 'repo'

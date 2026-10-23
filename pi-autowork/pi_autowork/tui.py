@@ -680,10 +680,12 @@ class PrepareRepository(ModalScreen[str]):
         with Vertical():
             yield Label(Text(f'{self.ready.repo}\nNot ready: {", ".join(self.ready.problems)}'))
             yield Label('Run autowork tasks prepare? A legacy conversion makes one local commit.\n'
-                        'With no accepted intent, plan with /docs_sync; Prepare invents no goals or tasks.')
+                        'With no accepted intent, Plan opens an agent here (/plan_for_me with /docs_sync) '
+                        'that prepares the store and saves tasks; Prepare invents no goals or tasks.')
             with Horizontal():
                 yield Button('Prepare', variant='primary', id='prepare')
                 yield Button('Prepare and start', id='prepare-start')
+                yield Button('Plan', id='plan')
                 yield Button('Cancel', id='cancel')
 
     def on_button_pressed(self, event):
@@ -773,7 +775,7 @@ class BrowseScreen(Screen):
             info.append(f'not ready: needs {", ".join(self.chosen.problems)}\n', style='bold yellow')
             for hint in fleet_view.how_to_fix(self.chosen):
                 info.append(f'  {hint}\n')
-            info.append('Press p for Prepare or Prepare and start.\n')
+            info.append('Press p for Prepare, Prepare and start, or Plan (an agent plans the tasks).\n')
         if self.preparing:
             info.append('\nPreparing repository…\n', style='yellow')
         if self.prepare_result and self.prepare_result[0] == str(path):
@@ -799,8 +801,22 @@ class BrowseScreen(Screen):
             self.start(self.chosen)
         else:
             ready = self.chosen
-            self.app.push_screen(PrepareRepository(ready),
-                                 lambda choice: choice and self.prepare(ready.path, choice == 'prepare-start'))
+            self.app.push_screen(PrepareRepository(ready), lambda choice: choice and (
+                self.plan(ready.path) if choice == 'plan' else self.prepare(ready.path, choice == 'prepare-start')))
+
+    def plan(self, path):
+        """`autowork plan` takes over the terminal; readiness is read again when the agent exits."""
+        if self.app.view_only or self.preparing:
+            return
+        if not self.app.agent:
+            self.notify('No agent for planning: install claude or pi, or set AUTOWORK_AGENT.', severity='error')
+            return
+        self.prepare_result = None
+        with self.app.suspend():  # the agent owns the terminal until it exits
+            self.app.runner_cmd([self.app.command, 'plan', str(path)], env=dict(os.environ))
+        if self.is_mounted:
+            self.query_one('#tree', RepoTree).update_readiness(fleet_view.readiness(path))
+            self.show_repository(path)
 
     def prepare(self, path, start):
         if self.app.view_only or self.preparing:
@@ -862,6 +878,7 @@ class FleetApp(App):
         Binding('m', 'pick_model("model")', 'Model', show=False),
         Binding('f', 'pick_model("fallback")', 'Fallback', show=False),
         Binding('t', 'run("t")', 'Tasks', show=False),
+        Binding('b', 'run("b")', 'Backlog', show=False),
         Binding('u', 'run("u")', 'Uninstall', show=False),
         Binding('n', 'browse', 'New', show=False),
         Binding('o', 'setup_portal', 'Nous Portal', show=False),
