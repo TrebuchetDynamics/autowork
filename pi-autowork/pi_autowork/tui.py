@@ -10,8 +10,8 @@ has its tasks/ store committed on its main branch.
     python3 tui.py --command PATH --script PATH [--view-only]
 """
 import argparse
+from copy import deepcopy as _deepcopy
 import asyncio
-from copy import deepcopy
 from dataclasses import replace
 import json
 import os
@@ -21,7 +21,7 @@ import sys
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pi_autowork import fleet_view, portal, blockers_report  # noqa: E402
+from pi_autowork import fleet_view, portal, tui_reads, blockers_report  # noqa: E402
 
 from rich.text import Text  # noqa: E402  (installed with textual)
 from rich.style import Style  # noqa: E402
@@ -46,6 +46,14 @@ def code_stamp():
     except (OSError, ValueError):
         return 0
 QUESTIONS_SHOWN = 3
+
+
+def read_input(value):
+    """Detach mutable runner data; frozen TaskSnapshots are safe to share with readers."""
+    runners = value.runners if isinstance(value, fleet_view.FleetSnapshot) else (value,)
+    snapshots = list(value.snapshots) if isinstance(value, fleet_view.FleetSnapshot) else []
+    snapshots.extend(r.snapshot for r in runners if isinstance(r, fleet_view.Runner) and r.snapshot is not None)
+    return _deepcopy(value, {id(snapshot): snapshot for snapshot in snapshots})
 
 
 def hotkeys(text, keys, click_actions=None):
@@ -99,6 +107,52 @@ def doing(lane):
         if text.startswith(prefix + lane.task):
             text = prefix + text[len(prefix + lane.task):].lstrip(' :,')
     return text
+
+
+class ReadScreen:
+    """Owner-bound subscriptions; workers never receive widgets or the runner list."""
+    def read(self, kind, identity, loader, apply, failed=None):
+        if not self.is_current:
+            return None
+        if not hasattr(self, '_reader'):
+            self._reader = self.app.reads.owner(self._read_done)
+        token = self._reader.request(kind, identity, (self.app.read_epoch, getattr(self, '_read_epoch', 0)), loader)
+        token.apply, token.failed = apply, failed
+        return token
+
+    def _read_done(self, token, value, error):
+        if not self.app.is_running or not self.is_mounted or not self.is_current:
+            return
+        errors = self.__dict__.setdefault('_read_errors', {})
+        if error:
+            errors[token.kind] = str(error)
+            self.sub_title = ' · '.join(f'{kind}: stale / unavailable: {message}' for kind, message in errors.items())
+            self.notify(self.sub_title, severity='warning')
+            if token.failed:
+                token.failed(error)
+        else:
+            errors.pop(token.kind, None)
+            self.sub_title = ' · '.join(f'{kind}: stale / unavailable: {message}' for kind, message in errors.items())
+            token.apply(value)
+
+    def invalidate_read(self):
+        self._read_epoch = getattr(self, '_read_epoch', 0) + 1
+        if hasattr(self, '_reader'):
+            self._reader.invalidate()
+
+    def on_screen_suspend(self):
+        self.invalidate_read()
+
+    def on_screen_resume(self):
+        if self.is_mounted:
+            for method in ('refresh_tasks', 'refresh_actions', 'refresh_log'):
+                if hasattr(self, method):
+                    getattr(self, method)()
+                    break
+
+    def on_unmount(self):
+        if hasattr(self, '_reader'):
+            self._reader.close()
 
 
 class Confirm(ModalScreen[bool]):
@@ -185,7 +239,7 @@ class PickSection(ModalScreen[str]):
         self.dismiss(None)
 
 
-class NewTask(ModalScreen[dict]):
+class NewTask(ReadScreen, ModalScreen[dict]):
     """A new task's title, short title, goal and section, and optionally its scope and acceptance."""
     BINDINGS = [Binding('escape', 'cancel', 'cancel')]
     DEFAULT_CSS = '''
@@ -196,9 +250,18 @@ class NewTask(ModalScreen[dict]):
     NewTask Button { margin-left: 2; }
     '''
 
-    def __init__(self, goals):
+    def __init__(self, goals, runner=None):
         super().__init__()
+        self.goals, self.goal_runner = goals, read_input(runner)
+
+    def on_mount(self):
+        if self.goal_runner:
+            runner = self.goal_runner
+            self.read('goals', runner.repo, lambda: fleet_view.open_goals(runner), self.loaded_goals)
+
+    def loaded_goals(self, goals):
         self.goals = goals
+        self.query_one('#goal', Select).set_options([(f'{gid}  {title}'[:70], gid) for gid, title in goals])
 
     def compose(self) -> ComposeResult:
         with VerticalScroll():
@@ -285,7 +348,7 @@ class PortalSetup(ModalScreen[dict]):
         self.dismiss(None)
 
 
-class PickModel(ModalScreen[str]):
+class PickModel(ReadScreen, ModalScreen[str]):
     """Choose a model from Pi's own list; type to filter."""
     BINDINGS = [Binding('escape', 'cancel', 'cancel')]
     DEFAULT_CSS = '''
@@ -294,9 +357,10 @@ class PickModel(ModalScreen[str]):
     PickModel OptionList { height: 1fr; }
     '''
 
-    def __init__(self, title, models, current):
+    def __init__(self, title, models, current, loader=None, identity=None):
         super().__init__()
         self.title_text, self.models, self.current = title, models, current
+        self.loader, self.identity = loader, identity
 
     def compose(self) -> ComposeResult:
         from textual.widgets import Input
@@ -307,6 +371,14 @@ class PickModel(ModalScreen[str]):
 
     def on_mount(self):
         self.shown = list(self.models)
+        if self.loader:
+            self.read('models', self.identity, self.loader, self.loaded_models)
+
+    def loaded_models(self, models):
+        self.models = models
+        if not models:
+            self.notify('Pi listed no models (pi --list-models).', severity='error')
+        self.on_input_changed(self.query_one('#filter', Input))
 
     def on_input_changed(self, event):
         self.shown = [m for m in self.models if event.value.lower() in m.lower()]
@@ -330,7 +402,7 @@ class PickModel(ModalScreen[str]):
         self.dismiss(None)
 
 
-class LogScreen(Screen):
+class LogScreen(ReadScreen, Screen):
     """A runner's output, full screen, refreshed."""
     BINDINGS = [Binding('escape,q', 'app.pop_screen', 'back')]
 
@@ -350,16 +422,23 @@ class LogScreen(Screen):
         self.set_interval(LOG_REFRESH, self.refresh_log)
 
     def refresh_log(self):
-        lines = fleet_view.log_lines(self.logs(self.runner, 1000))
+        runner, logs = read_input(self.runner), self.logs
+        return self.read('full-log', (runner.name, runner.repo),
+                         lambda: fleet_view.log_lines(logs(runner, 1000)), self.show_log)
+
+    def show_log(self, lines):
         if lines == getattr(self, '_lines', None):
             return
         self._lines = lines
         log = self.query_one('#full-log', RichLog)
+        follow, at = log.is_vertical_scroll_end, log.scroll_y
         log.clear()
         for line, style in lines:
-            log.write(Text(line, style=style))
+            log.write(Text(line, style=style), scroll_end=follow)
         if not lines:
-            log.write('(no output yet)')
+            log.write('(no output yet)', scroll_end=follow)
+        if not follow:
+            log.call_after_refresh(log.scroll_to, y=at, animate=False, force=True)
 
 
 def action_text(line, width=0, stamp=None):
@@ -372,7 +451,7 @@ def action_text(line, width=0, stamp=None):
     return text
 
 
-class WorkerScreen(Screen):
+class WorkerScreen(ReadScreen, Screen):
     """One worker's actions as a log: oldest first, stamped with the time, new ones appended at the
     bottom so the view keeps its place while you scroll back; refreshed. Each action is colored by
     its kind and kept to one line; w shows long ones whole."""
@@ -382,6 +461,7 @@ class WorkerScreen(Screen):
         super().__init__()
         self.runner, self.task_id = runner, task  # Screen.task is Textual's own, read-only
         self.shown = []
+        self.cached_actions = []
         self.wrap = False
 
     def compose(self) -> ComposeResult:
@@ -391,13 +471,13 @@ class WorkerScreen(Screen):
 
     def action_toggle_wrap(self):
         self.wrap = not self.wrap
-        self.shown = []  # rewrite every line at the new setting
-        self.refresh_actions()
+        self.shown = []  # rewrite cached lines, without a read
+        self.show_actions(self.cached_actions)
 
     def on_resize(self, event):
         if not self.wrap:
-            self.shown = []  # cut again to the new width
-            self.refresh_actions()
+            self.shown = []  # cut cached lines again to the new width
+            self.show_actions(self.cached_actions)
 
     def on_mount(self):
         self.title = f'{self.runner.name}: {self.task_id}'
@@ -406,8 +486,16 @@ class WorkerScreen(Screen):
         self.set_interval(LOG_REFRESH, self.refresh_actions)
 
     def refresh_actions(self):
-        actions = [(at, line) for line, _, at in fleet_view.action_log(self.runner, self.task_id)]
+        runner, task = read_input(self.runner), self.task_id
+        return self.read('actions', (runner.repo, task),
+                         lambda: [(at, line) for line, _, at in fleet_view.action_log(runner, task)], self.show_actions)
+
+    def show_actions(self, actions):
+        self.cached_actions = actions
+        if not self.is_mounted:
+            return
         log = self.query_one('#worker-actions', RichLog)
+        follow, at_row = log.is_vertical_scroll_end, log.scroll_y
         last = self.shown[-1] if self.shown else None
         if last in actions:  # append only what is new; a full redraw would lose the scroll position
             fresh = actions[len(actions) - actions[::-1].index(last):]
@@ -415,16 +503,18 @@ class WorkerScreen(Screen):
             log.clear()
             fresh = actions
             if not actions:
-                log.write('No actions recorded yet.')
+                log.write('No actions recorded yet.', scroll_end=follow)
         width = 0 if self.wrap else max(20, self.size.width - 4)  # border and scrollbar
         for at, line in fresh:
             stamp = time.strftime('%H:%M:%S', time.localtime(at)) if at is not None else '--:--:--'
-            log.write(action_text(line, width, stamp))
+            log.write(action_text(line, width, stamp), scroll_end=follow)
+        if not follow:
+            log.call_after_refresh(log.scroll_to, y=at_row, animate=False, force=True)
         if fresh:
             self.shown = actions
 
 
-class TasksScreen(Screen):
+class TasksScreen(ReadScreen, Screen):
     """One runner's open tasks in priority (section, then rank) order: filter them, re-sort them, clear or
     set aside a hold, answer the owner's questions. Refreshed like the main screen."""
     VIEW_NAMES = {'all': 'All', 'working': 'Active', 'held': 'Blocker', 'waiting': 'Waiting', 'questions': 'Questions'}
@@ -567,7 +657,7 @@ class TasksScreen(Screen):
                 if task[key]:
                     argv += [f'--{key}', task[key]]
             self.app.execute(fleet_view.Action('n', f'New task in {runner.name}', argv + [runner.name]))
-        self.app.push_screen(NewTask(fleet_view.open_goals(runner)), add)
+        self.app.push_screen(NewTask([], runner=runner), add)
 
     def on_data_table_row_highlighted(self, event):
         self.show_task()
@@ -597,7 +687,7 @@ class TasksScreen(Screen):
             self.app.execute(action)
 
 
-class TaskScreen(Screen):
+class TaskScreen(ReadScreen, Screen):
     """One task: its question and the runner's suggested answer, its whole task record and
     its worker's last actions. Answer it here; refreshed like the main screen."""
     BINDINGS = [Binding('escape,q', 'app.pop_screen', 'Back', show=False),
@@ -611,6 +701,7 @@ class TaskScreen(Screen):
     def __init__(self, runner_name, task):
         super().__init__()
         self.runner_name, self.task_id = runner_name, task
+        self.entry, self.recent = '', []
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -638,6 +729,19 @@ class TaskScreen(Screen):
         return fleet_view.answers(runner, question, command=self.app.command)
 
     def refresh_tasks(self, follow=None):
+        runner = read_input(self.runner())
+        task = self.task_id
+        self.show_task()
+        if runner:
+            return self.read('task-detail', (runner.repo, task),
+                             lambda: (fleet_view.task_entry(runner, task), fleet_view.recent_actions(runner, task)),
+                             self.loaded_task)
+
+    def loaded_task(self, value):
+        self.entry, self.recent = value
+        self.show_task()
+
+    def show_task(self):
         runner, question = self.runner(), self.question()
         row = next((r for r in fleet_view.task_rows(runner, include_closed=True) if r.task == self.task_id), None) if runner else None
         text = Text()
@@ -655,11 +759,11 @@ class TaskScreen(Screen):
                 text.append(question.answer + '\n', style='dim')
         elif row and row.why:
             text.append(row.why + '\n')
-        entry = fleet_view.task_entry(runner, self.task_id) if runner else ''
+        entry = self.entry
         if entry:
             text.append('\nTask record (working tree; independent of committed inventory)\n', style='bold')
             text.append(entry + '\n')
-        actions = fleet_view.recent_actions(runner, self.task_id) if runner else []
+        actions = self.recent
         if actions:
             text.append('\nLast actions\n', style='bold')
             for line, age in actions:
@@ -745,6 +849,16 @@ class RepoTree(DirectoryTree):
     def filter_paths(self, paths):
         return [p for p in paths if p.is_dir() and not p.name.startswith('.')]
 
+    def _populate_node(self, node, content):
+        # filter_paths ran on DirectoryTree's loader: every returned path is a
+        # directory. Avoid its second synchronous is_dir() pass on the UI loop.
+        paths = tuple(content)
+        node.remove_children()
+        for path in paths:
+            node.add(path.name, data=type(node.data)(path), allow_expand=True)
+        node.expand()
+        self.screen.read_labels(paths)
+
     def update_readiness(self, ready):
         path = Path(ready.path)
         self.readiness_cache[path] = ready
@@ -760,15 +874,13 @@ class RepoTree(DirectoryTree):
     def render_label(self, node, base_style, style):
         label = super().render_label(node, base_style, style)
         path = node.data.path if node.data else None
-        if path is not None and (path / '.git').exists():
-            if path not in self.readiness_cache:
-                self.readiness_cache[path] = fleet_view.readiness(path)
+        if path in self.readiness_cache:
             ready = self.readiness_cache[path]
             label.append('  ' + ready.mark, style='bold green' if ready.ready else 'yellow')
         return label
 
 
-class BrowseScreen(Screen):
+class BrowseScreen(ReadScreen, Screen):
     """Pick a repository and start its service."""
     BINDINGS = [Binding('p', 'start', 'Play'), Binding('escape,q', 'app.pop_screen', 'back')]
     CSS = '''
@@ -782,18 +894,36 @@ class BrowseScreen(Screen):
         self.chosen = None
         self.preparing = False
         self.prepare_result = None
+        self.chosen_path = None
+        self.starting = False
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield MenuBar(id='menubar')
         with Horizontal():
-            yield RepoTree(self.root, id='tree')
+            yield RepoTree(self.root or str(Path.home()), id='tree')
             with VerticalScroll(id='info-scroll'):
                 yield Static('Move to a repository; ready ones have a committed tasks/ store.', id='info')
 
     def on_mount(self):
-        self.title = f'start a runner: {self.root}'
+        self.title = f'start a runner: {self.root or Path.home()}'
         self.query_one('#menubar', MenuBar).show([('p', 'Play'), ('esc', 'Back')])
+        if self.root is None:
+            home = Path.home()
+            def loaded(root):
+                self.root = str(root)
+                self.query_one('#tree', RepoTree).path = root
+                self.title = f'start a runner: {root}'
+            self.read('browse-root', str(home), lambda: home / 'git' if (home / 'git').is_dir() else home, loaded)
+
+    def read_labels(self, paths):
+        def load():
+            return tuple(fleet_view.readiness(path) for path in paths if (path / '.git').exists())
+        def loaded(results):
+            tree = self.query_one('#tree', RepoTree)
+            for ready in results:
+                tree.update_readiness(ready)
+        return self.read('directory-labels', tuple(map(str, paths)), load, loaded)
 
     def on_tree_node_highlighted(self, event):
         node = event.node
@@ -801,8 +931,34 @@ class BrowseScreen(Screen):
             return
         self.show_repository(node.data.path)
 
-    def show_repository(self, path):
-        self.chosen = fleet_view.readiness(path)
+    def show_repository(self, path, after=None, failed=None):
+        if after:  # a pre-action check must not reuse any read admitted before consent
+            self.invalidate_read()
+        path = str(path)
+        if self.chosen_path != path:
+            self.chosen = None
+            self.starting = False
+        self.chosen_path = path
+        self.query_one('#info', Static).update(f'{path}\nReading readiness…')
+        def load():
+            ready = fleet_view.readiness(path)
+            root = bool(ready.repo and Path(ready.path).resolve() == Path(ready.repo).resolve())
+            return ready, root
+        def loaded(value):
+            self.chosen, self.chosen_is_root = value
+            self.render_repository(path)
+            if after:
+                after(self.chosen)
+        def unavailable(error):
+            self.starting = False
+            self.query_one('#info', Static).update(f'{path}\nReadiness unavailable: {error}')
+            if failed:
+                failed(error)
+        return self.read('readiness', path, load, loaded, unavailable)
+
+    def render_repository(self, path):
+        if not self.chosen:
+            return
         tree = self.query_one('#tree', RepoTree)
         tree.update_readiness(self.chosen)
         info = Text()
@@ -836,13 +992,19 @@ class BrowseScreen(Screen):
         self.query_one('#info', Static).update(info)
 
     def action_start(self):
-        if self.app.view_only or self.preparing:
+        if self.app.view_only or self.preparing or self.starting:
             return
-        if self.chosen is None:
+        if self.chosen_path is None:
             self.notify('Choose a repository first.', severity='warning')
             return
-        self.show_repository(self.chosen.path)  # never start from a stale readiness result
-        if not self.chosen.repo or Path(self.chosen.path).resolve() != Path(self.chosen.repo).resolve():
+        self.starting = True
+        token = self.show_repository(self.chosen_path, self.ready_to_start)
+        if token is not None:
+            token.done.add_done_callback(lambda future: setattr(self, 'starting', False))
+
+    def ready_to_start(self, ready):
+        self.starting = False
+        if not self.chosen_is_root:
             self.notify('Choose a Git repository root.', severity='warning')
         elif self.chosen.ready:
             self.start(self.chosen)
@@ -863,8 +1025,8 @@ class BrowseScreen(Screen):
         self.prepare_result = None
         with self.app.suspend():  # the agent owns the terminal until it exits
             self.app.runner_cmd([self.app.command, 'plan', str(path)], env=dict(os.environ))
+        self.app.invalidate_reads()
         if self.is_mounted:
-            self.query_one('#tree', RepoTree).update_readiness(fleet_view.readiness(path))
             self.show_repository(path)
 
     def confirm_force(self, path):
@@ -903,13 +1065,9 @@ class BrowseScreen(Screen):
         self.prepare_result = (str(path), report)
         if not self.is_mounted:  # leaving the browser does not undo a CLI conversion in flight
             return
-        ready = fleet_view.readiness(path)
-        tree = self.query_one('#tree', RepoTree)
-        tree.update_readiness(ready)
-        if self.chosen and self.chosen.path == str(path):
-            self.show_repository(path)
-            if start and self.chosen.ready and self.app.screen is self:
-                self.start(self.chosen)
+        self.app.invalidate_reads()
+        if self.chosen_path == str(path):
+            self.show_repository(path, lambda ready: start and ready.ready and self.start(ready))
 
 
 class BlockersScreen(Screen):
@@ -926,7 +1084,7 @@ class BlockersScreen(Screen):
 
     def __init__(self, runner):
         super().__init__()
-        self.runner = deepcopy(runner)
+        self.runner = read_input(runner)
         self.report_text = None
 
     def compose(self):
@@ -1001,7 +1159,6 @@ class FleetApp(App):
                  list_models=fleet_view.models):
         super().__init__()
         self.list_models = list_models
-        self.model_cache = None
         self.command, self.script = command, script
         self.state_root, self.env_dir = state_root, env_dir
         self.systemctl, self.journalctl = systemctl, journalctl
@@ -1012,7 +1169,9 @@ class FleetApp(App):
         self.runners = []
         self.fleet_snapshot = None
         self.generation = 0
+        self.read_epoch = 0
         self.selected = None
+        self.starting_repositories = set()
         self._report_busy = False
         self._report_pending = None
 
@@ -1049,6 +1208,8 @@ class FleetApp(App):
                     fleet_view.WAITING: 'bold yellow', fleet_view.BLOCKER: 'bold red'}
 
     def on_mount(self):
+        self.reads = tui_reads.ReadCoordinator()
+        self.reader = self.reads.owner(self.read_done)
         table = self.query_one('#runners', DataTable)
         table.add_columns(*self.RUNNER_COLUMNS, *self.RUNNER_TEXT)
         self.query_one('#lanes', DataTable).add_columns(*self.LANE_COLUMNS, *self.LANE_TEXT)
@@ -1056,13 +1217,48 @@ class FleetApp(App):
         self.refresh_log()
         self.set_interval(REFRESH, self.poll_refresh)
         self.set_interval(LOG_REFRESH, self.refresh_log)
-        self.code = code_stamp()
+        self.code = None
+        self.reload_if_updated()
         self.set_interval(CODE_CHECK, self.reload_if_updated)
+
+    def on_unmount(self):
+        self.reader.close()
+        self.reads.close()
+
+    def read(self, kind, identity, loader, apply):
+        token = self.reader.request(kind, identity, self.read_epoch, loader)
+        token.apply = apply
+        return token
+
+    def read_done(self, token, value, error):
+        if not self.is_running:
+            return
+        errors = self.__dict__.setdefault('_read_errors', {})
+        if error:
+            errors[token.kind] = str(error)
+            self.sub_title = ' · '.join(f'{kind}: stale / unavailable: {message}' for kind, message in errors.items())
+            self.notify(self.sub_title, severity='warning')
+        else:
+            errors.pop(token.kind, None)
+            token.apply(value)
+
+    def invalidate_reads(self):
+        self.read_epoch += 1
+        self.reader.invalidate()
+        for screen in self.screen_stack:
+            if hasattr(screen, '_reader'):
+                screen._reader.invalidate()
+
+    def action_completed(self):
+        self.action_refresh()
+        screen = self.screen
+        if isinstance(screen, (TasksScreen, TaskScreen)):
+            screen.refresh_tasks(getattr(screen, 'follow', None))
 
     def on_resize(self, event):
         self._shown = {}  # the columns fit the new width
         if self.query_one('#runners', DataTable).columns:  # the first resize comes before on_mount
-            self.action_refresh()
+            self.render_fleet()  # cached layout only; resize never recollects
 
     @staticmethod
     def fit(text, room):
@@ -1100,23 +1296,41 @@ class FleetApp(App):
 
     def reload_if_updated(self):
         """Start again on new code, between actions and with no dialog open."""
-        if code_stamp() != self.code and len(self.screen_stack) == 1 and not any(w.is_running for w in self.workers):
-            self.exit('reload')
+        def loaded(stamp):
+            if self.code is None:
+                self.code = stamp
+            elif stamp != self.code and len(self.screen_stack) == 1 and not any(w.is_running for w in self.workers):
+                self.exit('reload')
+        return self.read('code', str(CODE), code_stamp, loaded)
 
     # -- data -------------------------------------------------------------------
     def action_refresh(self):
         # Explicit refresh/action return invalidates diagnostics, not inventory authority.
-        self.refresh_fleet(None)
+        self.invalidate_reads()
+        return self.refresh_fleet(None)
 
     def poll_refresh(self):
-        self.refresh_fleet(self.fleet_snapshot)
+        return self.refresh_fleet(self.fleet_snapshot)
 
     def refresh_fleet(self, cached):
         self.generation += 1
-        self.fleet_snapshot = fleet_view.collect_for_tui(self.state_root, self.env_dir, systemctl=self.systemctl,
-                                                       generation=self.generation, cached_preparation=cached,
-                                                       last_good=self.fleet_snapshot)
-        self.runners = list(self.fleet_snapshot.runners)
+        state, env, systemctl, generation = self.state_root, self.env_dir, self.systemctl, self.generation
+        previous = read_input(self.fleet_snapshot)
+        cached = read_input(cached)
+        return self.read('fleet', (str(state), str(env), systemctl),
+                         lambda: fleet_view.collect_for_tui(state, env, systemctl=systemctl, generation=generation,
+                                                           cached_preparation=cached, last_good=previous), self.publish_fleet)
+
+    def publish_fleet(self, snapshot):
+        self.fleet_snapshot = snapshot
+        self.runners = list(snapshot.runners)
+        self.render_fleet()
+        self.refresh_log()
+        screen = self.screen
+        if isinstance(screen, (TasksScreen, TaskScreen)):
+            screen.refresh_tasks(getattr(screen, 'follow', None))
+
+    def render_fleet(self):
         table = self.query_one('#runners', DataTable)
         keep = self.selected
         rows = []
@@ -1145,7 +1359,9 @@ class FleetApp(App):
         else:
             self.selected = None
         counts = ', '.join(f'{n} {state}' for state, n in fleet_view.summary(self.runners))
-        self.sub_title = ('discovery unavailable: ' + ' · '.join(self.fleet_snapshot.errors)) if self.fleet_snapshot.errors else (
+        errors = (*(self.fleet_snapshot.errors if self.fleet_snapshot else ()),
+                  *(f'{kind}: stale / unavailable: {message}' for kind, message in self.__dict__.get('_read_errors', {}).items()))
+        self.sub_title = ('discovery unavailable: ' + ' · '.join(errors)) if errors else (
             f'{len(self.runners)} runners: {counts}' if self.runners else 'no runners')
         self.show_detail()
 
@@ -1257,16 +1473,36 @@ class FleetApp(App):
         """The last hour, folded and counted (fleet_view.log_lines); rewritten only when it changed."""
         log = self.query_one('#log', RichLog)
         runner = self.current()
-        lines = fleet_view.log_lines(self.logs(runner, 400, since='-60min')) if runner is not None else []
-        key = (runner.name if runner else None, lines)
+        if runner is None:
+            self.reader.current.pop('journal', None)
+            self.reads.retire()
+            self._log_identity, self._log = None, None
+            log.clear()
+            return
+        identity = (runner.name, runner.repo)
+        if identity != getattr(self, '_log_identity', None):
+            self._log_identity, self._log = identity, None
+            log.clear()
+            log.write(f'{runner.name}: reading journal…')
+        runner, journal = read_input(runner), self.journalctl
+        return self.read('journal', (runner.name, runner.repo),
+                         lambda: fleet_view.log_lines(fleet_view.logs(runner, lines=400, journalctl=journal, since='-60min')),
+                         lambda lines: self.show_log(runner.name, lines))
+
+    def show_log(self, name, lines):
+        log = self.query_one('#log', RichLog)
+        key = (name, lines)
         if key == getattr(self, '_log', None):
             return
         self._log = key
+        follow, at = log.is_vertical_scroll_end, log.scroll_y
         log.clear()
         for line, style in lines:
-            log.write(Text(line, style=style))
-        if runner is not None and not lines:
-            log.write('(nothing in the last hour; Enter shows the whole log)')
+            log.write(Text(line, style=style), scroll_end=follow)
+        if not lines:
+            log.write('(nothing in the last hour; Enter shows the whole log)', scroll_end=follow)
+        if not follow:
+            log.call_after_refresh(log.scroll_to, y=at, animate=False, force=True)
 
     # -- actions ----------------------------------------------------------------
     def available(self, runner):
@@ -1284,7 +1520,7 @@ class FleetApp(App):
         # cancelling/dismissing a screen must not pretend a blocking read has finished.
         runner = next((r for r in self.runners if (r.name, r.repo) ==
                        (screen.runner.name, screen.runner.repo)), screen.runner)
-        self._report_pending = (screen, deepcopy(runner))
+        self._report_pending = (screen, read_input(runner))
         if not self._report_busy:
             self._start_report()
 
@@ -1321,7 +1557,9 @@ class FleetApp(App):
                 self.action_browse()
             return
         if key == 'l':
-            self.push_screen(LogScreen(runner, self.logs))
+            journal = self.journalctl
+            self.push_screen(LogScreen(read_input(runner), lambda runner, lines: fleet_view.logs(
+                runner, lines=lines, journalctl=journal)))
             return
         if key == 't':  # view-only shows the tasks too, without their actions
             self.push_screen(TasksScreen(runner.name))
@@ -1342,19 +1580,14 @@ class FleetApp(App):
         if runner is None or not runner.has_service:
             self.notify('Models are set per service; play one first (p, or n for a new one).', severity='warning')
             return
-        try:
-            if self.list_models is fleet_view.models:
-                settings = fleet_view.read_env(Path(self.env_dir) / f'{runner.name}.env')
-                self.model_cache = self.list_models(pi=os.environ.get('AUTOWORK_PI', 'pi'),
-                    agent_dir=portal.service_agent_dir(settings))
-            elif self.model_cache is None:
-                self.model_cache = self.list_models()
-        except portal.SetupError as error:
-            self.notify(str(error), severity='error', timeout=10)
-            return
-        if not self.model_cache:
-            self.notify("Pi listed no models (pi --list-models).", severity='error')
-            return
+        settings_path = Path(self.env_dir) / f'{runner.name}.env'
+        list_models, pi = self.list_models, os.environ.get('AUTOWORK_PI', 'pi')
+        default_models = list_models is fleet_view.models
+        def load():
+            if default_models:
+                settings = fleet_view.read_env(settings_path)
+                return list_models(pi=pi, agent_dir=portal.service_agent_dir(settings))
+            return list_models()
         current = runner.model if which == 'model' else runner.fallback
         title = f'{runner.name}: {"model" if which == "model" else "fallback model"}'
 
@@ -1367,26 +1600,42 @@ class FleetApp(App):
                                                + ('? Its service restarts; workers resume on the same attempt.'
                                                   if runner.service == 'running' else '?'))
             self.push_screen(Confirm(action.confirm), lambda yes: yes and self.execute(action))
-        self.push_screen(PickModel(title, self.model_cache, current), chosen)
+        self.push_screen(PickModel(title, [], current, loader=load, identity=(runner.name, str(settings_path))), chosen)
 
     def action_browse(self):
-        root = self.browse_root or (Path.home() / 'git' if (Path.home() / 'git').is_dir() else Path.home())
-        self.push_screen(BrowseScreen(str(root), self.start_repository))
+        self.push_screen(BrowseScreen(str(self.browse_root) if self.browse_root else None, self.start_repository))
 
     def start_repository(self, ready):
+        if self.view_only or ready.repo in self.starting_repositories:
+            return
+        self.starting_repositories.add(ready.repo)
+        browser = self.screen
         action = fleet_view.Action('a', f'start {Path(ready.repo).name}', [self.command, 'start', ready.repo],
                                    confirm=f'Start a pi-autowork service for {ready.repo}?')
 
         def go(yes):
-            if yes:
-                current = fleet_view.readiness(ready.path)
+            if not yes:
+                self.starting_repositories.discard(ready.repo)
+                return
+            path = ready.path
+            def checked(current):
+                self.starting_repositories.discard(ready.repo)
                 if not current.ready:
                     self.notify('Repository is no longer ready: ' + ', '.join(current.problems), severity='warning')
-                    if isinstance(self.screen, BrowseScreen):
-                        self.screen.show_repository(ready.path)
                     return
-                self.pop_screen()
-                self.execute(action)
+                if browser.is_mounted and self.screen is browser:
+                    self.pop_screen()
+                    self.execute(action)
+            if browser.is_mounted and self.screen is browser:
+                token = browser.show_repository(path, checked)
+                if token is not None:
+                    # Completion also releases reservations for discarded selection/
+                    # owner/epoch results, whose publication callbacks never run.
+                    token.done.add_done_callback(lambda future: self.starting_repositories.discard(ready.repo))
+                else:
+                    self.starting_repositories.discard(ready.repo)
+            else:
+                self.starting_repositories.discard(ready.repo)
         self.push_screen(Confirm(action.confirm), go)
 
     def execute(self, action):
@@ -1411,9 +1660,7 @@ class FleetApp(App):
             ok, message = False, str(error)
         self.call_from_thread(self.notify, message[:300], severity='information' if ok else 'error',
                               title=f'{action.label}: {"done" if ok else "failed"}')
-        self.call_from_thread(self.action_refresh)
-        if isinstance(self.screen, (TasksScreen, TaskScreen)):
-            self.call_from_thread(self.screen.refresh_tasks, getattr(self.screen, 'follow', None))
+        self.call_from_thread(self.action_completed)
 
 
 def main(argv=None):
