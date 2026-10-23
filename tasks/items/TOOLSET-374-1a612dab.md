@@ -7,7 +7,7 @@ status = "open"
 goal = "FORCE-CONVERSION"
 section = "Next"
 rank = 5000
-depends_on = ["TOOLSET-368-51141b74", "TOOLSET-373-9eb7b08f"]
+depends_on = ["TOOLSET-368-51141b74", "TOOLSET-373-9eb7b08f", "TOOLSET-370-af80834d"]
 touches = ["pi-autowork/pi_autowork/task_prepare.py", "pi-autowork/task-store.md", "CHANGELOG.md", "tests/test_task_prepare.py"]
 resources = []
 kind = "implementation"
@@ -19,3 +19,4 @@ exclusions = ["No other file type is reclassified", "No rewrite of any repositor
 +++
 - Sources: docs/plans/2026-10-22-force-conversion.md#decision; tasks/items/TOOLSET-373-9eb7b08f.md (original git-metadata contract and acceptance split).
 - Split evidence: TOOLSET-368-51141b74 is running and declares task_prepare.py, task-store.md, CHANGELOG.md and tests/test_task_prepare.py; these shared paths and the first two original TOOLSET-373 acceptance items move here. The third original acceptance item remains in TOOLSET-373. pi-autowork/pi_autowork/task_migrate.py reference_inventory merges groups generically, and task_prepare.py _prepare updates its report from that inventory, so classification can land independently.
+- Overlap resolution: TOOLSET-370-af80834d must land first: its running attempt declares tests/test_task_prepare.py, pi-autowork/task-store.md and CHANGELOG.md, all required here. A changelog-only split would still overlap the prepare fixture tests and inventory documentation; task_prepare.py changes are conditional on those tests, so no independent implementation slice is established. The tasks deliver distinct accepted behavior (forced drift/invalid-entry preservation versus git_metadata reporting), so neither merging into the running task nor superseding this follow-up is justified. Preserve all Touches, Acceptance and Checks and the existing Next rank; add only the explicit dependency. Evidence: both task records and docs/plans/2026-10-22-force-conversion.md#decision; TOOLSET-373 worker report at candidate d42d25184700a1fbc0c4d4818eff535887bde81e assigns the remaining prepare fixture and documentation work here. TOOLSET-374 has no slot or worker report; TOOLSET-370 has a running slot and no report yet. Earlier Split evidence describes the original split, not current worker status.
