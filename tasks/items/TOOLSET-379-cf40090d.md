@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-379-cf40090d"
 title = "Fleet counts and task rows share one committed snapshot with explicit freshness and errors"
 short = "Unify committed task snapshots"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 3000
@@ -17,6 +17,8 @@ acceptance = ["Proposed test_task_snapshot.py and existing fleet tests prove com
 checks = ["python3 scripts/check.py pi-autowork/tests/test_task_snapshot.py pi-autowork/tests/test_fleet_view.py pi-autowork/tests/test_health.py", "python3 scripts/affected_tests.py --run"]
 exclusions = ["No task/attempt/receipt schema or authority changes, branch-task union, skipped required review/checks, restored removed fleet shortcuts, unrelated Src migration, service/job/profile/model operations, SSH/network tuning, dependency additions or publication. Preserve active contracts and existing pauses."]
 live = "denied"
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-379-cf40090d.toml"
 +++
 - Sources: docs/plans/tui-responsiveness.md#one-committed-task-snapshot
 - Planner call: Source-backed repair design, not a proven remote SSH diagnosis; routine defaults and exact interfaces are in the accepted source. Future tests are task-owned inputs to create, not unavailable external prerequisites.
@@ -26,3 +28,4 @@ live = "denied"
 - Evidence: Read-only source reviews at 911d1b2855c94eaedfa07102434d95d139f0ab13; planning base 614bdf8e after canonical delivery of the hotkey task. Existing worker receipt is distinct from implementation acceptance.
 - Delivery: Branch-local planning until canonical inclusion and consumer readback; no implementation, rendered or SSH pass claimed.
 - Review findings: Attempt 2 remains held for validation: tui.py:433,465–471 fixed task-views at one line and appended freshness below it; review rendered unavailable inventory as All 0, other zero counts and No task in this view while clipping the error. Required suites were satisfied by the accepted gate, not acceptance. Candidate 53c049a2ad7aedfc7b2a1eb3be5e135c79b1345a and trial integration fffea407f452bfba8e31f0657f7cb5a8716786a6 are not ancestors of repair base 2694fce5215e1f255cd6a33ca3b8ae23e2dc1da6. See docs/tasks/TOOLSET-379-rendering-review.md; private evidence read in place: .git/autowork-execution/slot-data/TOOLSET-379-cf40090d/attempt-2/report.json and .git/autowork-execution/942de240ea214d74bc973f61491b0d21.log. No ledger-edit patch is recorded for this task; no proposal applied.
+- Pending live: Deployed service and remote SSH freshness/performance qualification remain unrun. Offline fixtures and rendered local pilot coverage do not establish transport latency, activation or provider execution. No service/profile/model operations were performed.

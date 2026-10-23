@@ -57,6 +57,7 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Fleet counts and task rows now share a committed snapshot with explicit freshness/errors; TasksScreen distinguishes unavailable from empty and keeps stale revision/age visible while keyboard-accessible diagnostics scroll long errors. (TOOLSET-379-cf40090d)
 - **Bare `/plan_for_me` now starts autonomous project discovery.** An invocation with
   no objective, or only a vague direction such as "make it better", investigates the
   repository's accepted intent, code, tests, task history and recent changes before
