@@ -25,6 +25,7 @@ repository, under `${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key
 | `pi_autowork/blockers_report.py` | Plain-text read-only diagnostic report; fresh committed selection reasons separated from recorded fleet/runtime observations |
 | `pi_autowork/fleet_view.py` | Every runner on the machine (tmux sessions, `pi-autowork@` services, `status.json` health), its worker lanes (engine slots in flight, the runner's latest phase line, the Pi transcript's last action), its blockers grouped by kind, recent logs, and the exact existing command behind each action; standard library only |
 | `bin/autowork`, `pi_autowork/command.py` | The `autowork` command (below), standard library only |
+| `pi_autowork/tui_reads.py` | UI-loop read coordinator: four physical workers, coalesced requests, lifetime/identity/epoch-bound publication and cancellation-safe resource slots |
 | `pi_autowork/tui.py` | The `autowork` TUI (Textual, run through `uv`): live runners with what each needs (the owner's open BLOCKERS.md questions, else its first blocker), worker lanes, model and log, stacked full width so it reads on an 80-column terminal, a directory browser that starts services, and keys that run `autowork` commands; `--view-only` disables the keys |
 | `pi_autowork/tui_web.py` | `autowork web`: serves the TUI to a browser with textual-serve, on 127.0.0.1 by default |
 | `pi_autowork/questions.py` | The owner's questions block in `BLOCKERS.md`, built from the engine status without a model |
@@ -235,18 +236,30 @@ revision/age with the acquisition error visible. The rendered pilot opens all th
 states in wide and narrow viewports, checks painted cells/layout bounds, and scrolls
 a long acquisition error through its final line.
 
-The synchronous TUI collector (`collect_for_tui`) returns a `FleetSnapshot`
-envelope with acquisition errors. Its labelled preparation diagnostics can be
+The TUI runs `collect_for_tui` off the event loop and publishes its `FleetSnapshot`
+envelope atomically, including acquisition errors. Its labelled preparation diagnostics can be
 reused for less than 30 seconds, invalidated by observed revision, dirty-file,
 settings or environment changes. Explicit refresh and action/preparation return
 invalidate the audit. Cached diagnostics supply neither task membership nor Start
 authority: confirmed Start still reads readiness afresh. CLI/full readiness stays
 uncached; service-enabled queries have a ten-second bound.
 
-Offline checks in `tests/test_task_snapshot.py`, `tests/test_fleet_view.py` and
-`tests/test_health.py`, plus the headless `tests/tui_pilot.py`, cover these display
-boundaries. They do not qualify SSH transport latency, a live service or execution
-through a provider. Moving the synchronous readers off the UI loop is separate work.
+Fleet, journal, task-detail, goals, directory-readiness, model-catalog and code-update
+reads share a four-worker coordinator. Each resource has one physical read and at
+most one replaceable pending request. Timer polls do not invalidate a slower active
+read; selection changes, action/interactive return and screen closure discard obsolete
+results. Cancelling a subscription does not free its running thread's resource slot.
+Only the UI loop publishes results and touches widgets. Resize, task filters and
+worker-log wrap use cached data. Directory labels are loaded separately from the
+selected repository's readiness; confirmed Start always requests fresh readiness.
+Model discovery is fresh per opening and uses the selected service's provider context.
+Read failures retain last-good data with a stale/unavailable diagnostic and allow retry.
+
+Offline checks in `tests/test_tui_reads.py`, `tests/test_task_snapshot.py`,
+`tests/test_fleet_view.py` and `tests/test_health.py`, plus the headless
+`tests/tui_pilot.py`, cover these boundaries. The pilot acknowledges keys and closes
+screens while reader providers are held by Events, before releasing them. These
+checks do not qualify SSH transport latency, a live service or execution through a provider.
 
 The main-check line in runner status and the TUI reads the current check receipt,
 not just the runner's cached health snapshot. A missing process or a reused PID
