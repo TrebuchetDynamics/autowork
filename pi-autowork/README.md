@@ -120,10 +120,13 @@ headless TUI pilot cover these displays; they do not qualify live publication.
 
 In the TUI each key is the first letter of its word, highlighted in the detail pane:
 `l` (or Enter) **L**og, `p` **P**lay/**P**ause (starts a stopped service, resumes a
-paused one, pauses a running one), `s` **S**top, `r` **R**estart, `m` **M**odel and
-`f` **F**allback (from Pi's list, type to filter), `t` **T**asks, `u` **U**ninstall the
+paused one, pauses a running one), `s` **S**top, `r` **R**estart, `m` **M**odel
+(from Pi's list, type to filter), `t` **T**asks, `u` **U**ninstall the
 service, `n` **N**ew: browse directories (from `~/git`, `AUTOWORK_BROWSE_ROOT`), see which
 repositories are ready or what they need, and `p` there plays one; `q` **Q**uit.
+The fleet has no Fallback or Nous Portal controls. Fallback remains visible in
+runner details; configure it with `autowork model --fallback` and use
+`autowork setup-portal` for opt-in provider setup.
 On an unready repository, Play offers **Prepare**, **Prepare and start**, **Plan**,
 **Force** and **Cancel**. Prepare runs `autowork tasks prepare` without blocking the
 TUI and can commit a legacy conversion; it displays the outcome code, every refusal
@@ -244,11 +247,10 @@ autowork setup-portal --provider nous-local --model "$MODEL_ID"
 autowork setup-portal --provider nous-local --model "$MODEL_ID" --apply
 ```
 
-In the TUI, **o — Nous Portal** opens the same setup before any service is required.
-Enter the provider, exact model ID and endpoint, then Preview. The separate Yes/No
-confirmation shows the proposal; No or Escape leaves configuration bytes unchanged.
-View-only mode disables setup. `--json` exposes the same path, provider/model,
-endpoint, prerequisite diagnostics, proxy state and applied flag to automation.
+Portal setup is CLI-only; the fleet TUI has no setup shortcut. Without `--apply`,
+the command only previews the proposal and leaves configuration bytes unchanged.
+`--json` exposes the path, provider/model, endpoint, prerequisite diagnostics,
+proxy state and applied flag to automation.
 
 The default endpoint is `http://127.0.0.1:8645/v1`. `--endpoint` accepts only literal
 `127.0.0.1` or `[::1]` HTTP addresses with a port and `/v1`; no remote hosts,
