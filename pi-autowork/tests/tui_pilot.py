@@ -63,13 +63,13 @@ async def task_inventory_viewport(app, pilot):
             table = screen.query_one('#tasks')
             assert table.region.height >= 3 and table.region.bottom <= screen.region.bottom, table.region
             widgets = [screen.query_one('#task-views'), screen.query_one('#task-detail'),
-                       *screen.query('#task-freshness'), *screen.query('#task-diagnostics')]
+                       *screen.query('#task-freshness'), *screen.query('#task-provenance')]
             visible = ' '.join(painted(w) for w in widgets)
             assert snapshot.freshness in visible, (state, visible)
             if state != 'empty':
                 assert 'inventory read denied' in visible, (state, visible)
             counts = painted(screen.query_one('#task-views'))
-            for label in ('All', 'Active', 'Blocker', 'Waiting', 'Questions'):
+            for label in ('Open', 'Active', 'Blocker', 'Waiting', 'Questions', 'Closed'):
                 if state == 'unavailable':
                     assert label + ' ?' in counts and label + ' 0' not in counts, counts
                 elif state == 'empty':
@@ -85,11 +85,11 @@ async def task_inventory_viewport(app, pilot):
                 assert 'No task in this view' in painted(screen.query_one('#task-detail'))
             else:
                 assert snapshot.revision in visible and '15m ago' in visible, visible
-                assert 'All 3' in counts and table.row_count == 3, counts
+                assert 'Open 3' in counts and table.row_count == 3, counts
                 await pilot.press('i', 'end')  # keyboard users must reach the rest of a long acquisition error
                 await pilot.pause()
-                assert screen.query_one('#task-diagnostics-scroll').scroll_y > 0
-                assert 'END OF INVENTORY ERROR' in painted(screen.query_one('#task-diagnostics'))
+                assert screen.query_one('#task-provenance').scroll_y > 0
+                assert 'END OF INVENTORY ERROR' in painted(screen.query_one('#task-provenance'))
                 pinned = painted(screen.query_one('#task-freshness'))
                 assert snapshot.revision in pinned and '15m ago' in pinned, pinned
                 await pilot.press('i')  # return to task navigation
@@ -394,7 +394,7 @@ async def main():
             await pilot.pause()
             assert [str(tasks.get_row_at(i)[1]) for i in range(tasks.row_count)] == ['T-9'], tasks.row_count
             keys = str(app.screen.query_one('#menubar').render())
-            assert keys.rstrip().endswith('enter Open  Up  Down  Section  Clear  Aside  New  Inventory  esc Back'), keys
+            assert keys.rstrip().endswith('enter Open  Up  Down  Section  Clear  Aside  New  Info  esc Back'), keys
             await pilot.press('u')                      # re-sort: an autowork move
             await pilot.pause()
             await app.workers.wait_for_complete()

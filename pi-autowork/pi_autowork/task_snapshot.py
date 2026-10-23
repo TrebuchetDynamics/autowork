@@ -69,7 +69,13 @@ def _closed_rows(store):
     for record in sorted(store.tasks.values(), key=lambda t: t.id):
         if record.status == 'done':
             info = record.closure_info
-            why = (info['evidence'] if record.closure == 'coordinator_verified' else info['reason']) or 'Closure provenance not recorded'
+            if record.closure == 'coordinator_verified':
+                why = info['evidence'] or 'Verification evidence not recorded'
+            elif record.closure == 'manual':
+                why = (f'Manually closed by {info["actor"] or "unknown"} at {info["timestamp"] or "unknown"}; '
+                       f'not coordinator-verified. {info["reason"] or "Reason not recorded"}')
+            else:
+                why = 'Closure provenance not recorded (legacy); no coordinator verification recorded.'
             rows.append(TaskRow(record.id, record.short or record.title, 'Closed', info['label'], 'closed', why))
     return tuple(rows)
 

@@ -427,7 +427,8 @@ class WorkerScreen(Screen):
 class TasksScreen(Screen):
     """One runner's open tasks in priority (section, then rank) order: filter them, re-sort them, clear or
     set aside a hold, answer the owner's questions. Refreshed like the main screen."""
-    VIEW_NAMES = {'all': 'All', 'working': 'Active', 'held': 'Blocker', 'waiting': 'Waiting', 'questions': 'Questions'}
+    VIEW_NAMES = {'all': 'Open', 'working': 'Active', 'held': 'Blocker', 'waiting': 'Waiting',
+                  'questions': 'Questions', 'closed': 'Closed'}
     BINDINGS = [Binding('escape,q', 'app.pop_screen', 'Back', show=False),
                 Binding('tab', 'step_view(1)', 'next view', show=False),
                 Binding('shift+tab', 'step_view(-1)', 'previous view', show=False),
@@ -435,11 +436,11 @@ class TasksScreen(Screen):
                   for n, view in enumerate(fleet_view.TASK_VIEWS)],
                 *[Binding(key, f'task("{key}")', key, show=False) for key in 'udcabs'],
                 Binding('n', 'new_task', 'New', show=False),
-                Binding('i', 'inventory', 'Inventory', show=False)]
+                Binding('i', 'snapshot_info', 'Snapshot info', show=False, priority=True)]
     DEFAULT_CSS = '''
-    #task-views, #task-freshness { height: auto; padding: 0 1; }
-    #task-diagnostics-scroll { height: auto; max-height: 4; padding: 0 1; }
-    #task-diagnostics { height: auto; }
+    #task-views { height: auto; max-height: 3; padding: 0 1; }
+    #task-freshness { height: auto; padding: 0 1; }
+    #task-provenance { height: 3; border: none; padding: 0 1; }
     #tasks { height: 1fr; }
     #task-detail { height: auto; max-height: 7; padding: 0 1; border-top: solid $panel; }
     '''
@@ -449,14 +450,14 @@ class TasksScreen(Screen):
     def __init__(self, runner_name):
         super().__init__()
         self.runner_name, self.view, self.rows, self.shown = runner_name, 'all', [], []
+        self.history = []
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield MenuBar(id='menubar')
         yield Static(id='task-views')
         yield Static(id='task-freshness')
-        with VerticalScroll(id='task-diagnostics-scroll'):
-            yield Static(id='task-diagnostics')
+        yield TextArea(read_only=True, show_cursor=False, id='task-provenance')
         yield DataTable(id='tasks', cursor_type='row', zebra_stripes=True)
         yield Static(id='task-detail')
 
@@ -470,19 +471,23 @@ class TasksScreen(Screen):
     def runner(self):
         return next((r for r in self.app.runners if r.name == self.runner_name), None)
 
-    def action_inventory(self):
-        panel = self.query_one('#task-diagnostics-scroll', VerticalScroll)
-        (self.query_one('#tasks', DataTable) if panel.has_focus else panel).focus()
+    def view_rows(self, view):
+        return self.history if view == 'closed' else fleet_view.task_view(self.rows, view)
+
+    def action_snapshot_info(self):
+        info = self.query_one('#task-provenance', TextArea)
+        (self.query_one('#tasks', DataTable) if info.has_focus else info).focus()
 
     def refresh_tasks(self, follow=None):
         """``follow``: keep the cursor on this task wherever it moved (after a re-sort)."""
         runner = self.runner()
         self.rows = fleet_view.task_rows(runner, include_closed=True) if runner else []
+        self.history = fleet_view.closed_task_rows(runner) if runner else []
         snapshot = fleet_view.snapshot_for(runner) if runner else None
         available = snapshot is not None and snapshot.counts is not None
         views = Text()
         for number, view in enumerate(fleet_view.TASK_VIEWS):
-            count = len(fleet_view.task_view(self.rows, view)) if available else '?'
+            count = len(self.view_rows(view)) if available else '?'
             label = f'{number + 1} {self.VIEW_NAMES[view]} {count}'
             views.append(('  ' if number else '') + label, style='bold reverse' if view == self.view else 'dim')
         views.append('   tab next view', style='dim')
@@ -494,15 +499,13 @@ class TasksScreen(Screen):
                              + fleet_view.ago(max(0, int(time.time() - snapshot.captured_at)))
                              + f' · execution {snapshot.engine_freshness}', style='dim')
         self.query_one('#task-freshness', Static).update(freshness)
-        diagnostics = Text()
-        if snapshot and snapshot.errors:
-            diagnostics.append(' · '.join(snapshot.errors) + '\n', style='yellow')
-        if runner:
-            diagnostics.append(fleet_view.freshness(runner), style='dim')
-        self.query_one('#task-diagnostics', Static).update(diagnostics)
+        provenance = fleet_view.freshness(runner) if runner else 'Runner unavailable.'
+        info = self.query_one('#task-provenance', TextArea)
+        if info.text != provenance:
+            info.load_text(provenance)
         table = self.query_one('#tasks', DataTable)
         current = follow or (self.current().task if self.current() else None)
-        self.shown = fleet_view.task_view(self.rows, self.view)
+        self.shown = self.view_rows(self.view)
         position = {row.task: number + 1 for number, row in enumerate(self.rows)}
         cells = [{'#': (str(position[row.task]), 'dim'), 'Task': (row.task, 'bold'),
                   'Short': (row.short, ''),
@@ -545,13 +548,13 @@ class TasksScreen(Screen):
         if not self.app.view_only:
             keys.append(('n', 'New'))
         self.query_one('#menubar', MenuBar).show(([('enter', 'Open')] if row else [])
-                                                 + keys + [('i', 'Inventory'), ('esc', 'Back')])
+                                                 + keys + [('i', 'Info'), ('esc', 'Back')])
         self.query_one('#task-detail', Static).update(text)
 
     def on_data_table_row_selected(self, event):
         row = self.current()
         if row is not None:
-            self.app.push_screen(TaskScreen(self.runner_name, row.task))
+            self.app.push_screen(TaskScreen(self.runner_name, row.task, read_only=self.view == 'closed'))
 
     def action_new_task(self):
         runner = self.runner()
@@ -608,9 +611,10 @@ class TaskScreen(Screen):
     #task-answers { height: auto; padding: 0 1; border-top: solid $panel; }
     '''
 
-    def __init__(self, runner_name, task):
+    def __init__(self, runner_name, task, *, read_only=False):
         super().__init__()
         self.runner_name, self.task_id = runner_name, task
+        self.read_only, self.closed = read_only, False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -633,13 +637,16 @@ class TaskScreen(Screen):
 
     def answers(self):
         runner, question = self.runner(), self.question()
-        if runner is None or question is None or self.app.view_only:
+        if runner is None or question is None or self.app.view_only or self.read_only:
             return []
         return fleet_view.answers(runner, question, command=self.app.command)
 
     def refresh_tasks(self, follow=None):
         runner, question = self.runner(), self.question()
-        row = next((r for r in fleet_view.task_rows(runner, include_closed=True) if r.task == self.task_id), None) if runner else None
+        closed_row = next((r for r in fleet_view.closed_task_rows(runner) if r.task == self.task_id), None) if runner else None
+        self.closed = closed_row is not None
+        row = closed_row or (next((r for r in fleet_view.task_rows(runner, include_closed=True)
+                                   if r.task == self.task_id), None) if runner else None)
         text = Text()
         text.append(self.task_id, style='bold')
         if row:
@@ -647,13 +654,15 @@ class TaskScreen(Screen):
             text.append(f'{row.section} · {row.state}\n', style=fleet_view.state_style(row) or 'dim')
         else:
             text.append('  (closed, or not in tasks/ now)\n', style='dim')
+        if self.closed and row is not None and row.why:
+            text.append(row.why + '\n')
         if question:
             text.append(f'\nQuestion for you ({question.effort}, unblocks {question.unblocks})\n', style='bold yellow')
             text.append(question.needs + '\n', style='yellow')
             if question.answer:
                 text.append('The runner suggests: ', style='bold')
                 text.append(question.answer + '\n', style='dim')
-        elif row and row.why:
+        elif row and row.why and not self.closed:
             text.append(row.why + '\n')
         entry = fleet_view.task_entry(runner, self.task_id) if runner else ''
         if entry:
@@ -669,7 +678,8 @@ class TaskScreen(Screen):
         self.query_one('#task-body', Static).update(text)
         answers = self.answers()
         self.query_one('#menubar', MenuBar).show([(a.key, a.label) for a in answers]
-                                                 + ([] if self.app.view_only else [('s', 'Section')]) + [('esc', 'Back')])
+                                                 + ([] if self.app.view_only or self.read_only or self.closed
+                                                    else [('s', 'Section')]) + [('esc', 'Back')])
         explained = Text()  # what each answer does, under the task; the keys are in the menu bar
         for answer in answers:
             explained.append(f' {answer.label:<11}', style='bold')
@@ -693,7 +703,7 @@ class TaskScreen(Screen):
 
     def action_section(self):
         runner = self.runner()
-        if runner is None or self.app.view_only:
+        if runner is None or self.app.view_only or self.read_only or self.closed:
             return
         self.app.push_screen(PickSection(self.task_id), lambda section: section and self.app.execute(
             fleet_view.Action('s', f'Section {self.task_id}',

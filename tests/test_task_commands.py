@@ -293,7 +293,9 @@ class TaskCommandTests(unittest.TestCase):
                 self.assertEqual(why['closure'], closure)
                 rows = fleet_view.task_rows(fleet_view.Runner('fixture', repo=str(self.repo)), include_closed=True)
                 row = next(r for r in rows if r.task == tid)
-                self.assertEqual((row.state, row.why), ('Manual', 'Stopped after review'))
+                self.assertEqual(row.state, 'Manual')
+                self.assertEqual(row.why, f'Manually closed by owner at {closure["timestamp"]}; '
+                                 'not coordinator-verified. Stopped after review')
                 self.assertEqual(fleet_view.task_actions(fleet_view.Runner('fixture'), row,
                                                        command='aw', script='aw.sh'), [])
 

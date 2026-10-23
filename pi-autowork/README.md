@@ -55,6 +55,18 @@ the separate `autowork blockers [dir]` command, not this report.
 
 ## The autowork command
 
+In the TUI, Tasks defaults to **1 Open**, excluding closed history and independent
+question annotations from the open count. **6 Closed** keeps completed records
+available for read-only inspection; number keys or Tab/Shift+Tab switch views.
+The separate snapshot diagnostics pane stays three lines high; **i Info** focuses
+it for scrolling/selecting/copying the full text, and **i** returns to the rows.
+Questions outside current open inventory remain in **Questions**, not Open.
+Explicit **Manual** closure shows its recorded actor/time/reason and is not
+coordinator-verified. Old records without a closure method show **Unknown closure**;
+the display neither reopens them nor invents missing evidence. Closed-history
+detail cannot change section or execute answer/repair actions. These are local
+source/UI semantics, not proof an installed or remote TUI loaded this release.
+
 `autowork` runs, watches and controls the runners on this machine. A repository's
 runner is a systemd user service, `pi-autowork@<repository name>`; a target is a runner
 name, a repository path or `.`. Nothing here calls a model.

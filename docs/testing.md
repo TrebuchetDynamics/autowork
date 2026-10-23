@@ -19,6 +19,21 @@ selector on the implementation base as well. Cache/dependency skips are not
 rendered passes. These fixtures do not prove an SSH terminal accepted its clipboard
 sequence or that an installed TUI loaded the new source.
 
+## Open task inventory and closed history
+
+`python3 scripts/check.py pi-autowork/tests/test_task_history.py` uses a real
+committed store for open, legacy and explicit manual records; checks annotation
+separation, unchanged task bytes and verified versus unverified labels; and runs a
+pinned offline Textual pilot at 80/120 by 24 columns, normal/view-only. It checks
+Open/Closed counts, closed records with related questions, visible tabs, numeric/
+backward-tab navigation and denial of section/answer actions in history details.
+Twenty unmatched-runtime annotations exercise a bounded diagnostics pane without
+hiding the task rows; the pilot focuses it with **i**, copies its full text and
+checks view navigation while it has focus.
+Run affected modules from the implementation base as well. Historical receipts,
+statuses and missing closure metadata are not repaired by these tests. A skipped
+renderer dependency is not a rendered pass; remote-host adoption stays unqualified.
+
 ## Parallel offline acceptance
 
 `python3 -m unittest pi-autowork/engine/test_parallel_e2e.py` exercises the

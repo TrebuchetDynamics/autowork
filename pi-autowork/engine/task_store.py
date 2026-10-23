@@ -108,7 +108,8 @@ class TaskRecord(Record):
         return dict(provenance=self.closure, actor=self.closure_actor, timestamp=self.closure_timestamp,
                     reason=self.closure_reason, evidence=self.closure_evidence,
                     label=('Verified' if self.verified else 'Verified (evidence missing or invalid)')
-                          if self.closure == 'coordinator_verified' else 'Manual',
+                          if self.closure == 'coordinator_verified' else
+                          ('Manual' if self.closure == 'manual' else 'Unknown closure'),
                     evidence_valid=self.receipt_valid if self.closure == 'coordinator_verified' else None,
                     owner_waiver=self.owner_waiver, owner_qualification=self.owner_qualification)
 

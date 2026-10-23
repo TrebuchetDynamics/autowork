@@ -1296,7 +1296,7 @@ def actions(runner, *, command, script, agent=None):
 
 
 # The Tasks window's views, in key order: what each shows (a TaskRow's kind).
-TASK_VIEWS = ('all', 'working', 'held', 'waiting', 'questions')
+TASK_VIEWS = ('all', 'working', 'held', 'waiting', 'questions', 'closed')
 
 
 TaskRow = task_snapshot.TaskRow
@@ -1362,6 +1362,11 @@ def task_rows(runner: Runner, include_closed=False) -> list[TaskRow]:
     return rows
 
 
+def closed_task_rows(runner):
+    """All committed closures, including those with independent question annotations."""
+    return list(snapshot_for(runner).closed_rows)
+
+
 def task_entry(runner, task):
     """``task``'s whole record file (tasks/items/<task>.md), as written in the checkout."""
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', task or ''):
@@ -1380,7 +1385,7 @@ def open_goals(runner):
 def task_view(rows, view):
     """The rows a TASK_VIEWS filter shows."""
     if view == 'all':
-        return rows
+        return [r for r in rows if r.kind not in ('closed', 'annotation')]
     if view == 'questions':
         return [r for r in rows if r.question]
     return [r for r in rows if r.kind == view]
