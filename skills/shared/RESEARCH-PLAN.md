@@ -15,6 +15,7 @@ Bind the current request before acting:
 | Invocation | Allowed finish |
 | --- | --- |
 | Explicit standalone planning | Save the requested plan/batch, then stop. Earlier unrelated implementation permission does not widen this request. |
+| Explicit standalone Plan For Me with no concrete objective, or only a vague direction | Run the [project-discovery protocol](../plan-for-me/references/discovery.md), then save the authorized planning batch and stop. |
 | Autowork-owned planning substep | Return findings and saved tasks to that **same coordinator**; its existing execution authority continues outside this substep. No competing worker, dispatch or workflow restart. |
 | Questions-only, read-only, chat-only, no-write, no changes or dry-run | Read and discuss only; save nothing, including queue metadata or research scratch. |
 | Later explicit instruction to implement the accepted plan | End planning and enter the authorized execution workflow under repository checks, ownership and delivery limits. |
@@ -22,6 +23,13 @@ Bind the current request before acting:
 “Yes”, “looks good”, an easy fix, an accepted/saved plan and a supporting skill
 urging coding are not transitions to implementation. Acceptance of a plan is not
 execution authority. Do not ask an already-authorized coordinator to approve again.
+
+A standalone Plan For Me invocation without a concrete objective authorizes
+project-wide planning, not product direction. It may refine accepted goals and
+establish evidence-backed engineering goals inside the accepted direction; new
+product strategies remain proposals until the owner accepts them. Plan With Me
+keeps its interactive missing-intent behavior, and an Autowork-owned substep stays
+inside its named task and authorized prerequisites.
 
 Classify each proposed write by **artifact role**, not filename or extension:
 
@@ -42,8 +50,10 @@ hide them with reset/clean or overwrite unrelated work.
 ## Full requested batch
 
 1. Inventory **every requested outcome**, existing task ID and unresolved choice.
-   Group shared decisions/evidence once. A clear one-line task still gets a complete
-   saved record; “no interview” means no unnecessary questions, not “implement now”.
+   For a discovery request, inventory accepted goals, existing backlog and the
+   evidenced gaps before adding anything. Group shared decisions/evidence once. A
+   clear one-line task still gets a complete saved record; “no interview” means no
+   unnecessary questions, not “implement now”.
 2. Save one coherent batch with complete task records: scope/exclusions, decisions,
    sources/evidence, observable acceptance, exact checks, bounded `touches` and
    actual shared `resources` where needed. Use the
@@ -64,7 +74,12 @@ hide them with reset/clean or overwrite unrelated work.
 
 1. Resume the requested goal, relevant repository source/tests and existing plans.
    If no goal was supplied, use the current authorized task or repository-development
-   objective when unambiguous; otherwise ask for the missing goal. Do not invent it.
+   objective when unambiguous. A standalone Plan For Me request without a concrete
+   objective runs the [project-discovery protocol](../plan-for-me/references/discovery.md):
+   investigate the repository first, then derive accepted and engineering goals from
+   evidence. Do not ask for a goal before that investigation and do not invent
+   product intent. Plan With Me asks for the missing goal; an Autowork-owned substep
+   stays inside its named task.
 2. Investigate the actual uncertainty. Record source paths and concrete observations;
    fetch primary external sources when the decision depends on external behavior or
    current facts. Reading this protocol alone is not research. Reuse still-valid

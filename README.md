@@ -322,7 +322,10 @@ Examples use **Hermes CLI**. Portable workflows use the host-specific prefixes a
 - **Challenge assumptions:** `/plan-with-me Challenge this cache design` tests the
   plan before implementation.
 - **Delegate planning:** `/plan-for-me Reduce cache latency` investigates, chooses
-  an approach and saves tasks; it does not implement.
+  an approach and saves tasks; it does not implement. Bare `/plan-for-me` (or a
+  vague direction such as *make it better*) first discovers the project's
+  evidence-backed gaps, then saves the highest-value executable frontier without
+  asking you for a goal. `read-only` saves nothing.
 - **Answer blockers:** `/blockers [repo|runner]` (also `/autowork blockers`,
   `/plan_with_me blockers`) reconciles routine planning issues first, then asks
   only for missing owner decisions or inputs, easiest first. Resolutions become

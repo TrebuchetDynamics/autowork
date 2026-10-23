@@ -57,6 +57,20 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- **Bare `/plan_for_me` now starts autonomous project discovery.** An invocation with
+  no objective, or only a vague direction such as "make it better", investigates the
+  repository's accepted intent, code, tests, task history and recent changes before
+  choosing work. It separates accepted goals and evidence-backed engineering goals
+  from new product proposals, traces requirements through implementation and
+  verification, reuses an existing backlog, and saves at most the rolling-planning
+  frontier. It no longer asks for a goal before investigating. An explicit outcome
+  keeps focused planning, `read-only` writes nothing, repeated unchanged invocations
+  are idempotent, and an Autowork-owned substep stays inside its named task. The new
+  [discovery protocol](skills/plan-for-me/references/discovery.md) holds the evidence
+  labels, gap classes and report; the planned specimens cover established, sparse,
+  undefined, mature, vague, unverified, conflicting, proposed, read-only, dirty,
+  repeated and large repositories. Static skill/command tests verify the routing
+  contract, not live model adherence.
 - Preserve pinned task-source provenance, separate current/admitted contract hashes, and true observation age across coordinator caches and health failures; report corrupt Git reads instead of empty status. (TOOLSET-378-faaf7ed8)
 - Removed global fleet Fallback and Nous Portal controls while preserving CLI/backend capabilities, read-only fallback details and isolated Portal consent coverage. (TOOLSET-377-199b6bb6)
 - Add two Unreleased/Changed entries: **Confirmed TUI Force conversion** (TOOLSET-369-b3e896c2): the not-ready dialog offers Force with confirmation, preparation displays every refusal and available stopped/set_aside/landed/committed/commit fields, and paired legacy files show legacy planning with prepare --force guidance; **Lone legacy files bootstrap** (TOOLSET-371-7795a447, TOOLSET-372-a9fe0116): TODO.md-only or goals.json-only reports none/NO_STORE with legacy_content to reconcile and needs tasks readiness, preserving the lone file without synthesizing its partner or changing explicit migrate refusals; offline coverage only, not live qualification.

@@ -45,6 +45,85 @@ WIDE = (BULK + ' Also plan five independent raw-string helpers, each as its own 
         'src/reverse.py, src/prefix.py, src/suffix.py, src/is_empty.py and src/contains.py '
         'with correspondingly named functions and focused tests. Choose ordinary signatures. '
         'All nine outcomes are known now; do not defer them to a rolling planning round.')
+
+ESTABLISHED_FILES = {
+    **FILES,
+    'docs/prd.md': '# Formatter PRD\n\nStatus: Accepted\n\n'
+                   '- FMT-01: normalize trims and lowercases text.\n'
+                   '- FMT-02: export emits pipe-delimited rows.\n',
+}
+SPARSE_FILES = {
+    'AGENTS.md': '# Sample repository\nPython stdlib only; no network, installs, commits or scheduling. '
+                 'There is no accepted product plan yet.\n',
+    'README.md': '# Formatter\n\nA small stdlib text formatter. '
+                 'Checks: python3 -m unittest discover -s tests.\n',
+    'src/formatting.py': 'def normalize(value):\n    return value\n',
+    'tests/test_formatting.py': 'import unittest\nfrom src.formatting import normalize\n'
+                              'class Formatting(unittest.TestCase):\n'
+                              '    def test_trim(self):\n'
+                              '        self.assertEqual(normalize(" x "), "x")\n',
+}
+UNDEFINED_FILES = {
+    'AGENTS.md': '# Scratch repository\nNo accepted objective, product plan or implementation yet. '
+                 'Do not invent production requirements.\n',
+    'README.md': '# Scratch notes\n\nIdeas only. There is no product direction to plan.\n',
+}
+VERIFICATION_FILES = {
+    **ESTABLISHED_FILES,
+    'src/formatting.py': 'def normalize(value):\n    return value.strip().lower()\n',
+    'TODO.md': '# TODO\n\nNo tasks yet.\n',
+}
+CONFLICT_FILES = {
+    **ESTABLISHED_FILES,
+    'src/formatting.py': 'def normalize(value):\n    return value.strip().lower()\n',
+    'docs/plan.md': '# Formatter plan\n\n## Accepted scope\nStatus: Accepted\n\n'
+                    'A CLI formatter with no dependencies or network access. '
+                    'Normalization trims and preserves case.\n',
+    'docs/prd.md': '# Formatter PRD\n\nStatus: Accepted\n\n'
+                   '- FMT-01: normalize trims and preserves case.\n',
+    'TODO.md': '# TODO\n\nNo tasks yet.\n',
+}
+PROPOSAL_FILES = {
+    **ESTABLISHED_FILES,
+    'README.md': '# Formatter\nPython stdlib only. Checks: python3 -m unittest discover -s tests. '
+                 'Plans: docs/plan.md and TODO.md. Long-term idea: hosted formatting service '
+                 'with accounts and billing.\n',
+}
+ACTIVE_FILES = {
+    **{path: text for path, text in ESTABLISHED_FILES.items() if path != 'TODO.md'},
+    'notes/owner-edit.txt': 'Owner edit in progress. Preserve this file byte for byte.\n',
+    'tasks/goals/FORMAT.md': '+++\nschema = 1\nid = "FORMAT"\ntitle = "Formatter"\n'
+                             'priority = 10\nsource = "docs/plan.md#accepted-scope"\n'
+                             'status = "unmet"\nfocus = true\ndepends_on = []\n+++\n',
+    'tasks/items/FMT-900-ab.md': '+++\nschema = 1\nid = "FMT-900-ab"\n'
+                                 'title = "Preserve the owner edit"\nshort = "Owner edit"\n'
+                                 'status = "open"\ngoal = "FORMAT"\nsection = "Now"\nrank = 1000\n'
+                                 'depends_on = []\ntouches = ["notes/owner-edit.txt"]\n'
+                                 'resources = []\nacceptance = ["The owner edit stays unchanged."]\n'
+                                 'checks = ["test -s notes/owner-edit.txt"]\nexclusions = []\n'
+                                 'kind = "implementation"\nownership = "worker"\n'
+                                 'live = "denied"\n+++\n\n- Held by: owner\n',
+}
+LARGE_FILES = {**ESTABLISHED_FILES,
+               'README.md': '# Formatter\nA large stdlib codebase with many modules and tests. '
+                            'Start from the repository map and failing checks.\n'}
+LARGE_FILES.update({f'src/module_{index:03}.py': f'def value():\n    return {index}\n'
+                    for index in range(200)})
+LARGE_FILES.update({f'tests/test_module_{index:03}.py':
+                    f'import unittest\nfrom src.module_{index:03} import value\n'
+                    f'class Module{index:03}(unittest.TestCase):\n'
+                    f'    def test_value(self):\n'
+                    f'        self.assertEqual(value(), {index})\n'
+                    for index in range(0, 200, 5)})
+LARGE_FILES['tests/test_hotspot.py'] = ('import unittest\nfrom src.module_117 import value\n'
+                                        'class Hotspot(unittest.TestCase):\n'
+                                        '    def test_value(self):\n'
+                                        '        self.assertEqual(value(), 1)\n')
+
+
+def case(entry, request, files=None):
+    """A specimen: entrypoint, literal request, and an optional complete repository."""
+    return (entry, request, FILES if files is None else files)
 CASES = {
     'native-with-easy': ('skills/plan-with-me/SKILL.md', EASY),
     'portable-for-easy': ('adapters/skills/plan-for-me/SKILL.md', EASY),
@@ -54,6 +133,19 @@ CASES = {
     'portable-easy': ('adapters/skills/plan-with-me/SKILL.md', EASY),
     'native-bulk': ('skills/plan-with-me/SKILL.md', BULK),
     'portable-bulk': ('adapters/skills/plan-for-me/SKILL.md', BULK),
+    # Discovery specimens: no concrete objective, so the planner must investigate first.
+    'bare-established': case('skills/plan-for-me/SKILL.md', '', ESTABLISHED_FILES),
+    'bare-sparse': case('skills/plan-for-me/SKILL.md', '', SPARSE_FILES),
+    'bare-undefined': case('skills/plan-for-me/SKILL.md', '', UNDEFINED_FILES),
+    'mature-backlog': case('skills/plan-for-me/SKILL.md', 'Plan this project.', FILES),
+    'vague-goal': case('skills/plan-for-me/SKILL.md', 'make this better', ESTABLISHED_FILES),
+    'verification-gap': case('skills/plan-for-me/SKILL.md', 'Plan this project.', VERIFICATION_FILES),
+    'spec-conflict': case('skills/plan-for-me/SKILL.md', 'Plan this project.', CONFLICT_FILES),
+    'proposal': case('skills/plan-for-me/SKILL.md', 'improve this project', PROPOSAL_FILES),
+    'read-only': case('skills/plan-for-me/SKILL.md', 'read-only: plan this project', ESTABLISHED_FILES),
+    'active-dirty': case('skills/plan-for-me/SKILL.md', 'Plan this project.', ACTIVE_FILES),
+    'repeat': case('skills/plan-for-me/SKILL.md', 'Plan this project.', ESTABLISHED_FILES),
+    'large': case('skills/plan-for-me/SKILL.md', 'Plan this project.', LARGE_FILES),
     'old-authority': ('skills/plan-for-me/SKILL.md',
                       'Earlier unrelated user authorization: implement exporter improvements autonomously. '
                       'Current standalone planning request: ' + EASY),
@@ -92,9 +184,11 @@ def main():
     if args.action == 'prepare':
         root.mkdir(parents=True, exist_ok=False)
         source = Path(__file__).resolve().parents[3]
-        for name, (entry, request) in cases.items():
+        for name, spec in cases.items():
+            entry, request = spec[0], spec[1]
+            repository = spec[2] if len(spec) > 2 else FILES
             fixture = root / name
-            for path, text in FILES.items():
+            for path, text in repository.items():
                 dest = fixture / path
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_text(text)
@@ -113,7 +207,11 @@ def main():
             after = snapshot(root / name)
             changed = sorted(p for p in before.keys() | after.keys() if before.get(p) != after.get(p))
             # Bytecode is observable scratch, not an ignored implementation change.
-            allowed = set() if name in ('questions-only', 'challenge') else {'docs/plan.md', 'TODO.md'}
+            allowed = (set() if name in ('questions-only', 'challenge', 'read-only')
+                       else {'docs/plan.md', 'docs/prd.md', 'TODO.md', 'README.md',
+                             'AGENTS.md', 'GLOSSARY.md'})
+            if name in ('active-dirty', 'repeat', 'mature-backlog'):
+                allowed |= {path for path in after if path.startswith('tasks/')}
             results.append({'case': name, 'changed': changed,
                             'outside_planning_owners': [p for p in changed if p not in allowed]})
         print(json.dumps(results, indent=2))

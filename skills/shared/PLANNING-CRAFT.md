@@ -17,6 +17,12 @@ in plain words; the user can override it.
 | Clear task | everything that matters is in the request | no interview; save one complete task record (reuse its ID), then stop planning |
 | Small change | one outcome, few decisions | brief, decisions and one or two tasks |
 | Project | several outcomes, real trade-offs | written plan section, decisions and dependent tasks |
+| Project discovery | a standalone Plan For Me request has no concrete objective, or only a vague direction | evidence-based project model and goal classes first, then one executable frontier; never an interview for a goal or invented product scope |
+
+A discovery request starts from repository evidence, not a question: follow the
+[discovery protocol](../plan-for-me/references/discovery.md). It may derive
+engineering goals inside the accepted direction; new product directions stay
+proposals.
 
 If it grows mid-plan, say so and step up a size. If it is really several independent
 projects, identify their order and independent lanes, then finish the whole requested

@@ -47,7 +47,7 @@ capacity limit, so some commands must be typed rather than selected in the menu.
 | `/lgtm` | `/lgtm` | Continue the understood next step with existing authorization |
 | `/docs_sync` | `/docs_sync` | Maintain repository documentation |
 | `/plan_with_me` | `/plan_with_me` | Answer focused questions, then update docs and plans |
-| `/plan_for_me` | `/plan_for_me` | Investigate, choose an approach, and save the plan and tasks |
+| `/plan_for_me` | `/plan_for_me` | Discover the project's best next work, or investigate a supplied goal, then save the plan and tasks |
 | `/grill-me` | `/grill_me` | Stress-test a plan through questions |
 | `/autoresearch` | `/autoresearch` | Route a research goal or run a bounded metric loop |
 | `/profile-create` | `/profile_create` | Create a repository-bound profile with shared setup |
@@ -75,6 +75,18 @@ researches facts itself, flags terms and claims that contradict the code, and ca
 challenge assumptions using Grill Me. `/plan_for_me` investigates and chooses
 within your delegated scope. Both reuse existing answers and plans. Add
 `questions only` for an interview without file changes.
+
+`/plan_for_me` with no argument, or a vague direction such as *make it better*,
+starts project discovery instead of asking you for a goal. It reads the
+repository's accepted intent, code, tests and task history, separates accepted and
+derived engineering goals from new product proposals, and saves only the highest
+value executable frontier. It does not promote a speculative feature into runnable
+work or invent a roadmap for a project with no accepted objective. An explicit
+outcome keeps focused planning; `read-only` writes nothing; an Autowork-owned
+substep stays on its named task. Repeated invocations reconcile the last plan and
+changed evidence, so unchanged inputs add no duplicate tasks or empty planning
+commit. The [discovery protocol](../skills/plan-for-me/references/discovery.md)
+defines the evidence labels, gap classes and report.
 
 For example, type `/docs_sync update the architecture documentation` in Hermes
 CLI chat, or `/git_commit_push only src/; no push` in Telegram. Arguments are

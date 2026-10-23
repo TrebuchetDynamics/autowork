@@ -64,6 +64,21 @@ class WorkflowCommands(unittest.TestCase):
         installed = self.root.parent / 'home/skills/plan-for-me/SKILL.md'
         self.assertEqual(installed.read_bytes(), source.read_bytes())
 
+    def test_bare_plan_for_me_selects_discovery_and_explicit_goals_stay_focused(self):
+        self.plugin.SKILLS_DIR = fixture.ROOT / 'skills'
+        self.plugin.register(self.ctx)
+        for raw in ('', '   '):
+            with self.subTest(raw=repr(raw)):
+                self.ctx.commands['plan_for_me'](raw)
+                prompt = self.ctx.messages[-1][0]
+                self.assertIn('Selected route: autonomous project discovery', prompt)
+                self.assertIn('do not ask for a goal', prompt)
+                self.assertTrue(prompt.endswith('User arguments:\n' + raw))
+        self.ctx.commands['plan_for_me']('implement offline support')
+        prompt = self.ctx.messages[-1][0]
+        self.assertNotIn('Selected route: autonomous project discovery', prompt)
+        self.assertTrue(prompt.endswith('implement offline support'))
+
     def test_planners_describe_a_rolling_flutter_batch_but_not_a_small_task(self):
         # Text-only fixtures: this checks the saved skill contract, not model execution.
         self.plugin.SKILLS_DIR = fixture.ROOT / 'skills'
