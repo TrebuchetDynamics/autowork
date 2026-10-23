@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-372-a9fe0116"
 title = "Finish lone-file readiness and document the TUI and bootstrap changes after shared-file work lands"
 short = "Force conversion: shared-file follow-up"
-status = "open"
+status = "done"
 goal = "FORCE-CONVERSION"
 section = "Next"
 rank = 3000
@@ -16,6 +16,8 @@ scope = "Shared-file follow-up split from TOOLSET-369-b3e896c2 and TOOLSET-371-7
 acceptance = ["fleet_view.readiness reports needs tasks, not legacy planning, for each lone-file fixture (TODO.md only and goals.json only); both legacy files still report legacy planning with prepare --force guidance, and no planning still reports needs tasks (pi-autowork/tests/test_fleet_view.py). This owns the readiness scope split from TOOLSET-371; TOOLSET-369 retains its existing fleet-view acceptance.", "pi-autowork/task-store.md documents lone-file bootstrap as state none and outcome NO_STORE, names the legacy-content-to-reconcile report, and does not imply a missing legacy file is synthesized or explicit migrate refusals changed.", "CHANGELOG.md records the TUI Force/refusal/legacy-mark changes from TOOLSET-369 and lone-file bootstrap changes from TOOLSET-371 without removing the consumer or drift/invalid-entry entries from TOOLSET-368 and TOOLSET-370."]
 checks = ["python3 scripts/check.py pi-autowork/tests/test_fleet_view.py", "git diff --check"]
 exclusions = ["No new conversion behavior or change to tasks prepare itself", "No synthesis of a missing goals.json or TODO.md", "No change to the autowork migrate command refusal", "No automatic or unconfirmed Force action"]
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-372-a9fe0116.toml"
 +++
 - Sources: docs/plans/2026-10-22-force-conversion.md#decision
 - Overlap resolution: Keep the accepted contract, Touches, Checks and Next rank; make the remaining shared-file order explicit after TOOLSET-374 and TOOLSET-375. TOOLSET-374 is running and owns pi-autowork/task-store.md as well as CHANGELOG.md, so splitting off only the release note would not free this documentation work. TOOLSET-375's independent implementation can run beside TOOLSET-374 after its coordinator-owned changelog write is routed to a report proposal; finish it before this task touches fleet_view.py. Evidence: the three task records; docs/plans/2026-10-22-force-conversion.md#decision; archived TOOLSET-372 attempt-2 report at candidate dd08eb4c2c310e350f09e58bb77942ea1d234c61, and its review finding. That candidate changed only test_fleet_view.py and task-store.md: readiness and documentation passed review, but Acceptance 3's CHANGELOG.md entry was absent. The current source already inherits lone-file readiness from TOOLSET-371; the candidate supplies regression coverage, not a new production behavior. Splitting another worker-only changelog task would reproduce the worker's protected-history prohibition, so retain the release-note acceptance here rather than inventing publication proof or granting write authority. The review finding remains an explicit closeout requirement: the confirmed TUI Force/refusal/legacy-mark and lone-file bootstrap entries must actually be present before Acceptance 3 is met; a report proposal alone is not publication. TOOLSET-372 has only an archived held attempt, no current slot; do not replay its candidate automatically or claim it is integrated.
