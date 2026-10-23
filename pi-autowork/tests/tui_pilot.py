@@ -1,5 +1,6 @@
 """Headless TUI pilot, run by test_fleet_view under `uv run --with textual==8.2.8`."""
 import asyncio
+from dataclasses import replace
 import json
 import os
 from pathlib import Path
@@ -15,7 +16,7 @@ from pi_autowork import fleet_view, portal  # noqa: E402
 from pi_autowork.processes import start_time  # noqa: E402
 import store_fixture  # noqa: E402
 from pi_autowork.tui import (REFRESH, BrowseScreen, Confirm, FleetApp, LogScreen, TaskScreen,  # noqa: E402
-                             TasksScreen, WorkerScreen, doing)
+                             PickModel, PortalSetup, TasksScreen, WorkerScreen, doing)
 
 
 class Result:
@@ -151,19 +152,65 @@ async def main():
             menubar = app.query_one('#menubar')
             assert menubar.region.y < app.query_one('#runners').region.y, 'the menu bar is above the runners'
             hints = menubar.render()
-            assert str(hints).rstrip().endswith('Log  Pause  Stop  Restart  Model  Fallback  Tasks  New  Nous Portal  Quit'), str(hints)
+            assert str(hints).rstrip().endswith('Log  Pause  Stop  Restart  Model  Tasks  New  Quit'), str(hints)
             marked = {str(hints)[span.start:span.end] for span in hints.spans if 'underline' in str(span.style)}
-            assert marked == set('LPSRMFTNQo'), marked
+            assert marked == set('LPSRMTNQ'), marked
             log = '\n'.join(line.text for line in app.query_one('#log').lines)
             assert 'TASK-036: waiting' in log and 'pending —' not in log, log
-            # Portal setup previews exactly the selected provider before a separate consent.
             agent = base / 'agent'
             agent.mkdir()
             config = agent / 'models.json'
             original = b'{"providers":{"other":{"apiKey":"DO-NOT-LOG"}}}\n'
             config.write_bytes(original)
+            # Fleet controls omit Fallback/Portal for every runner state, including no runner.
+            runner = app.current()
+            for width in (80, 120):
+                await pilot.resize_terminal(width, 45)
+                for view_only in (False, True):
+                    app.view_only = view_only
+                    for service, state_name, menu in (
+                            ('running', 'stalled', 'Log  Pause  Stop  Restart  Model  Tasks  New  Quit'),
+                            ('stopped', 'not running', 'Log  Play  Model  Tasks  Uninstall  New  Quit'),
+                            ('stopped', 'paused', 'Log  Play  Model  Tasks  Uninstall  New  Quit'),
+                            ('', '', 'New  Quit')):
+                        selected = replace(runner, service=service, state=state_name) if service else None
+                        with mock.patch.object(fleet_view, 'collect', return_value=[selected] if selected else []), \
+                                mock.patch.object(portal, 'probe', side_effect=AssertionError('fleet key probed Portal')):
+                            app.action_refresh()
+                            await pilot.pause()
+                            expected = ('view only  Log  Quit' if selected else '') if view_only else menu
+                            assert str(menubar.render()).strip() == expected, menubar.render()
+                            assert menubar.render_line(0).text.strip() == expected, menubar.render_line(0).text
+                            assert not {'f', 'o'} & app.active_bindings.keys(), app.active_bindings
+                            if selected:
+                                assert 'f' not in {a.key for a in app.available(selected)}
+                                assert 'fallback ' in str(app.query_one('#detail').render())
+                            screen = app.screen
+                            before = {str(p): p.read_bytes() for p in base.rglob('*') if p.is_file()}
+                            await pilot.press('f', 'o')
+                            await pilot.pause()
+                            assert app.screen is screen, app.screen
+                            assert calls == [], calls
+                            assert {str(p): p.read_bytes() for p in base.rglob('*') if p.is_file()} == before
+                            if selected and not view_only and service == 'running':
+                                await pilot.press('m')
+                                await pilot.pause()
+                                assert isinstance(app.screen, PickModel), app.screen
+                                await pilot.press('f', 'o')  # child input must still accept these letters
+                                assert app.screen.query_one('#filter').value == 'fo'
+                                await pilot.press('escape', 'l')
+                                await pilot.pause()
+                                assert isinstance(app.screen, LogScreen), app.screen
+                                await pilot.press('escape')
+                                await pilot.pause()
+                                assert app.screen is screen, app.screen
+            app.view_only = False
+            await pilot.resize_terminal(150, 45)
+            app.action_refresh()
+            await pilot.pause()
+            # Test Portal's isolated preview/consent component, not a fleet shortcut.
             with mock.patch.object(portal, 'probe', return_value={'state': 'unavailable', 'message': 'Proxy unavailable; start it yourself.'}):
-                await pilot.press('o')
+                app.push_screen(PortalSetup())
                 await pilot.pause()
                 app.screen.query_one('#portal-model').value = 'openai/example'
                 await pilot.click('#portal-preview')
@@ -252,12 +299,12 @@ async def main():
             assert 'the worker asked for a key' in body and 'title = "Held task"' in body, body
             await pilot.press('w')                      # write a decision: typed, then Enter
             await pilot.pause()
-            await pilot.press(*'use the test key')
+            await pilot.press(*'use fallback for other models')
             await pilot.press('enter')
             await pilot.pause()
             await app.workers.wait_for_complete()
             assert calls[-1][:5] == ['aw', 'tasks', 'field', 'T-9', 'Owner decision'] and calls[-1][5].endswith(
-                ': use the test key') and calls[-1][6] == 'india', calls
+                ': use fallback for other models') and calls[-1][6] == 'india', calls
             await pilot.press('s')                      # another section
             await pilot.pause()
             await pilot.press('down', 'enter')

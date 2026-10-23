@@ -894,15 +894,13 @@ class FleetApp(App):
         Binding('s', 'run("s")', 'Stop', show=False),
         Binding('r', 'run("r")', 'Restart', show=False),
         Binding('m', 'pick_model("model")', 'Model', show=False),
-        Binding('f', 'pick_model("fallback")', 'Fallback', show=False),
         Binding('t', 'run("t")', 'Tasks', show=False),
         Binding('b', 'run("b")', 'Backlog', show=False),
         Binding('u', 'run("u")', 'Uninstall', show=False),
         Binding('n', 'browse', 'New', show=False),
-        Binding('o', 'setup_portal', 'Nous Portal', show=False),
         Binding('q', 'quit', 'Quit', show=False),
     ]
-    CONTROL = {'run', 'browse', 'pick_model', 'setup_portal'}
+    CONTROL = {'run', 'browse', 'pick_model'}
 
     def __init__(self, *, command, script, state_root, env_dir, systemctl='systemctl',
                  journalctl='journalctl', agent=None, runner_cmd=subprocess.run, view_only=False, browse_root=None,
@@ -1062,13 +1060,13 @@ class FleetApp(App):
         if runner is None:
             detail.update('No pi-autowork runners yet. Press n for a new one: choose a repository and play its service.')
             self.query_one('#lanes', DataTable).display = False
-            menubar.show([] if self.view_only else [('n', 'New'), ('o', 'Nous Portal'), ('q', 'Quit')])
+            menubar.show([] if self.view_only else [('n', 'New'), ('q', 'Quit')])
             return
         # The keys go in the menu bar at the top, like a GUI app's menu; the pane holds the facts.
         if self.view_only:
             menubar.show([('l', 'Log'), ('q', 'Quit')], prefix='view only')
         else:
-            menubar.show([(a.key, a.label) for a in self.available(runner)] + [('n', 'New'), ('o', 'Nous Portal'), ('q', 'Quit')])
+            menubar.show([(a.key, a.label) for a in self.available(runner)] + [('n', 'New'), ('q', 'Quit')])
         text = Text()
         # First the answer to "is it stuck, and why": one sentence, wrapped, never cut.
         sentence, style = fleet_view.verdict(runner)
@@ -1100,7 +1098,7 @@ class FleetApp(App):
         repair = fleet_view.maintainer_line(runner)
         if repair:
             detail_row(text, 'Maintainer', repair, 'cyan')
-        # Short: the full model IDs are in the m and f pickers.
+        # Short model names; fallback remains read-only in the fleet.
         detail_row(text, 'Repository', tilde(runner.repo) or '(unknown)', 'dim')
         if runner.model:
             detail_row(text, 'Model', f'{runner.model.rsplit("/", 1)[-1]} · fallback {runner.fallback.rsplit("/", 1)[-1]}', 'dim')
@@ -1145,7 +1143,8 @@ class FleetApp(App):
 
     # -- actions ----------------------------------------------------------------
     def available(self, runner):
-        return fleet_view.actions(runner, command=self.command, script=self.script, agent=self.agent)
+        return [action for action in fleet_view.actions(runner, command=self.command, script=self.script, agent=self.agent)
+                if action.key != 'f']
 
     def action_run(self, key):
         runner = self.current()
@@ -1169,13 +1168,6 @@ class FleetApp(App):
             self.push_screen(Confirm(action.confirm), lambda yes: yes and self.execute(action))
         else:
             self.execute(action)
-
-    def action_setup_portal(self):
-        def prepared(result):
-            if result:
-                self.model_cache = None
-                self.notify(result['message'], timeout=10)
-        self.push_screen(PortalSetup(), prepared)
 
     def action_pick_model(self, which):
         runner = self.current()

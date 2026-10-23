@@ -170,9 +170,9 @@ for management. Removing the package leaves repository documents and commits int
 Hermes authentication alone does not configure Pi. The supported optional route is
 **Pi → local Hermes subscription proxy → Nous Portal**; Pi still executes workers.
 Use `autowork setup-portal --provider nous-local --model EXACT_ID` to inspect a
-proposal, then add `--apply` only after reviewing it. TUI **o — Nous Portal** offers
-the same preview and separate confirmation, even before a runner exists. Neither
-path starts a proxy/service, logs in, copies credentials or requests inference.
+proposal, then add `--apply` only after reviewing it. The fleet TUI has no Portal
+setup shortcut. Setup never starts a proxy/service, logs in, copies credentials
+or requests inference.
 See [configuration scope and refusal rules](../pi-autowork/README.md#nous-portal-setup-opt-in).
 
 Prerequisites are operator-owned and are **not run by setup**:
