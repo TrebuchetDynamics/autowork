@@ -31,10 +31,14 @@ repository's runner drains and converts it; report pending, not done),
 `MIGRATION_BLOCKED` (report the named refusal), `INVALID_STORE` or
 `ACTIVATION_PENDING` (the running runner's release cannot read `tasks/`; the owner
 restarts it). When the owner's request says `force` (`/docs_sync force`), run
-`autowork tasks prepare --force .` instead (needs `prepare_api` 3): it converts now,
+`autowork tasks prepare --force .` instead (needs `prepare_api` 4): it converts now,
 stopping the service, live workers and other lease holders, setting every attempt aside
 with its work kept, and committing the owner's planning edits; report what it stopped
-and set aside. Force never discards work or data; report a `MIGRATION_BLOCKED` it still
+and set aside. Force accepts tracked legacy consumers without rewriting or deleting their
+code; report the `LEGACY_CONSUMER` diagnostics with path, line and legacy names, then
+reconcile within scope. Plain prepare lists every refusal and, if `runner.running` is
+false, names `autowork tasks prepare --force` as the route without a runner drain; the
+suggestion alone grants no force authority. Force never discards work or data; report a `MIGRATION_BLOCKED` it still
 returns rather than deleting anything. Its `state` is `none` for a new repository (bootstrap goals
 from its `accepted` headings only, else report the missing intent and create no
 queue), and its `diagnostics` name defects with the `autowork tasks` command that
@@ -46,8 +50,10 @@ build/CI/hook/source/test references to TODO.md or goals.json block conversion;
 documentation mentions are nonblocking drift. The inventory also checks the retained Git
 snapshot, so commit authorized consumer repairs first; uncommitted repairs are not in the
 conversion commit. Repair consumer code only within authorized repository scope. Run `autowork migrate --accept-consumers <consumer>` only with explicit
-acceptance of the reported consumers; neither Maintain nor `force` implies acceptance.
-Resuming also requires the flag while consumers remain. Otherwise report the files/lines and continue independent docs work. Never recreate the
+acceptance of the reported consumers on the plain route; routine Maintain does not imply
+acceptance. Resuming that route also requires the flag while consumers remain. The owner's
+`force` request accepts them through `prepare --force`. Otherwise report the files/lines
+and continue independent docs work. Never recreate the
 legacy inputs to silence checks. Extra TODO content is preserved in `CHECKLIST.md` with
 source bytes and line numbers retained (generated coverage blanked); read back the
 reported inclusive `line_ranges` and reconcile into existing document owners without

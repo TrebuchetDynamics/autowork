@@ -38,13 +38,15 @@ claim of a tagged release, completed installation or live workflow qualification
   worktree, branch and uncommitted files kept, releases their claims (the tasks convert
   open and dispatch fresh), converts under its own coordinator lease, and plans from
   `tasks/`. A live worker is never stopped, a live lease never broken and no task closed.
-- **`/docs_sync force`** runs `autowork tasks prepare --force` (prepare API 3): the owner's
+- **`/docs_sync force`** runs `autowork tasks prepare --force` (prepare API 4): the owner's
   override converts a legacy repository now instead of deferring. It stops the
   repository's service, ends live workers and any other lease holder, sets every attempt
   aside with its worktree, branch and uncommitted files kept (repeated holds too),
-  releases the claims, commits the owner's TODO.md/goals.json edits, converts, and starts
-  the service again. It still never discards work or data: content a conversion cannot
-  account for, or an invalid queue, answers MIGRATION_BLOCKED.
+  releases the claims, commits the owner's TODO.md/goals.json edits, converts over tracked
+  legacy consumers (reported afterwards as `LEGACY_CONSUMER` diagnostics with path, line
+  and names; consumer code is never rewritten), and starts the service again. It still
+  never discards work or data: content a conversion cannot account for, or an invalid
+  queue, answers MIGRATION_BLOCKED (TOOLSET-368-51141b74).
 - `autowork capabilities`: the executable's release, commands, `tasks` verbs and prepare
   API as JSON. Docs Sync checks it first and reports `TOOLCHAIN_MISMATCH` (with `autowork
   update` as the fix) instead of falling back to TODO.md when the installed CLI is older
@@ -54,6 +56,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- **Forced conversion accepts tracked legacy consumers** (TOOLSET-368-51141b74).
+  `autowork tasks prepare --force` converts without rewriting consumer code and reports
+  remaining references as `LEGACY_CONSUMER` diagnostics with path, line and legacy names.
+  Plain prepare reports every collected refusal, including consumers alongside work in
+  flight, and names `autowork tasks prepare --force` when no runner is running to drain
+  a deferred request. Force remains explicit; running-runner deferral is unchanged.
 - **`/blockers` never asks which runner when the profile already owns one.** A profile-bound Telegram, CLI or cron invocation now resolves the active profile's configured repository by default; the fleet is not presented as a multiple-choice runner picker. Only an explicitly fleet-wide request, or a genuinely unresolvable target, may name candidates, in prose.
 - **TUI confirmation cannot pop the fleet screen.** A button event that arrives after its `Confirm` modal was already dismissed (double click, queued key, refresh) is now a no-op instead of `dismiss()` popping the last screen and raising `ScreenStackError`. The headless pilot covers a late button event and key answer.
 - **Pending live checks no longer create owner decisions.** By default a close records each pending live check as `- Pending live:` on the done task's own record; no `TASK-LIVE` or `LIVE-<goal>` queue row is created. `PI_AUTOWORK_LIVE_FOLLOWUP=backlog` keeps the optional per-goal backlog, and `=none` omits the notes. Existing live obligations remain in Git history, can be reopened, and are never claimed as qualified.

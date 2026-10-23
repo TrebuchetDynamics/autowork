@@ -430,7 +430,8 @@ def convert_after_drain(repo, owner_pid, force=False):
     """A runner's whole deferred-conversion step: dict(outcome=CONVERTED|WAITING|BLOCKED,
     detail, set_aside). Writes only through drain() and convert(); idempotent. ``force``
     (the owner's): end other lease holders and live workers, commit the owner's planning
-    edits, and convert now; it never discards work and never overwrites unknown content."""
+    edits, accept reported legacy consumers, and convert now; it never discards work
+    and never overwrites unknown content."""
     repo = Path(task_execution.git(Path(repo), 'rev-parse', '--show-toplevel')).resolve()
     ended = force_leases(repo, owner_pid) if force else []
     drained = drain(repo, owner_pid, force)
@@ -446,7 +447,8 @@ def convert_after_drain(repo, owner_pid, force=False):
                         detail='conversion needs an answer first: ' + '; '.join(drained['blocked']))
         try:
             with task_commands.locked(repo):
-                result = convert(repo, commit=True, owner_pid=owner_pid, released=claimed(repo))
+                result = convert(repo, commit=True, owner_pid=owner_pid, released=claimed(repo),
+                                 accept_consumers=force)
         except Refused as exc:
             found = refusals(repo, owner_pid, claimed(repo))
             return dict(outcome='WAITING' if deferrable(found) else 'BLOCKED', set_aside=drained['set_aside'],
