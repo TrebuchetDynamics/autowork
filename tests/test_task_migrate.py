@@ -6,12 +6,14 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 COMMAND = ROOT / 'pi-autowork/pi_autowork/command.py'
 sys.path.insert(0, str(ROOT / 'pi-autowork/engine'))
 sys.path.insert(0, str(ROOT / 'pi-autowork'))
 from pi_autowork.legacy import reader  # noqa: E402
+from pi_autowork import task_migrate  # noqa: E402
 import task_execution  # noqa: E402
 from task_store import TaskStore  # noqa: E402
 
@@ -88,6 +90,24 @@ class MigrateTests(unittest.TestCase):
         self.assertEqual(self.migrate().returncode, 1, 'a converted repository is refused')
         # Only the durable conversion belongs in the object database, never its proof.
         self.assertEqual(self.git('fsck', '--unreachable', '--no-reflogs'), '')
+
+    def test_force_keeps_valid_archive_only_dependencies(self):
+        ledger = json.loads((self.repo / 'goals.json').read_text())
+        ledger['tasks'] = [t for t in ledger['tasks'] if t['id'] != 'T-006']
+        next(g for g in ledger['goals'] if g['id'] == 'G3')['tasks'] = []
+        next(t for t in ledger['tasks'] if t['id'] == 'T-005')['depends_on'] = []
+        (self.repo / 'goals.json').write_text(json.dumps(ledger))
+        self.commit()
+        self.assertEqual(self.migrate('--dry-run').returncode, 0)
+        result = subprocess.run([sys.executable, str(COMMAND), 'tasks', 'prepare', str(self.repo), '--force'],
+                                capture_output=True, text=True, timeout=120,
+                                env={**os.environ, 'PI_AUTOWORK_SYSTEMCTL': 'true'})
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        step = json.loads(result.stdout)['forced']['step']
+        self.assertEqual(step['order'], ['T-004', 'T-001', 'T-003', 'T-005'])
+        store = TaskStore.at(self.repo, 'HEAD')
+        self.assertEqual(set(store.tasks), {'T-001', 'T-002', 'T-003', 'T-004', 'T-005', 'T-006', 'T-007'})
+        self.assertEqual(store.tasks['T-006'].status, 'done')
 
     def test_conversion_requires_acceptance_of_tracked_consumers(self):
         (self.repo / 'Makefile').write_text('check:\n\tcat TODO.md\n')
@@ -196,6 +216,93 @@ class MigrateTests(unittest.TestCase):
         self.assertEqual(resumed.returncode, 0, resumed.stderr)
         self.assertEqual(json.loads(resumed.stdout)['preserved']['path'], 'CHECKLIST.md')
         self.assertEqual(self.git('status', '--porcelain'), '')
+
+    def test_force_preserves_invalid_entries_and_set_aside_work(self):
+        original = self.repo
+        for defect in ('missing ledger entry', 'invalid status', 'malformed status',
+                       'duplicate field', 'invalid path', 'dependency cycle', 'missing scope',
+                       'malformed prerequisite', 'invalid archived entry', 'invalid section',
+                       'dependency disagreement', 'unmappable archived entry'):
+            with self.subTest(defect=defect):
+                self.repo = original.parent / defect.replace(' ', '-')
+                self.repo.mkdir()
+                self.git('init', '-q')
+                for name in ('TODO.md', 'TODO.archive.md', 'goals.json'):
+                    (self.repo / name).write_bytes((FIXTURE / name).read_bytes())
+                ledger = json.loads((self.repo / 'goals.json').read_text())
+                tid = {'malformed prerequisite': 'T-001', 'invalid archived entry': 'T-006',
+                       'unmappable archived entry': 'T-006'}.get(defect, 'T-003')
+                task = next(t for t in ledger['tasks'] if t['id'] == tid)
+                # An irrelevant successor cache on an open task is not a cycle.
+                next(t for t in ledger['tasks'] if t['id'] == 'T-005')['superseded_by'] = ['T-005']
+                source = (self.repo / 'TODO.md').read_text()
+                if defect == 'missing ledger entry':
+                    ledger['tasks'].remove(task)
+                elif defect in ('invalid status', 'malformed status'):
+                    task['status'] = 'invalid' if defect == 'invalid status' else 4
+                elif defect == 'malformed prerequisite':
+                    task['status'] = 4
+                elif defect in ('invalid archived entry', 'unmappable archived entry'):
+                    task['title'] = '' if defect == 'invalid archived entry' else ' '
+                elif defect == 'invalid section':
+                    task['section'] = 'Done'
+                elif defect == 'dependency disagreement':
+                    task['depends_on'] = ['T-001']
+                elif defect == 'dependency cycle':
+                    task['depends_on'] = ['T-003']
+                elif defect == 'missing scope':
+                    start = source.index('### T-003')
+                    source = source[:start] + source[start:].replace('- Scope: change it\n', '', 1)
+                elif defect == 'duplicate field':
+                    source = source.replace('- Kind: plan', '- Scope: duplicate\n- Kind: plan')
+                else:
+                    source = source.replace('- Kind: plan', '- Touches: /etc/passwd\n- Kind: plan')
+                (self.repo / 'TODO.md').write_bytes(source.encode())
+                (self.repo / 'goals.json').write_text(json.dumps(ledger))
+                self.commit()
+                if defect != 'missing scope':  # plain conversion permits incomplete drafts
+                    self.assertEqual(self.migrate().returncode, 1, 'plain conversion stays strict')
+                if defect == 'missing ledger entry':
+                    # The candidate is durable but no source/index file has changed yet.
+                    with mock.patch.object(task_migrate, 'finish', side_effect=KeyboardInterrupt):
+                        with self.assertRaises(KeyboardInterrupt):
+                            task_migrate.convert(self.repo, force=True)
+                (self.repo / '.git/info/exclude').write_text('/.worktrees/\n')
+                worktree = self.repo / '.worktrees/attempt'
+                self.git('worktree', 'add', '-q', '-b', 'autowork/T-001', str(worktree))
+                (worktree / 'draft.txt').write_text('uncommitted work\n')
+                branch = self.git('rev-parse', 'autowork/T-001')
+                self.slot('held', cause='validation', worktree=str(worktree), branch='autowork/T-001',
+                          baseline=branch.strip())
+                result = subprocess.run(
+                    [sys.executable, str(COMMAND), 'tasks', 'prepare', str(self.repo), '--force'],
+                    capture_output=True, text=True, timeout=120,
+                    env={**os.environ, 'PI_AUTOWORK_SYSTEMCTL': 'true'})
+                self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+                step = json.loads(result.stdout)['forced']['step']
+                self.assertEqual(step['set_aside'], ['T-001'])
+                self.assertEqual(self.git('rev-parse', 'autowork/T-001-set-aside-1'), branch)
+                self.assertEqual((Path(str(worktree) + '-set-aside-1') / 'draft.txt').read_text(),
+                                 'uncommitted work\n')
+                omitted = step['preserved']['entries']
+                self.assertEqual([item['id'] for item in omitted], [tid])
+                ranges = {'malformed prerequisite': [[20, 32]], 'invalid archived entry': [],
+                          'unmappable archived entry': []}.get(
+                    defect, [[34, 45 if defect in ('duplicate field', 'invalid path')
+                              else 43 if defect == 'missing scope' else 44]])
+                self.assertEqual(omitted[0]['line_ranges'], ranges)
+                self.assertTrue(omitted[0]['reason'])
+                if ranges:
+                    self.assertEqual((self.repo / 'CHECKLIST.md').read_bytes(), source.encode())
+                self.assertEqual(set(TaskStore.at(self.repo, 'HEAD').tasks),
+                                 {'T-001', 'T-002', 'T-003', 'T-004', 'T-005', 'T-006', 'T-007'} - {tid})
+                order = {'malformed prerequisite': ['T-004', 'T-003', 'T-005'],
+                         'invalid archived entry': ['T-004', 'T-001', 'T-003'],
+                         'unmappable archived entry': ['T-004', 'T-001', 'T-003']}.get(
+                             defect, ['T-004', 'T-001', 'T-005'])
+                self.assertEqual(step['order'], order)
+                self.assertEqual(self.git('status', '--porcelain'), '')
+        self.repo = original
 
     def test_task_annotations_and_continuations_are_not_silently_discarded(self):
         original = (self.repo / 'TODO.md').read_text()
@@ -321,6 +428,26 @@ class MigrateTests(unittest.TestCase):
         data['tasks'][0]['status'] = 'in_progress'
         (self.repo / 'goals.json').write_text(json.dumps(data, indent=2))
         self.commit()
+
+    def test_force_converts_a_released_claim_as_an_open_record(self):
+        """A claim both legacy files agree on (in_progress) is released by the forced drain and
+        converts open; the force contract check must not read the released row as a
+        disagreement and omit it (review finding on TOOLSET-370, 2026-10-23)."""
+        self.claim()
+        text = (self.repo / 'TODO.md').read_text()
+        start = text.index('### T-001')
+        text = text[:start] + text[start:].replace('- Status: open', '- Status: in_progress', 1)
+        (self.repo / 'TODO.md').write_text(text)
+        self.commit()
+        result = subprocess.run(
+            [sys.executable, str(COMMAND), 'tasks', 'prepare', str(self.repo), '--force'],
+            capture_output=True, text=True, timeout=120, env={**os.environ, 'PI_AUTOWORK_SYSTEMCTL': 'true'})
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        step = json.loads(result.stdout)['forced']['step']
+        self.assertEqual(step['outcome'], 'CONVERTED', step)
+        self.assertEqual([e['id'] for e in (step.get('preserved') or {}).get('entries', [])], [])
+        task = TaskStore.at(self.repo, 'HEAD').tasks['T-001']
+        self.assertEqual(getattr(task.status, 'value', task.status), 'open')
 
     def test_a_placeholder_live_authorization_is_not_a_grant(self):
         text = (self.repo / 'TODO.md').read_text()

@@ -287,8 +287,9 @@ finished commit, not a repeated quick hold) does not stop it: the runner that wo
 answer cannot run before conversion, so the proven conversion sets that attempt aside, as
 `--parallel-set-aside` does, and the task dispatches fresh from its converted record. It builds
 every record, reads them back through a throwaway commit and requires the same task set and
-the same selection order as the current queue before writing. The proof's objects live
-only in a temporary object database: `--dry-run` adds no repository objects. An actual
+the same selection order as the current queue before writing. Forced conversion proves this
+order over the converted IDs only; invalid entries are reported and preserved as below.
+The proof's objects live only in a temporary object database: `--dry-run` adds no repository objects. An actual
 conversion rebuilds the proven tree in the repository before creating its durable
 candidate; the throwaway proof commit is never persisted. The converted commit (records
 added, TODO.md and goals.json removed with no stub, TODO.archive.md kept) is recorded as
@@ -300,8 +301,8 @@ converted version; a ref built on an older HEAD with nothing staged is rebuilt. 
 `--no-commit` it stops after staging, and a later run (or the owner's commit) lands it. Ranks are 1000 x
 the recorded human order. Typed fields keep the engine's present meaning (dependencies as
 task IDs, resources as the tokens it enforces, owner-only work without a recorded live
-authorization as `ownership = "owner"`, no Touches as `["**"]`); a `Live authorization` line
-becomes the typed grant `live = "authorized"` only when it states one: a negative or
+authorization as `ownership = "owner"`, no Touches as `["**"]`). A `Live authorization` line
+becomes the typed grant `live = "authorized"` only when it states one. On the plain route, a negative or
 placeholder value (`none`, `n/a`, `pending …`, `not yet`, `TBD`, `denied`, …) refuses the
 conversion, naming the task, so the source is fixed first; every other label, and
 the original Ownership, Resources and Live authorization wording, is kept as a body note.
@@ -338,7 +339,8 @@ line endings. The `preserved` report names the destination and the extra-content
 `line_ranges` (inclusive). A queue alone creates no snapshot. If the destination already
 exists, conversion refuses and names the source ranges rather than overwriting it.
 The preservation document is part of the same proven commit/staging/recovery transaction
-as the task records, not an uncommitted backup. On resume, `preserved` names its path.
+as the task records, not an uncommitted backup. On resume, `preserved` names its path;
+a forced candidate also retains its drift and omitted-entry accounting in its commit message.
 
 ## Preparing a repository: `autowork tasks prepare`
 
@@ -372,9 +374,25 @@ it stops the repository's service, ends live workers and other lease holders, se
 aside with worktrees, branches and uncommitted files kept, releases claims, commits the
 owner's planning edits, accepts tracked legacy consumers, converts, and starts the service
 again. The report includes the forced step and remaining `LEGACY_CONSUMER` diagnostics;
-consumer code is untouched. Data-loss guards still refuse, including unknown destination
-content and preservation-path collisions; an invalid queue also remains blocked. A runner
-or schedule never automatically chooses force, and ordinary deferred conversion is unchanged.
+consumer code is untouched. Force also tolerates legacy queue defects:
+
+- TODO.md's human order wins over the recorded priority order. `forced.step.drift` names
+  detected drift; ranks follow TODO.md within each section, with focus and dependency
+  selection gates unchanged.
+- Invalid task entries (including ledger task errors, duplicate or incomplete contracts,
+  dependency cycles and fields that cannot be mapped) are left out, not silently repaired.
+  `forced.step.preserved.entries` lists each omitted `id`, `reason` and inclusive
+  `line_ranges` in TODO.md (empty for a ledger-only entry). Unmapped source lines trigger
+  the same `CHECKLIST.md` snapshot, retaining their bytes at their original line numbers.
+  Dependencies on omitted tasks remain unresolved; no dependent gains eligibility.
+- The selection-order proof covers only converted IDs. Attempts are still set aside
+  with their work kept even when their task entry cannot be converted. An interrupted
+  forced candidate retains the drift and preservation report for recovery.
+
+Plain conversion still refuses order drift and retains its existing validation rules.
+Force still refuses actual data-loss risks: unknown destination content, preservation-path
+collisions, ambiguous coverage markers or source structure it cannot safely account for.
+A runner or schedule never automatically chooses force; ordinary deferred conversion is unchanged.
 
 ## Integration and closure
 
@@ -519,7 +537,9 @@ in a linked checkout, plus rejected validation. Migration cases check that dry-r
 proofs add no objects and an actual conversion leaves no unreachable proof commit.
 Conversion regressions also exercise consumer refusal/explicit acceptance, forced consumer
 acceptance over a dead held slot with unchanged consumer code and path/line diagnostics,
-complete plain refusals and the stopped-runner force route, nonblocking documentation drift,
+complete plain refusals and the stopped-runner force route, forced order drift and invalid-entry
+preservation (including ledger shape/status errors and dependency cycles) with retained
+set-aside branches/worktree files, nonblocking documentation drift,
 checklist/backlog byte and line preservation, destination collision
 refusal, staged recovery, task annotations/continuations and unchanged queue-only
 conversion. The shared record mapper

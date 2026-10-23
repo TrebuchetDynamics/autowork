@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-370-af80834d"
 title = "Under force, order drift and queue entries that do not validate are reported and preserved, not refused"
 short = "Force: drift and invalid entries preserved"
-status = "open"
+status = "done"
 goal = "FORCE-CONVERSION"
 section = "Next"
 rank = 1000
@@ -16,5 +16,10 @@ scope = "Planner's call: a forced conversion never stops on the legacy queue's o
 acceptance = ["A legacy fixture whose TODO.md order differs from goals.json: prepare --force converts in TODO.md order and the forced step reports the drift; plain prepare still refuses with the drift message (tests/test_task_prepare.py)", "A fixture with one entry missing from goals.json: prepare --force converts the other entries, the preserved report lists the left-out ID with its inclusive line range, CHECKLIST.md holds those bytes at their original lines, and the converted store validates (tests/test_task_migrate.py)", "No converted record, worktree or branch is dropped: the set-aside and preserved accounting covers every input line not mapped to a record (tests/test_task_migrate.py)"]
 checks = ["python3 scripts/check.py tests/test_task_prepare.py tests/test_task_migrate.py"]
 exclusions = ["A CHECKLIST.md collision and content that cannot be accounted for still refuse: they are data-loss guards", "Plain (unforced) conversion semantics unchanged"]
+closure = "manual"
+closure_actor = "fleet session (Claude Fable 5.1), owner-directed"
+closure_timestamp = "2026-10-23T06:53:20.254739+00:00"
+closure_reason = "The runner's final rework was held on one review defect (released claims omitted as a disagreement); its change was applied to main with that defect fixed and a regression test, and the task's checks plus the affected-test selection passed"
+closure_evidence = "248d55b6"
 +++
 - Sources: docs/plans/2026-10-22-force-conversion.md#decision

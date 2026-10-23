@@ -567,6 +567,24 @@ class ForceTests(Repo):
         self.assertEqual(self.git('status', '--porcelain'), '')
         self.assertIsNone(task_migrate.intent(self.repo))
 
+    def test_force_reports_drift_and_uses_todo_order(self):
+        (self.repo / '.git/autowork-execution/slots/T-001.json').unlink()
+        ledger = json.loads((self.repo / 'goals.json').read_text())
+        ledger['tasks'][0]['status'] = 'open'
+        ledger['priority_order']['tasks'] = ['T-003', 'T-001', 'T-002', 'T-004', 'T-005', 'T-007']
+        self.write('goals.json', json.dumps(ledger))
+        self.commit('stale order')
+        plain = self.prepare(ok=False)
+        self.assertEqual(plain['outcome'], 'MIGRATION_BLOCKED')
+        self.assertIn('order differs from the recorded priority', ' '.join(plain['refusals']))
+        report = self.force()
+        self.assertEqual(report['outcome'], 'MIGRATED', report)
+        step = report['forced']['step']
+        self.assertIn('T-003', step['drift'])
+        self.assertEqual(step['order'], ['T-004', 'T-001', 'T-003', 'T-005'])
+        tasks = TaskStore.at(self.repo, 'HEAD').tasks
+        self.assertEqual([tasks[tid].rank for tid in ('T-002', 'T-001', 'T-003')], [1000, 2000, 3000])
+
     def test_force_accepts_consumers_over_a_dead_held_slot_and_reports_them(self):
         script = '#!/bin/sh\ncat TODO.md\n'
         self.write('scripts/queue.sh', script)

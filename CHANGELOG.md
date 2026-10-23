@@ -44,9 +44,10 @@ claim of a tagged release, completed installation or live workflow qualification
   aside with its worktree, branch and uncommitted files kept (repeated holds too),
   releases the claims, commits the owner's TODO.md/goals.json edits, converts over tracked
   legacy consumers (reported afterwards as `LEGACY_CONSUMER` diagnostics with path, line
-  and names; consumer code is never rewritten), and starts the service again. It still
-  never discards work or data: content a conversion cannot account for, or an invalid
-  queue, answers MIGRATION_BLOCKED (TOOLSET-368-51141b74).
+  and names; consumer code is never rewritten), and starts the service again. Force
+  reports order drift and preserves invalid entries instead of refusing the queue;
+  actual data-loss guards still answer MIGRATION_BLOCKED (TOOLSET-368-51141b74,
+  TOOLSET-370-af80834d).
 - `autowork capabilities`: the executable's release, commands, `tasks` verbs and prepare
   API as JSON. Docs Sync checks it first and reports `TOOLCHAIN_MISMATCH` (with `autowork
   update` as the fix) instead of falling back to TODO.md when the installed CLI is older
@@ -56,6 +57,15 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- **Forced conversion preserves invalid queue entries** (TOOLSET-370-af80834d).
+  `autowork tasks prepare --force` uses TODO.md's order and reports drift; entries that
+  cannot validate are omitted from the store and named with inclusive source ranges
+  in the `CHECKLIST.md` preservation report. The order proof covers converted IDs only;
+  set-aside worktrees and branches remain kept, and interrupted conversions retain
+  their audit. A claim the forced drain released (in_progress in both legacy files)
+  converts as an open record instead of being omitted as a disagreement, and the
+  legacy-order proof counts it as open. Plain conversion and actual data-loss guards are unchanged. Offline
+  fixture tests cover these paths; this is not live-service qualification.
 - **Forced conversion accepts tracked legacy consumers** (TOOLSET-368-51141b74).
   `autowork tasks prepare --force` converts without rewriting consumer code and reports
   remaining references as `LEGACY_CONSUMER` diagnostics with path, line and legacy names.

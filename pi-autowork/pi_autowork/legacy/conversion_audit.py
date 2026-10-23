@@ -65,6 +65,17 @@ def _lines(text):
     return [part + '\n' for part in parts[:-1]] + ([parts[-1]] if parts[-1] else [])
 
 
+def omitted_entries(source, reasons):
+    """Name each rejected ID and every inclusive TODO range (empty if ledger-only)."""
+    text = source.decode('utf-8')
+    ranges = {tid: [] for tid in reasons}
+    for block in goals_todo.task_blocks(text):
+        if block['id'] in ranges:
+            ranges[block['id']].append([text[:block['start']].count('\n') + 1,
+                                         text[:block['end']].rstrip('\r\n').count('\n') + 1])
+    return [dict(id=tid, reason=reasons[tid], line_ranges=ranges[tid]) for tid in sorted(reasons)]
+
+
 def preservation(source, converted):
     """Return (snapshot text, extra line ranges), or (None, []).
 
