@@ -262,9 +262,9 @@ async def main():
             menubar = app.query_one('#menubar')
             assert menubar.region.y < app.query_one('#runners').region.y, 'the menu bar is above the runners'
             hints = menubar.render()
-            assert str(hints).rstrip().endswith('Log  Pause  Stop  Restart  Model  Tasks  New  Quit'), str(hints)
+            assert str(hints).rstrip().endswith('Log  Pause  Stop  Restart  Model  Tasks  Blockers  New  Quit'), str(hints)
             marked = {str(hints)[span.start:span.end] for span in hints.spans if 'underline' in str(span.style)}
-            assert marked == set('LPSRMTNQ'), marked
+            assert marked == set('LPSRMTBNQ'), marked
             log = '\n'.join(line.text for line in app.query_one('#log').lines)
             assert 'TASK-036: waiting' in log and 'pending —' not in log, log
             agent = base / 'agent'
@@ -279,9 +279,9 @@ async def main():
                 for view_only in (False, True):
                     app.view_only = view_only
                     for service, state_name, menu in (
-                            ('running', 'stalled', 'Log  Pause  Stop  Restart  Model  Tasks  New  Quit'),
-                            ('stopped', 'not running', 'Log  Play  Model  Tasks  Uninstall  New  Quit'),
-                            ('stopped', 'paused', 'Log  Play  Model  Tasks  Uninstall  New  Quit'),
+                            ('running', 'stalled', 'Log  Pause  Stop  Restart  Model  Tasks  Blockers  New  Quit'),
+                            ('stopped', 'not running', 'Log  Play  Model  Tasks  Uninstall  Blockers  New  Quit'),
+                            ('stopped', 'paused', 'Log  Play  Model  Tasks  Uninstall  Blockers  New  Quit'),
                             ('', '', 'New  Quit')):
                         selected = replace(runner, service=service, state=state_name) if service else None
                         envelope = fleet_view.FleetSnapshot((selected,) if selected else (),
@@ -290,7 +290,7 @@ async def main():
                                 mock.patch.object(portal, 'probe', side_effect=AssertionError('fleet key probed Portal')):
                             app.action_refresh()
                             await pilot.pause()
-                            expected = ('view only  Log  Quit' if selected else '') if view_only else menu
+                            expected = ('view only  Log  Blockers  Quit' if selected else '') if view_only else menu
                             assert str(menubar.render()).strip() == expected, menubar.render()
                             assert menubar.render_line(0).text.strip() == expected, menubar.render_line(0).text
                             assert not {'f', 'o'} & app.active_bindings.keys(), app.active_bindings

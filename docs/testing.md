@@ -1,5 +1,24 @@
 # Verification and compatibility
 
+## Read-only fleet blocker report
+
+`python3 -m unittest discover -s pi-autowork/tests -p test_blockers_report.py`
+checks a real disposable committed TaskStore, full reasons/IDs/questions, selector
+decisions, unreadable/invalid sources, literal text and no repository/state writes.
+The real `health.update` fixture retains full held/root and waiting observations
+beyond the legacy compact-row limit, including all recorded affected IDs and
+integration-backlog pauses/reasons. Builder fixtures also retain full main-check
+revision/failure IDs and real question-reader acquisition errors without replacing
+current committed eligibility.
+Its pinned offline Textual pilot covers 80/120 columns, normal/view-only mode,
+keyboard/menu click, explicit refresh/back, read-only editing refusal, whole-report
+and selected-text copying, setup-only Backlog on `g` and control denial. An
+Event barrier proves Escape works before a stalled read returns and close/reopen
+does not overlap readers or publish the previous runner's result. Run the affected
+selector on the implementation base as well. Cache/dependency skips are not
+rendered passes. These fixtures do not prove an SSH terminal accepted its clipboard
+sequence or that an installed TUI loaded the new source.
+
 ## Parallel offline acceptance
 
 `python3 -m unittest pi-autowork/engine/test_parallel_e2e.py` exercises the

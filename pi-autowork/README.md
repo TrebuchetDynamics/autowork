@@ -22,12 +22,36 @@ repository, under `${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key
 | `pi_autowork/workspaces.py` | Mirrors `PI_AUTOWORK_LINK_PATHS` gitignored dependencies into task and review worktrees (real directories, hard-linked files) |
 | `pi_autowork/task_status.py` | Pure task-state display vocabulary shared by snapshots and CLI worker lanes |
 | `pi_autowork/task_snapshot.py` | Immutable committed task inventory: ordered rows, five buckets and total, goals, questions, independently observed pending paths, runtime identity/freshness and errors; display-only, never dispatch authority |
+| `pi_autowork/blockers_report.py` | Plain-text read-only diagnostic report; fresh committed selection reasons separated from recorded fleet/runtime observations |
 | `pi_autowork/fleet_view.py` | Every runner on the machine (tmux sessions, `pi-autowork@` services, `status.json` health), its worker lanes (engine slots in flight, the runner's latest phase line, the Pi transcript's last action), its blockers grouped by kind, recent logs, and the exact existing command behind each action; standard library only |
 | `bin/autowork`, `pi_autowork/command.py` | The `autowork` command (below), standard library only |
 | `pi_autowork/tui.py` | The `autowork` TUI (Textual, run through `uv`): live runners with what each needs (the owner's open BLOCKERS.md questions, else its first blocker), worker lanes, model and log, stacked full width so it reads on an 80-column terminal, a directory browser that starts services, and keys that run `autowork` commands; `--view-only` disables the keys |
 | `pi_autowork/tui_web.py` | `autowork web`: serves the TUI to a browser with textual-serve, on 127.0.0.1 by default |
 | `pi_autowork/questions.py` | The owner's questions block in `BLOCKERS.md`, built from the engine status without a model |
 | `pi_autowork/release.py` | Safe-checkpoint test before a self-update: fleet idle, and the new release reads current state |
+
+## Blockers report
+
+Select a runner and press **b** or click **Blockers** in mouse/browser mode.
+The read-only, scrollable report contains its repository path, recorded startup/
+dispatch refusals, resource gates, full main-check revisions/failure IDs, holds,
+waits, integration-backlog reasons, questions, worker observations and committed
+task-selection reasons. It runs no repair agent and changes nothing.
+Fleet/runtime observations are labelled separately and may be stale; missing data
+is not shown as a healthy runner. Recorded questions and reasons are not shortened
+again for this view. The committed section reads the selected repository's HEAD
+on each report request rather than reusing a last-good fleet inventory. Full
+`task_observations` and held/root diagnostics are included when the status producer
+records them; legacy compact rows remain labelled runtime observations, not current
+selection authority. Known fleet/question acquisition errors remain visible even
+when the parsed question list is empty. Source: `pi_autowork/blockers_report.py:build`.
+
+Use **c** or **Copy report** to copy all the plain text, or select individual text
+in the read-only field (**F7** selects all; **Ctrl+C** copies a selection).
+**r** explicitly refreshes; **Esc** returns. SSH clipboard delivery requires
+terminal support; default native terminal drag selection remains available.
+The former setup-only Backlog shortcut is now **g**. Interactive repair is still
+the separate `autowork blockers [dir]` command, not this report.
 
 ## The autowork command
 
@@ -51,7 +75,7 @@ name, a repository path or `.`. Nothing here calls a model.
 | `autowork run [dir]` | Run the runner in the foreground here, for debugging |
 | `autowork web [--port N] [--host H] [--view-only]` | The TUI in a browser at `http://127.0.0.1:8765` (this machine only); `--view-only` disables control keys |
 | `autowork blockers [dir]` | `/autowork blockers` in an agent (`AUTOWORK_AGENT`, else `claude`, else `pi`); records the session's elapsed owner minutes privately when the agent exits |
-| `autowork plan [dir]` | `/plan_for_me` in the same agent, for a repository that has no tasks yet: Docs Sync prepares the store and the planner saves tasks from the accepted intent, inventing none. The TUI offers it as Plan in the browser's not-ready dialog and as `b` Backlog on a runner whose store needs setup; owner minutes are recorded as `planning` |
+| `autowork plan [dir]` | `/plan_for_me` in the same agent, for a repository that has no tasks yet: Docs Sync prepares the store and the planner saves tasks from the accepted intent, inventing none. The TUI offers it as Plan in the browser's not-ready dialog and as `g` Backlog on a runner whose store needs setup; owner minutes are recorded as `planning` |
 | `autowork attention MINUTES [--task ID] [--note TEXT] [target]` | Record other owner time (finite, nonnegative minutes); defaults to this repository, optionally attributed to one task. Notes stay private |
 | `autowork tasks list\|validate\|new-id [target]`, `autowork tasks show\|why TASK [target]` | Read the `tasks/` store at HEAD (`validate --worktree`: uncommitted edits too) |
 | `autowork tasks add\|field\|place\|move\|hold\|release\|done\|supersede\|goal ... [target]` | Edit task and goal files in the working tree, never committing: an owner answer (`field TASK "Owner decision" TEXT`, `"Blocker resolution"`), a section (`place`, optionally `--decision`), the priority (`move TASK up\|down` changes its rank), a hold (`hold --by`, `release`), a manual close (`done ID --by WHO --reason TEXT [--evidence REF]`, not verification), a new task or goal. Each write validates the whole store |
