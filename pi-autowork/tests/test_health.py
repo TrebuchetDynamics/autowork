@@ -50,12 +50,24 @@ class HealthTests(unittest.TestCase):
         self.assertTrue(health.needs_person(HELD))
         health.update(self.state, snapshot(waiting=('A',), roots=(engineering,)), now=0)
         status = self.status()
-        self.assertEqual((status['stopped'], status['waiting']), (0, 1))
+        self.assertEqual((status['stopped'], status['waiting']), (1, 0))
+        self.assertEqual(status['stopped_groups'][0]['tasks'], ['A'])
         # It becomes a visible engineering stall, never a person's question.
         line = health.update(self.state, snapshot(waiting=('A',), roots=(engineering,)), now=1800)
         self.assertIn('engineering hold', line)
         self.assertNotIn('held for a person', line)
         self.assertEqual(self.status()['state'], 'stalled')
+
+    def test_action_required_is_separate_from_owner_required(self):
+        for kind, cause in (('held', 'reviewed_twice'), ('held', 'crash'),
+                            ('contract', None), ('cycle', None), ('runner', None)):
+            with self.subTest(kind=kind, cause=cause):
+                root = dict(id='T-8', kind=kind, cause=cause, blocks=1, tasks=['A'])
+                self.assertFalse(health.needs_person(root))
+                ids, groups = health.stopped([dict(task='A', state='waiting'),
+                                             dict(task='B', state='waiting')], [root])
+                self.assertEqual(ids, {'A', 'B'} if kind == 'runner' else {'A'})
+                self.assertTrue(groups)
 
     def test_holds_that_only_own_each_others_files_are_named_a_deadlock(self):
         """TOOLSET-157-cd: two commits held for overlap looked like work for a person."""

@@ -135,6 +135,74 @@ class MaintainerTests(unittest.TestCase):
                                                     'B': 'PI_AUTOWORK_VERIFY: fail — x'})
         self.assertEqual(found, [('A', 'review findings', 'PI_AUTOWORK_VERIFY: fail — Back is not handled')])
 
+    def test_exhausted_review_gets_one_durable_engineering_repair_per_evidence(self):
+        row = dict(task='A', state='held', cause='reviewed_twice', attempt=2,
+                   commit='candidate-a', reason='same concrete defect')
+        found = maintainer.triggers([row], findings={'A': 'PI_AUTOWORK_VERIFY: fail same concrete defect'})
+        self.assertEqual([(task, kind) for task, kind, _ in found], [('A', 'engineering repair')])
+        self.assertIn('candidate-a', found[0][2])
+        self.assertIn('same concrete defect', found[0][2])
+        with tempfile.TemporaryDirectory() as state:
+            before = {'A': dict(digest='before', fields={})}
+            self.assertEqual(maintainer.pending(state, found, entries=before), found)
+            maintainer.remember(state, trigger_key=maintainer.key(found), found=found,
+                                entries=before, outcome='no change')
+            maintainer.remember(state, trigger_key='other', found=[('MAIN', 'main red', 'test_x')], outcome='merged')
+            cosmetic = {'A': dict(digest='new notes', fields={'Evidence': 'same defect'})}
+            self.assertEqual(maintainer.pending(state, found, entries=cosmetic), [])
+            fresh = maintainer.triggers([dict(row, commit='candidate-b')],
+                                        findings={'A': 'PI_AUTOWORK_VERIFY: fail new concrete defect'})
+            self.assertEqual(maintainer.pending(state, fresh, entries=cosmetic), fresh)
+            self.assertNotEqual(maintainer.item_key(found[0]), maintainer.item_key(fresh[0]))
+        self.assertEqual(maintainer.triggers([dict(row, worker_live=True)]), [])
+
+    def test_engineering_repair_keeps_incident_findings_and_protects_the_contract(self):
+        row = dict(task='A', state='held', cause='reviewed_twice', commit='kept-tip')
+        with tempfile.TemporaryDirectory() as common:
+            path = Path(common) / 'review-rework/A.json'
+            path.parent.mkdir()
+            path.write_text(json.dumps(dict(finding='first defect', stuck=dict(
+                incident='INC-kept', finding='later defect', tip='kept-tip'))))
+            original = path.read_bytes()
+            found = maintainer.triggers([row], common=common)
+            for evidence in ('INC-kept', 'kept-tip', 'first defect', 'later defect', str(path)):
+                self.assertIn(evidence, found[0][2])
+            self.assertEqual(path.read_bytes(), original)
+        before = {'A': dict(contract='typed', fields=dict(Scope='unchanged', Checks='required', Acceptance='all',
+                                                        Ownership='Owner only', Section='Now'))}
+        after = {'A': dict(contract='typed', fields=dict(before['A']['fields'],
+                          **{'Engineering repair': 'INC-kept; new approach'}))}
+        self.assertIsNone(maintainer.repair_error(found, before, after))
+        for field in ('Scope', 'Checks', 'Acceptance', 'Ownership', 'Section'):
+            weakened = {'A': dict(contract='typed', fields=dict(after['A']['fields'], **{field: ''}))}
+            self.assertIn('preserve', maintainer.repair_error(found, before, weakened))
+        missing = {'A': dict(contract='typed', fields=dict(before['A']['fields'], **{'Engineering repair': 'try again'}))}
+        self.assertIn('incident ID', maintainer.repair_error(found, before, missing))
+
+    def test_engineering_repair_rejects_typed_weakening_hidden_by_display_notes(self):
+        from pi_autowork.common import git_ok
+        with tempfile.TemporaryDirectory() as folder:
+            repo = Path(folder)
+            store_fixture.write_todo(repo, '- [ ] A — A\n- [ ] B — B\n')
+            path = repo / 'tasks/items/A.md'
+            original = task_store.edit(path.read_text(), dict(depends_on=['B'], verified_depends_on=['B'], exclusions=['no live work'],
+                                                             checks=['false', 'true']))
+            original += '\n- Verified dependencies: B\n- Exclusions: no live work\n'
+            path.write_text(original)
+            self.assertTrue(git_ok(repo, 'commit', '-qam', 'required typed contract'))
+            before = entries(repo)
+            for change in (dict(verified_depends_on=[]), dict(exclusions=[]), dict(checks=['false; true'])):
+                for note in ('', '\n- Engineering repair: INC-kept; new approach\n'):
+                    with self.subTest(change=change, note=note):
+                        path.write_text(task_store.edit(original, change) + note)
+                        self.assertTrue(git_ok(repo, 'commit', '-qam', 'bad proposal'))
+                        after = entries(repo)
+                        shown = dict(after['A']['fields'])
+                        shown.pop('Engineering repair', None)
+                        self.assertEqual(shown, before['A']['fields'])
+                        self.assertIn('preserve', maintainer.repair_error(
+                            [('A', 'engineering repair', 'INC-kept; evidence')], before, after))
+
     def test_main_evidence_refreshes_the_same_repair_identity_once_per_revision(self):
         for kind in ('red', 'flaky'):
             with self.subTest(kind=kind), tempfile.TemporaryDirectory() as state:
@@ -323,9 +391,8 @@ class MaintainerTests(unittest.TestCase):
             snapshot = dict(outcome='PARALLEL_STATUS', tasks=[row], roots=[dict(id='A', kind='held', blocks=1)])
             runner.update_questions(snapshot)
             first = (repo / 'BLOCKERS.md').read_text()
-            self.assertEqual(first.count('### Q-A '), 1)
-            self.assertIn(row['reason'], first)
-            self.assertIn('DOCS-MAINTAINER already changed Dependencies', first)
+            self.assertEqual(first.count('### Q-A '), 0)
+            self.assertEqual(maintainer.last(state)['items']['task:A']['fields'], ['Dependencies'])
             runner.update_questions(snapshot)
             self.assertEqual((repo / 'BLOCKERS.md').read_text(), first)
             found = maintainer.triggers([row], findings={'A': worker.review_findings(state, 'A')})

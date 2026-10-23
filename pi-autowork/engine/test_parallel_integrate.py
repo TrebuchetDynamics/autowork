@@ -242,6 +242,37 @@ class IntegrationTests(unittest.TestCase):
         self.assertFalse(stuck['owner_decision_required'])
         self.assertTrue(stuck['incident'].startswith('INC-'))
 
+    def test_spent_review_budget_requires_fresh_incident_evidence_even_after_another_validation(self):
+        module = self.module()
+        self.worker()
+        self.review_failed('original defect', 2)
+        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'REQUEUED')
+        self.worker()
+        self.review_failed('rework defect', 1)
+        module.retry_held(self.retry_args())
+        marker = module.rework_path(self.common, 'A')
+        kept = marker.read_bytes()
+        incident = json.loads(kept)['stuck']['incident']
+        original = self.todo
+        for note in ('Evidence: cosmetic', 'Engineering repair: wrong-incident; try again',
+                     f'Engineering repair: {incident};'):
+            self.set_todo(original.replace('  Scope: A.txt', '  Scope: A.txt\n  ' + note))
+            self.assertNotEqual(module.retry_held(self.retry_args())['outcome'], 'REQUEUED')
+            self.assertEqual(marker.read_bytes(), kept)
+        self.set_todo(original.replace('  Scope: A.txt', '  Scope: A.txt\n  Engineering repair: '
+                                       + incident + '; new approach justified in docs/tasks/A-repair.md'))
+        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'REQUEUED')
+        self.assertEqual(marker.read_bytes(), kept)
+        self.worker()
+        self.review_failed('new attempt still fails', 2)
+        self.set_todo(self.todo.replace('  Scope: A.txt', '  Scope: A.txt\n  Evidence: another cosmetic edit'))
+        self.assertNotEqual(module.retry_held(self.retry_args())['outcome'], 'REQUEUED')
+        self.assertTrue(marker.exists())
+        retained = json.loads(marker.read_bytes())
+        self.assertEqual(retained['finding'], 'original defect')
+        self.assertEqual(retained['tip'], json.loads(kept)['tip'])
+        self.assertEqual(state.slots(self.common)[0]['cause'], 'reviewed_twice')
+
     def test_an_environment_miss_is_not_reworked(self):
         self.worker()
         slot = state.slots(self.common)[0]
@@ -1767,6 +1798,8 @@ finally:
 
     def test_three_quick_identical_input_holds_require_a_named_resolution(self):
         import parallel_status
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from pi_autowork import questions
         module = self.module()
         for task, third_reason, seconds, cause, resumed, stopped in (
                 ('A', 'missing receipt', 60, 'blocker', False, True),
@@ -1774,7 +1807,8 @@ finally:
                 ('C', 'missing receipt', 601, 'blocker', False, False),
                 ('D', 'missing receipt', 60, 'validation', False, False),
                 ('E', 'missing receipt', 700, 'blocker', True, False),
-                ('F', 'missing receipt', 30, 'blocker', True, True)):
+                ('F', 'missing receipt', 30, 'blocker', True, True),
+                ('G', 'missing receipt', 60, 'contract_changed', False, True)):
             with self.subTest(task=task):
                 if task not in 'AB':
                     self.set_todo(self.todo + f'\n- [ ] {task} — Task {task}\n  Scope: fixture\n'
@@ -1801,13 +1835,17 @@ finally:
                         self.assertEqual(result['outcome'], 'REQUEUED', result)
                 if stopped:
                     self.assertEqual(result['outcome'], 'IDLE', result)
-                    row = next(r for r in parallel_status.snapshot(self.repo)['tasks'] if r['task'] == task)
+                    snapshot = parallel_status.snapshot(self.repo)
+                    row = next(r for r in snapshot['tasks'] if r['task'] == task)
+                    found = questions.build(snapshot, self.repo)
+                    self.assertEqual(any(q['id'] == task for q in found), cause == 'blocker')
                     hold = row['quick_hold']
                     self.assertEqual(len(hold['attempts']), 3)
                     self.assertTrue(all(60 <= a['seconds'] < 61 for a in hold['attempts']))
                     self.assertEqual(len({a['reason'] for a in hold['attempts']}), 3)
                     self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'IDLE')
-                    with self.assertRaisesRegex(ValueError, 'Blocker resolution'):
+                    refusal = 'Blocker resolution' if cause == 'blocker' else 'set-aside is only'
+                    with self.assertRaisesRegex(ValueError, refusal):
                         module.set_aside(self.repo, self.owner, task)
                     with self.assertRaisesRegex(ValueError, 'answer is only'):
                         module.answer(self.repo, self.owner, task, 'try again')

@@ -5,19 +5,23 @@ not product questions: a wrong Touches list, an ambiguous or incomplete contract
 the engine will not run as written. The fix is to restate the task from the repository's
 own evidence and run it again. One maintainer run handles pending items in a batch;
 handled items stay handled across batches until their entry or reason class changes.
-An unchanged unsuccessful repair becomes an owner question, not another model call.
+An unchanged unsuccessful technical repair remains an engineering incident, not an owner question.
+Exhausted reviews use evidence-keyed receipts so cosmetic edits cannot buy another repair.
 
 This module holds the pure parts (triggers, item receipts, the prompt, the run
 record); the coordinator runs the job in a disposable checkout and merges what it
 commits. Standard library only.
 """
+from dataclasses import asdict
 import hashlib
 import json
 from pathlib import Path
 import re
 import time
 
-from .common import git
+import failure_policy
+
+from .common import git, safe_name
 
 ROLE = 'DOCS-MAINTAINER'
 PLANNING_CAUSES = ('scope', 'scope_request', 'blocker', 'contract_changed', 'no_change')
@@ -29,7 +33,27 @@ PLAN_TASK_LIMIT = 8
 PLAN_ROUNDS = 10
 
 
-def triggers(rows, main=None, findings=None, reported_flakes=(), ledger_errors=(), limit=LIMIT):
+def review_repair(row, finding='', common=None):
+    """Carry the existing exhausted-review incident and artifacts into bounded planning."""
+    path = Path(common) / 'review-rework' / (safe_name(row['task']) + '.json') if common else None
+    try:
+        record = json.loads(path.read_text()) if path else {}
+        record = record if isinstance(record, dict) else {}
+    except (OSError, ValueError):
+        record = {}
+    stuck = record.get('stuck') or {}
+    stuck = stuck if isinstance(stuck, dict) else {}
+    candidate = row.get('commit') or stuck.get('tip') or 'unknown'
+    finding = finding or stuck.get('finding') or row.get('reason') or 'findings unavailable; inspect retained artifacts'
+    incident = stuck.get('incident') or failure_policy.incident_id(
+        str(common or ''), row['task'], 'reviewed_twice', candidate, finding)
+    why = (f"{incident}; candidate: {candidate}; findings: {finding}; "
+           f"previous findings: {record.get('finding') or 'unavailable'}; "
+           f"exhaustion findings: {stuck.get('finding') or 'unavailable'}; retained review record: {path or 'unavailable'}")
+    return row['task'], 'engineering repair', why
+
+
+def triggers(rows, main=None, findings=None, reported_flakes=(), ledger_errors=(), limit=LIMIT, common=None):
     """[(task, kind, why)] planning holds, unrunnable tasks, MAIN failures or invalid LEDGER.
     Ledger errors take precedence: nothing can run until they validate. Sorted, so
     the same queue/errors give the same set."""
@@ -64,7 +88,9 @@ def triggers(rows, main=None, findings=None, reported_flakes=(), ledger_errors=(
                 proposal = '(patch unavailable; inspect the worker commit)'
             found.append((task, 'ledger edit',
                           (f"{', '.join(dropped['paths'])}; saved patch: {patch}\n{proposal}")[:900]))
-        if state == 'held' and not row.get('worker_live') and row.get('quick_hold'):
+        if state == 'held' and not row.get('worker_live') and row.get('cause') == 'reviewed_twice':
+            found.append(review_repair(row, (findings or {}).get(task, ''), common))
+        elif state == 'held' and not row.get('worker_live') and row.get('quick_hold'):
             hold = row['quick_hold']
             found.append((task, 'repeated quick hold', f"{hold['fingerprint']}; {hold['reason']}"))
         elif state == 'held' and not row.get('worker_live') and row.get('cause') in PLANNING_CAUSES:
@@ -143,6 +169,15 @@ PROMPT = (
     'when the other task already delivers it; otherwise make the order explicit in Dependencies. Never edit the '
     'entry of a task that is running or whose commit waits to land; keep every Acceptance item in whichever task '
     'now owns it; never widen product scope. '
+    'For engineering repair: this retained candidate exhausted review rework. Read both findings and the retained '
+    'review record; investigate a materially different repair approach from repository evidence. If one is supported, '
+    'save its concrete steps and verification in docs/tasks/<task>-repair.md and add only the note '
+    '`Engineering repair: <incident ID from the item>; <new evidence and approach; plan path>` with {tasks} field. '
+    'Keep the original task, Scope, Acceptance, Checks, Dependencies, section and all authorization unchanged. '
+    'Do not close it, create a duplicate, reset attempts, delete retained evidence or edit runtime state. '
+    'That operative note admits a fresh execution under the same contract, not another review-rework budget. '
+    'If no different approach is justified, leave it unchanged and report the engineering incident as blocked; '
+    'do not invent an owner question. The same incident/evidence gets no further maintainer call. '
     'For repeated quick hold: three consecutive attempts held within ten minutes on the same missing input. '
     'This blocker gets one repair, not repeated cosmetic entry edits. Restate the task so the named missing '
     'input is produced (add a producer task and dependency), or move it to Needs decision. Only when the '
@@ -200,6 +235,29 @@ def prompt(found, repo, tasks):
             'met merely because its queue is empty. Save the batch, closure and stop question together in '
             'ONE planning commit; do not implement any building task.')
     return message
+
+
+def repair_error(found, before, after):
+    """A technical repair may add evidence, never weaken the contract to make it pass."""
+    for task, kind, why in found:
+        if kind != 'engineering repair':
+            continue
+        old, new = before.get(task, {}).get('fields', {}), after.get(task, {}).get('fields', {})
+        error = f'{task}: engineering repair must preserve the original contract and authority'
+        original = before.get(task, {}).get('contract')
+        if not original or original != after.get(task, {}).get('contract'):
+            return error
+        if old == new:
+            continue
+        if not old or not new or any(old.get(k) != new.get(k) for k in old.keys() | new.keys()
+                                     if k != 'Engineering repair'):
+            return error
+        note = new.get('Engineering repair', '')
+        incident = why.split(';', 1)[0]
+        prefix = incident + ';'
+        if not note.startswith(prefix) or not note[len(prefix):].strip():
+            return f'{task}: engineering repair needs the incident ID and new evidence/approach'
+    return None
 
 
 def plan_round(fields):
@@ -304,7 +362,12 @@ def entries(snapshot, task_queue):
     for task, record in snapshot.tasks.items():
         fields = dict(task_queue.fields(record), Title=record.title, Section=record.section or '',
                       Checkbox='x' if record.status in ('done', 'superseded') else ' ')
-        result[task] = dict(digest=record.record_revision, fields=fields, count=1)
+        # Display fields join arrays and may retain same-named body notes. They cannot
+        # prove that typed checks, verified prerequisites or exclusions stayed intact.
+        typed = {k: v for k, v in asdict(record).items()
+                 if k not in ('body', 'path', 'record_revision', 'contract_hash')}
+        contract = hashlib.sha256(json.dumps(typed, sort_keys=True).encode()).hexdigest()
+        result[task] = dict(digest=record.record_revision, contract=contract, fields=fields, count=1)
     return result
 
 
@@ -319,6 +382,8 @@ def reason_class(why, task_ids=()):
 def item_key(item):
     if item[1] == 'repeated quick hold':
         return 'quick-hold:' + item[0] + ':' + item[2].split(';', 1)[0]
+    if item[1] == 'engineering repair':
+        return 'review-repair:' + item[0] + ':' + item[2].split(';', 1)[0] + ':' + failure_policy.fingerprint(item[2])
     return key([item]) if item[0] in ('MAIN', 'LEDGER') or item[1] == 'ledger edit' else 'task:' + item[0]
 
 
@@ -363,7 +428,7 @@ def matches(receipt, item, entry, reasons, task_ids):
         return False
     if item[0] == 'MAIN':
         return receipt.get('evidence', '') == main_evidence(item)
-    if item[0] == 'LEDGER' or item[1] in ('repeated quick hold', 'ledger edit'):
+    if item[0] == 'LEDGER' or item[1] in ('repeated quick hold', 'ledger edit', 'engineering repair'):
         return True  # the key identifies the test/error, blocker or exact patch, even after archival
     why = (reasons or {}).get(item[0], item[2])
     return (receipt.get('digest') == entry.get('digest', '')
@@ -461,6 +526,8 @@ def remember(state, *, trigger_key, found, outcome, changed=(), entries=None, be
                                  fields=(fields or ['entry text']) if outcome == 'merged' and task in changed else [])
         if task == 'MAIN':
             records[identity]['evidence'] = main_evidence(item)
+        elif item[1] == 'engineering repair':
+            records[identity]['evidence'] = item[2]
     value['items'] = records
     edits = list(previous.get('main_edits') or [])
     if outcome == 'merged' and main_edit and any(item[0] == 'MAIN' for item in found):
