@@ -57,6 +57,14 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- **Git metadata is not a legacy consumer** (TOOLSET-373-9eb7b08f, TOOLSET-374-1a612dab).
+  Root `.gitattributes`, `.gitignore` and `.git-blame-ignore-revs`, plus nested
+  `.gitattributes` and `.gitignore`, report TODO.md/goals.json references under
+  `git_metadata` with path, line and names. These informational hits never refuse
+  conversion or become `LEGACY_CONSUMER` diagnostics; metadata is not rewritten.
+  Prepare CLI fixtures verify plain conversion succeeds for metadata alone while
+  a tracked script in the same fixture remains a consumer. Force-consumer reporting
+  is unchanged; these are offline checks, not live-service qualification.
 - **Forced conversion preserves invalid queue entries** (TOOLSET-370-af80834d).
   `autowork tasks prepare --force` uses TODO.md's order and reports drift; entries that
   cannot validate are omitted from the store and named with inclusive source ranges
