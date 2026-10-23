@@ -9,6 +9,8 @@ challenge mode, not a thirteenth skill.
 Every adapter is explicit-only: Claude Code and Pi read `disable-model-invocation: true`
 in its frontmatter and Codex reads `agents/openai.yaml`, so the model never starts a
 workflow on its own.
+Plan For Me with no objective starts autonomous project discovery; an explicit
+outcome keeps focused planning, and `read-only` saves nothing.
 Supporting protocols are bundled and loaded only when needed. Hermes profile
 creation, Telegram routing,
 Kanban workers, fleet setup, memory and speech integrations remain Hermes-only.
@@ -62,6 +64,7 @@ namespaced skills:
 /autowork:plan-with-me questions only: ask one question about this project
 /autowork:plan-with-me challenge this plan; read-only, no implementation
 /autowork:plan-for-me investigate the next useful improvement; save the plan
+/autowork:plan-for-me
 /autowork:docs-sync update the docs and tasks
 /autowork:autowork complete the next ready task; commit locally, no push
 /autowork:autoresearch debug the failing test
@@ -99,6 +102,7 @@ Start a new Codex session in your project. Invoke the namespaced native skills:
 $autowork:plan-with-me questions only: ask one question about this project
 $autowork:plan-with-me challenge this plan; read-only, no implementation
 $autowork:plan-for-me investigate the next useful improvement; save the plan
+$autowork:plan-for-me
 $autowork:docs-sync update the docs and tasks
 $autowork:autowork complete the next ready task; commit locally, no push
 $autowork:autoresearch debug the failing test
@@ -140,6 +144,7 @@ Local installs refer to this checkout; keep it in place. The extension registers
 /plan_with_me questions only: ask one question about this project
 /grill_me challenge this plan; questions only, no implementation
 /plan_for_me investigate the next useful improvement; save the plan
+/plan_for_me
 /docs_sync update the docs and tasks
 /autowork complete the next ready task; commit locally, no push
 /autoresearch_debug diagnose the failing test

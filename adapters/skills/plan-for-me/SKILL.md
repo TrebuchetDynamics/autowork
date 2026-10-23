@@ -12,8 +12,23 @@ then the [host contract](../COMMON.md) and
 a clear task still needs a complete saved record. Finish the full requested batch,
 with real dependencies, independent ready lanes and scoped unresolved choices.
 Investigate relevant source, tests and existing decisions. Compare practical options, choose a supported approach and
-record material reasoning. Ask only for consequential missing intent or authority;
-continue independent planning. Do not reopen settled choices or invent requirements.
+record material reasoning. Ask only after investigating for consequential missing
+intent or authority; continue independent planning. Do not reopen settled choices
+or invent requirements.
+
+Route from the request's meaning, not a short phrase list:
+
+| Request | Route |
+| --- | --- |
+| No concrete objective; "plan this project"; "make it better"; a broad direction such as reliability or performance | Read [autonomous project discovery](../../../skills/plan-for-me/references/discovery.md), investigate the project, derive accepted and engineering goals, then save one executable frontier. Do not ask for a goal first. |
+| A named outcome, feature, defect or accepted slice | Focused planning for that outcome and its authorized prerequisites; do not audit unrelated work. |
+| Read-only, chat-only, no-write or dry-run | Match the route above but save nothing, including queue metadata. |
+| An Autowork-owned substep | Stay inside the named task and authorized prerequisites; return to that same coordinator. |
+
+A vague adjective is a direction for discovery, not an accepted outcome. Keep new
+product directions as proposals until the owner accepts them; a project with no
+accepted objective or meaningful source gets the missing decision reported, not an
+invented roadmap.
 
 Read the pinned [Autoresearch plan protocol](../../../skills/autoresearch/upstream/plan.md)
 and apply the [planning adaptations](../../../skills/shared/RESEARCH-PLAN.md).

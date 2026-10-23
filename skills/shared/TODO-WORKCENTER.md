@@ -80,7 +80,9 @@ Reuse existing task IDs and document owners. Every new task ID ends in a two-hex
 hash after its number, such as `TOOLSET-084-a7`, so collaborators who add tasks at the
 same time on separate clones never create two tasks with the same ID. `autowork tasks
 add` allocates one (`autowork tasks new-id` prints the next). Keep existing IDs
-unchanged. A task serves a goal: add a missing one with `autowork tasks goal ID
+unchanged. A discovery pass that finds the existing backlog already covers the
+evidenced gaps reports that and changes nothing; a short queue is not permission to
+invent work. A task serves a goal: add a missing one with `autowork tasks goal ID
 --title T --source path#anchor --priority N`.
 
 Put executable details in the record: `scope`, `acceptance`, `checks`, `depends_on`,

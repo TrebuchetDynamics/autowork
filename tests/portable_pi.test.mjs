@@ -28,9 +28,17 @@ test('Pi registers workflows and all 13 research commands; routes literal argume
   await assertWorkflow('plan-with-me');
   assert.equal(messages[0][0].endsWith(raw), true);
   assert.equal(messages[0][1], undefined);
+  messages.length = 0;
+  await commands.get('plan_for_me').handler('', {isIdle: () => true});
+  assert.match(messages[0][0], /Selected route: autonomous project discovery/);
+  assert.match(messages[0][0], /Do not ask for a goal/);
+  await commands.get('plan_for_me').handler('implement offline support', {isIdle: () => true});
+  assert.equal(messages[1][0].includes('Selected route: autonomous project discovery'), false);
+  assert.equal(messages[1][0].endsWith('implement offline support'), true);
+  messages.length = 0;
   await commands.get('autoresearch_debug').handler(raw, {isIdle: () => false});
-  assert.match(messages[1][0], /Selected subcommand: debug/);
-  assert.deepEqual(messages[1][1], {deliverAs: 'followUp'});
+  assert.match(messages[0][0], /Selected subcommand: debug/);
+  assert.deepEqual(messages[0][1], {deliverAs: 'followUp'});
   // The actual shared boundary is loaded, not just command registration/skill metadata.
   const boundary = await readFile(new URL('../skills/shared/RESEARCH-PLAN.md', import.meta.url), 'utf8');
   for (const name of ['plan_with_me', 'plan_for_me', 'grill_me', 'autoresearch_plan']) {

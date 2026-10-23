@@ -66,7 +66,9 @@ command that opens Plan With Me in challenge mode, and Hermes still provisions t
 native grill-me skill into the profile. Independent Autoresearch and all 13 selectors
 remain available. In Hermes its plan selector runs Autoresearch's pinned plan protocol
 with Plan For Me's planning adaptations; the Codex and Pi adapters hand it to Plan
-For Me. `/plan_for_me` is the dedicated planner everywhere.
+For Me. `/plan_for_me` is the dedicated planner everywhere: an explicit objective
+keeps focused planning, and a bare or vague request starts evidence-based project
+discovery without inventing product direction.
 Shared protocols retain their existing helper/reference paths. Local package
 discovery is distinct from model execution and cross-host live qualification.
 
