@@ -1343,23 +1343,7 @@ class FleetApp(App):
     def render_fleet(self):
         table = self.query_one('#runners', DataTable)
         keep = self.selected
-        rows = []
-        for runner in self.runners:
-            now = ', '.join(f'{lane.task} {fleet_view.lane_status(runner, lane)[0]}' for lane in runner.lanes[:2])
-            if runner.job:
-                now = ', '.join(x for x in (fleet_view.job_text(runner.job), now) if x)
-            if len(runner.lanes) > 2:
-                now += f' +{len(runner.lanes) - 2}'
-            vector = fleet_view.task_counts(runner)
-            active, mergeable, waiting, blocker, decision, total = (str(n) for n in vector) if vector is not None else ('?',) * 6
-            rows.append({'Runner': (runner.name, ''),
-                         'State': (f'{runner.state} {fleet_view.duration(runner.minutes)}'.strip(), f'bold {runner.color}'),
-                         'Active': (active, 'green'), 'Mergeable': (mergeable, 'cyan'), 'Waiting': (waiting, ''),
-                         'Blocker': (blocker, 'yellow' if blocker != '0' else ''),
-                         'Decision': (decision, 'yellow' if decision != '0' else ''), 'Total': (total, 'bold'),
-                         'Needs': (' '.join((fleet_view.needs(runner) or '-').split()), 'yellow' if runner.questions else ''),
-                         'Now': (now or '-', '')})
-        self.fill(table, rows, self.RUNNER_COLUMNS, self.RUNNER_TEXT)
+        self.fill(table, fleet_view.runner_rows(self.runners), self.RUNNER_COLUMNS, self.RUNNER_TEXT)
         names = [r.name for r in self.runners]
         if names:
             row = names.index(keep) if keep in names else 0

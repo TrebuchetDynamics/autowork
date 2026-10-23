@@ -1235,6 +1235,28 @@ def collect_for_tui(state_root, env_dir, *, generation, cached_preparation=None,
                          tuple(r.preparation for r in runners if r.preparation is not None))
 
 
+def runner_rows(runners):
+    """Pure fleet-table projection: one row per runner, ready for a Textual DataTable."""
+    rows = []
+    for runner in runners:
+        now = ', '.join(f'{lane.task} {lane_status(runner, lane)[0]}' for lane in runner.lanes[:2])
+        if runner.job:
+            now = ', '.join(x for x in (job_text(runner.job), now) if x)
+        if len(runner.lanes) > 2:
+            now += f' +{len(runner.lanes) - 2}'
+        vector = task_counts(runner)
+        active, mergeable, waiting, blocker, decision, total = (
+            (str(n) for n in vector) if vector is not None else ('?',) * 6)
+        rows.append({'Runner': (runner.name, ''),
+                     'State': (f'{runner.state} {duration(runner.minutes)}'.strip(), f'bold {runner.color}'),
+                     'Active': (active, 'green'), 'Mergeable': (mergeable, 'cyan'), 'Waiting': (waiting, ''),
+                     'Blocker': (blocker, 'yellow' if blocker != '0' else ''),
+                     'Decision': (decision, 'yellow' if decision != '0' else ''), 'Total': (total, 'bold'),
+                     'Needs': (' '.join((needs(runner) or '-').split()), 'yellow' if runner.questions else ''),
+                     'Now': (now or '-', '')})
+    return tuple(rows)
+
+
 def summary(runners):
     counts = {}
     for runner in runners:
