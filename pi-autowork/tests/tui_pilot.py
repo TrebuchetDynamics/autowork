@@ -67,7 +67,7 @@ async def main():
         transcript.write_text(''.join(step(i) for i in range(30)))
         tree = base / 'git'
         legacy = Path(__file__).resolve().parents[2] / 'tests/fixtures/task_migrate'
-        for name in ('ready', 'legacy', 'fresh', 'busy', 'startable', 'invalid', 'toolchain'):
+        for name in ('ready', 'legacy', 'fresh', 'busy', 'startable', 'invalid', 'toolchain', 'forced', 'blocked'):
             repo = tree / name
             repo.mkdir(parents=True)
             subprocess.run(['git', 'init', '-q', '-b', 'main', str(repo)], check=True)
@@ -96,7 +96,18 @@ async def main():
                 if Path(argv[-1]).name == 'toolchain':
                     return subprocess.CompletedProcess(argv, 1, json.dumps(dict(
                         ok=False, outcome='TOOLCHAIN_MISMATCH', next='Run autowork update, then retry.')), '')
+                if Path(argv[-1]).name == 'blocked':
+                    return subprocess.CompletedProcess(argv, 1, json.dumps(dict(
+                        ok=False, outcome='MIGRATION_BLOCKED', refusals=[
+                            'worker T-001 is still recorded', 'consumer build.py:12 names TODO.md'])), '')
                 command = Path(__file__).resolve().parents[1] / 'pi_autowork/command.py'
+                if '--force' in argv:
+                    # Exercise real conversion without contacting services or ending host workers.
+                    result = subprocess.run([sys.executable, str(command), 'tasks', 'prepare', argv[-1]], **kwargs)
+                    report = json.loads(result.stdout)
+                    report['forced'] = dict(step=dict(stopped=['T-001'], set_aside=['T-002'],
+                                                      landed=False, committed=True, commit='abc123'))
+                    return subprocess.CompletedProcess(argv, result.returncode, json.dumps(report), result.stderr)
                 return subprocess.run([sys.executable, str(command), *argv[1:]], **kwargs)
             return Result()
 
@@ -287,6 +298,8 @@ async def main():
             # Play offers preparation, never starts on NO_STORE or an in-flight conversion.
             for name, button, outcome, starts in (
                     ('legacy', 'prepare', 'MIGRATED', False),
+                    ('forced', 'force', 'MIGRATED', False),
+                    ('blocked', 'prepare', 'MIGRATION_BLOCKED', False),
                     ('fresh', 'prepare-start', 'NO_STORE', False),
                     ('busy', 'prepare-start', 'MIGRATION_DEFERRED', False),
                     ('invalid', 'prepare-start', 'INVALID_STORE', False),
@@ -309,6 +322,8 @@ async def main():
                 assert app.screen.query_one('#prepare').label.plain == 'Prepare'
                 assert app.screen.query_one('#prepare-start').label.plain == 'Prepare and start'
                 assert app.screen.query_one('#plan').label.plain == 'Plan'
+                assert app.screen.query_one('#force').label.plain == 'Force'
+                assert app.screen.query_one('#cancel').label.plain == 'Cancel'
                 if name == 'legacy':
                     await pilot.press('escape')
                     await pilot.pause()
@@ -324,6 +339,23 @@ async def main():
                     await pilot.pause()
                 app.screen.query_one('#' + button).press()
                 await pilot.pause()
+                if button == 'force':
+                    assert isinstance(app.screen, Confirm), app.screen
+                    question = str(app.screen.question)
+                    for words in ('service', 'live workers', 'sets attempts aside', 'worktrees',
+                                  'branches', 'files kept', 'commits planning edits', 'converts', 'restarts'):
+                        assert words in question, question
+                    assert str(tree / name) in question, question
+                    assert len(calls) == before, 'Force must wait for consent'
+                    await pilot.press('escape')
+                    await pilot.pause()
+                    assert app.screen is screen and len(calls) == before, 'cancel must not force'
+                    await pilot.press('p')
+                    await pilot.pause()
+                    app.screen.query_one('#force').press()
+                    await pilot.pause()
+                    await pilot.press('y')
+                    await pilot.pause()
                 # DirectoryTree keeps a loader worker alive while the browser is open.
                 for worker in list(app.workers):
                     if worker.group == 'prepare':
@@ -331,7 +363,15 @@ async def main():
                 await pilot.pause()
                 info = str(screen.query_one('#info').render())
                 assert outcome in info, info
-                assert calls[before] == ['aw', 'tasks', 'prepare', str(tree / name)], calls
+                assert calls[before] == ['aw', 'tasks', 'prepare', *(['--force'] if button == 'force' else []),
+                                          str(tree / name)], calls
+                if button == 'force':
+                    for field in ("stopped: ['T-001']", "set_aside: ['T-002']", 'landed: False',
+                                  'committed: True', 'commit: abc123'):
+                        assert field in info, info
+                if outcome == 'MIGRATION_BLOCKED':
+                    assert 'worker T-001 is still recorded\n' in info, info
+                    assert 'consumer build.py:12 names TODO.md\n' in info, info
                 if outcome == 'MIGRATED':
                     assert screen.chosen.ready and (tree / name / 'tasks/items/T-001.md').is_file(), info
                     assert 'ready' in tree_widget.render_line(node.line).text, 'node was not refreshed'
@@ -387,7 +427,25 @@ async def main():
             assert dialog.region.x >= 0 and dialog.region.right <= 80, dialog.region
             for button in narrow.screen.query('Button'):
                 assert button.region.right <= 80, button.region
-            await pilot.press('escape', 'escape')
+            await pilot.press('escape')
+            await pilot.pause()
+            screen = narrow.screen
+            attempts = [f'TASK-{i:03d}' for i in range(10)]
+            screen.prepared(str(tree / 'busy'), dict(
+                outcome='MIGRATION_BLOCKED', refusals=['worker still recorded', 'consumer still tracked'],
+                forced=dict(step=dict(stopped=attempts, set_aside=attempts, landed=False,
+                                      committed=True, commit='abc123')),
+                next='Resolve the preservation collision, then retry Force.'), False)
+            await pilot.pause()
+            info = screen.query_one('#info')
+            pane = info.parent
+            await pilot.press('tab', 'end')  # keyboard users can reach the complete report
+            await pilot.pause()
+            assert pane.scroll_y > 0, 'long forced reports must be scroll-accessible'
+            assert pane.content_region.y < info.region.bottom <= pane.content_region.bottom, (
+                info.region, pane.content_region)
+            assert 'commit: abc123' in str(info.render()) and 'retry Force.' in str(info.render())
+            await pilot.press('escape')
         viewer = FleetApp(command='aw', script='pa.sh', state_root=base / 'state', env_dir=env,
                           systemctl=str(systemctl), journalctl=str(journal), agent=['claude'], runner_cmd=run,
                           view_only=True)
