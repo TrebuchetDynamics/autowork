@@ -183,6 +183,7 @@ def capture(repo, *, engine_observation, generation, last_good=None):
     compatible = {}
     for row in observations:
         record = current.get(row['task'])
+        known = store.tasks.get(row['task'])
         # Attempts must match the current contract too; today's hash alone cannot
         # bless an older slot or a pre-edit admission.
         admitted = row.get('admitted_contract_hash')
@@ -192,6 +193,10 @@ def capture(repo, *, engine_observation, generation, last_good=None):
                  and (not attempt_state or admitted == record.contract_hash))
         if valid:
             compatible[row['task']] = row
+        elif known is not None and known.status in ('done', 'superseded'):
+            # Retained execution rows for closed tasks are history. They are not
+            # unmatched current work and must not grow the Inventory annotation line.
+            continue
         else:
             annotations.append(f"{row['task']}: unmatched execution observation ({row.get('state', 'unknown')})")
     if raw and not observations:

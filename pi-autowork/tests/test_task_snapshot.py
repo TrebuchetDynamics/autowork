@@ -94,6 +94,19 @@ class TaskSnapshotTests(unittest.TestCase):
                 self.assertEqual(result.counts[:2], (0, 0))
                 self.assertEqual(sum(result.counts[:5]), 4)
 
+    def test_done_task_observations_are_history_not_inventory_annotations(self):
+        store_fixture.write_todo(self.repo, '## Now\n- [ ] A — Alpha\n- [ ] OLD — Old closed task\n')
+        path = self.repo / 'tasks/items/OLD.md'
+        path.write_text(edit(path.read_text(), {'status': 'done'}))
+        subprocess.run(['git', '-C', str(self.repo), '-c', 'user.name=T', '-c', 'user.email=t@example.invalid',
+                        'commit', '-qam', 'done'], check=True)
+        obs = self.observation()
+        self.assertIn('OLD', {row['task'] for row in obs['tasks']})
+        snapshot = task_snapshot.capture(self.repo, engine_observation=obs, generation=1)
+        self.assertNotIn('OLD', ' '.join(snapshot.annotations))
+        self.assertEqual([row.task for row in snapshot.closed_rows], ['OLD'])
+        self.assertEqual(snapshot.counts[-1], 1)
+
     def test_stale_log_phase_cannot_upgrade_a_current_reported_attempt(self):
         obs = self.observation()
         row = next(r for r in obs['tasks'] if r['task'] == 'A')
