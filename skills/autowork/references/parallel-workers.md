@@ -118,8 +118,13 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
    never qualifies live behavior. Result: `CLOSED`, with `live_followup` when one was
    added and `files`, the exact paths it wrote, for the coordinator's commit.
 6. **Commit coordinator files.** Close writes the task files in the canonical
-   checkout without committing. Commit them, plus the CHANGELOG line from the report
-   if it is accurate, as one closure commit.
+   checkout without committing, and CHANGELOG.md with the report's one-line proposal
+   as the first item under `## [Unreleased]` / `### Changed` (when the changelog has
+   that section, the task is not already named there and nobody else has an
+   uncommitted edit to it; otherwise the proposal stays in the report for the
+   maintainer). Commit the returned files as one closure commit. The reviewer is told
+   the proposal and judges it against the change; it never fails a merge for a
+   changelog entry the tree cannot yet hold.
 7. **Refill.** Call `--apply --parallel [N]` again: freed slots take the next
    eligible tasks, and a task that depended on a closed one becomes eligible.
    Before releasing, integrate or close every `reported` and `integrated` slot,

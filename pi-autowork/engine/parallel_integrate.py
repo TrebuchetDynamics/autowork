@@ -1108,8 +1108,9 @@ def task_store_rank(record):
 
 
 def close_writes(repo, task, slot, info, checks, record):
-    """{path: text} a close writes: the task's done record, its receipt and any pending live
-    checks. By default live checks are notes on the done record, not another owner decision;
+    """{path: text} a close writes: the task's done record, its receipt, any pending live
+    checks, and CHANGELOG.md with the worker's one-line proposal (changelog_entry). By default
+    live checks are notes on the done record, not another owner decision;
     PI_AUTOWORK_LIVE_FOLLOWUP=backlog keeps the per-goal backlog behavior, and =none drops the
     notes. Nothing else; TODO.archive.md is not written."""
     # From the record as committed: a close records the verified contract, never a local edit.
@@ -1133,7 +1134,54 @@ def close_writes(repo, task, slot, info, checks, record):
                 text = text.rstrip('\n') + '\n' + ''.join(
                     f'- Pending live: {" ".join(item.split())}\n' for item in fresh)
                 writes[execution.task_path(task)] = text
+    entry = changelog_entry(repo, task, slot.get('report'))
+    if entry is not None:
+        writes['CHANGELOG.md'] = entry
     return writes
+
+
+UNRELEASED = '## [Unreleased]'
+
+
+def changelog_entry(repo, task, report):
+    """CHANGELOG.md with the worker's one-line proposal (the report's ``changelog``) as the
+    first item under Unreleased / Changed, or None when nothing is to be written: no proposal,
+    no changelog, no Unreleased section, the task already named there (a replayed close), or
+    an uncommitted edit by someone else (the proposal is then left to the maintainer).
+    Workers never edit CHANGELOG.md (a coordinator file); this is where their line lands."""
+    proposal = ' '.join(str((report or {}).get('changelog') or '').split())
+    path = Path(repo) / 'CHANGELOG.md'
+    if not proposal or not path.is_file():
+        return None
+    try:
+        head = git(repo, 'show', 'HEAD:CHANGELOG.md', raw=True).decode()
+        current = path.read_text()
+    except (subprocess.CalledProcessError, OSError, UnicodeDecodeError, ValueError):
+        return None
+    lines = head.splitlines(keepends=True)
+    start = next((i for i, line in enumerate(lines) if line.rstrip('\n') == UNRELEASED), None)
+    if start is None:
+        return None
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith('## ')), len(lines))
+    named = re.compile(r'(?<![\w-])' + re.escape(task) + r'(?![\w-])')  # the ID as a word, not a prefix
+    if named.search(''.join(lines[start:end])):
+        return None
+    bullet = f'- {proposal}' + ('' if named.search(proposal) else f' ({task})') + '\n'
+    changed = next((i for i in range(start + 1, end) if lines[i].rstrip('\n') == '### Changed'), None)
+    if changed is None:
+        insert = start + 1
+        while insert < end and lines[insert].strip() == '':
+            insert += 1
+        new = lines[:insert] + ['### Changed\n', '\n', bullet, '\n'] + lines[insert:]
+    else:
+        insert = changed + 1
+        while insert < end and lines[insert].strip() == '':
+            insert += 1
+        new = lines[:insert] + [bullet] + lines[insert:]
+    text = ''.join(new)
+    if current not in (head, text):  # another writer's uncommitted edit: never fold it into a close
+        return None
+    return text
 
 
 def pending_writes(repo, writes):

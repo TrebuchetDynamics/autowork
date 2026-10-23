@@ -56,6 +56,16 @@ LIVE = (' Checks that need a physical device, hardware, production or live servi
         'requires that is not in that list is a failure: it would be lost.')
 NO_LIVE = (' The worker recorded no pending live checks: a device, hardware, production or human check the '
            'task requires and that cannot run here is a failure, because nothing would record it.')
+# CHANGELOG.md is coordinator-owned: the worker's line is in its report and the close writes it
+# (parallel_integrate.changelog_entry). Reviews failed task after task for a changelog entry the
+# merged tree could not contain (TOOLSET-368, 370, 372, 374 on 2026-10-23).
+CHANGELOG_NOTE = (' CHANGELOG.md is coordinator-owned: the worker may not edit it and proposed this one-line entry '
+                  'in its report, which the closure commit writes under Unreleased after this review: "{line}". '
+                  'Judge that proposal against the merged change (accurate, one line, claiming nothing the code '
+                  'does not do); do not fail the review because the merged tree\'s CHANGELOG.md has no entry.')
+NO_CHANGELOG = (' CHANGELOG.md is coordinator-owned and the worker proposed no entry for it in its report. The '
+                'closure commit writes only such a proposal: if the task\'s acceptance or scope requires a '
+                'changelog entry, fail with that finding; otherwise do not ask for one.')
 PROVISIONED = (' Toolchains, SDKs and caches the worker provisioned for this task (its $TMPDIR) are in {path}, '
                'also exported as AUTOWORK_WORKER_TMPDIR. Use them read-only, for example an SDK the task\'s docs place '
                'under $TMPDIR, instead of downloading again; do not write there.')
@@ -173,15 +183,27 @@ def attempt_data(execution, task):
     return execution / 'slot-data' / task / f'attempt-{slot.get("data_attempt", slot["attempt"])}'
 
 
-def pending_live(checkout, task):
-    """The pending live checks the worker's report recorded, from the engine's slot data."""
+def worker_report(checkout, task):
+    """The worker's report for the task's current attempt, from the engine's slot data, or {}."""
     execution = execution_dir(checkout)
     if not execution:
-        return []
+        return {}
     try:
         report = json.loads((attempt_data(execution, task) / 'report.json').read_text())
     except (OSError, ValueError, KeyError, TypeError):
-        return []
+        return {}
+    return report if isinstance(report, dict) else {}
+
+
+def changelog_note(checkout, task):
+    """What the reviewer is told about CHANGELOG.md: the worker's proposal, or that there is none."""
+    line = ' '.join(str(worker_report(checkout, task).get('changelog') or '').split())
+    return CHANGELOG_NOTE.format(line=line.replace('"', "'")[:600]) if line else NO_CHANGELOG
+
+
+def pending_live(checkout, task):
+    """The pending live checks the worker's report recorded, from the engine's slot data."""
+    report = worker_report(checkout, task)
     items = report.get('pending_live') if isinstance(report, dict) else None
     items = items if isinstance(items, list) else [items] if items else []
     texts = [' — '.join(str(i[k]) for k in ('check', 'command', 'summary', 'description', 'reason') if i.get(k))
@@ -1238,7 +1260,8 @@ def review(state, task, checkout, head_before, gate=''):
                             + gate
                             + (PROVISIONED.format(path=provisioned) if provisioned else '')
                             + (CACHE.format(path=cache) if cache else '') + (
-                                LIVE.format(items='; '.join(live)) if (live := pending_live(checkout, task)) else NO_LIVE),
+                                LIVE.format(items='; '.join(live)) if (live := pending_live(checkout, task)) else NO_LIVE)
+                            + changelog_note(checkout, task),
                             f'pi-autowork-verify-{safe_name(task)}-{datetime.now():%Y%m%d%H%M%S}',
                             f"{(limit := setting('PI_AUTOWORK_VERIFY_TIMEOUT', 1800, float)):g}",
                             ['--tools', 'read,bash,grep,find,ls'])

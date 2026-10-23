@@ -149,6 +149,22 @@ class WorkerTmpTests(unittest.TestCase):
         os.environ.pop('PI_AUTOWORK_VALIDATE')
         self.assertEqual(worker.gate_note(state, 'T-1', str(self.repo)), '')
 
+    def test_the_reviewer_is_told_the_workers_changelog_proposal_instead_of_the_tree(self):
+        """CHANGELOG.md is coordinator-owned; the close writes the report's line after the review."""
+        git = lambda *a: subprocess.run(['git', '-C', str(self.repo), *a], check=True, capture_output=True, text=True)
+        git('init', '-q')
+        execution = worker.execution_dir(str(self.repo))
+        (execution / 'slots').mkdir(parents=True, exist_ok=True)
+        (execution / 'slots' / 'T-1.json').write_text(json.dumps({'task_id': 'T-1', 'attempt': 1}))
+        self.assertIn('proposed no entry', worker.changelog_note(str(self.repo), 'T-1'))
+        data = execution / 'slot-data' / 'T-1' / 'attempt-1'
+        data.mkdir(parents=True)
+        data.joinpath('report.json').write_text(json.dumps({'changelog': 'Adds the  "x" flag (T-1)'}))
+        note = worker.changelog_note(str(self.repo), 'T-1')
+        self.assertIn("Adds the 'x' flag (T-1)", note)
+        self.assertIn('do not fail the review', note)
+        self.assertIn('writes under Unreleased', note)
+
     def elsewhere(self):
         """A temporary directory beside the fixture repository, so the repository stays clean."""
         folder = tempfile.TemporaryDirectory()
