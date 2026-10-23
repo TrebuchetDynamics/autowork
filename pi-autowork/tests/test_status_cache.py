@@ -1,6 +1,7 @@
 """One engine status snapshot serves a cycle step; the runner's own engine commands drop it."""
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -13,6 +14,7 @@ class StatusCacheTests(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
+        subprocess.run(['git', 'init', '-q', tmp.name], check=True)
         self.calls = Path(tmp.name) / 'calls'
         engine = Path(tmp.name) / 'engine.py'
         # Each status call counts itself; the answer says how many came before.

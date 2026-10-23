@@ -3352,7 +3352,9 @@ sys.exit(result.returncode)
             [sys.executable, str(ENGINE_DIR / 'owner_cycle.py'), str(self.repo), '--parallel-status', '--json'],
             capture_output=True, text=True, check=True).stdout)
         state.mkdir(parents=True)
-        health.update(state, snapshot, now=time.time() - 3600)
+        observed_at = time.time() - 3600
+        snapshot['task_source']['observed_at'] = observed_at
+        health.update(state, snapshot, now=observed_at)
         health.update(state, {'outcome': 'BUSY', 'reason': 'previous lock failure'})
         before = (state / 'status.json').read_bytes()
         with task_execution.lock(common / 'autowork-execution/writer.lock'):

@@ -83,14 +83,16 @@ def snapshot(repo, *, now=None):
 
 def pending_tasks(repo, known=()):
     """Visible TODO-only and indexed tasks that do not yet have execution slots."""
-    return _pending_tasks(repo, known)[0]
-
-
-def _pending_tasks(repo, known=()):
-    """Pending rows plus current completion/deferral evidence, from the store at HEAD."""
     try:
         snapshot = task_queue.store(repo)
     except task_queue.Unconverted:
+        snapshot = None
+    return _pending_tasks(snapshot, known)[0]
+
+
+def _pending_tasks(snapshot, known=()):
+    """Pending rows plus completion/deferral evidence from one pinned store."""
+    if snapshot is None:
         return [], set(), set()
     done = {t.id for t in snapshot.tasks.values() if t.status == 'done'}
     deferred = task_queue.deferred(snapshot)
@@ -193,6 +195,14 @@ def roots(rows):
 
 
 def _snapshot(repo, common, now):
+    revision = task_queue.commit(repo)
+    try:
+        snapshot = task_queue.store(repo, revision) if revision is not None else None
+    except task_queue.Unconverted:
+        snapshot = None
+    task_source = dict(workspace=str(repo), repository_identity=str(Path(task_queue._git(
+        repo, 'rev-parse', '--path-format=absolute', '--git-common-dir').decode().strip()).resolve()),
+        revision=revision, observed_at=now)
     history = state.journal.read(common, ordered=True)
     events = history['events']
     coordinator = state.lease(common)
@@ -201,7 +211,7 @@ def _snapshot(repo, common, now):
     observed = next((e for e in reversed(events) if e['event'] == 'dispatch_observed'), {})
     capacity = observed.get('max_workers', capacity)
     pending = {v['id']: v for v in observed.get('waiting', [])}
-    pending_rows, done, deferred = _pending_tasks(repo)
+    pending_rows, done, deferred = _pending_tasks(snapshot)
     current = {v['id']: v for v in pending_rows}
     rows, settled = [], set()
     active = 0
@@ -213,7 +223,8 @@ def _snapshot(repo, common, now):
         active += live
         changes = [e for e in events if e['event'] == 'slot_changed' and e['task_id'] == task]
         end = changes[-1]['timestamp'] if changes and slot['state'] == 'closed' else now
-        rows.append(dict(task=task, state='closing' if slot.get('closing') else slot['state'], slot=dispatch.meta(common, slot).get('slot_index'),
+        admitted = execution.read(dispatch.data_dir(common, slot) / 'contract.json') or {}
+        rows.append(dict(task=task, admitted_contract_hash=admitted.get('contract_hash'), state='closing' if slot.get('closing') else slot['state'], slot=dispatch.meta(common, slot).get('slot_index'),
                          elapsed_seconds=max(0, end - (changes[0]['timestamp'] if changes else slot['started_at'])),
                          started_at=slot['started_at'],
                          reason=slot.get('reason'), worktree=slot['worktree'], checks=slot.get('checks'),
@@ -284,11 +295,11 @@ def _snapshot(repo, common, now):
                          commit=None, integration=None, attempt=0, worker_live=False,
                          blocked_by=list(source.get('blocked_by', item['blocked_by'])),
                          **({'root_kind': item['root_kind']} if item.get('root_kind') else {})))
+    for row in rows:
+        record = snapshot.tasks.get(row['task']) if snapshot is not None else None
+        row['contract_hash'] = record.contract_hash if record is not None else None
+        row.setdefault('admitted_contract_hash', None)
     root_rows = roots(rows)
-    try:
-        snapshot = task_queue.store(repo)
-    except task_queue.Unconverted:
-        snapshot = None
     for root in root_rows:
         root.update(root_failure_fields(root))
         if root['kind'] == 'claim' and snapshot is not None and root['id'] in snapshot.tasks:
@@ -305,7 +316,8 @@ def _snapshot(repo, common, now):
                 waits = sorted(deferred_roots & _ends(row['task'], by_id, {row['task']}))
                 if waits:
                     row['reason'] = 'wait for deferred ' + ', '.join(waits)
-    return dict(outcome='PARALLEL_STATUS', workspace=str(repo), active_workers=active, max_workers=capacity,
+    return dict(outcome='PARALLEL_STATUS', workspace=str(repo), task_source=task_source,
+                active_workers=active, max_workers=capacity,
                 tasks=rows, roots=root_rows, completed=sum(r['state'] == 'closed' for r in rows),
                 failed=sum(r['state'] == 'held' or (r['state'] in ('interrupted', 'released')
                                                   and not r.get('paused')) for r in rows),

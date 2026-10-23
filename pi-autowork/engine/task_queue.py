@@ -27,9 +27,18 @@ class Unconverted(StoreError):
 
 def commit(repo, rev='HEAD'):
     """The commit a revision names, or None when it names none (an unborn branch)."""
-    result = subprocess.run(['git', '-C', str(repo), 'rev-parse', '--verify', '-q', f'{rev}^{{commit}}'],
-                            capture_output=True, text=True, timeout=30)
-    return result.stdout.strip() or None
+    # Resolve the name without peeling first: a dangling ref still names an oid.
+    # Peeling too early would hide its missing object as an unknown/unborn name.
+    # Both reads use TaskStore's routing and replace-ref isolation.
+    oid = _git(repo, 'rev-parse', '--verify', '--quiet', '--end-of-options',
+               str(rev), missing_ok=True).decode().strip()
+    if not oid:
+        # rev-parse -q also suppresses malformed-ref errors. Validate the ref
+        # database before treating this as a genuinely absent/unborn revision.
+        _git(repo, 'show-ref', '--head', missing_ok=True)
+        return None
+    return _git(repo, 'rev-parse', '--verify', '--end-of-options',
+                f'{oid}^{{commit}}').decode().strip()
 
 
 @lru_cache(maxsize=32)
