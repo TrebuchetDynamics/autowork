@@ -8,8 +8,8 @@ the store by hand. It detects the repository's state and does only what needs no
 - legacy (TODO.md + goals.json): converts through `autowork migrate`'s transaction, one
   local commit (`--no-commit`: staged, HEAD unmoved);
 - conversion pending (an interrupted or staged conversion): finishes it, or refuses;
-- none: reports the accepted headings a bootstrap may take goals from; the first
-  `autowork tasks goal` starts the store;
+- none: reports the accepted headings a bootstrap may take goals from, and any lone
+  legacy file as `legacy_content` to reconcile; the first `autowork tasks goal` starts the store;
 - invalid: refuses with the store's path:line errors.
 
 It never decides intent: goals, tasks and contract repairs come from accepted documents
@@ -189,6 +189,12 @@ def _summary(store):
                 order=[t.id for t in task_select.order(store)])
 
 
+def _legacy_files(repo):
+    """Legacy inputs present in the working tree or retained at HEAD."""
+    return [name for name in ('TODO.md', 'goals.json')
+            if (Path(repo) / name).exists() or task_migrate.committed(repo, 'HEAD', name)]
+
+
 def detect(repo):
     """The repository's task-store state, from committed and working-tree facts only."""
     if task_migrate.pending(repo):
@@ -196,8 +202,7 @@ def detect(repo):
     head = _git(repo, 'rev-parse', '--verify', '-q', 'HEAD')
     if head and task_migrate.committed(repo, 'HEAD', 'tasks'):
         return 'converted'
-    names = ('TODO.md', 'goals.json')
-    if any((Path(repo) / name).exists() or (head and task_migrate.committed(repo, 'HEAD', name)) for name in names):
+    if len(_legacy_files(repo)) == 2:
         return 'legacy'
     if any(p.is_file() for p in (Path(repo) / 'tasks').glob('*/*.md')):
         return 'uncommitted'
@@ -333,11 +338,14 @@ def _prepare(repo, mode):
         state = report['state'] = 'converted' if result['outcome'] in ('CONVERTED', 'ALREADY_CONVERTED') \
             else 'uncommitted'
     if state == 'none':
+        report['legacy_content'] = _legacy_files(repo)
         report.update(intent(repo))
         report['next'] = ('bootstrap: add one goal per accepted outcome with `autowork tasks goal`, then its '
                           'tasks with `autowork tasks add`' if report['accepted'] else
                           'no heading is marked Status: Accepted; record accepted intent first, or report the '
                           'missing input; create no executable tasks')
+        if report['legacy_content']:
+            report['next'] += '; reconcile the listed legacy_content from source evidence without discarding it'
         return report
     try:
         report['pending'] = list(TaskStore.pending(repo))

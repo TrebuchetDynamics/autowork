@@ -157,6 +157,28 @@ class BootstrapTests(Repo):
         self.assertIn('no heading is marked Status: Accepted', report['next'])
         self.assertFalse((self.repo / 'tasks').exists())
 
+    def test_a_lone_legacy_file_is_reported_for_bootstrap_without_writes(self):
+        self.write('docs/plan.md', PLAN)
+        self.commit('plan')
+        for name in ('TODO.md', 'goals.json'):
+            (self.repo / name).write_bytes((LEGACY / name).read_bytes())
+            for location in ('worktree', 'committed', 'HEAD only'):
+                if location == 'committed':
+                    self.commit('lone legacy file')
+                elif location == 'HEAD only':
+                    (self.repo / name).unlink()
+                for args in ((), ('--force',), ('--check',)):
+                    with self.subTest(name=name, location=location, args=args):
+                        before = self.snapshot(lock=False)
+                        report = self.prepare(*args)
+                        self.assertEqual((report['state'], report['outcome']), ('none', 'NO_STORE'))
+                        self.assertEqual(report['legacy_content'], [name])
+                        self.assertEqual(report['accepted'],
+                                         ['docs/plan.md#startup-slice', 'docs/plan.md#export-slice'])
+                        self.assertEqual((report['actions'], report['refusals']), ([], []))
+                        self.assertEqual(self.snapshot(lock=False), before)
+            self.commit('remove lone legacy file')
+
     def test_an_empty_store_folder_is_completed_by_the_first_goal(self):
         (self.repo / 'tasks/items').mkdir(parents=True)
         self.write('docs/plan.md', PLAN)
