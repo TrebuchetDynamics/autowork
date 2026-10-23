@@ -9,7 +9,7 @@ repository, under `${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key
 
 | Module | Role |
 | --- | --- |
-| `engine/task_store.py` | Read-only, pinned-commit TaskStore; [schema and API](task-store.md). Not yet wired into consumers |
+| `engine/task_store.py` | Read-only, pinned-commit TaskStore used by the engine and committed fleet inventory; [schema and API](task-store.md) |
 | `pi_autowork/cli.py` | Options, repository and toolset resolution (one release per run), `--status`, `--dry-run`, `--fleet`, `--set-aside`, the runner lock |
 | `pi_autowork/coordinator.py` | The loop: engine lease owner, session branch and final merge, settle and close, requests, priority drift, Touches proposals and widening, health, self-update and restart, graceful stop |
 | `pi_autowork/worker.py` | The engine-launched `--worker` and `--verify` modes |
@@ -20,6 +20,8 @@ repository, under `${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key
 | `pi_autowork/health.py` | Per-runner `status.json`, one stall announcement per episode with its root blockers, and the `--fleet` view |
 | `pi_autowork/processes.py` | Shared Linux process start ticks, identity-aware liveness, runner ancestry and process names |
 | `pi_autowork/workspaces.py` | Mirrors `PI_AUTOWORK_LINK_PATHS` gitignored dependencies into task and review worktrees (real directories, hard-linked files) |
+| `pi_autowork/task_status.py` | Pure task-state display vocabulary shared by snapshots and CLI worker lanes |
+| `pi_autowork/task_snapshot.py` | Immutable committed task inventory: ordered rows, five buckets and total, goals, questions, independently observed pending paths, runtime identity/freshness and errors; display-only, never dispatch authority |
 | `pi_autowork/fleet_view.py` | Every runner on the machine (tmux sessions, `pi-autowork@` services, `status.json` health), its worker lanes (engine slots in flight, the runner's latest phase line, the Pi transcript's last action), its blockers grouped by kind, recent logs, and the exact existing command behind each action; standard library only |
 | `bin/autowork`, `pi_autowork/command.py` | The `autowork` command (below), standard library only |
 | `pi_autowork/tui.py` | The `autowork` TUI (Textual, run through `uv`): live runners with what each needs (the owner's open BLOCKERS.md questions, else its first blocker), worker lanes, model and log, stacked full width so it reads on an 80-column terminal, a directory browser that starts services, and keys that run `autowork` commands; `--view-only` disables the keys |
@@ -164,6 +166,51 @@ terminal's copy shortcut (often Ctrl+Shift+C). Mouse capture is off by default;
 keyboard navigation and controls remain available. Use `autowork tui --mouse` to
 restore clickable rows/buttons instead; hold Shift while dragging if your terminal
 or tmux intercepts selection. The browser view retains mouse controls.
+
+### Fleet task inventory and freshness
+
+Fleet counts, task rows and Waiting/Blocker details use one committed `tasks/`
+snapshot per repository and refresh generation. Each committed open ID contributes
+once to Active, Mergeable, Waiting, Blocker or Decision, whose sum is Total.
+Ordinary ready work is Waiting (`ready; awaiting dispatch`); Needs decision comes
+from the committed section. Stopped dependency waits are Blocker. Uncommitted
+records and planning-branch records do not enlarge this inventory.
+
+Runtime observations must name the same repository and compatible current/admitted
+contracts. Missing legacy identity, duplicate/orphan observations and mismatched or
+stale slot activity are annotations, not additional tasks or evidence of Active or
+Mergeable work. Session/canonical revision divergence is disclosed. Questions for
+closed or noninventory IDs remain visible as annotations in the Questions view.
+The task record body is labelled as independently read working-tree content.
+
+The Inventory line shows revision, generation, capture age and separate execution
+freshness; pending paths and questions are independently observed working data.
+A valid empty store has zero counts. Unavailable or invalid inventory shows `?`
+and `unknown / unavailable`, not zero. Failed refreshes can retain last-good
+inventory with its original revision/capture age, visibly stale. Pending-path read
+failure means unknown, never clean. In the Tasks window, unavailable inventory
+shows `?` for every view count and an unavailable placeholder rather than a verified
+empty list. Essential freshness, revision and capture age stay visible separately
+from bounded, scrollable diagnostics and wrapping view labels, including at 80 columns,
+without displacing the task table. In this window, `i` (**Inventory**) toggles focus
+between the task table and diagnostics; Page Down/End reads long errors. Verified
+empty keeps zero counts; stale last-good rows keep their counts and original
+revision/age with the acquisition error visible. The rendered pilot opens all three
+states in wide and narrow viewports, checks painted cells/layout bounds, and scrolls
+a long acquisition error through its final line.
+
+The synchronous TUI collector (`collect_for_tui`) returns a `FleetSnapshot`
+envelope with acquisition errors. Its labelled preparation diagnostics can be
+reused for less than 30 seconds, invalidated by observed revision, dirty-file,
+settings or environment changes. Explicit refresh and action/preparation return
+invalidate the audit. Cached diagnostics supply neither task membership nor Start
+authority: confirmed Start still reads readiness afresh. CLI/full readiness stays
+uncached; service-enabled queries have a ten-second bound.
+
+Offline checks in `tests/test_task_snapshot.py`, `tests/test_fleet_view.py` and
+`tests/test_health.py`, plus the headless `tests/tui_pilot.py`, cover these display
+boundaries. They do not qualify SSH transport latency, a live service or execution
+through a provider. Moving the synchronous readers off the UI loop is separate work.
 
 The main-check line in runner status and the TUI reads the current check receipt,
 not just the runner's cached health snapshot. A missing process or a reused PID

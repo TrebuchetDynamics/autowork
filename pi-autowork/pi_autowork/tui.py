@@ -428,9 +428,12 @@ class TasksScreen(Screen):
                 *[Binding(str(n + 1), f'show_view("{view}")', view, show=False)
                   for n, view in enumerate(fleet_view.TASK_VIEWS)],
                 *[Binding(key, f'task("{key}")', key, show=False) for key in 'udcabs'],
-                Binding('n', 'new_task', 'New', show=False)]
+                Binding('n', 'new_task', 'New', show=False),
+                Binding('i', 'inventory', 'Inventory', show=False)]
     DEFAULT_CSS = '''
-    #task-views { height: 1; padding: 0 1; }
+    #task-views, #task-freshness { height: auto; padding: 0 1; }
+    #task-diagnostics-scroll { height: auto; max-height: 4; padding: 0 1; }
+    #task-diagnostics { height: auto; }
     #tasks { height: 1fr; }
     #task-detail { height: auto; max-height: 7; padding: 0 1; border-top: solid $panel; }
     '''
@@ -445,6 +448,9 @@ class TasksScreen(Screen):
         yield Header()
         yield MenuBar(id='menubar')
         yield Static(id='task-views')
+        yield Static(id='task-freshness')
+        with VerticalScroll(id='task-diagnostics-scroll'):
+            yield Static(id='task-diagnostics')
         yield DataTable(id='tasks', cursor_type='row', zebra_stripes=True)
         yield Static(id='task-detail')
 
@@ -452,22 +458,42 @@ class TasksScreen(Screen):
         self.title = f'{self.runner_name}: tasks'
         self.query_one('#tasks', DataTable).add_columns(*self.FIXED, *self.TEXT)
         self.refresh_tasks()
+        self.query_one('#tasks', DataTable).focus()
         self.set_interval(REFRESH, self.refresh_tasks)
 
     def runner(self):
         return next((r for r in self.app.runners if r.name == self.runner_name), None)
 
+    def action_inventory(self):
+        panel = self.query_one('#task-diagnostics-scroll', VerticalScroll)
+        (self.query_one('#tasks', DataTable) if panel.has_focus else panel).focus()
+
     def refresh_tasks(self, follow=None):
         """``follow``: keep the cursor on this task wherever it moved (after a re-sort)."""
         runner = self.runner()
         self.rows = fleet_view.task_rows(runner, include_closed=True) if runner else []
+        snapshot = fleet_view.snapshot_for(runner) if runner else None
+        available = snapshot is not None and snapshot.counts is not None
         views = Text()
         for number, view in enumerate(fleet_view.TASK_VIEWS):
-            count = len(fleet_view.task_view(self.rows, view))
+            count = len(fleet_view.task_view(self.rows, view)) if available else '?'
             label = f'{number + 1} {self.VIEW_NAMES[view]} {count}'
             views.append(('  ' if number else '') + label, style='bold reverse' if view == self.view else 'dim')
         views.append('   tab next view', style='dim')
         self.query_one('#task-views', Static).update(views)
+        freshness = Text('Inventory ' + (snapshot.freshness if snapshot else 'unavailable'), style='bold')
+        if snapshot:
+            freshness.append(f' · revision {snapshot.revision or "unknown"}\n'
+                             f'generation {snapshot.generation} · captured '
+                             + fleet_view.ago(max(0, int(time.time() - snapshot.captured_at)))
+                             + f' · execution {snapshot.engine_freshness}', style='dim')
+        self.query_one('#task-freshness', Static).update(freshness)
+        diagnostics = Text()
+        if snapshot and snapshot.errors:
+            diagnostics.append(' · '.join(snapshot.errors) + '\n', style='yellow')
+        if runner:
+            diagnostics.append(fleet_view.freshness(runner), style='dim')
+        self.query_one('#task-diagnostics', Static).update(diagnostics)
         table = self.query_one('#tasks', DataTable)
         current = follow or (self.current().task if self.current() else None)
         self.shown = fleet_view.task_view(self.rows, self.view)
@@ -497,7 +523,12 @@ class TasksScreen(Screen):
         row = self.current()
         text = Text()
         if row is None:
-            text.append('No task in this view.\n', style='dim')
+            runner = self.runner()
+            snapshot = fleet_view.snapshot_for(runner) if runner else None
+            if snapshot is None or snapshot.counts is None:
+                text.append('Task inventory unavailable; task counts are unknown.\n', style='yellow')
+            else:
+                text.append('No task in this view.\n', style='dim')
         else:
             text.append(row.task, style='bold')
             text.append(f'  {row.short}\n')
@@ -507,7 +538,8 @@ class TasksScreen(Screen):
         keys = [(a.key, a.label) for a in self.actions(row)]
         if not self.app.view_only:
             keys.append(('n', 'New'))
-        self.query_one('#menubar', MenuBar).show(([('enter', 'Open')] if row else []) + keys + [('esc', 'Back')])
+        self.query_one('#menubar', MenuBar).show(([('enter', 'Open')] if row else [])
+                                                 + keys + [('i', 'Inventory'), ('esc', 'Back')])
         self.query_one('#task-detail', Static).update(text)
 
     def on_data_table_row_selected(self, event):
@@ -619,7 +651,7 @@ class TaskScreen(Screen):
             text.append(row.why + '\n')
         entry = fleet_view.task_entry(runner, self.task_id) if runner else ''
         if entry:
-            text.append('\nTask record\n', style='bold')
+            text.append('\nTask record (working tree; independent of committed inventory)\n', style='bold')
             text.append(entry + '\n')
         actions = fleet_view.recent_actions(runner, self.task_id) if runner else []
         if actions:
@@ -916,6 +948,8 @@ class FleetApp(App):
         self.view_only = view_only
         self.browse_root = browse_root
         self.runners = []
+        self.fleet_snapshot = None
+        self.generation = 0
         self.selected = None
 
     def check_action(self, action, parameters):
@@ -954,7 +988,7 @@ class FleetApp(App):
         self.query_one('#lanes', DataTable).add_columns(*self.LANE_COLUMNS, *self.LANE_TEXT)
         self.action_refresh()
         self.refresh_log()
-        self.set_interval(REFRESH, self.action_refresh)
+        self.set_interval(REFRESH, self.poll_refresh)
         self.set_interval(LOG_REFRESH, self.refresh_log)
         self.code = code_stamp()
         self.set_interval(CODE_CHECK, self.reload_if_updated)
@@ -1005,17 +1039,29 @@ class FleetApp(App):
 
     # -- data -------------------------------------------------------------------
     def action_refresh(self):
-        self.runners = fleet_view.collect(self.state_root, self.env_dir, systemctl=self.systemctl)
+        # Explicit refresh/action return invalidates diagnostics, not inventory authority.
+        self.refresh_fleet(None)
+
+    def poll_refresh(self):
+        self.refresh_fleet(self.fleet_snapshot)
+
+    def refresh_fleet(self, cached):
+        self.generation += 1
+        self.fleet_snapshot = fleet_view.collect_for_tui(self.state_root, self.env_dir, systemctl=self.systemctl,
+                                                       generation=self.generation, cached_preparation=cached,
+                                                       last_good=self.fleet_snapshot)
+        self.runners = list(self.fleet_snapshot.runners)
         table = self.query_one('#runners', DataTable)
         keep = self.selected
         rows = []
         for runner in self.runners:
-            now = ', '.join(f'{lane.task} {fleet_view.status(lane)[1].lower()}' for lane in runner.lanes[:2])
+            now = ', '.join(f'{lane.task} {fleet_view.lane_status(runner, lane)[0]}' for lane in runner.lanes[:2])
             if runner.job:
                 now = ', '.join(x for x in (fleet_view.job_text(runner.job), now) if x)
             if len(runner.lanes) > 2:
                 now += f' +{len(runner.lanes) - 2}'
-            active, mergeable, waiting, blocker, decision, total = (str(n) for n in fleet_view.task_counts(runner))
+            vector = fleet_view.task_counts(runner)
+            active, mergeable, waiting, blocker, decision, total = (str(n) for n in vector) if vector is not None else ('?',) * 6
             rows.append({'Runner': (runner.name, ''),
                          'State': (f'{runner.state} {fleet_view.duration(runner.minutes)}'.strip(), f'bold {runner.color}'),
                          'Active': (active, 'green'), 'Mergeable': (mergeable, 'cyan'), 'Waiting': (waiting, ''),
@@ -1033,7 +1079,8 @@ class FleetApp(App):
         else:
             self.selected = None
         counts = ', '.join(f'{n} {state}' for state, n in fleet_view.summary(self.runners))
-        self.sub_title = f'{len(self.runners)} runners: {counts}' if self.runners else 'no runners'
+        self.sub_title = ('discovery unavailable: ' + ' · '.join(self.fleet_snapshot.errors)) if self.fleet_snapshot.errors else (
+            f'{len(self.runners)} runners: {counts}' if self.runners else 'no runners')
         self.show_detail()
 
     def current(self):
@@ -1058,7 +1105,9 @@ class FleetApp(App):
         runner = self.current()
         menubar = self.query_one('#menubar', MenuBar)
         if runner is None:
-            detail.update('No pi-autowork runners yet. Press n for a new one: choose a repository and play its service.')
+            errors = self.fleet_snapshot.errors if self.fleet_snapshot else ()
+            detail.update(('Discovery unavailable: ' + ' · '.join(errors)) if errors else
+                          'No pi-autowork runners yet. Press n for a new one: choose a repository and play its service.')
             self.query_one('#lanes', DataTable).display = False
             menubar.show([] if self.view_only else [('n', 'New'), ('q', 'Quit')])
             return
@@ -1072,9 +1121,18 @@ class FleetApp(App):
         sentence, style = fleet_view.verdict(runner)
         text.append(f'{runner.name}  ', style='bold')
         text.append(sentence + '\n', style=style)
-        active, mergeable, waiting, blocker, decision, total = fleet_view.task_counts(runner)
-        detail_row(text, 'Tasks', f'{total} open · {active} active · {mergeable} mergeable · {waiting} waiting · {blocker} blocker'
-                   + f' · {decision} for your decision')
+        vector = fleet_view.task_counts(runner)
+        if vector is None:
+            detail_row(text, 'Tasks', 'unknown / unavailable', 'bold yellow')
+        else:
+            active, mergeable, waiting, blocker, decision, total = vector
+            detail_row(text, 'Tasks', f'{total} open · {active} active · {mergeable} mergeable · {waiting} waiting · {blocker} blocker'
+                       + f' · {decision} for your decision')
+        detail_row(text, 'Inventory', fleet_view.freshness(runner), 'dim')
+        if runner.preparation is not None:
+            audit = runner.preparation
+            detail_row(text, 'Preparation', f'{audit.state} · diagnostic audit {fleet_view.ago(max(0, int(time.time() - audit.observed_at)))}'
+                       + ' (30s max cache; not Start authority)', 'dim')
         waiting = fleet_view.waiting_detail(runner)
         if waiting:
             detail_row(text, 'Waiting', waiting)
@@ -1113,11 +1171,11 @@ class FleetApp(App):
     def show_lanes(self, runner):
         """One row per worker: phase, attempt, how long, and what it is doing in plain words."""
         table = self.query_one('#lanes', DataTable)
-        rows = [{'Task': (lane.task, ''),
-                 'Status': (' · '.join(fleet_view.status(lane)), self.STATUS_STYLE[fleet_view.status(lane)[0]]),
+        rows = [{'Task': (lane.task if sum(l.task == lane.task for l in runner.lanes) == 1 else f'{lane.task} [{i + 1}]', ''),
+                 'Status': fleet_view.lane_status(runner, lane),
                  'Try': (str(lane.attempt), ''), 'For': (fleet_view.duration(lane.minutes), ''),
                  'Quiet': (fleet_view.quiet(lane).removeprefix('quiet '), 'bold yellow'),
-                 'Doing': (doing(lane), fleet_view.action_style(doing(lane)))} for lane in runner.lanes]
+                 'Doing': (doing(lane), fleet_view.action_style(doing(lane)))} for i, lane in enumerate(runner.lanes)]
         keep = table.cursor_row
         if self.fill(table, rows, self.LANE_COLUMNS, self.LANE_TEXT) and rows:
             table.move_cursor(row=min(keep, len(rows) - 1))
