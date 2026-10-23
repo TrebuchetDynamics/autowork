@@ -400,6 +400,45 @@ class FleetViewTests(unittest.TestCase):
         self.assertEqual(fleet_view.needs(runner), 'outside Now/Next: TASK-036 (19)')
         self.assertEqual(fleet_view.needs(fleet_view.Runner(name='x', state='not running')), 'start it')
 
+    def test_planning_stop_questions_reach_ls_and_the_tui_without_rewriting_blockers(self):
+        from pi_autowork import command
+        repo, session = self.base / 'planned', self.base / 'session'
+        repo.mkdir()
+        session.mkdir()
+        store_fixture.write_todo(repo, '## Now\n\n- [ ] T-1 — Build\n\n- [x] PLAN-1 — Plan the batch\n'
+                                       '\n## Needs decision\n\n- [ ] CONTINUE — Continue the goal\n')
+        (repo / 'BLOCKERS.md').write_text('# Not merged yet\n')
+        (self.env / 'planned.env').write_text(f'PI_AUTOWORK_REPO={repo}\n')
+        self.runner_state(str(repo), state='idle')
+        state = self.state / 'planned'
+        (state / 'session.json').write_text(json.dumps({'path': str(session)}))
+        engine = ('<!-- pi-autowork:questions:start -->\n'
+                  '### Q-T-1 — USER_INPUT — effort input — unblocks 1\n'
+                  '- Needs: a key\n- Kind: held\n<!-- pi-autowork:questions:end -->\n')
+        for prefix, body in ((engine, '- Task: PLAN-1 — Plan the batch\n- Question: Continue goal FIXTURE?\n'),
+                             ('', '- Task: PLAN-1 — Plan the batch\n- Question: Continue goal FIXTURE?\n'),
+                             ('', 'Goal FIXTURE needs more proof; continue?\n')):
+            with self.subTest(engine=bool(prefix), body=body):
+                (session / 'BLOCKERS.md').write_text(prefix + '\n### Q-PLAN-1 — Planning stopped\n\n' + body
+                                                     + '\n### Other notes\n- Question: Not a planning stop\n')
+                before = [(folder / 'BLOCKERS.md').read_bytes() for folder in (repo, session)]
+                runner = self.collect('pi-autowork@planned.service loaded active running planned')['planned']
+                expected = ['T-1', 'PLAN-1'] if prefix else ['PLAN-1']
+                self.assertEqual([q.id for q in runner.questions], expected)
+                planning = runner.questions[-1]
+                self.assertEqual((planning.kind, planning.effort, planning.unblocks), ('decision', 'decision', 1))
+                self.assertIn(body.splitlines()[-1].removeprefix('- Question: '), planning.needs)
+                self.assertNotIn('Not a planning stop', planning.needs)
+                rows = fleet_view.task_rows(runner, include_closed=True)
+                self.assertEqual([r.task for r in fleet_view.task_view(rows, 'questions')], expected)
+                self.assertEqual(sum(r.task == 'PLAN-1' for r in rows), 1)
+                with contextlib.redirect_stdout(io.StringIO()) as output:
+                    result = command.cmd_ls(type('Args', (), {'json': False, 'long': True})(), dict(
+                        state_root=self.state, env_dir=self.env, systemctl=self.systemctl))
+                self.assertEqual(result, 0)
+                self.assertIn(f'{len(expected)} question', output.getvalue())
+                self.assertEqual([(folder / 'BLOCKERS.md').read_bytes() for folder in (repo, session)], before)
+
     def test_a_runner_verifying_now_is_working_whatever_its_last_status_says(self):
         """sierra: TASK-026's review ran for minutes while the status written before it said stalled."""
         (self.env / 'india.env').write_text('PI_AUTOWORK_REPO=/git/india\n')

@@ -798,21 +798,37 @@ class Question:
     kind: str = ''      # held, quick_hold, claim, cycle, contract, outside, ...: which quick answers apply
 
 
+def _planning_questions(text):
+    """Read maintainer stop sections outside the engine-owned questions block."""
+    block = owner_questions.block_of(text)
+    if block is not None:
+        text = text.replace(owner_questions.START + block + owner_questions.END, '', 1)
+    found = []
+    for section in re.finditer(r'^### Q-(\S+) — Planning stopped[ \t]*\n(.*?)(?=^#{1,3} |\Z)',
+                               text, re.M | re.S):
+        body = section[2]
+        fields = re.findall(r'^- ((?:Task|Question): .+)$', body, re.M)
+        need = ' '.join(fields) if fields else ' '.join(body.split())
+        found.append(Question(section[1], 'decision', 1, need, kind='decision'))
+    return found
+
+
 def read_questions(repo, state_dir=''):
-    """The open questions the runner wrote in BLOCKERS.md, easiest first. They are committed on
-    its session branch first and reach the repository when the session merges, so the session
-    worktree's copy is the current one."""
-    block = None
+    """Engine questions followed by maintainer planning stops, without changing BLOCKERS.md.
+    They reach the repository when the session merges, so prefer the session worktree's copy,
+    including when it has only planning-stop questions and no engine block."""
+    block, planning = None, []
     try:
         session = json.loads((Path(state_dir) / 'session.json').read_text())['path'] if state_dir else ''
     except (OSError, ValueError, KeyError, TypeError):
         session = ''
     for folder in (session, repo):
         try:
-            block = owner_questions.block_of((Path(folder) / 'BLOCKERS.md').read_text()) if folder else None
+            text = (Path(folder) / 'BLOCKERS.md').read_text() if folder else ''
         except OSError:
             continue
-        if block is not None:
+        block, planning = owner_questions.block_of(text), _planning_questions(text)
+        if block is not None or planning:
             break
     found = []
     for line in (block or '').splitlines():
@@ -825,7 +841,7 @@ def read_questions(repo, state_dir=''):
             found[-1].answer = line[len('- Answer: '):].strip()
         elif found and line.startswith('- Kind: '):
             found[-1].kind = line[len('- Kind: '):].strip()
-    return found
+    return found + planning
 
 
 def needs(runner):
@@ -1246,8 +1262,15 @@ def task_rows(runner: Runner, include_closed=False) -> list[TaskRow]:
                      key=lambda t: (sections[t.section], t.rank or 0, t.id))
     rows = [_open_task_row(record, engine.get(record.id, _TaskState()), lanes.get(record.id),
                            asked.get(record.id), record.id in edited) for record in records]
+    # Planning stops name the just-closed plan, not its open continuation task. Keep the
+    # question visible in the Questions view without reopening or duplicating that record.
+    open_ids = {row.task for row in rows}
+    stops = [q for q in runner.questions if q.kind == 'decision' and q.id not in open_ids]
+    rows.extend(TaskRow(q.id, 'Planning stopped', 'Needs decision', f'{WAITING} · Needs decision',
+                        'waiting', why='you: ' + q.needs, question=True) for q in stops)
     if include_closed:
-        rows.extend(_closed_task_rows(store))
+        stop_ids = {q.id for q in stops}
+        rows.extend(row for row in _closed_task_rows(store) if row.task not in stop_ids)
     return rows
 
 
