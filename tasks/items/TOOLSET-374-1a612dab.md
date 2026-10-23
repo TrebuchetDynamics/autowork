@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-374-1a612dab"
 title = "Verify prepare git-metadata reporting and document the audit classification after shared-file work lands"
 short = "Git metadata: prepare and docs follow-up"
-status = "open"
+status = "done"
 goal = "FORCE-CONVERSION"
 section = "Next"
 rank = 5000
@@ -16,6 +16,8 @@ scope = "Shared-file follow-up split from TOOLSET-373-9eb7b08f, with no new prod
 acceptance = ["A legacy fixture whose .gitattributes names TODO.md and goals.json: prepare --check reports no consumers, lists both lines under git_metadata, and plain conversion is not refused for them (tests/test_task_prepare.py)", "A tracked script that names TODO.md in the same fixture is still a consumer (tests/test_task_prepare.py)", "pi-autowork/task-store.md documents the third inventory group git_metadata with path and line reporting, never a conversion refusal; CHANGELOG.md records the git-metadata classification change."]
 checks = ["python3 scripts/check.py tests/test_task_prepare.py tests/test_task_migrate.py", "git diff --check"]
 exclusions = ["No other file type is reclassified", "No rewrite of any repository file"]
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-374-1a612dab.toml"
 +++
 - Sources: docs/plans/2026-10-22-force-conversion.md#decision; tasks/items/TOOLSET-373-9eb7b08f.md (original git-metadata contract and acceptance split).
 - Split evidence: TOOLSET-368-51141b74 is running and declares task_prepare.py, task-store.md, CHANGELOG.md and tests/test_task_prepare.py; these shared paths and the first two original TOOLSET-373 acceptance items move here. The third original acceptance item remains in TOOLSET-373. pi-autowork/pi_autowork/task_migrate.py reference_inventory merges groups generically, and task_prepare.py _prepare updates its report from that inventory, so classification can land independently.

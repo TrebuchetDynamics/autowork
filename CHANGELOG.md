@@ -57,6 +57,7 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Git metadata references are reported as informational git_metadata with path/line/names and never refuse conversion; real script consumers still block plain conversion (TOOLSET-373-9eb7b08f, TOOLSET-374-1a612dab).
 - **Forced conversion preserves invalid queue entries** (TOOLSET-370-af80834d).
   `autowork tasks prepare --force` uses TODO.md's order and reports drift; entries that
   cannot validate are omitted from the store and named with inclusive source ranges
