@@ -94,6 +94,20 @@ class FleetViewTests(unittest.TestCase):
         self.addCleanup(os.environ.pop, 'FAKE_UNITS', None)
         return {r.name: r for r in fleet_view.collect(self.state, self.env, systemctl=self.systemctl)}
 
+    def test_fleet_rows_are_a_pure_projection(self):
+        from pi_autowork import task_snapshot
+        snapshot = task_snapshot.TaskSnapshot('/repo', '/repo/.git', 'abc', 1, time.time(),
+                                              counts=(1, 0, 1, 0, 2, 4))
+        runner = fleet_view.Runner(name='repo', state='working', snapshot=snapshot, decisions=2)
+        row = fleet_view.runner_rows([runner])[0]
+        self.assertEqual(row['Runner'], ('repo', ''))
+        self.assertEqual(row['State'], ('working', 'bold green'))
+        self.assertEqual(row['Active'], ('1', 'green'))
+        self.assertEqual(row['Waiting'], ('1', ''))
+        self.assertEqual(row['Decision'], ('2', 'yellow'))
+        self.assertEqual(row['Total'], ('4', 'bold'))
+        self.assertIn('2 tasks need your decision', row['Needs'][0])
+
     def test_merges_services_and_runner_state(self):
         self.runner_state('/git/india', state='stalled', since=time.time() - 341 * 60, waiting=23,
                           roots=[{'id': 'TASK-036', 'kind': 'outside', 'blocks': 19},
