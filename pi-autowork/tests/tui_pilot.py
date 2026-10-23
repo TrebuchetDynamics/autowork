@@ -304,6 +304,13 @@ async def main():
                        systemctl=str(systemctl), journalctl=str(journal), agent=None, runner_cmd=run,
                        browse_root=str(tree), list_models=lambda: ['openai-codex/gpt-6-luna', 'openai-codex/gpt-6.1-sol'])
         async with app.run_test(size=(150, 45)) as pilot:
+            # A resize can paint before the first fleet read returns: say loading, not "no runners".
+            app.fleet_snapshot = None
+            app.runners = []
+            app.render_fleet()
+            shown = str(app.query_one('#detail').render())
+            assert 'Loading pi-autowork runners' in shown, shown
+            assert 'No pi-autowork runners yet' not in shown, shown
             await refresh(app, pilot)
             # A late or doubled button event on an already-dismissed confirmation must be a
             # no-op, not pop the last screen and crash the TUI (ScreenStackError, 2026-10-22).
