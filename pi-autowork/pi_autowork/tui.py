@@ -11,6 +11,8 @@ has its tasks/ store committed on its main branch.
 """
 import argparse
 import asyncio
+from copy import deepcopy
+from dataclasses import replace
 import json
 import os
 from pathlib import Path
@@ -19,15 +21,16 @@ import sys
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pi_autowork import fleet_view, portal  # noqa: E402
+from pi_autowork import fleet_view, portal, blockers_report  # noqa: E402
 
 from rich.text import Text  # noqa: E402  (installed with textual)
+from rich.style import Style  # noqa: E402
 from textual.app import App, ComposeResult  # noqa: E402
 from textual.binding import Binding  # noqa: E402
 from textual.containers import Horizontal, Vertical, VerticalScroll  # noqa: E402
 from textual.screen import ModalScreen, Screen  # noqa: E402
 from textual.widgets import (Button, DataTable, DirectoryTree, Header, Input, Label, OptionList,  # noqa: E402
-                             RichLog, Select, Static)
+                             RichLog, Select, Static, TextArea)
 
 REFRESH = 3.0
 LOG_REFRESH = 5.0
@@ -45,11 +48,12 @@ def code_stamp():
 QUESTIONS_SHOWN = 3
 
 
-def hotkeys(text, keys):
+def hotkeys(text, keys, click_actions=None):
     """Append 'Log  Pause  Stop', each word's key letter highlighted in it (the first letter
     by convention; a key the word lacks is shown before it)."""
     for number, (key, label) in enumerate(keys):
         text.append('  ' if number else '')
+        start = len(text)
         at = label.lower().find(key.lower())
         if at < 0:
             text.append(key, style='bold underline cyan')
@@ -58,6 +62,8 @@ def hotkeys(text, keys):
             text.append(label[:at])
             text.append(label[at], style='bold underline cyan')
             text.append(label[at + 1:])
+        if click_actions and key in click_actions:
+            text.stylize(Style(meta={'@click': click_actions[key]}), start, len(text))
 
 
 class MenuBar(Static):
@@ -65,11 +71,11 @@ class MenuBar(Static):
     ("File Edit View"), each word's key letter highlighted; every screen has one."""
     DEFAULT_CSS = 'MenuBar { dock: top; height: 1; background: $boost; padding: 0 1; }'
 
-    def show(self, keys, prefix=''):
+    def show(self, keys, prefix='', click_actions=None):
         text = Text(no_wrap=True, overflow='ellipsis')
         if prefix:
             text.append(prefix + '  ', style='dim')
-        hotkeys(text, keys)
+        hotkeys(text, keys, click_actions)
         self.update(text)
 
 
@@ -906,6 +912,61 @@ class BrowseScreen(Screen):
                 self.start(self.chosen)
 
 
+class BlockersScreen(Screen):
+    """A frozen, copyable report. Refresh is explicit so selection is not disturbed."""
+    BINDINGS = [Binding('escape', 'back', 'Back'),
+                Binding('c', 'copy_report', 'Copy report', priority=True),
+                Binding('r', 'refresh_report', 'Refresh', priority=True)]
+    DEFAULT_CSS = '''
+    BlockersScreen #report-state { height: auto; padding: 0 1; }
+    BlockersScreen TextArea { height: 1fr; }
+    BlockersScreen Horizontal { height: 3; }
+    BlockersScreen Button { margin-right: 1; }
+    '''
+
+    def __init__(self, runner):
+        super().__init__()
+        self.runner = deepcopy(runner)
+        self.report_text = None
+
+    def compose(self):
+        yield MenuBar(id='report-menu')
+        yield Static(Text(f'{self.runner.name} — read only; loading…'), id='report-state')
+        yield TextArea(read_only=True, show_cursor=False, id='blockers-text')
+        with Horizontal():
+            yield Button('Copy report (c)', id='copy-report', disabled=True)
+            yield Button('Refresh (r)', id='refresh-report')
+            yield Button('Back (Esc)', id='back-report')
+
+    def on_mount(self):
+        self.query_one(MenuBar).show([('escape', 'Back'), ('c', 'Copy'), ('r', 'Refresh')], prefix='Blockers')
+        self.action_refresh_report()
+
+    def action_refresh_report(self):
+        self.query_one('#report-state', Static).update(Text(f'{self.runner.name} — read only; loading…'))
+        self.app.request_blockers(self)
+
+    def present_report(self, text):
+        self.report_text = text
+        self.query_one(TextArea).load_text(text)
+        self.query_one('#copy-report', Button).disabled = False
+        self.query_one('#report-state', Static).update(Text(
+            f'{self.runner.name} — read only; select text or copy the whole report.'))
+
+    def action_copy_report(self):
+        if self.report_text is not None:
+            self.app.copy_to_clipboard(self.report_text)
+            self.notify('Report copied; terminal clipboard support is required over SSH.')
+
+    def action_back(self):
+        self.app.pop_screen()
+
+    def on_button_pressed(self, event):
+        event.stop()
+        {'copy-report': self.action_copy_report, 'refresh-report': self.action_refresh_report,
+         'back-report': self.action_back}[event.button.id]()
+
+
 class FleetApp(App):
     TITLE = 'autowork'
     # Stacked, each part full width: a side-by-side split left a ~30-column pane on an
@@ -927,7 +988,8 @@ class FleetApp(App):
         Binding('r', 'run("r")', 'Restart', show=False),
         Binding('m', 'pick_model("model")', 'Model', show=False),
         Binding('t', 'run("t")', 'Tasks', show=False),
-        Binding('b', 'run("b")', 'Backlog', show=False),
+        Binding('b', 'show_blockers', 'Blockers', show=False),
+        Binding('g', 'run("g")', 'Backlog', show=False),
         Binding('u', 'run("u")', 'Uninstall', show=False),
         Binding('n', 'browse', 'New', show=False),
         Binding('q', 'quit', 'Quit', show=False),
@@ -951,9 +1013,13 @@ class FleetApp(App):
         self.fleet_snapshot = None
         self.generation = 0
         self.selected = None
+        self._report_busy = False
+        self._report_pending = None
 
     def check_action(self, action, parameters):
         """View-only (for example served to a browser on a shared network): no control keys."""
+        if action == 'show_blockers':
+            return len(self.screen_stack) == 1 and self.current() is not None
         if self.view_only and action in self.CONTROL and parameters not in (('l',), ('t',)):  # read-only views
             return False
         # Over the log, worker or browse screen, the runner keys are off: s while reading a log
@@ -1113,9 +1179,12 @@ class FleetApp(App):
             return
         # The keys go in the menu bar at the top, like a GUI app's menu; the pane holds the facts.
         if self.view_only:
-            menubar.show([('l', 'Log'), ('q', 'Quit')], prefix='view only')
+            menubar.show([('l', 'Log'), ('b', 'Blockers'), ('q', 'Quit')], prefix='view only',
+                         click_actions={'b': 'app.show_blockers'})
         else:
-            menubar.show([(a.key, a.label) for a in self.available(runner)] + [('n', 'New'), ('q', 'Quit')])
+            menubar.show([(a.key, a.label) for a in self.available(runner)]
+                         + [('b', 'Blockers'), ('n', 'New'), ('q', 'Quit')],
+                         click_actions={'b': 'app.show_blockers'})
         text = Text()
         # First the answer to "is it stuck, and why": one sentence, wrapped, never cut.
         sentence, style = fleet_view.verdict(runner)
@@ -1142,7 +1211,7 @@ class FleetApp(App):
         if runner.questions:  # what the owner can answer, easiest first (BLOCKERS.md)
             count = len(runner.questions)
             detail_row(text, 'Questions', fleet_view.question_summary(runner)
-                + ('  (b answers them)' if self.agent and not self.view_only else ''), 'bold yellow')
+                + '  (b shows the read-only report)', 'bold yellow')
             for q in runner.questions[:QUESTIONS_SHOWN]:
                 text.append(' ' * 12)
                 text.append(q.id, style='bold')
@@ -1201,8 +1270,49 @@ class FleetApp(App):
 
     # -- actions ----------------------------------------------------------------
     def available(self, runner):
-        return [action for action in fleet_view.actions(runner, command=self.command, script=self.script, agent=self.agent)
+        return [replace(action, key='g') if action.key == 'b' else action
+                for action in fleet_view.actions(runner, command=self.command, script=self.script, agent=self.agent)
                 if action.key != 'f']
+
+    def action_show_blockers(self):
+        runner = self.current()
+        if runner is not None and len(self.screen_stack) == 1:
+            self.push_screen(BlockersScreen(runner))
+
+    def request_blockers(self, screen):
+        # One app-owned physical read survives closing a screen. New requests coalesce;
+        # cancelling/dismissing a screen must not pretend a blocking read has finished.
+        runner = next((r for r in self.runners if (r.name, r.repo) ==
+                       (screen.runner.name, screen.runner.repo)), screen.runner)
+        self._report_pending = (screen, deepcopy(runner))
+        if not self._report_busy:
+            self._start_report()
+
+    def _start_report(self):
+        request = self._report_pending
+        if request is None:
+            return
+        screen, runner = request
+        self._report_pending = None
+        self._report_busy = True
+        self.run_worker(self._collect_report(screen, runner), group='blockers-report')
+
+    async def _collect_report(self, screen, runner):
+        try:
+            text = await asyncio.to_thread(blockers_report.build, runner)
+        except asyncio.CancelledError:
+            # App shutdown may cancel the await, not the thread. Do not release its slot.
+            raise
+        except Exception as error:
+            text = f'Report unavailable for {runner.name}: {error}\nNo runner action was taken.'
+        self._report_busy = False  # the blocking read has actually returned
+        if screen in self.screen_stack and screen.is_mounted:
+            screen.present_report(text)
+        if self._report_pending is not None:
+            if self._report_pending[0] in self.screen_stack and self._report_pending[0].is_mounted:
+                self._start_report()
+            else:
+                self._report_pending = None
 
     def action_run(self, key):
         runner = self.current()
