@@ -57,6 +57,7 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Add a copyable read-only b Blockers fleet report with serialized background reads, full recorded diagnostics and explicit refresh/back; move setup-only Backlog to g and reconcile the existing Unreleased plan entry's old shortcut. (TOOLSET-381-39d82792)
 - Fleet counts and task rows now share a committed snapshot with explicit freshness/errors; TasksScreen distinguishes unavailable from empty and keeps stale revision/age visible while keyboard-accessible diagnostics scroll long errors. (TOOLSET-379-cf40090d)
 - **Bare `/plan_for_me` now starts autonomous project discovery.** An invocation with
   no objective, or only a vague direction such as "make it better", investigates the
