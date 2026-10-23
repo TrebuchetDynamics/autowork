@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from unittest import mock
 
@@ -21,6 +22,107 @@ from pi_autowork.tui import (REFRESH, BrowseScreen, Confirm, FleetApp, LogScreen
 
 class Result:
     returncode, stdout, stderr = 0, 'ok', ''
+
+
+async def drain_reads(app):
+    async def drained():
+        while app.reads.active or app.reads.pending:
+            await asyncio.sleep(0.01)
+    await asyncio.wait_for(drained(), 10)
+
+
+async def refresh(app, pilot):
+    token = app.action_refresh()
+    if token is not None:
+        async def applied():
+            while app.reader.applied.get('fleet', -1) < token.generation:
+                await asyncio.sleep(0.01)
+        await asyncio.wait_for(applied(), 10)
+    await pilot.pause()
+
+
+async def blocked_readers(app, pilot):
+    """Keys are acknowledged before releasing each real reader seam; no latency claim."""
+    from pi_autowork.tui import NewTask
+    providers = (
+        ('collect_for_tui', lambda: app.poll_refresh(), ('down',), None),
+        ('logs', lambda: app.action_run('l'), ('s', 'escape'), LogScreen),
+        ('action_log', lambda: app.push_screen(WorkerScreen(app.current(), 'TASK-036')), ('w', 'escape'), WorkerScreen),
+        ('task_entry', lambda: app.push_screen(TaskScreen('india', 'T-9')), ('escape',), TaskScreen),
+        ('open_goals', lambda: app.push_screen(NewTask([], runner=app.current())), ('escape',), NewTask),
+        ('readiness', lambda: app.action_browse(), ('down', 'escape'), BrowseScreen),
+        ('models', lambda: app.action_pick_model('model'), ('f', 'o', 'escape'), PickModel),
+        ('code_stamp', lambda: app.reload_if_updated(), ('down',), None),
+    )
+    for name, opening, keys, screen_type in providers:
+        entered, release = threading.Event(), threading.Event()
+        module = sys.modules['pi_autowork.tui'] if name == 'code_stamp' else fleet_view
+        original = app.list_models if name == 'models' else getattr(module, name)
+        context = {}
+        def stalled(*args, **kwargs):
+            entered.set()
+            assert release.wait(10), 'blocked-reader watchdog: ' + name
+            if name == 'models':
+                context.update(kwargs)
+                return original()
+            return original(*args, **kwargs)
+        # Default discovery must be fresh per opening and scoped to the service,
+        # not the deliberately different PI_CODING_AGENT_DIR in the viewing shell.
+        saved_models = app.list_models
+        try:
+            with mock.patch.object(module, name, side_effect=stalled) as provider:
+                if name == 'models':
+                    app.list_models = provider
+                opening()
+                assert await asyncio.to_thread(entered.wait, 5), name + ' not entered'
+                if screen_type:
+                    assert isinstance(app.screen, screen_type), (name, app.screen)
+                if name == 'models':
+                    await pilot.press(*keys[:-1])
+                    assert app.screen.query_one('#filter').value == 'fo'
+                    await pilot.press(keys[-1])
+                else:
+                    await pilot.press(*keys)
+                await pilot.pause()
+                if screen_type:
+                    assert len(app.screen_stack) == 1, name + ' did not close'
+                # Repeated cached layout never executes another synchronous provider.
+                await pilot.resize_terminal(149, 45)
+                await pilot.resize_terminal(150, 45)
+                if name == 'collect_for_tui':
+                    for _ in range(12):
+                        app.poll_refresh()
+        finally:
+            release.set()
+            app.list_models = saved_models
+        # Drain physical completions while patches/fixtures are still valid.
+        await drain_reads(app)
+        if name == 'models':
+            assert context['agent_dir'] == str(Path.home() / '.pi/agent'), context
+        await pilot.pause()
+    await refresh(app, pilot)
+    original = app.current()
+    other = replace(original, name='other', repo=original.repo + '-other')
+    app.runners = [original, other]
+    journal = app.query_one('#log')
+    journal.clear()
+    journal.write('a JOURNAL')
+    entered, release = threading.Event(), threading.Event()
+    def other_log(*args, **kwargs):
+        entered.set()
+        assert release.wait(10), 'journal-selection watchdog'
+        return 'b JOURNAL'
+    with mock.patch.object(fleet_view, 'logs', side_effect=other_log):
+        try:
+            app.selected = other.name
+            token = app.refresh_log()
+            assert await asyncio.to_thread(entered.wait, 5)
+            assert 'a JOURNAL' not in '\n'.join(line.text for line in journal.lines), 'wrong runner journal retained'
+        finally:
+            release.set()
+        await token.wait()
+    assert 'b JOURNAL' in '\n'.join(line.text for line in journal.lines)
+    await refresh(app, pilot)
 
 
 async def task_inventory_viewport(app, pilot):
@@ -55,7 +157,7 @@ async def task_inventory_viewport(app, pilot):
         selected.snapshot = snapshot
         envelope = fleet_view.FleetSnapshot((selected,), (snapshot,), 7, time.time())
         with mock.patch.object(fleet_view, 'collect_for_tui', return_value=envelope):
-            app.action_refresh()
+            await refresh(app, pilot)
             app.push_screen(TasksScreen(selected.name))
             await pilot.pause()
             screen = app.screen
@@ -96,7 +198,7 @@ async def task_inventory_viewport(app, pilot):
                 assert table.has_focus
             app.pop_screen()
             await pilot.pause()
-    app.action_refresh()
+    await refresh(app, pilot)
 
 
 async def main():
@@ -202,7 +304,7 @@ async def main():
                        systemctl=str(systemctl), journalctl=str(journal), agent=None, runner_cmd=run,
                        browse_root=str(tree), list_models=lambda: ['openai-codex/gpt-6-luna', 'openai-codex/gpt-6.1-sol'])
         async with app.run_test(size=(150, 45)) as pilot:
-            await pilot.pause()
+            await refresh(app, pilot)
             # A late or doubled button event on an already-dismissed confirmation must be a
             # no-op, not pop the last screen and crash the TUI (ScreenStackError, 2026-10-22).
             late = Confirm('late confirmation')
@@ -225,6 +327,7 @@ async def main():
             assert 'Tasks      3 open · 0 active · 0 mergeable · 2 waiting · 1 blocker' in detail, detail
             assert 'revision ' + store.rev in detail and 'execution fresh' in detail, detail
             assert 'Push       disabled' in detail, detail  # no saved grant: local only
+            await blocked_readers(app, pilot)
             # Raw orphan activity is visible, but cannot contradict committed counts
             # in the verdict or label an unmatched slot as verified/Mergeable.
             original_runner = app.current()
@@ -232,27 +335,27 @@ async def main():
             fleet_view.snapshot_for(observed)
             envelope = fleet_view.FleetSnapshot((observed,), (observed.snapshot,), 7, time.time())
             with mock.patch.object(fleet_view, 'collect_for_tui', return_value=envelope):
-                app.action_refresh()
+                await refresh(app, pilot)
                 shown = str(app.query_one('#detail').render())
                 assert '1 mergeable' not in shown and '2 waiting' in shown, shown
                 assert str(app.query_one('#lanes').get_row_at(0)[1]).startswith('Annotation'), shown
                 observed.snapshot = replace(observed.snapshot, counts=None, rows=(), freshness='unavailable',
                                             errors=('inventory read denied',))
-                app.action_refresh()
+                await refresh(app, pilot)
                 shown = str(app.query_one('#detail').render())
                 assert [str(c) for c in app.query_one('#runners').get_row_at(0)[2:8]] == ['?'] * 6
                 assert 'unknown / unavailable' in shown and 'inventory read denied' in shown, shown
                 observed.snapshot = replace(original_runner.snapshot, captured_at=time.time() - 900, freshness='stale')
-                app.action_refresh()
+                await refresh(app, pilot)
                 shown = str(app.query_one('#detail').render())
                 assert 'stale · revision ' + store.rev in shown and '15m' in shown, shown
-            app.action_refresh()
+            await refresh(app, pilot)
             await task_inventory_viewport(app, pilot)
             settings = env / 'india.env'
             saved = settings.read_text()
             for value, label in (('1', 'enabled'), ('0', 'disabled')):
                 settings.write_text(saved + f'PI_AUTOWORK_PUSH={value}\n')
-                app.action_refresh()
+                await refresh(app, pilot)
                 detail = str(app.query_one('#detail').render())
                 assert f'Push       {label}' in detail, detail
                 assert settings.read_text() == saved + f'PI_AUTOWORK_PUSH={value}\n'
@@ -288,8 +391,7 @@ async def main():
                             (fleet_view.snapshot_for(selected),) if selected else (), 1, time.time())
                         with mock.patch.object(fleet_view, 'collect_for_tui', return_value=envelope), \
                                 mock.patch.object(portal, 'probe', side_effect=AssertionError('fleet key probed Portal')):
-                            app.action_refresh()
-                            await pilot.pause()
+                            await refresh(app, pilot)
                             expected = ('view only  Log  Quit' if selected else '') if view_only else menu
                             assert str(menubar.render()).strip() == expected, menubar.render()
                             assert menubar.render_line(0).text.strip() == expected, menubar.render_line(0).text
@@ -318,8 +420,7 @@ async def main():
                                 assert app.screen is screen, app.screen
             app.view_only = False
             await pilot.resize_terminal(150, 45)
-            app.action_refresh()
-            await pilot.pause()
+            await refresh(app, pilot)
             # Test Portal's isolated preview/consent component, not a fleet shortcut.
             with mock.patch.object(portal, 'probe', return_value={'state': 'unavailable', 'message': 'Proxy unavailable; start it yourself.'}):
                 app.push_screen(PortalSetup())
@@ -382,7 +483,7 @@ async def main():
                                                '### Q-T-9 — USER_INPUT — effort input — unblocks 1\n\n'
                                                '- Needs: the worker asked for a key\n- Answer: Answer in T-9\'s entry.\n'
                                                '- Kind: held\n\n<!-- pi-autowork:questions:end -->\n')
-            app.action_refresh()  # publish questions and rows in the same completed capture
+            await refresh(app, pilot)  # publish questions and rows in the same completed capture
             await pilot.press('t')                      # Tasks: every open task in priority order
             await pilot.pause()
             assert isinstance(app.screen, TasksScreen), app.screen
@@ -453,6 +554,19 @@ async def main():
             await pilot.pause()
             after = lines()  # the new action is appended at the bottom; nothing above it is redrawn
             assert after[:30] == shown and 'step 30' in after[-1] and len(after) == 31, after
+            await pilot.resize_terminal(80, 18)
+            actions_log = app.screen.query_one('#worker-actions')
+            actions_log.scroll_to(y=3, animate=False, force=True)
+            await pilot.pause()
+            at = actions_log.scroll_y
+            assert at == 3 and not actions_log.is_vertical_scroll_end
+            await pilot.press('w')
+            await pilot.pause()
+            assert actions_log.scroll_y == at, 'cached wrap lost scroll position'
+            await pilot.resize_terminal(90, 18)
+            await pilot.pause()
+            assert actions_log.scroll_y == at, 'cached resize lost scroll position'
+            await pilot.resize_terminal(150, 45)
             await pilot.press('escape')
             await pilot.pause()
             # Play offers preparation, never starts on NO_STORE or an in-flight conversion.
@@ -561,6 +675,33 @@ async def main():
             assert screen.chosen.ready, screen.chosen
             await pilot.press('p')
             await pilot.pause()
+            # A discarded confirmed readiness read must release duplicate-Start
+            # protection, even if the browser closed before physical completion.
+            entered, release = threading.Event(), threading.Event()
+            original_readiness = fleet_view.readiness
+            def stale_start(path):
+                entered.set()
+                assert release.wait(10), 'Start readiness watchdog'
+                return original_readiness(path)
+            with mock.patch.object(fleet_view, 'readiness', side_effect=stale_start):
+                try:
+                    await pilot.press('y')
+                    assert await asyncio.to_thread(entered.wait, 5)
+                    await pilot.press('escape')
+                    assert len(app.screen_stack) == 1
+                finally:
+                    release.set()
+                await drain_reads(app)
+                await pilot.pause()
+            await pilot.press('n')
+            await pilot.pause()
+            screen = app.screen
+            tree_widget = screen.query_one('#tree')
+            tree_widget.select_node(next(n for n in tree_widget.root.children if n.data.path.name == 'ready'))
+            await pilot.pause()
+            await pilot.press('p')
+            await pilot.pause()
+            assert isinstance(app.screen, Confirm), 'closed readiness left Start permanently busy'
             await pilot.press('y')
             await pilot.pause()
             await app.workers.wait_for_complete()
@@ -569,7 +710,7 @@ async def main():
                           systemctl=str(systemctl), journalctl=str(journal), agent=None, runner_cmd=run,
                           browse_root=str(tree))
         async with narrow.run_test(size=(80, 30)) as pilot:   # an 80-column terminal: wrapped, not cut
-            await pilot.pause()
+            await refresh(narrow, pilot)
             words = ' '.join(str(narrow.query_one('#detail').render()).split())
             assert 'Blocker — 1: T-9 Blocker · Agent repair' in words and 'on you' not in words, words
             assert 'Waiting 2: 1 on dependencies · 1 wait for TASK-036 (overlapping files)' in words, words
