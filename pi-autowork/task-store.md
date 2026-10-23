@@ -372,6 +372,17 @@ goal, task or field, and grants nothing. `--check` writes no file, ref, index, l
 object; `--no-commit` stages a conversion without moving HEAD. It exits 1 when `ok` is false
 (a refusal or an invalid store) and, on an unchanged repository, reports the same result.
 
+Without a store or pending conversion, a repository with exactly one of TODO.md and
+goals.json is a bootstrap, not a legacy migration: prepare reports `state: none` and
+`outcome: NO_STORE` on both the plain and `--force` routes. The `legacy_content` report
+lists the lone file found in the working tree or retained at HEAD as legacy content to
+reconcile from source evidence. Prepare leaves it intact, never synthesizes the missing
+file, and lists `documents` and `accepted` headings for bootstrap rather than inventing
+goals or tasks. With neither legacy file, it follows the same bootstrap route. Explicit
+`autowork migrate` still requires both files and retains its missing-input refusals.
+The fleet browser marks a lone-file or unplanned repository `needs tasks`; a repository
+with both legacy files remains `legacy planning`, with `prepare --force` guidance.
+
 Plain prepare lists every conversion refusal, including tracked consumers alongside slots,
 leases, claims or uncommitted planning. Work-in-flight-only refusals defer the request
 (`MIGRATION_DEFERRED`, exit status 3); the runner drains it without stopping live workers.
@@ -402,6 +413,10 @@ Plain conversion still refuses order drift and retains its existing validation r
 Force still refuses actual data-loss risks: unknown destination content, preservation-path
 collisions, ambiguous coverage markers or source structure it cannot safely account for.
 A runner or schedule never automatically chooses force; ordinary deferred conversion is unchanged.
+The TUI's not-ready dialog offers **Force** with confirmation before running
+`autowork tasks prepare --force`. Its preparation pane shows every reported refusal and
+the forced step's available `stopped`, `set_aside`, `landed`, `committed` and `commit`
+fields; choosing ordinary Prepare never implies force.
 
 ## Integration and closure
 
@@ -557,7 +572,12 @@ conversion. The shared record mapper
 stays independent of preservation, so engine fixture rebuilds remain repeatable. Prepare
 rescans after conversion to include the new snapshot in its diagnostics immediately.
 Consumer checks cover resumed transactions and uncommitted repairs that would otherwise
-leave broken references in the committed conversion.
+leave broken references in the committed conversion. Prepare's lone-file case covers
+plain, forced and read-only bootstrap with the file uncommitted, committed or retained
+only at HEAD, preserving repository state and reporting `legacy_content`.
+[`tests/test_fleet_view.py`](tests/test_fleet_view.py) checks readiness for neither,
+either lone legacy file, and both files: only the pair reports legacy planning and force
+guidance. Run it with `python3 scripts/check.py pi-autowork/tests/test_fleet_view.py`.
 
 The [October 2026 object audit](../docs/plans/unreachable-objects-2026-10.md) records
 remaining object-producing paths and preservation/candidate ref reachability. It does

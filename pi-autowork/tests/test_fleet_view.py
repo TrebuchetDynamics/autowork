@@ -319,6 +319,16 @@ class FleetViewTests(unittest.TestCase):
         self.assertEqual((ready.ready, ready.problems, ready.mark), (False, ['tasks'], 'needs tasks'))
         self.assertIn(f'autowork tasks prepare {repo}', ' '.join(fleet_view.how_to_fix(ready)))
         for name in ('TODO.md', 'goals.json'):
+            with self.subTest(lone_file=name):
+                (repo / name).write_text('legacy content to reconcile\n')
+                ready = fleet_view.readiness(repo)
+                self.assertEqual((ready.ready, ready.problems, ready.mark),
+                                 (False, ['tasks'], 'needs tasks'))
+                hints = ' '.join(fleet_view.how_to_fix(ready))
+                self.assertIn(f'autowork tasks prepare {repo}', hints)
+                self.assertNotIn('--force', hints)
+                (repo / name).unlink()
+        for name in ('TODO.md', 'goals.json'):
             (repo / name).write_text('legacy planning\n')
         ready = fleet_view.readiness(repo)
         self.assertEqual((ready.ready, ready.problems, ready.mark),
