@@ -45,11 +45,17 @@ export default function register(pi) {
           ? `Planning contract. Source: ${fileURLToPath(contract)}\n`
             + `Resolve its references from that directory.\n\n${await readFile(contract, 'utf8')}\n\n`
           : '';
+        const discovery = target === 'plan-for-me' && !(args || '').trim()
+          ? 'Selected route: autonomous project discovery. No user objective was supplied. '
+            + 'Investigate the repository first; do not ask for a goal. Follow the skill\'s '
+            + 'discovery reference and save only evidence-backed work.\n\n'
+          : '';
         const message = `Use this portable Autowork workflow. Source: ${fileURLToPath(file)}\n`
           + boundary
           + `Resolve the workflow references from ${fileURLToPath(new URL('./', file))}.\n\n${body}\n\n`
           + (protocol ? `Selected subcommand: ${protocol}\n\n` : '')
           + (mode ? `Selected mode: ${mode}\n\n` : '')
+          + discovery
           + `User request (preserve scope and restrictions):\n${args}`;
         pi.sendUserMessage(message, ctx.isIdle() ? undefined : {deliverAs: 'followUp'});
       },

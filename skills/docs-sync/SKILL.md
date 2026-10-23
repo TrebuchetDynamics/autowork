@@ -72,9 +72,12 @@ candidate, not permission to scaffold, install or build it.
 Apply the [single-pass handoff](../shared/PLAN-HANDOFF.md#one-planning-pass-one-handoff).
 A planner or Autowork caller supplies its task, findings and affected owners; reuse
 that verified context and inspect the changed inputs instead of rediscovering the
-repository. Compare the latest run, reviewed candidate, integrated source and current
-record before retaining a recovery instruction; edit the record in place instead of
-appending successive status notes. Completed work must not remain an open task that
+repository. An autonomous Plan For Me handoff distinguishes accepted goals and
+planner-derived engineering goals from strategic proposals: persist the first two
+as records in their existing owners, and keep proposals as proposals or owner
+questions rather than runnable work. Compare the latest run, reviewed candidate,
+integrated source and current record before retaining a recovery instruction; edit
+the record in place instead of appending successive status notes. Completed work must not remain an open task that
 instructs a worker to reimplement it. Batch supported edits, then validate the final
 batch once. Unchanged findings require no write. Return paths, task IDs, input-bound
 checks and the next action to the caller; do not invoke another planner to restate
