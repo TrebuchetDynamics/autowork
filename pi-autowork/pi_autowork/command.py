@@ -484,22 +484,34 @@ def cmd_attention(args, paths):
     return 0
 
 
-def cmd_blockers(args, paths):
+def agent_session(args, paths, *, prompt, category):
+    """Run an owner-started agent session in the repository and record its minutes.
+
+    In the repository: started from the TUI or the home directory, Claude Code asked whether
+    to trust the whole home directory, and the session was not the repository's.
+    """
     repo, _ = resolve(args.target, paths)
     agent = fleet_view.blockers_agent()
     if not agent:
-        raise Fail('no agent for /blockers: install claude or pi, or set AUTOWORK_AGENT')
-    # In the repository: started from the TUI or the home directory, Claude Code asked whether
-    # to trust the whole home directory, and the session was not the repository's.
+        raise Fail(f'no agent for {category}: install claude or pi, or set AUTOWORK_AGENT')
     started = time.monotonic()
     try:
-        return subprocess.run([*agent, fleet_view.blockers_prompt(agent, repo)], cwd=repo).returncode
+        return subprocess.run([*agent, prompt(agent, repo)], cwd=repo).returncode
     finally:
         try:
             accounting.attention(repo, (time.monotonic() - started) / 60,
-                                 category='blockers', root=paths['state_root'])
+                                 category=category, root=paths['state_root'])
         except (OSError, ValueError) as exc:
-            print(f'autowork: could not record blocker-session time: {exc}', file=sys.stderr)
+            print(f'autowork: could not record {category}-session time: {exc}', file=sys.stderr)
+
+
+def cmd_blockers(args, paths):
+    return agent_session(args, paths, prompt=fleet_view.blockers_prompt, category='blockers')
+
+
+def cmd_plan(args, paths):
+    """`/plan_for_me` in an agent, for a repository that has no tasks yet (the TUI's Plan)."""
+    return agent_session(args, paths, prompt=fleet_view.plan_prompt, category='planning')
 
 
 def cmd_clear_held(args, paths):
@@ -586,7 +598,8 @@ def parser():
                             ('remove', 'stop and remove the service'),
                             ('start', "install (if needed) and start the repository's service"),
                             ('run', 'run the runner here in the foreground'),
-                            ('blockers', 'answer what blocks the queue')):
+                            ('blockers', 'answer what blocks the queue'),
+                            ('plan', 'plan a repository without tasks in an agent (/plan_for_me)')):
         item = sub.add_parser(name, help=help_text)
         item.add_argument('target', nargs='?', help='runner name, repository path or . (default: .)')
     attention = sub.add_parser('attention', help='record owner minutes in private runner state')
@@ -648,7 +661,7 @@ def parser():
 
 COMMANDS = {'ls': cmd_ls, 'status': cmd_status, 'logs': cmd_logs, 'start': cmd_start,
             'stop': cmd_stop, 'restart': cmd_restart, 'remove': cmd_remove,
-            'run': cmd_run, 'web': cmd_web, 'tui': cmd_tui, 'blockers': cmd_blockers,
+            'run': cmd_run, 'web': cmd_web, 'tui': cmd_tui, 'blockers': cmd_blockers, 'plan': cmd_plan,
             'pause': cmd_pause, 'resume': lambda a, p: cmd_pause(a, p, resume=True),
             'model': cmd_model, 'models': cmd_models, 'setup-portal': cmd_setup_portal, 'scorecard': cmd_scorecard,
             'clear-held': cmd_clear_held, 'update': cmd_update, 'tasks': cmd_tasks,

@@ -7,6 +7,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `autowork plan [target]` and the TUI's **Plan** (the browser's not-ready dialog, next to
+  Prepare) and **b Backlog** (a listed runner whose store needs setup): `/plan_for_me` in
+  the owner's agent (`AUTOWORK_AGENT`, else `claude`, else `pi`), asked to prepare the
+  store with `/docs_sync` and save tasks from the accepted intent without inventing any.
+  The TUI only told the owner to run `/docs_sync` by hand; `autowork tasks prepare` itself
+  never plans. Session minutes are recorded privately under `planning`, like `blockers`.
 - `scripts/affected_tests.py [--base REV] [--run]`: the offline test modules a change can
   affect, each with the chain that selected it (module-level imports followed transitively, a
   test's own lazy imports, and repository files that code names in strings or that scripts

@@ -308,10 +308,18 @@ async def main():
                 await pilot.pause()
                 assert app.screen.query_one('#prepare').label.plain == 'Prepare'
                 assert app.screen.query_one('#prepare-start').label.plain == 'Prepare and start'
+                assert app.screen.query_one('#plan').label.plain == 'Plan'
                 if name == 'legacy':
                     await pilot.press('escape')
                     await pilot.pause()
                     assert len(calls) == before, 'cancel must not prepare or start'
+                    await pilot.press('p')
+                    await pilot.pause()
+                if name == 'fresh':  # Plan needs an agent; without one it says so and runs nothing
+                    app.screen.query_one('#plan').press()
+                    await pilot.pause()
+                    assert app.screen is screen and len(calls) == before, calls
+                    assert task_files() == original_tasks
                     await pilot.press('p')
                     await pilot.pause()
                 app.screen.query_one('#' + button).press()

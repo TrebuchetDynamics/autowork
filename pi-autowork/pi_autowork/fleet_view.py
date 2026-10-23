@@ -1129,6 +1129,8 @@ def actions(runner, *, command, script, agent=None):
         out.append(Action('f', 'Fallback', [command, 'model', name, '--fallback']))
     if repo:
         out.append(Action('t', 'Tasks', [], interactive=True))  # the TUI's Tasks window
+    if repo and agent and runner.setup_required:  # no tasks yet: plan them in an agent (autowork plan)
+        out.append(Action('b', 'Backlog', [command, 'plan', repo], interactive=True))
     if repo and runner.has_service and not running:
         out.append(Action('u', 'Uninstall', [command, 'remove', name],
                           confirm=f'Remove pi-autowork@{name}? Its state and worktrees stay.'))
@@ -1390,9 +1392,11 @@ def how_to_fix(ready):
     for problem in ready.problems:
         if problem == 'tasks':
             hints.append(f'Run `autowork tasks prepare {ready.repo}` to convert legacy planning; '
-                         'with no accepted intent, plan the work with /docs_sync. No tasks are invented.')
+                         'with no accepted intent, plan the work with /docs_sync (`autowork plan`, '
+                         'or Plan here). No tasks are invented.')
         elif problem.startswith('task store preparation:'):
-            hints.append(f'Run `autowork tasks prepare {ready.repo}` and resolve its outcome through /docs_sync.')
+            hints.append(f'Run `autowork tasks prepare {ready.repo}` and resolve its outcome through '
+                         '/docs_sync (`autowork plan`, or Plan here).')
         elif problem.startswith('commit tasks/ on '):
             hints.append(problem)
         elif problem.startswith('main checked out') or problem.startswith('a branch'):
@@ -1402,15 +1406,30 @@ def how_to_fix(ready):
     return hints
 
 
-def blockers_prompt(agent, repo):
-    """The `/blockers` command in the agent's own spelling: Claude Code namespaces plugin
-    skills (`/autowork:blockers`); Pi and Codex take `/blockers`."""
+def skill_command(agent, skill):
+    """A workflow skill as the agent's own slash command: Claude Code namespaces plugin
+    skills (`/autowork:plan-for-me`); Pi and Codex register them with underscores
+    (`/plan_for_me`, adapters/pi.mjs)."""
     name = os.path.basename(agent[0]) if agent else ''
-    return f'/autowork:blockers {repo}' if name == 'claude' else f'/blockers {repo}'
+    return f'/autowork:{skill}' if name == 'claude' else '/' + skill.replace('-', '_')
+
+
+def blockers_prompt(agent, repo):
+    """The `/blockers` command in the agent's own spelling."""
+    return f'{skill_command(agent, "blockers")} {repo}'
+
+
+def plan_prompt(agent, repo):
+    """`/plan_for_me` for a repository without tasks: Docs Sync prepares the store and the
+    planner saves tasks from the accepted intent; no runner or schedule starts it."""
+    return (f'{skill_command(agent, "plan-for-me")} Plan the work of {repo}: prepare the task store '
+            f'and the missing core docs with {skill_command(agent, "docs-sync")}, then investigate the '
+            'repository, decide the next work from its accepted intent and save ready tasks. '
+            'Do not invent intent; record genuinely missing intent as open questions.')
 
 
 def blockers_agent(env=os.environ):
-    """The agent command for `/blockers`: AUTOWORK_AGENT, else claude, else pi."""
+    """The agent command for `/blockers` and `autowork plan`: AUTOWORK_AGENT, else claude, else pi."""
     configured = env.get('AUTOWORK_AGENT', '').split()
     if configured:
         return configured
