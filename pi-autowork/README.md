@@ -489,6 +489,24 @@ without `.git`. `tests/test_task_store_qualification.py` verifies exit 4 before
 migration and successful task execution after conversion. These do not qualify a
 live systemd service.
 
+Engine JSON status includes `task_source`: the resolved `workspace`,
+`repository_identity` (the resolved Git common directory, shared by linked
+worktrees), pinned committed `revision`, and `observed_at` (Unix seconds). All
+current task records in one answer come from that revision. Each task row exposes
+its current `contract_hash` separately from the attempt's `admitted_contract_hash`;
+a missing record or legacy attempt identity is `null`, never filled from the other
+hash. These diagnostic fields do not grant authority or change task/attempt schemas.
+Revision discovery ignores inherited Git routing and replacement refs.
+
+The coordinator reuses status for at most five seconds, only for the same resolved
+workspace and source revision, and drops it after its engine mutations. Health
+preserves `task_source` and uses its `observed_at` for `snapshot_at` and snapshot
+age, including cached writes and failed-read recovery; `updated_at` is only the
+health-file write time. Legacy source fields and observation times remain unknown
+when absent, rather than borrowing a new write time. Offline producer/cache/health
+fixtures cover these contracts; they do not prove a deployed runner loaded this
+source or qualify SSH responsiveness.
+
 Engine status reads wait up to two seconds for the writer lock, so brief dispatch
 or integration writes do not immediately fail a read. If a read still fails,
 health keeps its last observed state for that one failure, with the snapshot's

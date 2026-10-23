@@ -3,6 +3,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import parallel_plan
 import task_queue
@@ -68,6 +69,33 @@ class ContractViewTests(unittest.TestCase):
         self.assertIsNotNone(parallel_plan.authorization_wait(contract))
         granted = self.store(text.replace('live = "denied"', 'live = "authorized"'))
         self.assertIsNone(parallel_plan.authorization_wait(task_queue.contract(granted.tasks['T-1'], granted)))
+
+    def test_revision_discovery_ignores_git_routing_and_replace_refs_but_reports_errors(self):
+        self.assertIsNone(task_queue.commit(self.repo))  # unborn, not a read failure
+        first = self.store(record())
+        second = self.store(record().replace('scope = "migrate"', 'scope = "changed"'))
+        self.git('replace', first.rev, second.rev)
+        foreign = self.repo / 'foreign'
+        foreign.mkdir()
+        subprocess.run(['git', 'init', '-q', str(foreign)], check=True)
+        env = dict(GIT_DIR=str(foreign / '.git'), GIT_WORK_TREE=str(foreign),
+                   GIT_INDEX_FILE=str(foreign / 'hostile-index'))
+        with patch.dict('os.environ', env):
+            self.assertEqual(task_queue.commit(self.repo, first.rev), first.rev)
+            self.assertEqual(task_queue.store(self.repo, first.rev).tasks['T-1'].scope, 'migrate')
+            self.assertEqual(task_queue.commit(self.repo), second.rev)
+            self.assertIsNone(task_queue.commit(self.repo, 'missing-ref'))
+            with self.assertRaises(StoreError):
+                task_queue.commit(self.repo / 'missing-directory')
+        self.assertFalse((foreign / 'hostile-index').exists())
+        # An existing ref whose object disappeared is corruption, not an unborn branch.
+        (self.repo / '.git/objects' / second.rev[:2] / second.rev[2:]).unlink()
+        with self.assertRaises(StoreError):
+            task_queue.commit(self.repo)
+        ref = subprocess.check_output(['git', '-C', str(self.repo), 'symbolic-ref', 'HEAD'], text=True).strip()
+        (self.repo / '.git' / ref).write_text('not-an-object\n')
+        with self.assertRaises(StoreError):
+            task_queue.commit(self.repo)
 
     def test_a_duplicate_key_fails_closed(self):
         text = record().replace('live = "denied"\n', 'live = "denied"\nlive = "authorized"\n')

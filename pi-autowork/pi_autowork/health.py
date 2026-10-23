@@ -237,10 +237,12 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
         # Keep the last observation and its stall clock across one failed read.
         # Repeated failures (or no observation yet) are unavailable; even during
         # this grace read, retain the evidence age rather than freshening rows.
-        stamp = previous.get('snapshot_at', previous.get('updated_at'))
+        stamp = previous.get('snapshot_at')
         state = (previous.get('state', 'unavailable')
                  if stamp is not None and 'status_unavailable_since' not in previous else 'unavailable')
         value = dict(previous, **runner)
+        value['task_source'] = previous.get('task_source') or dict(
+            workspace=None, repository_identity=None, revision=None, observed_at=None)
         value.update(schema=SCHEMA, updated_at=now, state=state,
                      since=previous.get('since', now), snapshot_at=stamp,
                      snapshot_state=previous.get('snapshot_state', previous.get('state', 'unknown')),
@@ -289,8 +291,12 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
         else:
             line = f'Fresh dispatch resumed: {backlog.get("count", 0)} finished commits remain to merge.'
         announce = '\n'.join(filter(None, (announce, line)))
-    value = dict(schema=SCHEMA, updated_at=now, snapshot_at=now, snapshot_age_seconds=0,
-                 state=state, since=since,
+    source = {key: (snapshot.get('task_source') or {}).get(key)
+              for key in ('workspace', 'repository_identity', 'revision', 'observed_at')}
+    stamp = source['observed_at']
+    value = dict(schema=SCHEMA, updated_at=now, snapshot_at=stamp,
+                 snapshot_age_seconds=max(0, now - stamp) if stamp is not None else None,
+                 task_source=source, state=state, since=since,
                  active_workers=snapshot.get('active_workers', 0),
                  in_flight=sum(t.get('state') in IN_FLIGHT for t in snapshot.get('tasks', [])),
                  # A task a restart paused waits to resume: counted nowhere, it fell out of the fleet's Total.
@@ -379,7 +385,9 @@ def fleet(state_root, *, now=None, service=_service):
                          held=status.get('held', []), waiting_groups=status.get('waiting_groups', []),
                          blocker=error or status.get('blocker', ''), stop_reason=status.get('stop_reason', ''),
                          updated_at=status.get('updated_at'),
-                         snapshot_at=status.get('snapshot_at', status.get('updated_at')),
+                         task_source=status.get('task_source') or dict(
+                             workspace=None, repository_identity=None, revision=None, observed_at=None),
+                         snapshot_at=status.get('snapshot_at'),
                          snapshot_age_seconds=max(0, now - status['snapshot_at'])
                          if status.get('snapshot_at') is not None else None,
                          max_workers=status.get('max_workers'), maintainer=status.get('maintainer') or {},

@@ -379,6 +379,7 @@ class MainCheckTests(unittest.TestCase):
         for count, acknowledged, red, calls in [(1, 0, True, 1), (12, 12, True, 1),
                                                  (13, 12, False, 1), (12, 0, True, 2)]:
             with self.subTest(count=count, acknowledged=acknowledged), tempfile.TemporaryDirectory() as tmp:
+                subprocess.run(['git', 'init', '-q', tmp], check=True)
                 runner = Coordinator.__new__(Coordinator)
                 runner.state, runner.repo, runner.integ, runner.stop = Path(tmp), tmp, tmp, False
                 runner.in_flight = runner.session_busy = lambda: False

@@ -168,7 +168,7 @@ def temporary_objects(repo):
         yield {'GIT_OBJECT_DIRECTORY': tmp, 'GIT_ALTERNATE_OBJECT_DIRECTORIES': alternate}
 
 
-def _git(repo, *args, stdin=None, env=None) -> bytes:
+def _git(repo, *args, stdin=None, env=None, missing_ok=False) -> bytes:
     # Do not let inherited GIT_DIR/GIT_INDEX_FILE redirect the requested repo.
     clean = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
     env = {**clean, **(env or {})}
@@ -178,7 +178,9 @@ def _git(repo, *args, stdin=None, env=None) -> bytes:
                                 capture_output=True, timeout=30)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise StoreError(f'tasks/:1: Git read failed: {exc}') from exc
-    if result.returncode:
+    # Quiet revision probes use exit 1 for an absent name. A diagnostic (for
+    # example a broken ref), or any other error code, is still a read failure.
+    if result.returncode and not (missing_ok and result.returncode == 1 and not result.stderr):
         raise StoreError('tasks/:1: Git read failed: ' + result.stderr.decode('utf-8', 'replace').strip())
     return result.stdout
 

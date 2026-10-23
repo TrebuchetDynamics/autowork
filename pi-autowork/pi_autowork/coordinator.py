@@ -26,6 +26,8 @@ from . import (fleet_view, health, janitor, landing, main_check, maintainer, opt
                service, task_commands, telemetry, worker, workspaces)
 from .common import LOG, dirty, git, git_ok, lifecycle, open_for_writing, safe_name, summary_list
 from .processes import own_process, process_name
+from task_queue import commit as task_revision
+from task_store import StoreError
 
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
 
@@ -712,24 +714,34 @@ class Coordinator:
     # that scanned /proc and the event journal (1.5 to 3.6 s of CPU), about 10 times in 30 s
     # per runner. Only the runner's own engine commands start or change work; those drop it.
     STATUS_FRESH = 5.0
-    snapshot = None  # (directory, monotonic time, engine status output)
+    snapshot = None  # ((resolved workspace, source revision), monotonic time, engine output)
     maintainer_job = None  # a DOCS-MAINTAINER re-cut running beside the loop (start_maintainer)
 
     def status(self, directory=None):
-        where = str(directory or self.integ or self.repo)
+        where = str(Path(directory or self.integ or self.repo).expanduser().resolve())
+        try:
+            revision = task_revision(where)
+            key = (where, revision)
+        except StoreError:
+            key = None  # an unreadable source must never reuse a successful observation
         cached = self.snapshot
-        if cached and cached[0] == where and time.monotonic() - cached[1] < self.STATUS_FRESH:
+        if key is not None and cached and cached[0] == key and time.monotonic() - cached[1] < self.STATUS_FRESH:
             out = cached[2]
         else:
             out = subprocess.run([sys.executable, str(self.engine_path), where,
                                   '--parallel-status', '--json'], capture_output=True, text=True).stdout
-            self.snapshot = (where, time.monotonic(), out)
+            self.snapshot = None
         try:
             value = json.loads(out)
         except ValueError:
             value = None
         if not isinstance(value, dict) or value.get('outcome') != 'PARALLEL_STATUS':
             self.snapshot = None  # a failed read (the writer lock was held) is never reused
+        elif self.snapshot is None and key is not None:
+            # HEAD may have moved while the engine read: cache its actual source,
+            # never relabel its answer with the preflight revision (or a later HEAD).
+            source = value.get('task_source') or {}
+            self.snapshot = ((where, source.get('revision', revision)), time.monotonic(), out)
         return value if isinstance(value, dict) else {}
 
     def tasks(self, snapshot=None):

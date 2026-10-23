@@ -175,7 +175,7 @@ class HealthTests(unittest.TestCase):
         folder.mkdir()
         runner = dict(repo='/x/repo', pid=os.getpid(), start_time=start_time(os.getpid()))
         (folder / 'runner.json').write_text(json.dumps(runner))
-        health.update(folder, snapshot(), now=1000, runner=runner)
+        health.update(folder, dict(snapshot(), task_source={'observed_at': 1000}), now=1000, runner=runner)
         busy = {'outcome': 'ACTION_REQUIRED', 'reason': 'Repository execution lock is held by a live operation.'}
         for now in (2000, 2500):
             self.assertIsNone(health.update(folder, busy, now=now, runner=runner))
@@ -196,7 +196,8 @@ class HealthTests(unittest.TestCase):
         view, = fleet_view.collect(self.state, self.state, systemctl=str(systemctl), now=2600)
         self.assertEqual((view.state, view.minutes), ('unavailable', 26))  # TUI's persistent State column
         self.assertIn('last snapshot 1600s old', fleet_view.verdict(view)[0])
-        self.assertIsNotNone(health.update(folder, snapshot(), now=2800, runner=runner))
+        self.assertIsNotNone(health.update(folder, dict(snapshot(), task_source={'observed_at': 2800}),
+                                           now=2800, runner=runner))
         record = json.loads((folder / 'status.json').read_text())
         self.assertEqual((record['state'], record['since']), ('stalled', 1000))
         self.assertNotIn('status_error', record)
@@ -212,7 +213,7 @@ class HealthTests(unittest.TestCase):
         runner = dict(repo='/x/repo', pid=os.getpid(), start_time=start_time(os.getpid()))
         (folder / 'runner.json').write_text(json.dumps(runner))
         busy = {'outcome': 'BUSY', 'reason': 'writer lock busy'}
-        working = snapshot(workers=1)
+        working = dict(snapshot(workers=1), task_source={'observed_at': 1000})
         health.update(folder, working, now=1000, runner=runner)
         for now, reply, expected, failed_since in (
                 (1010, busy, 'working', 1010), (1020, working, 'working', None),
@@ -230,6 +231,33 @@ class HealthTests(unittest.TestCase):
                     self.assertIn('last snapshot', row['blocker'])
                 else:
                     self.assertNotIn('status_error', record)
+
+    def test_cached_and_failed_reads_keep_source_time_and_legacy_time_unknown(self):
+        source = dict(workspace='/session/repo', repository_identity='/repo/.git',
+                      revision='committed-source', observed_at=100)
+        snap = dict(snapshot(workers=1), task_source=source)
+        busy = {'outcome': 'BUSY', 'reason': 'writer lock busy'}
+        for now, reply, state in ((110, snap, 'working'), (120, snap, 'working'),
+                                  (130, busy, 'working'), (140, busy, 'unavailable'),
+                                  (150, snap, 'working')):
+            with self.subTest(now=now):
+                health.update(self.state, reply, now=now)
+                value = self.status()
+                self.assertEqual(value['task_source'], source)
+                self.assertEqual(value['snapshot_at'], 100)
+                self.assertEqual(value['snapshot_age_seconds'], now - 100)
+                self.assertEqual(value['updated_at'], now)
+                self.assertEqual(value['state'], state)
+        fresh = dict(snap, task_source=dict(source, observed_at=160))
+        health.update(self.state, fresh, now=170)
+        self.assertEqual(self.status()['snapshot_at'], 160)
+        health.update(self.state, snapshot(workers=1), now=180)
+        self.assertEqual(self.status()['task_source'], dict(workspace=None, repository_identity=None,
+                                                          revision=None, observed_at=None))
+        self.assertIsNone(self.status()['snapshot_at'])
+        health.update(self.state, busy, now=190)
+        self.assertIsNone(self.status()['snapshot_age_seconds'])
+        self.assertEqual(self.status()['state'], 'unavailable')
 
     def test_new_root_blockers_are_announced_again(self):
         health.update(self.state, snapshot(), now=0)

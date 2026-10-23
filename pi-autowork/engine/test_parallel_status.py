@@ -84,6 +84,43 @@ class StatusWaitTests(unittest.TestCase):
         self.assertEqual((root['id'], root['kind']), ('A', 'claim'))
         self.assertEqual(root['held_by'], 'an interactive session; until 2999-01-01')
 
+    def test_answer_pins_current_records_and_keeps_admitted_identity_separate(self):
+        todo = self.todo.replace('Status: open', 'Status: open\n  Held by: first session', 1)
+        todo = todo.replace('Dependencies: None.', 'Dependencies: A.', 2)
+        # B waits on A's claim, while an older B attempt retains its own identity.
+        todo = todo.replace('Dependencies: A.', 'Dependencies: None.', 1)
+        todo += ('- [ ] C — Task C\n  Scope: C.py\n  Acceptance: works\n'
+                 '  Checks: true\n  Dependencies: A.\n  Status: open\n')
+        store_fixture.write_todo(self.repo, todo)
+        pinned = status.task_queue.store(self.repo)
+        slot = dict(task_id='B', state='released', attempt=1, started_at=0,
+                    worktree='/fixture/B', worker=None)
+        (self.common / 'slots/B.json').write_text(json.dumps(slot))
+        data = self.common / 'slot-data/B/attempt-1'
+        data.mkdir(parents=True)
+        (data / 'contract.json').write_text(json.dumps({'contract_hash': 'admitted-before-edit'}))
+        original = status.state.journal.read
+
+        def advance_head(*args, **kwargs):
+            store_fixture.write_todo(self.repo, todo.replace('first session', 'second session')
+                                     .replace('Acceptance: works', 'Acceptance: changed'))
+            return original(*args, **kwargs)
+
+        with patch.object(status.state.journal, 'read', side_effect=advance_head):
+            value = status.snapshot(self.repo, now=20)
+        self.assertEqual(value.get('task_source'), dict(workspace=str(self.repo),
+            repository_identity=str(self.repo / '.git'), revision=pinned.rev, observed_at=20))
+        self.assertEqual(value['roots'][0]['held_by'], 'first session')
+        rows = {r['task']: r for r in value['tasks']}
+        self.assertEqual(rows['A']['contract_hash'], pinned.tasks['A'].contract_hash)
+        self.assertIsNone(rows['A']['admitted_contract_hash'])
+        self.assertEqual(rows['B']['contract_hash'], pinned.tasks['B'].contract_hash)
+        self.assertEqual(rows['B']['admitted_contract_hash'], 'admitted-before-edit')
+        # Legacy attempt files must not inherit the current record's hash.
+        (data / 'contract.json').unlink()
+        legacy = status.snapshot(self.repo, now=30)
+        self.assertIsNone(next(r for r in legacy['tasks'] if r['task'] == 'B')['admitted_contract_hash'])
+
     def test_deferred_dependencies_are_named_in_status_without_new_question_kinds(self):
         todo = self.todo.replace('Dependencies: None.', 'Dependencies: D.', 1)
         todo = todo.replace('Dependencies: None.', 'Dependencies: A.', 1)
@@ -114,15 +151,19 @@ class LargeQueueTests(unittest.TestCase):
             self.assertGreater(len(todo.encode()), 250_000)
             (repo / 'TODO.archive.md').write_text('## Done\n- [x] OLD — prerequisite\n')
             store_fixture.write_todo(repo, todo)
+            pinned = status.task_queue.store(repo)
             start = time.monotonic()
             with patch.object(execution, 'select', wraps=execution.select) as select:
                 value = status.snapshot(repo, now=100)
             self.assertLess(time.monotonic() - start, 1.5)
             rows = [dict(task=f'T-{i:03}', state='waiting', slot=None, elapsed_seconds=0,
                          reason='awaiting dispatch', worktree=None, checks=None, commit=None,
-                         integration=None, attempt=0, worker_live=False, blocked_by=[]) for i in range(80)]
+                         integration=None, attempt=0, worker_live=False, blocked_by=[],
+                         contract_hash=pinned.tasks[f'T-{i:03}'].contract_hash,
+                         admitted_contract_hash=None) for i in range(80)]
             self.assertEqual(value, dict(outcome='PARALLEL_STATUS', workspace=str(repo),
-                active_workers=0, max_workers=0, tasks=rows, roots=[], completed=0, failed=0,
+                task_source=dict(workspace=str(repo), repository_identity=str(repo / '.git'),
+                                 revision=pinned.rev, observed_at=100), active_workers=0, max_workers=0, tasks=rows, roots=[], completed=0, failed=0,
                 integration_queue=0, metrics=dict(wall_seconds=0.0, worker_seconds=0.0,
                 integration_seconds=0.0, waiting_seconds=0.0, peak_workers=0, conflicts=0, retries=0)))
             self.assertEqual(select.call_count, 0)  # one eligibility pass, not 80 selections
