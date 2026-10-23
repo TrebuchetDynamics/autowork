@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-369-b3e896c2"
 title = "The TUI offers Force for a legacy repository, shows the whole refusal and the forced step, and marks legacy planning honestly"
 short = "TUI: Force, full refusals, legacy mark"
-status = "open"
+status = "done"
 goal = "FORCE-CONVERSION"
 section = "Now"
 rank = 2000
@@ -16,6 +16,9 @@ scope = "In pi_autowork/tui.py the browser's PrepareRepository dialog gains a Fo
 acceptance = ["Pilot: on a legacy fixture, p opens the dialog with Prepare, Prepare and start, Plan, Force and Cancel; Force asks for confirmation; escape runs nothing; y runs [aw, tasks, prepare, --force, <repo>] once and the pane shows the forced step summary or the full refusal list (pi-autowork/tests/tui_pilot.py)", "fleet_view.readiness on a TODO.md + goals.json repository reports the problem as legacy planning and how_to_fix names prepare --force; a repository with no planning at all still reports needs tasks (pi-autowork/tests/test_fleet_view.py)", "A MIGRATION_BLOCKED report with two refusals shows both lines in the browser pane (pi-autowork/tests/tui_pilot.py)"]
 checks = ["python3 scripts/check.py pi-autowork/tests/test_fleet_view.py", "cd pi-autowork && uv run --with textual==8.2.8 python tests/tui_pilot.py"]
 exclusions = ["Force is never run without the confirmation", "No change to tasks prepare itself"]
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-369-b3e896c2.toml"
 +++
 - Sources: docs/plans/2026-10-22-force-conversion.md#decision
 - Overlap repair: CHANGELOG.md work moves to TOOLSET-372-a9fe0116, which depends on this task and TOOLSET-368/370/371. The accepted plan calls for the TUI slice in parallel with TOOLSET-368; its TUI, fleet-view, pilot, unit-test and README scope and every Acceptance item remain here. This task does not edit CHANGELOG.md.
+- Pending live: Real systemd service stop/restart and live worker termination/preservation during forced conversion are not qualified by this offline TUI task; pilot substitutes those effects and checks the confirmation, CLI argv and displayed report.
