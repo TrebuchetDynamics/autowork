@@ -313,13 +313,20 @@ Before conversion, `--dry-run` and `tasks prepare --check` scan tracked working-
 and the Git snapshot retained by the transaction (HEAD, or a pending candidate) for literal
 `TODO.md` or `goals.json` references (excluding those inputs and the frozen archive).
 Uncommitted repairs or deletions cannot hide consumers still present in that snapshot:
-commit those repairs first, or explicitly accept the retained consumers. Reports separate `consumers` (build files, CI, hooks, source, tests and other
-non-documentation files) from `documentation_drift` (Markdown, reStructuredText, AsciiDoc,
-Org and text files under `docs/`). Each hit gives `path`, 1-based `line` and `names`, not
-the source text; retained-only hits also name their `revision`. Binary files are skipped
-and symlinks are not followed; submodule contents and
-untracked files are outside this scan. Documentation mentions never refuse conversion.
-Other consumers do: fix them in their repository first, or explicitly accept the risk with
+commit those repairs first, or explicitly accept the retained consumers. The
+[inventory classifier](pi_autowork/legacy/conversion_audit.py) separates three groups:
+
+- `consumers`: build files, CI, hooks, source, tests and other files outside the two groups below.
+- `documentation_drift`: Markdown, reStructuredText, AsciiDoc, Org and text files under `docs/`.
+- `git_metadata`: root `.gitattributes`, `.gitignore` and `.git-blame-ignore-revs`, plus
+  nested `.gitattributes` and `.gitignore` files. These path declarations are not consumers;
+  mentions of the removed planning files become inert and never refuse conversion.
+
+Each hit in all three groups gives `path`, 1-based `line` and `names`, not the source
+text; retained-only hits also name their `revision`. Binary files are skipped and symlinks
+are not followed; submodule contents and untracked files are outside this scan.
+Documentation and Git-metadata mentions never refuse conversion and are never rewritten.
+Consumers still do: fix them in their repository first, or explicitly accept the risk with
 `autowork migrate --accept-consumers`. This flag changes no consumer code. Dry runs still
 report the proposed conversion and its `refusals`; prepare reports `MIGRATION_BLOCKED`.
 The owner's `autowork tasks prepare --force` also accepts these consumers, including on
@@ -354,8 +361,10 @@ store's counts, drafts and selection `order`, and `diagnostics` (`DRAFT`, `NOT_R
 heading anchor, `DUPLICATE_TASK`, `IN_FLIGHT`), each naming the `autowork tasks` command that
 repairs it. After conversion, remaining references also appear as `LEGACY_CONSUMER` and
 `LEGACY_DOCUMENTATION` diagnostics, naming the file and line to reconcile from evidence;
-prepare never rewrites those files. Consumer and documentation inventories are included
-before and after conversion. The capabilities handshake reports `prepare_api: 4` for
+prepare never rewrites those files. All three inventories (`consumers`, `documentation_drift`
+and `git_metadata`) are included before and after conversion. Git metadata remains informational:
+it produces neither conversion refusals nor `LEGACY_CONSUMER` repair diagnostics.
+The capabilities handshake reports `prepare_api: 4` for
 this conversion-safety contract. It converts a legacy repository and finishes a pending
 conversion through `autowork migrate`'s transaction; for `none` it lists tracked documents and the headings
 marked `Status: Accepted`. Everything else is judgement: it decides no intent, writes no
@@ -540,6 +549,8 @@ acceptance over a dead held slot with unchanged consumer code and path/line diag
 complete plain refusals and the stopped-runner force route, forced order drift and invalid-entry
 preservation (including ledger shape/status errors and dependency cycles) with retained
 set-aside branches/worktree files, nonblocking documentation drift,
+prepare's Git-metadata path/line/name reporting and plain conversion without rewriting metadata
+(with a tracked script in the same fixture still treated as a consumer),
 checklist/backlog byte and line preservation, destination collision
 refusal, staged recovery, task annotations/continuations and unchanged queue-only
 conversion. The shared record mapper

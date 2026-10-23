@@ -343,6 +343,34 @@ class LegacyTests(Repo):
         self.assertIn(('LEGACY_DOCUMENTATION', 'README.md'), diagnostics)
         self.assertEqual(self.prepare('--check'), after)
 
+    def test_prepare_reports_git_metadata_without_refusing_conversion_but_still_blocks_scripts(self):
+        attributes = 'TODO.md merge=union\ngoals.json -diff\n'
+        metadata = [dict(path='.gitattributes', line=1, names=['TODO.md']),
+                    dict(path='.gitattributes', line=2, names=['goals.json'])]
+        self.write('.gitattributes', attributes)
+        self.commit('tracked Git metadata')
+        checked = self.prepare('--check')
+        self.assertEqual((checked['consumers'], checked['refusals']), ([], []))
+        self.assertEqual(checked['git_metadata'], metadata)
+
+        self.write('scripts/queue.sh', '#!/bin/sh\ncat TODO.md\n')
+        self.commit('tracked script consumer alongside metadata')
+        blocked = self.prepare('--check', ok=False)
+        self.assertEqual(blocked['outcome'], 'MIGRATION_BLOCKED')
+        self.assertEqual(blocked['consumers'], [dict(path='scripts/queue.sh', line=2, names=['TODO.md'])])
+        self.assertEqual(blocked['git_metadata'], metadata)
+        self.assertTrue(any('tracked legacy consumers' in r for r in blocked['refusals']))
+
+        (self.repo / 'scripts/queue.sh').unlink()
+        self.commit('remove the script consumer')
+        converted = self.prepare()
+        self.assertEqual(converted['state'], 'converted')
+        self.assertEqual((converted['consumers'], converted['refusals']), ([], []))
+        self.assertEqual(converted['git_metadata'], metadata)
+        self.assertFalse(any(d['id'] == '.gitattributes' for d in converted['diagnostics']))
+        self.assertEqual((self.repo / '.gitattributes').read_text(), attributes)
+        self.assertEqual(self.git('show', 'HEAD:.gitattributes') + '\n', attributes)
+
     def test_prepare_preserves_content_and_reports_the_new_document(self):
         source = b'# Product checklist\n\nKeep TODO.md owner answers here.\n\n' + (self.repo / 'TODO.md').read_bytes()
         (self.repo / 'TODO.md').write_bytes(source)
