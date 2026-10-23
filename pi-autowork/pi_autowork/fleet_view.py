@@ -39,7 +39,7 @@ SETUP_LABELS = {
     'none': 'Setup required — run /docs_sync',
     'uncommitted': 'Setup required — run /docs_sync',
     'no_repository': 'Setup required — run /docs_sync',
-    'legacy': 'Migration required — run /docs_sync',
+    'legacy': 'Migration required — Force converts legacy planning',
     'invalid': 'Task store needs repair',
     'conversion_pending': 'Task store needs repair',
 }
@@ -1338,7 +1338,9 @@ class Readiness:
     def mark(self):
         if self.ready:
             return 'ready'
-        return 'not a repository' if not self.repo else 'needs ' + ', '.join(self.problems)
+        if not self.repo:
+            return 'not a repository'
+        return ('' if 'legacy planning' in self.problems else 'needs ') + ', '.join(self.problems)
 
 
 REQUIRED = ('tasks',)
@@ -1368,13 +1370,16 @@ def readiness(path):
     out.repo = top.stdout.strip()
     if Path(out.repo).resolve() != Path(path).resolve():
         out.problems.append(f'its repository root ({out.repo})')
-    out.problems += [name for name in REQUIRED if not (Path(out.repo) / name).is_dir()]
+    if task_prepare.detect(out.repo) in ('legacy', 'conversion_pending'):
+        out.problems.append('legacy planning')
+    else:
+        out.problems += [name for name in REQUIRED if not (Path(out.repo) / name).is_dir()]
     branch = subprocess.run(['git', '-C', out.repo, 'symbolic-ref', '--quiet', '--short', 'HEAD'],
                             capture_output=True, text=True, timeout=10).stdout.strip()
     out.branch = branch
     if branch not in ('main', 'master'):
         out.problems.append('main checked out' if branch else 'a branch (HEAD is detached)')
-    elif not any(name in out.problems for name in REQUIRED) and uncommitted_planning(out.repo, branch):
+    elif not any(name in out.problems for name in (*REQUIRED, 'legacy planning')) and uncommitted_planning(out.repo, branch):
         out.problems.append(f'commit tasks/ on {branch} first')
     if not out.problems:
         report = task_prepare.prepare(out.repo, mode='check')
@@ -1390,7 +1395,10 @@ def how_to_fix(ready):
     """One line per missing piece, for the TUI and `autowork start`."""
     hints = []
     for problem in ready.problems:
-        if problem == 'tasks':
+        if problem == 'legacy planning':
+            hints.append(f'Run `autowork tasks prepare --force {ready.repo}` to convert now '
+                         '(Force here asks for confirmation); plain Prepare may defer or refuse.')
+        elif problem == 'tasks':
             hints.append(f'Run `autowork tasks prepare {ready.repo}` to convert legacy planning; '
                          'with no accepted intent, plan the work with /docs_sync (`autowork plan`, '
                          'or Plan here). No tasks are invented.')

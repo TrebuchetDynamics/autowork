@@ -161,7 +161,7 @@ class FleetViewTests(unittest.TestCase):
         runner = fleet_view.Runner('repo', repo=str(self.base), state='idle')
         for state, label in (
                 ('none', 'Setup required — run /docs_sync'),
-                ('legacy', 'Migration required — run /docs_sync'),
+                ('legacy', 'Migration required — Force converts legacy planning'),
                 ('conversion_pending', 'Task store needs repair'),
                 ('invalid', 'Task store needs repair'),
                 ('uncommitted', 'Setup required — run /docs_sync'),
@@ -316,8 +316,18 @@ class FleetViewTests(unittest.TestCase):
         repo = self.base / 'repo'
         subprocess.run(['git', 'init', '-q', '-b', 'main', str(repo)], check=True)
         ready = fleet_view.readiness(repo)
-        self.assertEqual((ready.ready, ready.problems), (False, ['tasks']))
+        self.assertEqual((ready.ready, ready.problems, ready.mark), (False, ['tasks'], 'needs tasks'))
         self.assertIn(f'autowork tasks prepare {repo}', ' '.join(fleet_view.how_to_fix(ready)))
+        for name in ('TODO.md', 'goals.json'):
+            (repo / name).write_text('legacy planning\n')
+        ready = fleet_view.readiness(repo)
+        self.assertEqual((ready.ready, ready.problems, ready.mark),
+                         (False, ['legacy planning'], 'legacy planning'))
+        self.assertIn(f'autowork tasks prepare --force {repo}', ' '.join(fleet_view.how_to_fix(ready)))
+        with mock.patch.object(fleet_view.task_prepare, 'detect', return_value='conversion_pending'):
+            self.assertEqual(fleet_view.readiness(repo).problems, ['legacy planning'])
+        for name in ('TODO.md', 'goals.json'):
+            (repo / name).unlink()
         store_fixture.write_todo(repo, '- [ ] T-1 — First\n', commit=False)
         ready = fleet_view.readiness(repo)
         self.assertFalse(ready.ready)

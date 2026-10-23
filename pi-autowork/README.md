@@ -124,16 +124,26 @@ paused one, pauses a running one), `s` **S**top, `r` **R**estart, `m` **M**odel 
 `f` **F**allback (from Pi's list, type to filter), `t` **T**asks, `u` **U**ninstall the
 service, `n` **N**ew: browse directories (from `~/git`, `AUTOWORK_BROWSE_ROOT`), see which
 repositories are ready or what they need, and `p` there plays one; `q` **Q**uit.
-On an unready repository, Play offers **Prepare** or **Prepare and start**, which run
-`autowork tasks prepare` without blocking the TUI. Prepare can commit a legacy
-conversion; it displays the outcome code, refusals and next step, then refreshes
-the repository's readiness and tree label. `NO_STORE` directs you to plan accepted
-intent with `/docs_sync`; it creates no goals or tasks. Deferred, blocked, invalid
+On an unready repository, Play offers **Prepare**, **Prepare and start**, **Plan**,
+**Force** and **Cancel**. Prepare runs `autowork tasks prepare` without blocking the
+TUI and can commit a legacy conversion; it displays the outcome code, every refusal
+and the next step, then refreshes the repository's readiness and tree label.
+`NO_STORE` directs you to plan accepted intent with `/docs_sync`; it creates no goals
+or tasks. Deferred, blocked, invalid
 and toolchain outcomes are not readiness. Prepare and start asks to start only
 after successful preparation and a fresh readiness check; Prepare alone never
 starts a service. A deferred conversion stays unavailable until it completes.
-The existing headless pilot exercises this flow on disposable repositories with
-real preparation commands and faked service starts; it does not qualify a live service.
+**Force** first asks for confirmation: it stops the service and live workers, sets
+attempts aside with worktrees, branches and files kept, commits planning edits,
+converts, and restarts a previously active service. Escape cancels without running
+anything; Yes runs `autowork tasks prepare --force <repo>` through the same background
+worker. The pane shows the forced step's `stopped`, `set_aside`, `landed`, `committed`
+and `commit` fields when present, alongside every refusal and the next step. For a
+long report, Tab focuses the pane; End or Page Down scrolls to the rest.
+The directory tree marks legacy or interrupted conversions **legacy planning**, not
+**needs tasks**; a repository without planning still reads **needs tasks**.
+The headless pilot exercises preparation on disposable repositories, with faked
+service starts and forced service/worker effects; it does not qualify a live service.
 The Tasks window lists open tasks in priority order (section, then rank) with their short title, state and reason,
 followed in All by closed tasks: **Verified** with the receipt, or **Manual** with the reason
 (a missing/invalid verified receipt is explicitly warned, never relabelled Manual);
@@ -181,9 +191,9 @@ then other runners; each group is alphabetical. An idle runner with open questio
 reads `Waiting on you`, not `Idle`. The headline and Needs field follow the
 read-only `autowork tasks prepare --check` result: no store reads
 `Setup required — run /docs_sync`; a legacy TODO.md + goals.json
-queue reads `Migration required — run /docs_sync`; an invalid store or interrupted
-conversion reads `Task store needs repair`. Docs Sync prepares and reconciles the
-store; `autowork migrate` remains available as direct CLI conversion recovery.
+queue reads `Migration required — Force converts legacy planning`; an invalid store
+or interrupted conversion reads `Task store needs repair`. Docs Sync prepares and
+reconciles the store; `autowork migrate` remains available as direct CLI conversion recovery.
 
 The TUI and web view run Textual 8.2.8 (and textual-serve 1.1.3) through `uv`.
 

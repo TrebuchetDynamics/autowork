@@ -488,7 +488,7 @@ class AutoworkCommandTests(unittest.TestCase):
         self.assertIn('install.sh update -q --dry-run', self.log.read_text())
 
     def test_start_refuses_a_repository_that_is_not_ready(self):
-        bare = self.make_repo('bare', files=('TODO.md',))
+        bare = self.make_repo('bare', files=('README.md',))
         result = self.aw('start', str(bare))
         self.assertEqual(result.returncode, 1)
         self.assertIn('needs tasks', result.stderr)

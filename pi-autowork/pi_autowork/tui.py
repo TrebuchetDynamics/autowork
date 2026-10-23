@@ -686,6 +686,8 @@ class PrepareRepository(ModalScreen[str]):
                 yield Button('Prepare', variant='primary', id='prepare')
                 yield Button('Prepare and start', id='prepare-start')
                 yield Button('Plan', id='plan')
+            with Horizontal():
+                yield Button('Force', variant='warning', id='force')
                 yield Button('Cancel', id='cancel')
 
     def on_button_pressed(self, event):
@@ -732,8 +734,8 @@ class BrowseScreen(Screen):
     """Pick a repository and start its service."""
     BINDINGS = [Binding('p', 'start', 'Play'), Binding('escape,q', 'app.pop_screen', 'back')]
     CSS = '''
-    #tree { width: 1fr; }
-    #info { width: 1fr; padding: 0 1; }
+    #tree, #info-scroll { width: 1fr; }
+    #info { padding: 0 1; }
     '''
 
     def __init__(self, root, start):
@@ -748,7 +750,8 @@ class BrowseScreen(Screen):
         yield MenuBar(id='menubar')
         with Horizontal():
             yield RepoTree(self.root, id='tree')
-            yield Static('Move to a repository; ready ones have a committed tasks/ store.', id='info')
+            with VerticalScroll(id='info-scroll'):
+                yield Static('Move to a repository; ready ones have a committed tasks/ store.', id='info')
 
     def on_mount(self):
         self.title = f'start a runner: {self.root}'
@@ -775,7 +778,7 @@ class BrowseScreen(Screen):
             info.append(f'not ready: needs {", ".join(self.chosen.problems)}\n', style='bold yellow')
             for hint in fleet_view.how_to_fix(self.chosen):
                 info.append(f'  {hint}\n')
-            info.append('Press p for Prepare, Prepare and start, or Plan (an agent plans the tasks).\n')
+            info.append('Press p for Prepare, Prepare and start, Plan (an agent plans the tasks), or Force.\n')
         if self.preparing:
             info.append('\nPreparing repository…\n', style='yellow')
         if self.prepare_result and self.prepare_result[0] == str(path):
@@ -783,6 +786,12 @@ class BrowseScreen(Screen):
             info.append('\n' + report['outcome'] + '\n', style='bold')
             for refusal in report.get('refusals', []):
                 info.append(str(refusal) + '\n')
+            if report.get('forced'):
+                info.append('Forced conversion:\n', style='bold')
+                step = report['forced'].get('step', {})
+                for key in ('stopped', 'set_aside', 'landed', 'committed', 'commit'):
+                    if key in step:
+                        info.append(f'{key}: {step[key]}\n')
             info.append((report.get('next') or 'Resolve the reported problem, then run Prepare again.') + '\n')
             if report['outcome'] == 'NO_STORE':
                 info.append('Plan accepted intent with /docs_sync; no goals or tasks were created.\n')
@@ -802,7 +811,9 @@ class BrowseScreen(Screen):
         else:
             ready = self.chosen
             self.app.push_screen(PrepareRepository(ready), lambda choice: choice and (
-                self.plan(ready.path) if choice == 'plan' else self.prepare(ready.path, choice == 'prepare-start')))
+                self.plan(ready.path) if choice == 'plan' else
+                self.confirm_force(ready.path) if choice == 'force' else
+                self.prepare(ready.path, choice == 'prepare-start')))
 
     def plan(self, path):
         """`autowork plan` takes over the terminal; readiness is read again when the agent exits."""
@@ -818,18 +829,25 @@ class BrowseScreen(Screen):
             self.query_one('#tree', RepoTree).update_readiness(fleet_view.readiness(path))
             self.show_repository(path)
 
-    def prepare(self, path, start):
+    def confirm_force(self, path):
+        self.app.push_screen(Confirm(Text(
+            f'Force conversion of {path}?\n'
+            'Force stops the service and live workers, sets attempts aside with worktrees, '
+            'branches and files kept, commits planning edits, converts, and restarts the service.')),
+            lambda yes: yes and self.prepare(path, False, force=True))
+
+    def prepare(self, path, start, force=False):
         if self.app.view_only or self.preparing:
             return
         self.preparing = True
         self.prepare_result = None
         self.show_repository(path)
-        self.run_worker(lambda: self.run_prepare(path, start), thread=True, group='prepare')
+        self.run_worker(lambda: self.run_prepare(path, start, force), thread=True, group='prepare')
 
-    def run_prepare(self, path, start):
+    def run_prepare(self, path, start, force=False):
         """Run the supported CLI, not a second implementation of conversion or bootstrap."""
         try:
-            result = self.app.runner_cmd([self.app.command, 'tasks', 'prepare', path],
+            result = self.app.runner_cmd([self.app.command, 'tasks', 'prepare', *(['--force'] if force else []), path],
                                          env=dict(os.environ), capture_output=True, text=True)
             try:
                 report = json.loads(result.stdout)
