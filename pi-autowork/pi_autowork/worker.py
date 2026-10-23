@@ -21,16 +21,19 @@ import sys
 import tempfile
 import time
 
-from . import main_check, optimistic, pi_runtime, workspaces
+from . import main_check, optimistic, pi_runtime, review_policy, workspaces
 from .common import dirty, git, push_guard, safe_name
 from .processes import alive, start_time
 
 REVIEW = ('You are an independent reviewer verifying task {task} in {checkout}, which holds a worker\'s commit '
           'merged onto the session branch (see git log -1 and git diff HEAD^1 HEAD). Read the task\'s record, '
           'tasks/items/{task}.md (its acceptance and checks), run the offline checks it lists, and judge the merged change '
-          'against the acceptance criteria. Do not ask for more tests than the acceptance and Checks need; fail a '
-          'change whose new tests mostly repeat existing cases or add many near-identical tests where one table '
-          'would do. Do not edit, create or delete files, commit, push or change branches; '
+          'against the acceptance criteria. Block only concrete acceptance failures, regressions, security issues '
+          'or credible data-loss risks, with the affected behavior and evidence named. Do not ask for more '
+          'tests than the acceptance and Checks need. Style, preferred abstractions, duplicate tests and '
+          'table-driven test preferences are advisory follow-ups, not failures, unless they cause a concrete '
+          'defect or violate an explicit task requirement. Keep the review focused; reuse check evidence '
+          'instead of exploring unrelated improvements. Do not edit, create or delete files, commit, push or change branches; '
           'build output in gitignored paths is fine. Put every temporary file and copy under $TMPDIR, '
           'never directly under /tmp, which is RAM on this host; $TMPDIR is removed after the review. '
           'For a scratch copy of the checkout use git worktree add --detach "$TMPDIR/copy" HEAD, not a '
@@ -704,6 +707,18 @@ def batched_verdict(state, task, checkout):
         # can never match again; left, it held new batches back for two hours.
         record.unlink(missing_ok=True)
         return None
+    policy = value.get('review_policy')
+    # A skipped model review cannot inherit same_code's broad docs/tasks drift allowance.
+    # Nor may an old skip survive a policy/configuration change or be advertised as a review.
+    if ((os.environ.get('PI_AUTOWORK_REVIEW') == 'auto'
+         and (not isinstance(policy, dict) or type(policy.get('required')) is not bool))
+            or (isinstance(policy, dict) and policy.get('required') is False and (
+                dirty(checkout) or policy.get('tree') != git(checkout, 'rev-parse', 'HEAD^{tree}')
+                or policy.get('version') != review_policy.version()
+                or policy.get('mode') != os.environ.get('PI_AUTOWORK_REVIEW', '1')
+                or policy.get('command') != main_check.full_check(checkout)))):
+        record.unlink(missing_ok=True)
+        return None
     if value.get('ok'):
         landing_receipt(state, task, checkout, value.get('selection'))
     record.unlink(missing_ok=True)
@@ -729,6 +744,34 @@ def gate_selection(state, checkout):
     return None
 
 
+def review_gate_evidence(state, checkout):
+    """A source/log-bound receipt, not merely success from a possibly absent gate."""
+    if dirty(checkout):
+        return None
+    tree = git(checkout, 'rev-parse', 'HEAD^{tree}')
+    try:
+        record = json.loads((Path(state) / 'full-check' / f'tree-{tree}.json').read_text())
+        if (record.get('tree') == tree and record.get('ok') is True
+                and main_check.receipt_command_matches(record, main_check.full_check(checkout))
+                and producing_gate_log(state, record)):
+            return record
+    except (OSError, ValueError, AttributeError, TypeError):
+        pass
+    return None
+
+
+def review_decision(state, task, checkout, evidence=None):
+    decision = review_policy.decide(checkout, task, evidence=evidence)
+    decision.update(tree=git(checkout, 'rev-parse', 'HEAD^{tree}'),
+                    commit=git(checkout, 'rev-parse', 'HEAD'), command=main_check.full_check(checkout))
+    path = Path(state) / 'review-policy' / f'{safe_name(task)}.json'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(decision))
+    action = 'required' if decision['required'] else 'skipped'
+    print(f'pi-autowork: model review {action} for {task}: {decision["reason"]}', file=sys.stderr)
+    return decision
+
+
 def verify(state, task):
     checkout = os.getcwd()
     link_ignored(checkout)
@@ -738,7 +781,7 @@ def verify(state, task):
     if batched is not None:
         ok, reason = batched
         if ok:
-            print(f'pi-autowork: {task} passed the full check and its review in a batch', file=sys.stderr)
+            print(f'pi-autowork: {task} passed batch verification', file=sys.stderr)
             return 0
         print(f'AUTOWORK_HOLD_REASON: {reason}', flush=True)
         return 1
@@ -762,7 +805,7 @@ def verify(state, task):
         if optimistic.enabled() and not main_check.affected_checker(checkout, main_check.full_check(checkout)):
             # Optimistic landing (TOOLSET-344-7dadea23): its own checks and the review decide;
             # main's full check runs after it lands, and a regression there reverts it.
-            if os.environ.get('PI_AUTOWORK_REVIEW', '1') == '0':
+            if not review_decision(state, task, checkout)['required']:
                 return 0
             head_before = git(checkout, 'rev-parse', 'HEAD')
             return review(state, task, checkout, head_before, OPTIMISTIC_NOTE)
@@ -774,7 +817,7 @@ def verify(state, task):
                 record_findings(state, task, reason, git(checkout, 'rev-parse', 'HEAD'))
             print(f'pi-autowork: the full check rejects {task}: {reason}', file=sys.stderr)
             return 1
-        if os.environ.get('PI_AUTOWORK_REVIEW', '1') == '0':
+        if not review_decision(state, task, checkout, review_gate_evidence(state, checkout))['required']:
             landing_receipt(state, task, checkout, gate_selection(state, checkout))
             return 0
         head_before = git(checkout, 'rev-parse', 'HEAD')
@@ -856,12 +899,14 @@ def batch_review(state, task, checkout, gate):
     head = git(checkout, 'rev-parse', 'HEAD')
     # An environment fail or no verdict writes no findings: an earlier review's would be recorded.
     findings_path(state, task).unlink(missing_ok=True)
-    code = review(state, task, checkout, head, gate['note'])
+    policy = review_decision(state, task, checkout, gate.get('evidence'))
+    code = review(state, task, checkout, head, gate['note']) if policy['required'] else 0
     reason = review_findings(state, task)
     record = batch_record(state, task)
     record.parent.mkdir(parents=True, exist_ok=True)
     record.write_text(json.dumps({'tree': git(checkout, 'rev-parse', 'HEAD^{tree}'), 'commit': git(checkout, 'rev-parse', 'HEAD^2'),
                                   'ok': code == 0, 'at': time.time(), 'selection': gate.get('selection'),
+                                  'review_policy': policy,
                                   # verify prints it as the hold reason, which must never be empty
                                   'reason': (reason or f'the batch review of {task} failed without a finding '
                                              '(no verdict, an environment miss or a changed checkout)') if code else ''}))
@@ -1061,7 +1106,8 @@ def batch_gate(state, chain, base, steps, result):
                               suspects=batch_suspects(state, str(chain), base, steps))))
         return None
     return json.dumps({'note': gate_note(state, 'batch', str(chain)),
-                       'selection': gate_selection(state, str(chain))})
+                       'selection': gate_selection(state, str(chain)),
+                       'evidence': review_gate_evidence(state, str(chain))})
 
 
 def run_batch_reviews(state, session, script, root, steps, gate, result, running, order):
