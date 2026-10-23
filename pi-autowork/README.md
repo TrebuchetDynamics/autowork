@@ -349,8 +349,11 @@ tests or table-driven organization are advisory unless they demonstrate a concre
 defect or violate an explicit task requirement. Acceptance failures, regressions,
 security issues and credible data-loss risks still block.
 
-The pilot inspects the actual first-parent diff, not the task's `touches` or a
-worker's risk label. Eligible files are ordinary `.md` and `.rst` files in
+The pilot inspects the full candidate diff from the session baseline (first
+parent) of the engine's two-parent integration merge, not the task's `touches` or
+a worker's risk label. Ordinary commits and other unsupported merge shapes retain
+review: their first-parent diff cannot establish the authorized candidate range.
+Eligible files are ordinary `.md` and `.rst` files in
 `docs/`, plus root `README.md` and `CHANGELOG.md`, at most ten files and 400
 added/deleted lines. Deletions, renames, special file modes, sensitive paths/text
 (including review, security, authority, planning and contract language), and

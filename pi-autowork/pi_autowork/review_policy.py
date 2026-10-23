@@ -74,8 +74,15 @@ def required_reason(checkout, task, evidence):
     command = evidence.get('full_command') or evidence.get('command') or ''
     if not command or not main_check.receipt_command_matches(evidence, command):
         return 'gate command is not established'
+    # The engine supplies a two-parent integration merge: session baseline first,
+    # worker tip second. Only then does HEAD^1 cover the whole candidate, rather
+    # than just the last commit of an ordinary multi-commit worker branch.
+    parents = git(checkout, 'rev-list', '--parents', '-n', '1', 'HEAD').split()[1:]
+    if len(parents) != 2:
+        return 'candidate is not a two-parent integration merge; base is not established'
+    base = parents[0]
     path = f'tasks/items/{task}.md'
-    before = git(checkout, 'show', f'HEAD^1:{path}')
+    before = git(checkout, 'show', f'{base}:{path}')
     contract = git(checkout, 'show', f'HEAD:{path}')
     if before != contract:
         return 'task contract changed with the candidate'
@@ -106,7 +113,7 @@ def required_reason(checkout, task, evidence):
             if (main_check.FULL_CHECK.sub('', instructions).strip()
                     or any(c.strip() != command for c in main_check.FULL_CHECK.findall(instructions))):
                 return f'repository instructions have additional obligations: {item}'
-    raw = git(checkout, 'diff', '--raw', '-z', '--no-renames', 'HEAD^1', 'HEAD').rstrip('\0').split('\0')
+    raw = git(checkout, 'diff', '--raw', '-z', '--no-renames', base, 'HEAD').rstrip('\0').split('\0')
     if not raw or len(raw) % 2 or len(raw) > 20:
         return 'change is empty, malformed or exceeds ten files'
     for header, path in zip(raw[::2], raw[1::2]):
@@ -120,10 +127,10 @@ def required_reason(checkout, task, evidence):
         # Check old and new text: removing a requirement is not an innocuous prose edit.
         texts = [git(checkout, 'show', f'HEAD:{path}')]
         if status == 'M':
-            texts.append(git(checkout, 'show', f'HEAD^1:{path}'))
+            texts.append(git(checkout, 'show', f'{base}:{path}'))
         if any(SENSITIVE.search(text) or EXECUTABLE_MARKUP.search(text) for text in texts):
             return f'sensitive or executable documentation: {path}'
-    counts = git(checkout, 'diff', '--numstat', '--no-renames', 'HEAD^1', 'HEAD').splitlines()
+    counts = git(checkout, 'diff', '--numstat', '--no-renames', base, 'HEAD').splitlines()
     if sum(int(n) for row in counts for n in row.split('\t', 2)[:2]) > 400:
         return 'change exceeds 400 added/deleted lines'
     return ''

@@ -68,10 +68,18 @@ Accepted documentation task.
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text)
 
-    def candidate(self, path='docs/usage.md', text='New usage.\n'):
+    def merge_candidate(self, baseline):
+        candidate = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '--detach', baseline)
+        self.git('merge', '--no-ff', '--no-edit', candidate)
+
+    def candidate(self, path='docs/usage.md', text='New usage.\n', *, merge=True):
+        baseline = self.git('rev-parse', 'HEAD')
         self.put(path, text)
         self.git('add', '.')
         self.git('commit', '-qm', 'candidate')
+        if merge:
+            self.merge_candidate(baseline)
 
     def decide(self, **kwargs):
         evidence = {'ok': True, 'tree': self.git('rev-parse', 'HEAD^{tree}'),
@@ -92,6 +100,55 @@ Accepted documentation task.
                 self.assertTrue(self.decide(env={})['required'])
                 self.assertTrue(self.decide(env={'PI_AUTOWORK_REVIEW': 'invalid'})['required'])
 
+    def test_ordinary_multicommit_candidate_cannot_hide_earlier_code(self):
+        self.put('src/auth.py', 'ENABLED = True\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'existing code')
+        self.candidate('src/auth.py', 'ENABLED = False\n', merge=False)
+        self.candidate(merge=False)
+        self.assertEqual(self.git('diff', '--name-only', 'HEAD^1', 'HEAD'), 'docs/usage.md')
+        self.assertTrue(self.decide()['required'])
+
+    def test_merged_multicommit_candidate_reviews_earlier_code(self):
+        self.put('src/auth.py', 'ENABLED = True\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'existing code')
+        baseline = self.git('rev-parse', 'HEAD')
+        self.candidate('src/auth.py', 'ENABLED = False\n', merge=False)
+        self.candidate(merge=False)
+        candidate = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '--detach', baseline)
+        _, integrate, _ = worker.engine_modules()
+        integrate.merge_candidate(str(self.repo), {'baseline': baseline, 'commit': candidate}, baseline)
+        self.assertEqual(self.git('rev-list', '--parents', '-n', '1', 'HEAD').split()[1:],
+                         [baseline, candidate])
+        self.assertEqual(self.git('diff', '--name-only', 'HEAD^1', 'HEAD').splitlines(),
+                         ['docs/usage.md', 'src/auth.py'])
+        decision = self.decide()
+        self.assertTrue(decision['required'])
+        self.assertIn('src/auth.py', decision['reason'])
+
+    def test_ordinary_single_commit_keeps_review_without_a_candidate_base(self):
+        self.candidate(merge=False)
+        self.assertTrue(self.decide()['required'])
+
+    def test_octopus_merge_is_not_a_supported_candidate(self):
+        self.candidate('docs/first.md', 'First topic.\n', merge=False)
+        first = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '--detach', self.base)
+        self.candidate('docs/second.md', 'Second topic.\n', merge=False)
+        second = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '--detach', self.base)
+        self.git('merge', '--no-ff', '--no-edit', first, second)
+        self.assertEqual(len(self.git('rev-list', '--parents', '-n', '1', 'HEAD').split()), 4)
+        self.assertTrue(self.decide()['required'])
+
+    def test_merged_multicommit_prose_can_skip(self):
+        self.candidate('docs/another.md', 'Another topic.\n', merge=False)
+        self.candidate(merge=False)
+        self.merge_candidate(self.base)
+        self.assertFalse(self.decide()['required'])
+
     def test_actual_changed_paths_override_an_innocent_task_scope(self):
         for path in ('src/cache.py', 'src/auth.py', 'src/payments.py', 'migrations/001.sql',
                      '.github/workflows/test.yml', 'package.json', 'tests/conftest.py', 'tests/test_usage.py',
@@ -105,17 +162,22 @@ Accepted documentation task.
         self.candidate('tests/test_existing.py', 'assert True\n')
         self.candidate('tests/test_existing.py', '# weakened\n')
         self.assertTrue(self.decide()['required'])
+        baseline = self.git('rev-parse', 'HEAD')
         self.git('rm', 'tests/test_existing.py')
         self.git('commit', '-qm', 'delete test')
+        self.merge_candidate(baseline)
         self.assertTrue(self.decide()['required'])
+        baseline = self.git('rev-parse', 'HEAD')
         self.git('mv', 'docs/usage.md', 'docs/new.md')
         self.git('commit', '-qm', 'rename')
+        self.merge_candidate(baseline)
         self.assertTrue(self.decide()['required'])
 
     def test_symlinks_and_large_changes_are_not_plain_documentation(self):
         (self.repo / 'docs/link.md').symlink_to('../check.py')
         self.git('add', '.')
         self.git('commit', '-qm', 'symlink')
+        self.merge_candidate(self.base)
         self.assertTrue(self.decide()['required'])
         self.candidate(text='line\n' * 401)
         self.assertTrue(self.decide()['required'])
@@ -254,7 +316,7 @@ Accepted documentation task.
             self.assertTrue(json.loads(worker.batch_record(str(state), 'T-1').read_text())['ok'])
 
     def test_skipped_batch_receipts_do_not_survive_policy_or_planning_drift(self):
-        self.candidate()
+        self.candidate(merge=False)
         candidate = self.git('rev-parse', 'HEAD')
         self.git('checkout', '-qb', 'landing', self.base)
         self.git('merge', '--no-ff', '--no-edit', candidate)
