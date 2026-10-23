@@ -31,8 +31,9 @@ ACTIVATION_PENDING (the store is ready but the running runner's release cannot r
 wait for a drain. It stops this repository's service, ends live workers and any other lease
 holder, sets every attempt aside (worktrees, branches and uncommitted files kept; repeated
 holds too), releases claims, commits the owner's planning edits, converts, and starts the
-service again. It still never discards work or data: content a conversion cannot account
-for, or a queue that does not validate, refuses with MIGRATION_BLOCKED.
+service again. Force accepts tracked legacy consumers without changing their code and
+reports them as LEGACY_CONSUMER diagnostics. It still never discards work or data: content
+a conversion cannot account for, or a queue that does not validate, refuses with MIGRATION_BLOCKED.
 """
 import hashlib
 import json
@@ -284,6 +285,10 @@ def prepare(repo, mode='commit', *, force=None):
                                'refusal, then run prepare --force again')
             report.pop('deferred', None)  # forced: nothing is left waiting for a drain
     report['runner'] = runner(repo)
+    if report['state'] in ('legacy', 'conversion_pending') and report['refusals'] and not forced \
+            and not report['runner']['running']:
+        report['next'] = (report.get('next', '') + '; no runner is running to drain a deferred request; '
+                          'use `autowork tasks prepare --force` to convert now, keeping work and data').lstrip('; ')
     report['outcome'] = outcome(report)
     return report
 
@@ -306,7 +311,9 @@ def _prepare(repo, mode):
             result = task_migrate.convert(repo, commit=mode == 'commit')
         except task_migrate.Refused as exc:
             found = task_migrate.refusals(repo) if state == 'legacy' else task_migrate.busy(repo)
-            if reason := task_migrate.consumer_refusal(report):
+            if str(exc) not in found and str(exc) != '; '.join(found):
+                found.append(str(exc))
+            if (reason := task_migrate.consumer_refusal(report)) and reason not in found:
                 found.append(reason)
             if mode == 'commit' and task_migrate.deferrable(found):
                 # Work in flight: record the owner's request; the runner drains and converts.
@@ -316,8 +323,8 @@ def _prepare(repo, mode):
                                    'finish, sets the rest aside with their work kept, then converts; continue '
                                    'document work and run prepare again later')
             else:
-                report.update(ok=False, refusals=[str(exc)],
-                              next='nothing was written; resolve the refusal, then run prepare again')
+                report.update(ok=False, refusals=found,
+                              next='nothing was written; resolve the refusals, then run prepare again')
             return report
         task_migrate.clear_intent(repo)
         report['actions'].append(dict(action='convert', **result))

@@ -349,9 +349,10 @@ Tracked build, CI, hook, source and test references to TODO.md/goals.json block 
 documentation mentions are nonblocking drift. The inventory includes the retained Git
 snapshot: commit authorized consumer repairs before converting, since uncommitted repairs
 are not part of the conversion commit. Repair consumers only when that repository and code
-are in scope. Only explicit acceptance of those consumers permits
-`autowork migrate --accept-consumers <consumer>`; neither routine Maintain nor `force`
-implies that acceptance. Resuming also requires the flag while consumers remain.
+are in scope. On the plain route, only explicit acceptance of those consumers permits
+`autowork migrate --accept-consumers <consumer>`; routine Maintain does not imply that
+acceptance. Resuming that route also requires the flag while consumers remain. The owner's
+`force` request accepts the reported consumers through `prepare --force`, as described below.
 Report the named files/lines and continue independent docs work
 when acceptance or code scope is missing. Never recreate legacy inputs to silence checks.
 Extra TODO content is saved as `CHECKLIST.md`, with source bytes/line numbers retained
@@ -360,11 +361,16 @@ reconciling it into existing document owners. Keep the snapshot until its conten
 accounted for. A destination collision refuses rather than overwriting any document.
 
 **`/docs_sync force`** (the owner's word `force` in the request) means: convert now, do
-not wait. Run `autowork tasks prepare --force <consumer>` (needs `prepare_api` 3) instead
+not wait. Run `autowork tasks prepare --force <consumer>` (needs `prepare_api` 4) instead
 of plain `prepare`. It stops the repository's service, ends live workers and any other
 lease holder, sets every attempt aside with its worktree, branch and uncommitted files
 kept, releases the claims, commits the owner's TODO.md/goals.json edits, converts, and
-starts the service again. Report `forced`: what it stopped (`step.stopped`,
+starts the service again. Force also accepts tracked legacy consumers without rewriting
+or deleting their code; report the resulting `LEGACY_CONSUMER` diagnostics (path, line and
+legacy names) and reconcile them within scope from evidence. Plain prepare lists every
+refusal and, when `runner.running` is false, names `autowork tasks prepare --force` as the
+route that does not wait for a runner; that suggestion alone is not permission to force.
+Report `forced`: what it stopped (`step.stopped`,
 `step.ended`), what it set aside (`step.set_aside`, each kept as `-set-aside-N`), the
 planning it committed, and the conversion commit. Force never discards work or data:
 if it still answers `MIGRATION_BLOCKED` (content a conversion cannot account for, an

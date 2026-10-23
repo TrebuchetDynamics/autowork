@@ -321,8 +321,10 @@ untracked files are outside this scan. Documentation mentions never refuse conve
 Other consumers do: fix them in their repository first, or explicitly accept the risk with
 `autowork migrate --accept-consumers`. This flag changes no consumer code. Dry runs still
 report the proposed conversion and its `refusals`; prepare reports `MIGRATION_BLOCKED`.
-`prepare --force` does not accept consumers implicitly. A resumed conversion rechecks
-consumers too: pass `--accept-consumers` again if any remain.
+The owner's `autowork tasks prepare --force` also accepts these consumers, including on
+resume, without rewriting or deleting their code. After conversion, prepare reports them
+as `LEGACY_CONSUMER` diagnostics with path, line and legacy names. A plain resumed migration
+rechecks consumers too: pass `--accept-consumers` again if any remain.
 
 Conversion also accounts for TODO.md source lines. Known task entries map to records;
 standard queue headings and archive navigation need no replacement. Generated coverage
@@ -358,6 +360,21 @@ marked `Status: Accepted`. Everything else is judgement: it decides no intent, w
 goal, task or field, and grants nothing. `--check` writes no file, ref, index, lock or
 object; `--no-commit` stages a conversion without moving HEAD. It exits 1 when `ok` is false
 (a refusal or an invalid store) and, on an unchanged repository, reports the same result.
+
+Plain prepare lists every conversion refusal, including tracked consumers alongside slots,
+leases, claims or uncommitted planning. Work-in-flight-only refusals defer the request
+(`MIGRATION_DEFERRED`, exit status 3); the runner drains it without stopping live workers.
+When `runner.running` is false, `next` names `autowork tasks prepare --force`: no runner is
+running to drain a deferred request. This suggestion never automatically forces conversion.
+
+With the owner's explicit `force`, `autowork tasks prepare --force [repo]` converts now:
+it stops the repository's service, ends live workers and other lease holders, sets attempts
+aside with worktrees, branches and uncommitted files kept, releases claims, commits the
+owner's planning edits, accepts tracked legacy consumers, converts, and starts the service
+again. The report includes the forced step and remaining `LEGACY_CONSUMER` diagnostics;
+consumer code is untouched. Data-loss guards still refuse, including unknown destination
+content and preservation-path collisions; an invalid queue also remains blocked. A runner
+or schedule never automatically chooses force, and ordinary deferred conversion is unchanged.
 
 ## Integration and closure
 
@@ -500,8 +517,10 @@ live-service acceptance. The CLI object-isolation case checks `count-objects`, i
 bytes and refs across worktree validation, pending-edit preparation and task writes
 in a linked checkout, plus rejected validation. Migration cases check that dry-run
 proofs add no objects and an actual conversion leaves no unreachable proof commit.
-Conversion regressions also exercise consumer refusal/explicit acceptance, nonblocking
-documentation drift, checklist/backlog byte and line preservation, destination collision
+Conversion regressions also exercise consumer refusal/explicit acceptance, forced consumer
+acceptance over a dead held slot with unchanged consumer code and path/line diagnostics,
+complete plain refusals and the stopped-runner force route, nonblocking documentation drift,
+checklist/backlog byte and line preservation, destination collision
 refusal, staged recovery, task annotations/continuations and unchanged queue-only
 conversion. The shared record mapper
 stays independent of preservation, so engine fixture rebuilds remain repeatable. Prepare

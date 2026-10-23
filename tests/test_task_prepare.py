@@ -309,6 +309,8 @@ class LegacyTests(Repo):
         self.assertEqual(self.snapshot(), before)
         refused = self.prepare(ok=False)
         self.assertIn('--accept-consumers', refused['refusals'][0])
+        self.assertFalse(refused['runner']['running'])
+        self.assertIn('autowork tasks prepare --force', refused['next'])
         accepted = subprocess.run([sys.executable, str(COMMAND), 'migrate', str(self.repo), '--accept-consumers'],
                                   capture_output=True, text=True, timeout=120)
         self.assertEqual(accepted.returncode, 0, accepted.stderr)
@@ -542,6 +544,31 @@ class ForceTests(Repo):
         self.assertTrue(self.git('ls-tree', '--name-only', 'HEAD', 'tasks'))
         self.assertEqual(self.git('status', '--porcelain'), '')
         self.assertIsNone(task_migrate.intent(self.repo))
+
+    def test_force_accepts_consumers_over_a_dead_held_slot_and_reports_them(self):
+        script = '#!/bin/sh\ncat TODO.md\n'
+        self.write('scripts/queue.sh', script)
+        self.commit('tracked consumer')
+        record = self.repo / '.git/autowork-execution/slots/T-001.json'
+        record.write_text(json.dumps(dict(json.loads(record.read_text()), state='held', cause='validation')))
+        refused = self.prepare(ok=False)
+        self.assertEqual(refused['outcome'], 'MIGRATION_BLOCKED')
+        self.assertTrue(any('worker slots in flight' in r for r in refused['refusals']))
+        self.assertTrue(any('tracked legacy consumers' in r and 'scripts/queue.sh:2' in r
+                            for r in refused['refusals']))
+        self.assertIn('autowork tasks prepare --force', refused['next'])
+        head = self.git('rev-parse', 'HEAD')
+        report = self.force()
+        self.assertEqual((report['ok'], report['outcome']), (True, 'MIGRATED'), report)
+        self.assertEqual(report['forced']['step']['set_aside'], ['T-001'])
+        self.assertEqual(self.git('rev-parse', 'HEAD~1'), head)
+        diagnostic = next(d for d in report['diagnostics'] if d['code'] == 'LEGACY_CONSUMER')
+        self.assertEqual((diagnostic['id'], diagnostic['detail']),
+                         ('scripts/queue.sh', 'scripts/queue.sh:2 names TODO.md'))
+        self.assertEqual((self.repo / 'scripts/queue.sh').read_text(), script)
+        self.assertEqual(self.git('show', 'HEAD:scripts/queue.sh') + '\n', script)
+        self.assertEqual((Path(str(self.worktree) + '-set-aside-1') / 'draft.txt').read_text(), 'uncommitted work\n')
+        self.assertEqual(self.git('status', '--porcelain'), '')
 
     def test_force_ends_another_runner_holding_the_lease(self):
         import parallel_state
