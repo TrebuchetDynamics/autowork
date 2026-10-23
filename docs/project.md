@@ -2064,3 +2064,51 @@ made while cutting over, within the rules above:
   evidence note) is not checked.
 - A hold is a `Held by:` note and never an owner question; the runner's TUI answers write
   notes through `autowork tasks`.
+
+## Fleet TUI action surface
+
+Status: Accepted
+
+Owner request: remove the Fallback and “Nous Research” hotkeys from the displayed
+fleet controls. Planner interpretation: the latter is the **Nous Portal** action
+shown in the supplied menu. This is a narrow presentation/interaction change, not
+removal of fallback execution or the opt-in Portal backend. This standalone planning
+pass saves the requirement/task only; it does not change a running TUI or service.
+
+At source `911d1b2855c94eaedfa07102434d95d139f0ab13`, FleetApp.BINDINGS still
+registers `f` for the fallback picker and `o` for Portal setup. show_detail adds
+Portal to both selected-runner and empty-fleet menus; available delegates to the
+shared fleet_view.actions list containing Fallback. The existing headless pilot
+asserts those old labels and opens Portal with `o`.
+
+Chosen bounded fix: remove those two global fleet bindings and menu/help/palette
+exposure, including the no-runner state. Filter Fallback in FleetApp.available
+rather than deleting the shared fleet action/CLI capability. Keep Model, ordinary
+runner/task/navigation actions and read-only fallback model information. Child
+screens may retain their unrelated local letter keys; do not intercept typed
+characters or globally ban `f`/`o`.
+
+Preserve model fallback configuration/execution, `autowork model --fallback`,
+`setup-portal`, opt-in consent, stored provider settings and existing Portal privacy
+and confirmation coverage. Adapt the pilot's internal Portal modal test to open
+that component directly in the isolated fixture instead of restoring its removed
+fleet shortcut or deleting its assertions. No service/model/provider writes, full-
+suite policy repair, queue cleanup, branding redesign or remote-host operations
+belong to this task. The supplied runner listing is context, not evidence or
+authority to modify those projects.
+
+One implementation slice owns tui.py and tui_pilot.py. Extend the existing rendered
+pilot to cover selected running/stopped/paused runners, an empty fleet, view-only
+mode and the absence of active `f`/`o` fleet actions. At representative 80/120-column
+sizes, the remaining menu and Model/navigation behavior stay usable. Key presses
+must cause no modal, provider probe, configuration write or runner command. Keep
+native mouse/copy policy and child-screen keys intact.
+
+Planned checks: `python3 scripts/check.py pi-autowork/tests/test_fleet_view.py
+pi-autowork/tests/test_tui_mouse.py` and `python3 scripts/affected_tests.py --run`
+on the actual implementation base. The first suite owns the existing Textual
+pilot; rendered pilot coverage must actually run, not silently count a skipped or
+uncached dependency as a visual pass. These checks are unrun during planning; no
+new dependency is requested. Source/registration checks alone are not visual or
+installed-host delivery proof. Reuse existing RELIABILITY-2026-10 without changing
+priority/focus or completed Portal acceptance.
