@@ -816,7 +816,9 @@ class TaskScreen(ReadScreen, Screen):
 
 class PrepareRepository(ModalScreen[str]):
     """Preparation may commit a legacy conversion; starting is a separate choice."""
-    BINDINGS = [Binding('escape', 'cancel', 'cancel')]
+    BINDINGS = [Binding('escape', 'cancel', 'cancel'),
+                Binding('left', 'focus_previous', 'previous', show=False),
+                Binding('right', 'focus_next', 'next', show=False)]
     DEFAULT_CSS = '''
     PrepareRepository { align: center middle; }
     PrepareRepository > Vertical { width: 84; max-width: 100%; height: auto; border: thick $warning; background: $surface; padding: 1 2; }
@@ -834,6 +836,7 @@ class PrepareRepository(ModalScreen[str]):
             yield Label('Run autowork tasks prepare? A legacy conversion makes one local commit.\n'
                         'With no accepted intent, Plan opens an agent here (/plan_for_me with /docs_sync) '
                         'that prepares the store and saves tasks; Prepare invents no goals or tasks.')
+            yield Label(Text('Choose with ←/→ or Tab; Enter runs it; Esc cancels.', style='dim'))
             with Horizontal():
                 yield Button('Prepare', variant='primary', id='prepare')
                 yield Button('Prepare and start', id='prepare-start')
@@ -847,6 +850,12 @@ class PrepareRepository(ModalScreen[str]):
 
     def action_cancel(self):
         self.dismiss(None)
+
+    def action_focus_next(self):
+        self.focus_next()
+
+    def action_focus_previous(self):
+        self.focus_previous()
 
 
 class RepoTree(DirectoryTree):

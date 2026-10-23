@@ -753,6 +753,14 @@ async def main():
             assert dialog.region.x >= 0 and dialog.region.right <= 80, dialog.region
             for button in narrow.screen.query('Button'):
                 assert button.region.right <= 80, button.region
+            # A browser may reserve Tab for its own focus traversal; arrows must reach every choice.
+            assert narrow.screen.focused.id == 'prepare', narrow.screen.focused
+            await pilot.press('right')
+            await pilot.pause()
+            assert narrow.screen.focused.id == 'prepare-start', narrow.screen.focused
+            await pilot.press('left')
+            await pilot.pause()
+            assert narrow.screen.focused.id == 'prepare', narrow.screen.focused
             await pilot.press('escape')
             await pilot.pause()
             screen = narrow.screen
