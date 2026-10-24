@@ -30,7 +30,7 @@ class AffectedTestsTests(unittest.TestCase):
                 tests, _, full = affected_tests.select([change])
                 self.assertFalse(full)
                 self.assertTrue(set(failed) <= set(tests), (failed, tests))
-                self.assertLess(len(tests), 100)  # a selection, not the suite
+                self.assertLess(len(tests), len(affected_tests.check_module().discover_tests(ROOT)))  # not the suite
 
     def test_a_changed_test_module_selects_itself_and_an_extensionless_script_its_tests(self):
         self.assertIn('tests/test_tx.py', affected_tests.select(['tests/test_tx.py'])[0])

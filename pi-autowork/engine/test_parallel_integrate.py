@@ -1232,12 +1232,22 @@ finally:
         self.worker()
         module = self.module()
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        slot = state.slots(self.common)[0]
+        info, checks = module.validated_receipt(self.repo, self.common, slot)
+        args = (self.repo, 'A', slot, info, checks, self.record('A'))
+        prepared = module.close_writes(*args)
+        self.assertEqual(module.close_writes(*args), prepared)
+        leaf = module.closure_documents.close_writes(*args, ports=module._closure_ports())
+        self.assertNotIn('CHANGELOG.md', leaf)  # only the canonical facade composes this policy
+        self.assertEqual(prepared, {**leaf, 'CHANGELOG.md':
+            '# Changelog\n\n## [Unreleased]\n\n### Changed\n\n- fixture (A)\n\n'
+            '### Added\n\n- earlier\n\n## [1.0]\n\n- old\n'})
+        self.assertEqual((self.repo / 'CHANGELOG.md').read_text(), changelog)  # preparation never writes
         result = module.close(self.repo, self.owner, 'A')
         self.assertEqual(result['outcome'], 'CLOSED')
         self.assertIn('CHANGELOG.md', result['files'])
         text = (self.repo / 'CHANGELOG.md').read_text()
-        self.assertEqual(text, '# Changelog\n\n## [Unreleased]\n\n### Changed\n\n- fixture (A)\n\n'
-                               '### Added\n\n- earlier\n\n## [1.0]\n\n- old\n')
+        self.assertEqual(text, prepared['CHANGELOG.md'])
         self.git('add', *result['files'])
         self.git('commit', '-qm', 'close A')
         final = module.close(self.repo, self.owner, 'A')  # the finalizing call writes nothing twice
@@ -2322,9 +2332,10 @@ finally:
         self.assertEqual(state.slots(self.common)[0]['attempt'], 1)
 
     def test_integration_discards_only_ignored_bytecode_before_the_vendor_check(self):
-        import shutil
         source = Path(__file__).resolve().parents[2]
-        shutil.copy2(source / 'install_skills.py', self.repo / 'install_skills.py')
+        sys.path.insert(0, str(source / 'tests'))
+        from src_fixture import copy_sources
+        copy_sources(self.repo, source=source)
         skill = self.repo / 'skills/autowork'
         skill.mkdir(parents=True)
         (skill / 'SKILL.md').write_text('Fixture skill\n')

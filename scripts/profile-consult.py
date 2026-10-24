@@ -234,12 +234,12 @@ def read_database(path):
     return db
 
 
-_output_spec = importlib.util.spec_from_file_location(
-    'cron_output', Path(__file__).resolve().parents[1] / 'pi-autowork/engine/cron_output.py')
-assert _output_spec is not None and _output_spec.loader is not None
-_output = importlib.util.module_from_spec(_output_spec)
-_output_spec.loader.exec_module(_output)
-response_body = _output.response_body
+_source = Path(__file__).resolve().parents[1]
+_bootstrap_spec = importlib.util.spec_from_file_location(
+    '_autowork_consult_bootstrap', _source / 'autowork_bootstrap.py')
+_bootstrap = importlib.util.module_from_spec(_bootstrap_spec)
+_bootstrap_spec.loader.exec_module(_bootstrap)
+response_body = _bootstrap.load(_source, 'pi_autowork.engine.cron_output').response_body
 
 
 def reuse_fingerprint(name, root, hermes, seconds):
@@ -343,18 +343,26 @@ def reuse_fingerprint(name, root, hermes, seconds):
         source = Path(__file__).resolve().parents[1]
         paths = [source / 'scripts/profile-consult.py', source / 'scripts/wire-owner-cron.py',
                  source / 'skills/autowork/references/profile-feedback.md']
-        # Include helper dependencies, not just the entry points named in a prompt.
-        with os.scandir(source / 'pi-autowork/engine') as entries:
+        # Include adapters, actual owners and their selected-release loader dependencies.
+        paths += [source / name for name in ('autowork_bootstrap.py', 'Src/autowork_bootstrap.py',
+                  'Src/pi_autowork/__init__.py', 'Src/pi_autowork/layout.py',
+                  'Src/pi_autowork/engine/__init__.py')]
+        layout = _bootstrap.Layout(source)
+        with os.scandir(layout.component / 'engine') as entries:
             for index, entry in enumerate(entries):
                 if index >= 256:
                     return None
                 if entry.name.endswith('.py') and not entry.name.startswith('test_'):
-                    paths.append(Path(entry.path))
+                    path = Path(entry.path)
+                    paths.append(path)
+                    owner = layout.implementation(path.relative_to(source))
+                    if owner != path:
+                        paths.append(owner)
         for path in paths:
             inputs[str(path.relative_to(source))] = digest(bounded_read(path))
         return {'fingerprint': digest(json.dumps(inputs, sort_keys=True).encode()),
                 'observation': json.loads(redact(json.dumps({'outputs': observations})))}
-    except (OSError, ValueError, TypeError, sqlite3.Error, RuntimeError):
+    except (OSError, ImportError, ValueError, TypeError, sqlite3.Error, RuntimeError):
         return None
 
 

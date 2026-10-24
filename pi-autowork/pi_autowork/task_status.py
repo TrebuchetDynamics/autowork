@@ -1,38 +1,15 @@
-"""Pure display vocabulary shared by committed snapshots and legacy CLI lanes."""
-ACTIVE, MERGEABLE, WAITING, BLOCKER = 'Active', 'Mergeable', 'Waiting', 'Blocker'
-IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
-PHASES = {'dispatched': 'starting', 'running': 'implementing', 'reported': 'implemented',
-          'integrating': 'integrating', 'integrated': 'integrated'}
-CAUSES = {'blocker': 'blocker', 'scope': 'outside Touches', 'scope_request': 'needs files', 'overlap': 'overlap',
-          'report': 'bad report', 'conflict': 'conflict', 'validation': 'validation', 'crash': 'crashed', 'empty': 'no result',
-          'launch': 'launch failed', 'contract_changed': 'entry changed', 'moved': 'main moved'}
-WAIT_PHASES = {'implemented': 'Implemented', 'waiting to integrate': 'Merge turn', 'batch check': 'Batch check',
-               'waiting for a check slot': 'Check slot', 'paused': 'Paused', 'pending': 'Pending'}
-ACTIVE_PHASES = {'starting': 'Starting', 'running': 'Implementing', 'implementing': 'Implementing',
-                 'verifying': 'Verifying', 'integrating': 'Merging', 'landing': 'Merging'}
-WAIT_LABELS = {'Implemented': 'implemented, waiting for review', 'Merge turn': 'reviewed, waiting for their merge turn',
-               'Batch check': 'in a batch check', 'Check slot': 'waiting for a check slot',
-               'Paused': 'paused by a restart', 'Pending': 'pending'}
-WAIT_CAUSES = ('overlap',)
+"""Compatibility entry; implementation belongs to Src/pi_autowork/task_status.py."""
+import importlib.util as _util
+from pathlib import Path as _Path
+import sys as _sys
 
-
-def phase_status(phase):
-    """Only integrated (checks/review passed on the session branch) is Mergeable."""
-    if phase == 'integrated':
-        return MERGEABLE, 'Verified'
-    if phase in WAIT_PHASES:
-        return WAITING, WAIT_PHASES[phase]
-    return ACTIVE, ACTIVE_PHASES.get(phase, phase.capitalize())
-
-
-def status(lane):
-    return phase_status(lane.phase)
-
-
-def resolver(asked):
-    return 'Needs you' if asked else 'Agent repair'
-
-
-def blocker_detail(cause, asked=False):
-    text = CAUSES.get(cause, cause or 'held')
-    return f'{text[:1].upper()}{text[1:]} · {resolver(asked)}'
+_root = _Path(__file__).resolve().parents[2]
+_spec = _util.spec_from_file_location('_autowork_entry_bootstrap', _root / 'autowork_bootstrap.py')
+_bootstrap = _util.module_from_spec(_spec)
+_spec.loader.exec_module(_bootstrap)
+if __name__ == '__main__':
+    _bootstrap.load(_root, 'pi_autowork.task_status')
+    _sys.exit(0)
+else:
+    _sys.modules.pop(__name__, None)
+    _sys.modules[__name__] = _bootstrap.load(_root, 'pi_autowork.task_status')

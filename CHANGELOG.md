@@ -57,6 +57,14 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Move native updater implementations into Src/autowork_runtime while preserving public entrypoints, release-local peers, tracked-source integrity and restart/recovery behavior. (TOOLSET-378-07c50be2)
+- Fix affected landing-check completeness to verify the producing command's selected modules and shards without granting full-main green authority. (TOOLSET-384-45005b0c)
+- Extract main-check supervision into stateless Src helpers behind unchanged Coordinator methods, preserving late-bound collaborators and process/receipt behavior. (TOOLSET-369-b5db2d3a)
+- Extract read-only closure document preparation into a Src integration leaf while preserving canonical transaction authority, changelog composition and compatibility facades. (TOOLSET-370-02928e38)
+- Move runner and engine implementations into Src/pi_autowork while preserving legacy commands, canonical/flat import identity, standalone hooks and selected-release restart safety. (TOOLSET-375-8e02693d)
+- TUI: successful task deletion immediately refreshes rows, counts and detail with pending-commit provenance and stale-read-safe restore/recreation reconciliation. (TOOLSET-383-7a5b0363)
+- Move six native setup/installer implementations into Src/autowork_runtime while preserving public entrypoints and rejecting incomplete same-release source payloads before installation stages. (TOOLSET-377-689cb14e)
+- Relocate native plugin, command and policy implementations to Src/autowork_runtime while preserving public host namespaces, patches and release-local loading. (TOOLSET-376-49034161)
 - Added a release-local Src loading foundation, portable package closure and conservative source-aware affected-test selection without relocating production entrypoints. (TOOLSET-368-24bdb225)
 - Fixed planning handoffs to use valid manual closure, eight-hex new identifiers, revision-checked literal updates, and accurate selection, scheduling, checks and consumer-delivery claims. (TOOLSET-376-79c94947)
 - Correct native Plan For Me and Autoresearch queue injection to use tasks/ through Docs Sync and autowork tasks while preserving literal arguments, routing and authority limits. (TOOLSET-375-da53c314)

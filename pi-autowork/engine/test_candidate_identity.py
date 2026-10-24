@@ -1,5 +1,4 @@
 """Exact candidate identities tested against disposable real Git histories."""
-import importlib.util
 from pathlib import Path
 import subprocess
 import tempfile
@@ -25,10 +24,8 @@ class CandidateTests(unittest.TestCase):
     def load(self):
         path = Path(__file__).with_name('candidate_identity.py')
         self.assertTrue(path.exists(), 'candidate identity implementation missing')
-        spec = importlib.util.spec_from_file_location('candidate_identity', path)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module
+        import candidate_identity
+        return candidate_identity
 
     def test_identity_pins_base_tree_and_prerequisite_ref(self):
         module = self.load()

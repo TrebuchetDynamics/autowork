@@ -1,0 +1,336 @@
+"""Read-only parallel progress and journal-derived metrics.
+
+Durations are observed state durations, not provider billing or CPU time. Worker,
+integration and waiting time sum task intervals (so overlapping time is counted
+per task); wall time is elapsed coordinator-run time, excluding released gaps.
+"""
+from pathlib import Path
+import re
+import time
+
+from pi_autowork.engine import parallel_dispatch as dispatch
+from pi_autowork.engine import parallel_plan
+from pi_autowork.engine import task_select
+from pi_autowork.engine import task_queue
+from pi_autowork.engine import parallel_state as state
+from pi_autowork.engine import task_execution as execution
+from pi_autowork.engine import failure_policy
+
+WORKING = {'running'}
+INTEGRATING = {'integrating'}
+WAITING = {'dispatched', 'reported', 'integrated', 'held', 'interrupted', 'released', 'waiting'}
+STATUS_LOCK_WAIT = 2  # seconds; brief dispatch/integration writes should not fail a read
+
+
+def journal(common):
+    return state.journal.read(common, ordered=True)['events']
+
+
+def metrics(events, now):
+    """Replay intervals once; repeated same-state receipt writes do not double count."""
+    totals = dict(wall_seconds=0.0, worker_seconds=0.0, integration_seconds=0.0,
+                  waiting_seconds=0.0, peak_workers=0, conflicts=0, retries=0)
+    phases, attempts = {}, {}
+    last = events[0]['timestamp'] if events else now
+    coordinator = False
+    for event in [*events, {'timestamp': now, 'event': '_end'}]:
+        stamp = max(last, event['timestamp'])
+        delta = stamp - last
+        if coordinator:
+            totals['wall_seconds'] += delta
+        for phase in phases.values():
+            key = ('worker_seconds' if phase in WORKING else 'integration_seconds'
+                   if phase in INTEGRATING else 'waiting_seconds' if phase in WAITING else None)
+            if key:
+                totals[key] += delta
+        kind = event['event']
+        if kind == 'coordinator_claimed':
+            coordinator = True
+        elif kind == 'coordinator_released':
+            coordinator = False
+        elif kind == 'slot_changed':
+            slot = event['slot']
+            task = slot['task_id']
+            old = phases.get(task)
+            attempt = slot.get('attempt', 1)
+            if attempt > attempts.get(task, attempt):
+                totals['retries'] += attempt - attempts[task]
+            attempts[task] = attempt
+            if slot['state'] == 'held' and old != 'held' and 'conflict' in slot.get('reason', '').lower():
+                totals['conflicts'] += 1
+            phases[task] = slot['state']
+        elif kind == 'dispatch_observed':
+            # Pending tasks have no worker slot yet. Replace the previous pending
+            # snapshot, without erasing held/reported execution phases.
+            phases = {k: v for k, v in phases.items() if v != 'waiting'}
+            for item in event['waiting']:
+                phases.setdefault(item['id'], 'waiting')
+        totals['peak_workers'] = max(totals['peak_workers'], sum(p in WORKING for p in phases.values()))
+        last = stamp
+    return totals
+
+
+def snapshot(repo, *, now=None):
+    repo = Path(execution.git(Path(repo).expanduser().resolve(), 'rev-parse', '--show-toplevel')).resolve()
+    common = state.common_dir(repo)
+    # Atomic slot writes and complete journal appends are read under the same lock
+    # as writers. An untouched repository needs no new runtime directory.
+    if common.exists():
+        with execution.lock(common / 'writer.lock', wait=STATUS_LOCK_WAIT):
+            return _snapshot(repo, common, time.time() if now is None else now)
+    return _snapshot(repo, common, time.time() if now is None else now)
+
+
+def pending_tasks(repo, known=()):
+    """Visible TODO-only and indexed tasks that do not yet have execution slots."""
+    try:
+        snapshot = task_queue.store(repo)
+    except task_queue.Unconverted:
+        snapshot = None
+    return _pending_tasks(snapshot, known)[0]
+
+
+def _pending_tasks(snapshot, known=()):
+    """Pending rows plus completion/deferral evidence from one pinned store."""
+    if snapshot is None:
+        return [], set(), set()
+    done = {t.id for t in snapshot.tasks.values() if t.status == 'done'}
+    deferred = task_queue.deferred(snapshot)
+    result = []
+    open_tasks = sorted((t for t in snapshot.tasks.values() if t.status == 'open'),
+                        key=lambda t: (task_select.SECTION_RANK.get(t.section, 9), t.rank or 0, t.id))
+    for record in open_tasks:
+        task = record.id
+        if task in known or record.section not in ('Now', 'Next'):
+            continue
+        contract = task_queue.contract(record, snapshot)
+        if gate := parallel_plan.authorization_wait(contract):
+            result.append(gate)
+            continue
+        unresolved = sorted(set(record.depends_on) - done)
+        holder = task_select.held_by(record)
+        reason = ('held by ' + holder if holder else 'dependency: ' + ', '.join(unresolved)
+                  if unresolved else 'awaiting dispatch')
+        row = dict(id=task, reason=reason, blocked_by=[task] if holder else unresolved)
+        if reason == 'awaiting dispatch':
+            why = task_queue.reason(snapshot, task)
+            if why:
+                row.update(reason='not runnable: ' + why, blocked_by=[task], root_kind='contract')
+            elif record.kind.value == 'plan':
+                row['reason'] = 'ready for planning'
+        # A claim blocks as itself; a dependency by what it names; otherwise nothing.
+        result.append(row)
+    return result, done, deferred
+
+
+def failure_fields(cause, reason='', resume_used=False):
+    """Typed classification attached to status rows and roots for health, questions and the TUI."""
+    values = failure_policy.classify(failure_policy.effective_cause(cause, resume_used), reason)
+    return dict(failure_class=values['failure_class'], resolution_owner=values['resolution_owner'],
+                failure_state=values['state'], next_action=values['next_action'],
+                owner_decision_required=values['owner_decision_required'])
+
+
+def root_failure_fields(root):
+    values = failure_policy.disposition(root)
+    return dict(failure_class=values['failure_class'], resolution_owner=values['resolution_owner'],
+                failure_state=values['state'], next_action=values['next_action'],
+                owner_decision_required=values['owner_decision_required'])
+
+
+ROOT_KINDS = {'held': 'held', 'interrupted': 'restarting', 'released': 'restarting', 'dispatched': 'running',
+              'running': 'running', 'reported': 'integrating', 'integrating': 'integrating',
+              'integrated': 'integrating'}
+
+
+def _ends(tid, by_id, seen):
+    """Terminal blockers, stopping at live slots and claims rather than looking past them."""
+    row = by_id.get(tid)
+    if row is not None and (row['state'] == 'closed' or (row['state'] == 'waiting' and not row.get('blocked_by'))):
+        return set()  # finished, or ready to dispatch (or only waiting for capacity)
+    if row is None or row['state'] != 'waiting' or row.get('blocked_by') == [tid]:
+        return {tid}
+    fresh = [other for other in row.get('blocked_by', []) if other not in seen]
+    if not fresh:
+        return {tid}  # every blocker leads back here: a cycle
+    return set().union(*(_ends(other, by_id, seen | {other}) for other in fresh))
+
+
+def roots(rows):
+    """What ultimately holds waiting tasks: follow ``blocked_by`` to its end.
+
+    Kinds: ``held`` (needs a person), ``claim`` (a `Held by:` note holds it), ``contract`` (its
+    TODO entry is not runnable as written), ``outside``
+    (a dependency that is no Now/Next task: an outside condition, or a task held in
+    Needs decision), ``cycle`` (tasks waiting on each other), ``running``/``integrating``/``restarting`` (moving work). Each
+    root counts the waiting tasks it holds, most first, and names them in ``tasks``.
+    """
+    by_id = {r['task']: r for r in rows}
+
+    held_by = {}
+    for row in rows:
+        if row['state'] == 'waiting' and row.get('root_kind') == 'contract':
+            held_by.setdefault(row['task'], []).append(row['task'])  # stuck work of its own, not someone else's
+        if row['state'] == 'waiting' and row.get('blocked_by') and row['blocked_by'] != [row['task']]:
+            for root in _ends(row['task'], by_id, {row['task']}):
+                held_by.setdefault(root, []).append(row['task'])
+    result = []
+    for tid, tasks in held_by.items():
+        count = len(tasks)
+        row = by_id.get(tid)
+        kind = ('outside' if row is None else row['root_kind'] if row.get('root_kind')
+                else 'claim' if row.get('blocked_by') == [tid]
+                else 'cycle' if row['state'] == 'waiting' else ROOT_KINDS.get(row['state'], row['state']))
+        result.append(dict(id=tid, kind=kind, blocks=count, tasks=tasks, cause=(row or {}).get('cause'),
+                           reason=(row or {}).get('reason') or '', resume_used=bool((row or {}).get('resume_used'))))
+    return sorted(result, key=lambda r: (-r['blocks'], r['id']))
+
+
+def _snapshot(repo, common, now):
+    revision = task_queue.commit(repo)
+    try:
+        snapshot = task_queue.store(repo, revision) if revision is not None else None
+    except task_queue.Unconverted:
+        snapshot = None
+    task_source = dict(workspace=str(repo), repository_identity=str(Path(task_queue._git(
+        repo, 'rev-parse', '--path-format=absolute', '--git-common-dir').decode().strip()).resolve()),
+        revision=revision, observed_at=now)
+    history = state.journal.read(common, ordered=True)
+    events = history['events']
+    coordinator = state.lease(common)
+    last_coordinator = next((e['coordinator'] for e in reversed(events) if e['event'] == 'coordinator_claimed'), {})
+    capacity = (coordinator or last_coordinator).get('max_workers', 0)
+    observed = next((e for e in reversed(events) if e['event'] == 'dispatch_observed'), {})
+    capacity = observed.get('max_workers', capacity)
+    pending = {v['id']: v for v in observed.get('waiting', [])}
+    pending_rows, done, deferred = _pending_tasks(snapshot)
+    current = {v['id']: v for v in pending_rows}
+    rows, settled = [], set()
+    active = 0
+    for slot in state.slots(common):
+        task = slot['task_id']
+        if slot['state'] in ('closed', 'integrated'):
+            settled.add(task)  # includes an integrated slot displayed as closing
+        live = slot['state'] in ('running', 'dispatched') and state.worker_live(slot)
+        active += live
+        changes = [e for e in events if e['event'] == 'slot_changed' and e['task_id'] == task]
+        end = changes[-1]['timestamp'] if changes and slot['state'] == 'closed' else now
+        admitted = execution.read(dispatch.data_dir(common, slot) / 'contract.json') or {}
+        rows.append(dict(task=task, admitted_contract_hash=admitted.get('contract_hash'), state='closing' if slot.get('closing') else slot['state'], slot=dispatch.meta(common, slot).get('slot_index'),
+                         elapsed_seconds=max(0, end - (changes[0]['timestamp'] if changes else slot['started_at'])),
+                         started_at=slot['started_at'],
+                         reason=slot.get('reason'), worktree=slot['worktree'], checks=slot.get('checks'),
+                         commit=slot.get('commit'), integration=slot.get('integration'), attempt=slot['attempt'],
+                         worker_live=live, cause=slot.get('cause'), requested=slot.get('requested'),
+                         waits_for=slot.get('waits_for'), wait_since=slot.get('wait_since'),
+                         ledger_edit_dropped=slot.get('ledger_edit_dropped'),
+                         doc_impact=(slot.get('report') or {}).get('doc_impact'),
+                         paused=bool(slot.get('paused')),
+                         answered=max(int(s.get('answered') or 0) for s in [slot, *slot.get('previous_attempts', [])]),
+                         blocked_by=list(slot.get('waits_for') or []),
+                         resume_used=slot.get('report_resume_attempt') == slot['attempt'],
+                         **(failure_fields(slot.get('cause'), slot.get('reason'),
+                                           slot.get('report_resume_attempt') == slot['attempt'])
+                            if slot.get('cause') or slot['state'] == 'held' else {})))
+        if hold := state.quick_hold(common, slot):
+            rows[-1]['quick_hold'] = hold
+        if slot['state'] == 'held' and slot.get('cause') == 'conflict' and slot.get('commit'):
+            adoption = state.merge_adoption(repo, slot)
+            rows[-1]['merge_adoption'] = adoption
+            if not adoption['allowed']:
+                rows[-1]['reason'] = adoption['reason']
+            elif adoption['merged_count']:
+                rows[-1]['reason'] = (f'{slot.get("reason") or "merge conflict"}; '
+                                      f'adopted {adoption["merged_count"]} of 3; conflict in: '
+                                      + (', '.join(adoption['files']) or '(unknown files)'))
+        gate = current.get(task, {})
+        authorization = any(by.startswith('Live authorization: ') for by in gate.get('blocked_by', []))
+        if slot.get('paused') and slot['state'] in ('interrupted', 'released'):
+            waiting = gate if authorization else pending.get(task)
+            if waiting:
+                rows[-1]['reason'] = '; '.join(filter(None, (slot.get('reason'), 'waiting: ' + waiting['reason'])))
+        elif slot['state'] in ('interrupted', 'released', 'held') and authorization:
+            rows[-1].update(state='waiting', reason=gate['reason'], blocked_by=gate['blocked_by'])
+        pending.pop(task, None)
+    # Include dependencies and pre-existing sequential claims that have no slot.
+    slotted = {r['task'] for r in rows}
+    # A TODO checkmark cannot release a live/unsettled slot's file ownership.
+    # Conversely an integrated owner no longer holds files while its closure finishes.
+    done.difference_update(slotted)
+    done.update(settled)
+    for task, item in current.items():
+        if task in slotted:
+            continue
+        task = item['id']
+        observations = [e['timestamp'] for e in events if e['event'] == 'dispatch_observed'
+                        and any(v['id'] == task for v in e['waiting'])]
+        # The store at HEAD tells today's dependencies; the last dispatch observation tells the rest.
+        # A dependency reason, then or now, is always taken from the store as it is now.
+        dependency = (item['blocked_by'] and item['blocked_by'] != [task]) \
+            or pending.get(task, {}).get('reason', '').startswith('dependency:')
+        # Authorization is the record's current typed field, never a stale dispatch observation:
+        # recording it must remove the question without requiring another dispatch.
+        authorization = any(by.startswith('Live authorization: ')
+                            for by in pending.get(task, {}).get('blocked_by', []))
+        previous_blockers = pending.get(task, {}).get('blocked_by', [])
+        if not previous_blockers:
+            # Older observations may name an owner only in the reason. Require positive
+            # completion evidence, never merely an absent slot, before discarding a wait.
+            owner = re.match(r'^overlapping paths with (?:(?:held|interrupted) )?(\S+)',
+                             pending.get(task, {}).get('reason', ''))
+            previous_blockers = [owner[1]] if owner else []
+        obsolete = previous_blockers and all(by in done for by in previous_blockers)
+        source = item if dependency or authorization or obsolete or item.get('root_kind') or task not in pending else pending[task]
+        rows.append(dict(task=task, state='waiting', slot=None,
+                         elapsed_seconds=max(0, now - observations[0]) if observations else 0,
+                         reason=source['reason'], worktree=None, checks=None,
+                         commit=None, integration=None, attempt=0, worker_live=False,
+                         blocked_by=list(source.get('blocked_by', item['blocked_by'])),
+                         **({'root_kind': item['root_kind']} if item.get('root_kind') else {})))
+    for row in rows:
+        record = snapshot.tasks.get(row['task']) if snapshot is not None else None
+        row['contract_hash'] = record.contract_hash if record is not None else None
+        row.setdefault('admitted_contract_hash', None)
+    root_rows = roots(rows)
+    for root in root_rows:
+        root.update(root_failure_fields(root))
+        if root['kind'] == 'claim' and snapshot is not None and root['id'] in snapshot.tasks:
+            holder = task_select.held_by(snapshot.tasks[root['id']])
+            if holder:
+                root['held_by'] = holder  # the record's `Held by:` note: removed or expired, it runs
+        if root['kind'] == 'outside' and root['id'] in deferred:
+            root['deferred'] = True  # same root kind, already answered by the owner
+    deferred_roots = {r['id'] for r in root_rows if r.get('deferred')}
+    if deferred_roots:
+        by_id = {r['task']: r for r in rows}
+        for row in rows:
+            if row['state'] == 'waiting' and (row.get('reason') or '').startswith('dependency'):
+                waits = sorted(deferred_roots & _ends(row['task'], by_id, {row['task']}))
+                if waits:
+                    row['reason'] = 'wait for deferred ' + ', '.join(waits)
+    return dict(outcome='PARALLEL_STATUS', workspace=str(repo), task_source=task_source,
+                active_workers=active, max_workers=capacity,
+                tasks=rows, roots=root_rows, completed=sum(r['state'] == 'closed' for r in rows),
+                failed=sum(r['state'] == 'held' or (r['state'] in ('interrupted', 'released')
+                                                  and not r.get('paused')) for r in rows),
+                integration_queue=sum(r['state'] in ('reported', 'integrating') for r in rows),
+                metrics=metrics(events, now),
+                **({'journal_skipped': history['skipped']} if any(history['skipped'].values()) else {}),
+                **({'merge_backlog': observed['merge_backlog']} if 'merge_backlog' in observed else {}))
+
+
+def render(value):
+    def text(value, width):
+        # Keep untrusted task reasons on one terminal line and bound table width.
+        return ' '.join(str(value).split())[:width]
+    lines = ['AUTOWORK — PARALLEL', f"Workers: {value['active_workers']}/{value['max_workers']} active",
+             f"{'Task':<20} {'State':<12} {'Slot':>4} {'Elapsed':>9}  Blocked reason"]
+    for row in value['tasks']:
+        word = 'paused' if row.get('paused') and row['state'] in ('interrupted', 'released') else row['state']
+        lines.append(f"{text(row['task'], 20):<20} {word:<12} {str(row['slot'] or '-'):>4} "
+                     f"{row['elapsed_seconds']:>8.1f}s  {text(row['reason'] or '-', 70)}")
+    lines.append(f"Completed: {value['completed']}  Failed: {value['failed']}  Integration queue: {value['integration_queue']}")
+    m = value['metrics']
+    lines += [f"Wall: {m['wall_seconds']:.1f}s  Worker: {m['worker_seconds']:.1f}s  Integration: {m['integration_seconds']:.1f}s  Waiting/blocked: {m['waiting_seconds']:.1f}s",
+              f"Peak workers: {m['peak_workers']}  Conflicts: {m['conflicts']}  Retries: {m['retries']}"]
+    return '\n'.join(lines)

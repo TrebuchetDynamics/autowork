@@ -1,17 +1,32 @@
 # Pi Autowork component
 
 The `pi-autowork` runner. `scripts/pi-autowork.sh` is a thin entry point and the
-service command: it finds this component and runs `pi_autowork/cli.py`, which then
-continues in the toolset release it resolves. The generic task lifecycle (admission, slots,
-integration, closure) stays in the shared engine under `pi-autowork/engine`,
-which is the only authority for task state. Runtime state lives outside the
-repository, under `${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key>/`.
+service command: it finds this component and runs the stable `pi_autowork/cli.py`
+adapter, which continues in the toolset release it resolves. Runner and legacy-reader
+implementations live in `Src/pi_autowork/`; the generic task lifecycle (admission,
+slots, integration, closure) lives in `Src/pi_autowork/engine/` and remains the only
+authority for task state. The original Python paths, `bin/autowork` and shell/service
+commands remain public entry points. Flat engine imports and canonical
+`pi_autowork.engine` imports share the same module objects, including exception types.
+Standalone `worktree_paths.py` and `checkout_lock.py`, test assets and fixture helpers
+remain under `pi-autowork/engine/`. A missing selected source refuses rather than
+borrowing another checkout. Git-free archives support help/read commands, not immutable
+runner launches, which still require a committed Git toolset.
+
+The Python module paths in this table are relative to `Src/`; `bin/autowork` is
+relative to this component. Child commands and reloads use stable public adapters;
+source checks, TUI code stamps and review fingerprints inspect actual implementations.
+Runtime state lives outside the repository, under
+`${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key>/`.
 
 | Module | Role |
 | --- | --- |
-| `engine/task_store.py` | Read-only, pinned-commit TaskStore used by the engine and committed fleet inventory; [schema and API](task-store.md) |
+| `pi_autowork/engine/task_store.py` | Read-only, pinned-commit TaskStore used by the engine and committed fleet inventory; [schema and API](task-store.md) |
+| `pi_autowork/engine/parallel_integrate.py` | Integration and closure transaction authority, locks, replay and cleanup; compatibility facades compose changelog proposals after document preparation |
+| `pi_autowork/engine/integration/closure_documents.py` | Read-only task, receipt and live-followup preparation returning `{path: text}`; frozen `ClosurePorts` binds current `git`, `passed`, `task_path` and `live_items` callables per facade call |
 | `pi_autowork/cli.py` | Options, repository and toolset resolution (one release per run), `--status`, `--dry-run`, `--fleet`, `--set-aside`, the runner lock |
 | `pi_autowork/coordinator.py` | The loop: engine lease owner, session branch and final merge, settle and close, requests, priority drift, Touches proposals and widening, health, self-update and restart, graceful stop |
+| `pi_autowork/supervision/main_checks.py` | Main-check supervision behind unchanged Coordinator methods; stateless helpers use the owner's phase callbacks and current Git/planning predicates. Coordinator retains policy, state, port leases and regression mutation. Child checks use Layout's public entrypoint. |
 | `pi_autowork/worker.py` | The engine-launched `--worker` and `--verify` modes |
 | `pi_autowork/service.py` | `--install-service` / `--remove-service` for `pi-autowork@<repository>.service` |
 | `pi_autowork/common.py` | Logging, Git helpers and task lifecycle words |
@@ -63,7 +78,7 @@ times where available; missing data or unknown freshness is not health evidence.
 The committed section reads the selected repository's HEAD on each report request,
 not a last-good inventory. Selection eligibility is never runtime admission.
 Full producer reasons replace matching truncated questions; unavailable full
-reasons remain explicitly truncated. Source: `pi_autowork/blockers_report.py:build`.
+reasons remain explicitly truncated. Source: `Src/pi_autowork/blockers_report.py:build`.
 
 **c Copy** requests the plain text of the current summary/details view, without
 terminal padding. **F7** selects all; **Ctrl+C** requests copying a selection.
@@ -77,7 +92,7 @@ exact **app-host** path—not a file on the SSH client. In browser mode it reque
 a plain-text download; transfer completion is not proof the user saved/opened it.
 Export is explicit, never automatic; reports may contain sensitive operational
 context. Refresh, Details and Escape remain usable during a host save, and a
-refresh does not change the exported capture. Source: `pi_autowork/tui.py:BlockersScreen`.
+refresh does not change the exported capture. Source: `Src/pi_autowork/tui.py:BlockersScreen`.
 
 **r** explicitly refreshes; **Esc** returns. Opening, refreshing and copying run no
 agent, runner command or task mutation; only explicit Export writes a report copy.
@@ -219,10 +234,11 @@ The directory tree marks legacy or interrupted conversions **legacy planning**, 
 **needs tasks**; a repository without planning still reads **needs tasks**.
 The headless pilot exercises preparation on disposable repositories, with faked
 service starts and forced service/worker effects; it does not qualify a live service.
-The Tasks window lists open tasks in priority order (section, then rank) with their short title, state and reason,
-followed in All by closed tasks: **Verified** with the receipt, or **Manual** with the reason
-(a missing/invalid verified receipt is explicitly warned, never relabelled Manual);
-`1`–`5` (or Tab) show All, Working, Held, Waiting or Questions; on the selected task `u`/`d`
+The Tasks window lists open tasks in priority order (section, then rank) with their short title, state and reason.
+`1`–`6` (or Tab) show Open, Active, Blocker, Waiting, Questions or Closed. Closed
+history shows **Verified** with the receipt, or **Manual** with the reason
+(a missing/invalid verified receipt is explicitly warned, never relabelled Manual).
+On the selected task `u`/`d`
 move it **U**p or **D**own (its rank is the priority), `s` to another **S**ection (Now,
 Next, Needs decision), `c` **C**lears its hold, `a` sets it **A**side, `e` **Decide** records
 an owner direction without AI, `g` **Discuss** and `v` **Investigate** open the planning
@@ -270,6 +286,18 @@ revision/age with the acquisition error visible. The rendered pilot opens all th
 states in wide and narrow viewports, checks painted cells/layout bounds, and scrolls
 a long acquisition error through its final line.
 
+A confirmed TUI **Delete** (`x` or Delete) uses the repository path captured before
+confirmation, not a runner-name lookup. After command success, rows, closed history,
+counts and detail/actions update on the next UI-loop update, without waiting for a
+reader, timer or commit. Inventory diagnostics label this display-only adjustment
+**deletion pending commit**; the original committed snapshot, dependency/admission
+authority, worker activity and independent questions remain unchanged. Failures or
+cancelled confirmation do not remove rows. Old or failed reads cannot resurrect the
+record. Fresh off-loop working-tree and committed observations retire the adjustment
+when deletion is committed or the record is restored. A recreation absent from HEAD
+is disclosed as a pending record, never added to committed inventory. External CLI
+edits retain the normal observation cadence; the TUI never commits deletions.
+
 The TUI runs `collect_for_tui` off the event loop and publishes its `FleetSnapshot`
 envelope atomically, including acquisition errors. Its labelled preparation diagnostics can be
 reused for less than 30 seconds, invalidated by observed revision, dirty-file,
@@ -292,8 +320,11 @@ Read failures retain last-good data with a stale/unavailable diagnostic and allo
 Offline checks in `tests/test_tui_reads.py`, `tests/test_task_snapshot.py`,
 `tests/test_fleet_view.py` and `tests/test_health.py`, plus the headless
 `tests/tui_pilot.py`, cover these boundaries. The pilot acknowledges keys and closes
-screens while reader providers are held by Events, before releasing them. These
-checks do not qualify SSH transport latency, a live service or execution through a provider.
+screens while reader providers are held by Events, before releasing them. Its
+immediate-deletion case runs the real CLI on a private fixture with timers disabled
+and the fleet reader blocked, then checks stale-result rejection, restore and
+pending-only recreation. These checks do not qualify SSH transport latency, a live
+service or execution through a provider.
 
 The main-check line in runner status and the TUI reads the current check receipt,
 not just the runner's cached health snapshot. A missing process or a reused PID

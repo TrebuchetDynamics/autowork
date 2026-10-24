@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-369-b5db2d3a"
 title = "Main-check supervision has a Src feature owner behind unchanged Coordinator methods"
 short = "Extract Src main-check supervision"
-status = "open"
+status = "done"
 goal = "CODE-HEALTH-2026-10"
 section = "Next"
 rank = 11000
@@ -16,6 +16,8 @@ scope = "After runner relocation, extract exactly the eleven enumerated supervis
 acceptance = ["Proposed test_supervision_main_checks.py characterizes facade signatures and late-bound git/planning_path/phase override seams before and after extraction; existing wait/reap/reload/port/reuse/receipt ordering assertions stay intact.", "Existing AST phase/complexity guards follow actual Src implementations, not wrappers; local/relative reverse-import, empty-init and no-side-effect import cases remain effective.", "Existing process/lock/cleanup/result behavior and actual Src entrypaths pass focused/affected checks; no second owner, helper state or reliability-policy redesign is introduced."]
 checks = ["python3 scripts/check.py pi-autowork/tests/test_supervision_main_checks.py pi-autowork/tests/test_main_check.py tests/test_src_entrypoints.py", "python3 scripts/affected_tests.py --run"]
 exclusions = ["No behavior/schema/state/receipt/lock/authority changes, production source duplication, mixed-release fallback, extra approval system, unrelated refactor/test relocation, installs/profile edits, live services/models/jobs, publication or worker interruption. Preserve standalone hook copies."]
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-369-b5db2d3a.toml"
 +++
 - Sources: docs/plans/structural-audit-2026-10.md#main-check-supervision--existing-toolset-369-b5db2d3a
 - Skill application: User-selected SDD; skills/engineering/upstream/skills/spec-driven-development/PROTOCOL.md@1be8e34187e34647bb83adc3a1323b26ae6f6abe, verified hash c4b97ce3d7f24be0e67fd612c7595f65504872e3a9f8d338d098b2363fdb66ef. Specify ownership/interfaces and behavior-to-oracle contracts before moving code; keep native task store/authority, no upstream human phase gates. Router passed; implementation and new tests NOT_CHECKED.

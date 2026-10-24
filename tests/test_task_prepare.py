@@ -678,9 +678,11 @@ class ForceTests(Repo):
 
 class PackageImportTests(unittest.TestCase):
     def test_every_module_imports_in_isolation_and_all_import_edges_are_acyclic(self):
-        package = ROOT / 'pi-autowork/pi_autowork'
+        package = ROOT / 'Src/pi_autowork'
         modules = {}
         for path in sorted(package.rglob('*.py')):
+            if 'engine' in path.relative_to(package).parts:
+                continue  # retain the runner/legacy graph boundary; engine has its own guards
             parts = path.relative_to(package.parent).with_suffix('').parts
             name = '.'.join(parts[:-1] if parts[-1] == '__init__' else parts)
             modules[name] = path
@@ -717,8 +719,8 @@ class PackageImportTests(unittest.TestCase):
                         self.skipTest('uv is not installed (optional Textual UI)')
                     python = ['uv', 'run', '--offline', '--quiet', '--no-project', '--with',
                               'textual==8.2.8', 'python3']
-                result = subprocess.run([*python, '-c', script, str(package.parent),
-                                         str(package.parent / 'engine'), str(package / 'legacy'), name],
+                result = subprocess.run([*python, '-c', script, str(ROOT / 'pi-autowork'),
+                                         str(ROOT / 'pi-autowork/engine'), str(package / 'legacy'), name],
                                         capture_output=True, text=True, timeout=60)
                 if name == 'pi_autowork.tui' and result.returncode == 2 and \
                         'textual' in result.stderr.lower() and 'offline' in result.stderr.lower():

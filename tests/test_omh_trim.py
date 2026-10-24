@@ -14,7 +14,9 @@ class OmhTrimTests(unittest.TestCase):
     def setUp(self):
         self.keep = ['code-review', 'context']
         pkg = types.ModuleType('trim_pkg'); pkg.__path__ = [str(ROOT)]
-        bundle = types.ModuleType('trim_pkg.bundle')
+        bundle_spec = importlib.util.spec_from_file_location('trim_pkg.bundle', ROOT / 'bundle.py')
+        bundle = importlib.util.module_from_spec(bundle_spec)
+        bundle_spec.loader.exec_module(bundle)
         bundle.defaults = lambda: {'hermes': {'approvals_mode': 'off', 'destructive_slash_confirm': False,
                                               'mcp_reload_confirm': False, 'max_turns': 'unlimited',
                                               'allow_gateway_injection': True},

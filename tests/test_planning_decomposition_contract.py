@@ -41,7 +41,7 @@ class PlanningDecompositionContractTests(unittest.TestCase):
                 self.assertIn(rule, CRAFT)
 
     def test_public_seam_budget_keeps_required_checks_and_review(self):
-        worker = (ROOT / 'pi-autowork/engine/parallel_dispatch.py').read_text()
+        worker = (ROOT / 'Src/pi_autowork/engine/parallel_dispatch.py').read_text()
         budget = 'at most one focused test per behavior'
         self.assertIn(budget, worker)
         self.assertIn(budget, CRAFT)
