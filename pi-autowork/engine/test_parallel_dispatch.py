@@ -271,7 +271,7 @@ class DispatchTests(unittest.TestCase):
     def test_slot_waiting_is_not_a_stuck_command_but_running_still_is(self):
         import autowork_run
         sys.path.insert(0, str(SCRIPTS.parents[1] / 'pi-autowork'))
-        from pi_autowork import pi_runtime
+        from pi_autowork import pi_runtime, pi_run_support
         checks = self.root / 'checks'
         checks.mkdir(mode=0o700)
         records = self.root / 'worker-checks'
@@ -307,7 +307,7 @@ class DispatchTests(unittest.TestCase):
                 # Keep real ancestry, queue-interval accounting and signals, but make
                 # command age and slot timestamps independent of process startup/load.
                 # Freeze only during classification, not the fixture's readiness waits.
-                with patch.object(pi_runtime, '_age', return_value=now - 100.0), \
+                with patch.object(pi_run_support, '_age', return_value=now - 100.0), \
                         patch.object(autowork_run.time, 'monotonic', return_value=now), \
                         patch.object(autowork_run, 'records', return_value=[row]):
                     return pi_runtime.stop_stuck_commands(os.getpid(), .4, stopping, now=now)
