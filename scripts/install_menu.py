@@ -317,7 +317,9 @@ def items(hermes_args):
     return [
         pi,
         Item('autowork', 'autowork command and TUI', note='TUI and web view need uv',
-             steps=[Step(f'link {BIN}/autowork to the autowork release', run=lambda: link(command(), 'autowork'))]),
+             steps=[Step('install pinned Pi RPC Python runtime',
+                         [sys.executable, str(ROOT / 'scripts/install-pi-rpc.py')]),
+                    Step(f'link {BIN}/autowork to the autowork release', run=lambda: link(command(), 'autowork'))]),
         Item('tx', 'tx tmux session launcher', note='keeps your existing ~/.tmux.conf',
              steps=[Step(f'install {BIN}/tx and completions', run=install_tx)]),
         hermes_item(hermes_args),

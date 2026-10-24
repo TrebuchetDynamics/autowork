@@ -851,7 +851,7 @@ class TaskScreen(ReadScreen, Screen):
     def action_plan(self, mode):
         runner = self.runner()
         if (runner and not self.app.view_only and not self.app.deletion_pending(runner, self.task_id)
-                and any(row.task == self.task_id for row in fleet_view.task_rows(runner))):
+                and any(row.task == self.task_id for row in fleet_view.task_rows(runner, include_closed=True))):
             self.app.open_plan(runner.repo, task=self.task_id, mode=mode)
 
     def action_decide(self):

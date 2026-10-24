@@ -201,6 +201,36 @@ def batchable(rows, handled=()):
             if r.get('state') in ('reported', 'integrating') and r['task'] not in handled]
 
 
+def _auxiliary_ready(marker, key):
+    """Completed strings retain their old meaning; technical failures spend a finite budget."""
+    if marker == key:
+        return False
+    if isinstance(marker, dict) and marker.get('key') == key:
+        attempts, retry_at = marker.get('attempts'), marker.get('retry_at')
+        return (not marker.get('replay_blocked') and type(attempts) is int and 0 <= attempts < 3
+                and isinstance(retry_at, (int, float)) and time.time() >= retry_at)
+    return True
+
+
+def _auxiliary_reserve(path, records, task, key):
+    previous = records.get(task)
+    count = previous.get('attempts', 0) if isinstance(previous, dict) and previous.get('key') == key else 0
+    records[task] = dict(key=key, attempts=count + 1, phase='in_flight',
+                         failure='unsettled', replay_blocked=True, retry_at=0)
+    health.write_status(path, records)  # Before dispatch: coordinator loss cannot replay uncertain work.
+
+
+def _auxiliary_failed(path, records, task, key, failure, *, retryable=True):
+    previous = records.get(task)
+    previous = previous if isinstance(previous, dict) and previous.get('key') == key else {}
+    attempts = previous.get('attempts', 0) + (previous.get('phase') != 'in_flight')
+    records[task] = dict(key=key, attempts=attempts, phase='failed',
+                         retry_at=time.time() + min(600, 60 * (2 ** max(0, attempts - 1))), failure=failure,
+                         replay_blocked=not retryable)
+    health.write_status(path, records)
+    LOG.say(f'{task}: technical {failure}; recovery attempt {attempts}/3, not a completed owner verdict')
+
+
 class Coordinator:
     restart_pending = False  # a stop-workers caller holds us at a merge-safe point
 
@@ -774,6 +804,7 @@ class Coordinator:
         # `not cycling` (TOOLSET-177-d0).
         health.job_started(self.state, role, task)
         env = self.job_environment(PI_AUTOWORK_SESSION=self.integ_branch or os.environ.get('PI_AUTOWORK_SESSION', ''))
+        self.remember_job_cleanup(directory, {})
         try:
             with open(out.name, 'w') as stream:
                 self.child = subprocess.Popen([sys.executable, str(LAYOUT.entrypoint('pi_runtime')), 'job',
@@ -789,8 +820,11 @@ class Coordinator:
             self.child = None
             Path(out.name).unlink(missing_ok=True)
             health.job_finished(self.state)
+        result = result if isinstance(result, dict) else {}
+        self.remember_job_cleanup(directory, result)
         for note in result.get('notes') or []:
             LOG.say(note)
+        self.last_pi_failure = result.get('why') or ('' if result.get('ok') else 'runtime')
         return bool(result.get('ok')), result.get('text') or ''
 
     def choose_model(self):
@@ -2308,6 +2342,7 @@ class Coordinator:
         out = tempfile.NamedTemporaryFile(dir=self.state / 'runs', prefix='maintainer.', delete=False)
         out.close()
         env = self.job_environment(PI_AUTOWORK_SESSION=self.integ_branch or os.environ.get('PI_AUTOWORK_SESSION', ''))
+        self.remember_job_cleanup(job['scratch'], {})
         with open(out.name, 'w') as stream:
             job['proc'] = subprocess.Popen([sys.executable, str(LAYOUT.entrypoint('pi_runtime')), 'job',
                                             str(self.state), 'maintainer', maintainer.ROLE, str(job['scratch']),
@@ -2319,7 +2354,7 @@ class Coordinator:
         """Judge a re-cut that ended beside the loop, once the session may move: not under an
         active review, a merge resolution or uncommitted files, as maintain() requires to start."""
         job = self.maintainer_job
-        if not job or job['proc'].poll() is None:
+        if not job or job.get('cleanup_unproven') or job['proc'].poll() is None:
             return
         if self.integ and (dirty(self.integ) or self.session_busy() or self.resolvers):
             return  # its commit waits in the scratch checkout; the next pass merges it
@@ -2328,6 +2363,13 @@ class Coordinator:
             result = json.loads(Path(job['out']).read_text()) if job['proc'].returncode == 0 else {}
         except (OSError, ValueError):
             result = {}
+        result = result if isinstance(result, dict) else {}
+        self.remember_job_cleanup(job['scratch'], result)
+        if not self._scratch_cleanup[str(job['scratch'])]:
+            job['cleanup_unproven'] = True
+            self.maintainer_job = job  # Do not integrate or dispatch replacement work over uncertainty.
+            LOG.say('Maintainer cleanup is unproven; preserving its result and scratch for recovery')
+            return
         Path(job['out']).unlink(missing_ok=True)
         for note in result.get('notes') or []:
             LOG.say(note)
@@ -2345,7 +2387,17 @@ class Coordinator:
                 job['proc'].wait(timeout=10)
             except subprocess.TimeoutExpired:
                 job['proc'].kill()
-        Path(job['out']).unlink(missing_ok=True)
+                try:
+                    job['proc'].wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    pass
+        try:
+            result = json.loads(Path(job['out']).read_text()) if job['proc'].returncode == 0 else {}
+        except (OSError, ValueError):
+            result = {}
+        self.remember_job_cleanup(job['scratch'], result)
+        if self._scratch_cleanup[str(job['scratch'])]:
+            Path(job['out']).unlink(missing_ok=True)
         self.drop_scratch(job['scratch'])
 
     def maintainer_result(self, job, ok):
@@ -2442,13 +2494,13 @@ class Coordinator:
             done = json.loads(record.read_text())
         except (OSError, ValueError):
             done = {}
-        if not missing or done.get(task) == version:
+        if not missing or not _auxiliary_ready(done.get(task), version):
             return False
-        done[task] = version
-        record.write_text(json.dumps(done, indent=1))
+        _auxiliary_reserve(record, done, task, version)
         cache = worker.repository_cache(self.integ)
         scratch = self.scratch_checkout('provision') if cache else None
         if not scratch:
+            _auxiliary_failed(record, done, task, version, 'scratch_unavailable')
             return False
         LOG.say(f'{task}: its review could not run ({missing}); installing it into the toolchain cache')
         os.environ['AUTOWORK_CACHE'] = str(cache)
@@ -2458,8 +2510,15 @@ class Coordinator:
                 f'pi-autowork-provision-{safe_name(task)}-{datetime.now():%Y%m%d%H%M%S}', self.verify_timeout)
         finally:
             self.drop_scratch(scratch)
-        done = ok and 'PI_AUTOWORK_RESULT: completed' in text
-        if not done and missing.startswith('a full check that runs to its test results'):
+        completed = ok and bool(re.search(r'^PI_AUTOWORK_RESULT: completed(?:\s|$)', text, re.M))
+        if not completed:
+            failure = getattr(self, 'last_pi_failure', '') or 'incomplete_provision'
+            _auxiliary_failed(record, done, task, version, failure,
+                              retryable=ok or failure in ('toolchain', 'no_model', 'provider_failure'))
+        else:
+            done[task] = version
+            health.write_status(record, done)
+        if not completed and ok and missing.startswith('a full check that runs to its test results'):
             # Nothing to install for a crash, and the crash may have been the runner's own (its gate
             # once ran without $TMPDIR): review it again on this release instead of waiting for a person.
             if self.engine('--parallel-reverify', task, '--reviewer-version', version + '-env').get('outcome') == 'REVERIFY':
@@ -2467,8 +2526,8 @@ class Coordinator:
                 self.settled = True
                 LOG.say(f'{task}: its check crashed and nothing needed installing; verifying it again on this release')
                 return True
-        if not done:
-            LOG.say(f'{task}: could not install what its review needs ({missing}); it waits for a person')
+        if not completed:
+            LOG.say(f'{task}: provisioning is incomplete; retained as a technical recovery hold')
             return False
         note = ' '.join(text.split('PI_AUTOWORK_RESULT: completed', 1)[1].split())[:600]
         with open(cache / 'PROVISIONED.md', 'a') as record:
@@ -2494,23 +2553,29 @@ class Coordinator:
         except (OSError, ValueError):
             done = {}
         key = hashlib.sha256(reason.encode()).hexdigest()[:16]
-        if done.get(task) == key:
+        if not _auxiliary_ready(done.get(task), key):
             return False
         before = (git(root, 'rev-parse', 'HEAD'), git(root, 'status', '--porcelain', '--untracked-files=all'))
         report = Path(self.cfg['git_common']) / 'autowork-execution' / 'slot-data' / task
         report = max(report.glob('attempt-*/report.json'), default=report / 'attempt-1' / 'report.json',
                      key=lambda p: int(p.parent.name.split('-')[1]))
         LOG.say(f'{task}: triaging its blocker: can the runner answer it?')
-        _, text = self.pi_job('triage', task, root, TRIAGE_PROMPT.format(repo=self.repo, task=task, report=report,
+        _auxiliary_reserve(record, done, task, key)
+        ok, text = self.pi_job('triage', task, root, TRIAGE_PROMPT.format(repo=self.repo, task=task, report=report,
                                                                           root=root),
                               f'pi-autowork-triage-{task}-{datetime.now():%Y%m%d%H%M%S}', 900)
-        done[task] = key
-        record.write_text(json.dumps(done, indent=1))
-        verdict = triage_verdict(text)
+        verdict = triage_verdict(text) if ok else None
         if (git(root, 'rev-parse', 'HEAD'), git(root, 'status', '--porcelain', '--untracked-files=all')) != before:
-            LOG.say(f'{task}: its blocker triage changed the worktree; the blocker stays a question')
+            _auxiliary_failed(record, done, task, key, 'triage_changed_worktree', retryable=False)
             return False
-        if verdict is None or verdict[0] == 'owner':
+        if verdict is None:
+            failure = getattr(self, 'last_pi_failure', '') or 'runtime'
+            _auxiliary_failed(record, done, task, key, failure,
+                              retryable=ok or failure in ('toolchain', 'no_model', 'provider_failure'))
+            return False
+        if verdict[0] == 'owner':
+            done[task] = key
+            health.write_status(record, done)
             LOG.say(f'{task}: its blocker needs the owner' + (f': {fleet_view.short(verdict[1], 200)}' if verdict else ''))
             return False
         answer = self.state / 'runs' / f'answer-{task}.txt'
@@ -2518,8 +2583,10 @@ class Coordinator:
         result = self.engine('--parallel-answer', task, '--answer-file', str(answer))
         answer.unlink(missing_ok=True)
         if result.get('outcome') != 'ANSWERED':
-            LOG.say(f'{task}: could not answer its blocker: {result.get("reason") or result.get("outcome")}')
+            _auxiliary_failed(record, done, task, key, 'triage_answer_unapplied')
             return False
+        done[task] = key
+        health.write_status(record, done)
         LOG.say(f'{task}: the runner answered its blocker; resuming its attempt ({fleet_view.short(verdict[1], 160)})')
         return True
 
@@ -2693,11 +2760,21 @@ class Coordinator:
             self.__dict__.setdefault('_scratch_paths', set()).add(path)
         return path if ok else None
 
+    def remember_job_cleanup(self, path, result):
+        """Per-checkout disposition, never the unrelated last foreground job's result."""
+        if not hasattr(self, '_scratch_cleanup'):
+            self._scratch_cleanup = {}
+        self._scratch_cleanup[str(path)] = (isinstance(result, dict) and type(result.get('ok')) is bool
+                                            and result.get('why') != 'cleanup_unproven')
+
     def drop_scratch(self, path):
         # Only checkouts this instance created are disposable. Other worktrees
         # under the same directory can contain a person's unfinished work.
         owned = getattr(self, '_scratch_paths', set())
         if path not in owned or Path(path).is_symlink():
+            return
+        if not getattr(self, '_scratch_cleanup', {}).get(str(path), True):
+            LOG.say(f'Retaining scratch {path}: RPC process cleanup is unproven')
             return
         if git_ok(self.integ, 'worktree', 'remove', '--force', path):
             owned.remove(path)

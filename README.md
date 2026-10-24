@@ -269,7 +269,12 @@ main/master or Merge pending
   retained. Workers never push. Saved per-repository grants are reused; existing
   saved on/off settings are preserved. See the [grant and status commands](pi-autowork/README.md#the-autowork-command).
 
-From your project's main-branch checkout, after the Pi installation above:
+The runner defaults to SDK-backed **Pi RPC** (Pi 1.4.0 / Python SDK 0.2.6).
+The `autowork` installer component installs its isolated Python dependency; for a
+manual Pi-package installation, first follow [RPC setup](docs/pi-rpc.md).
+JSON is explicit temporary rollback, never an automatic replay path.
+
+From your project's main-branch checkout, after the Pi installation and RPC setup:
 
 ```sh
 # Preview only: no workers or repository changes.

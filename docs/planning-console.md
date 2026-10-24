@@ -1,17 +1,19 @@
 # Planning and decisions in the TUI and CLI
 
-Sources of truth: [CLI](../pi-autowork/pi_autowork/planning_commands.py),
-[controller](../pi-autowork/pi_autowork/planning.py),
-[RPC transport](../pi-autowork/pi_autowork/planning_rpc.py),
-[proposal validation/Apply](../pi-autowork/pi_autowork/planning_proposals.py),
-[TUI](../pi-autowork/pi_autowork/planning_ui.py) and
-[task decisions](../pi-autowork/pi_autowork/task_commands.py) (`cmd_decide`).
+Sources of truth: [CLI](../Src/pi_autowork/planning_commands.py),
+[controller](../Src/pi_autowork/planning.py),
+[RPC transport](../Src/pi_autowork/planning_rpc.py),
+[proposal validation/Apply](../Src/pi_autowork/planning_proposals.py),
+[TUI](../Src/pi_autowork/planning_ui.py) and
+[task decisions](../Src/pi_autowork/task_commands.py) (`cmd_decide`).
 Update this page when those contracts, launch flags or safety guards change.
 
 The planning console is separate from execution. It uses a Pi RPC subprocess for
 conversation, read-only investigation and proposed task/spec changes. It needs a
 configured **Pi 1.3 or newer** with the documented RPC commands/events; there is no
-Python SDK dependency. An execution service may be paused, stopped, absent or
+Python SDK dependency. The separate [worker/reviewer execution adapter](pi-rpc.md)
+uses the pinned Python SDK; this console does not replace that runtime.
+An execution service may be paused, stopped, absent or
 working on the same repository. Opening the console does not start a model;
 **Send** does. Opening a project can create private session-storage directories.
 

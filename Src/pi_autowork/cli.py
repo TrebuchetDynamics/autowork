@@ -101,6 +101,9 @@ Environment (optional):
   PI_AUTOWORK_TOOLSET       autowork checkout or Pi package path (default: auto)
   PI_AUTOWORK_ALLOW_HERMES  1 to run although a Hermes Autowork cron job targets this repository
   PI_BIN                    Pi command (default pi)
+  PI_AUTOWORK_TRANSPORT      rpc (default), or json for explicit rollback
+  PI_AUTOWORK_RPC_PYTHON     Python with pinned pi-agent-python-sdk 0.2.6
+  PI_AUTOWORK_STEERING       1 permits bounded engine-bound controls; default disabled
 
 Exit status: 0 done, 1 stopped on a failure or blocker, 2 bootstrap/usage error,
 3 another runner holds this repository, 4 needs attention (including setup errors), 130 interrupted.
@@ -390,6 +393,12 @@ def run(argv, start, identity):
         if not opts['status']:
             print('Dry run: nothing was changed.')
         return 0
+    if settings.transport == 'rpc':
+        from pi_autowork import pi_rpc
+        if problem := pi_rpc.readiness(settings):
+            setup_error(problem)
+    elif settings.transport != 'json':
+        setup_error('PI_AUTOWORK_TRANSPORT must be rpc (default) or json (explicit rollback)')
     if jobs and os.environ.get('PI_AUTOWORK_ALLOW_HERMES', '0') != '1':
         die(4, 'A Hermes Autowork cron job already works on this repository; two agents would write at once:\n'
                f'{jobs}\nPause it, or set PI_AUTOWORK_ALLOW_HERMES=1 (the engine lease then lets only one of them '
@@ -449,6 +458,7 @@ def summarize(repo, base, toolset, rev, skill_args, opts, settings, state):
     print(f'Repository: {repo} (merges into {base})')
     print(f'Toolset:    {toolset} at {rev} ({"not a Pi package" if skill_args else "Pi package"})')
     print(f'Engine:     Parallel Autowork, up to {opts["workers"]} worker(s)')
+    print(f'Transport:  {settings.transport} (configured for next invocation)')
     # Status observes runner state; it must not refresh credentials or contact a provider.
     ready = lambda model: ('not checked: read-only status' if opts.get('status') else
                            'ready' if pi_runtime.auth_ready(settings, model) else 'not ready')

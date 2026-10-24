@@ -76,8 +76,14 @@ async def main():
                         assert 'Task record (working tree;' in body
                         assert app.screen.answers() == []
                         assert 'Section' not in app.screen.query_one(tui.MenuBar).render().plain
-                        await pilot.press('s', 'o', 'r', 'w', 'd')
+                        await pilot.press('s', 'o', 'r', 'w', 'd', 'e')
                         assert isinstance(app.screen, tui.TaskScreen), 'history controls must not open mutation modals'
+                        with patch.object(app, 'open_plan') as plan:
+                            await pilot.press('g')
+                            if view_only:
+                                plan.assert_not_called()
+                            else:
+                                plan.assert_called_once_with(runner.repo, task='LEGACY', mode='discuss')
                         await pilot.press('escape', '1')
                         await pilot.pause()
                         assert app.screen is screen and [r.task for r in screen.shown] == ['T-1']
