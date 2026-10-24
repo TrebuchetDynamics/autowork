@@ -84,8 +84,33 @@ back to it when RPC planning fails.
 
 ## Record a decision without AI
 
-From an open task list/detail use **e Decide**. Enter your direction and either
-keep its section, move it to Now/Next, or defer it to Needs decision. CLI equivalent:
+From the fleet screen, select a runner and press **e Answer** (also shown in the
+menu when an editable task question exists). One question opens directly; several
+open a picker navigated with **↑/↓**, **Enter**, and **Esc**. Questions about missing
+or closed records remain read-only in **b Blockers**, not new editable tasks.
+
+From an open task list/detail, **e Decide** opens the same editor. It shows the
+question, the runner's suggested answer, dependent task IDs from the committed
+snapshot, and the current working record's scope, section, ownership and live
+permission. A suggestion is context only: it is never filled in as your answer.
+The context pane scrolls independently and identifies its snapshot/working-record
+sources.
+
+Type an answer, choose **Save answer — keep section**, **Move to Next**, **Defer —
+Needs decision**, or **Move to Now**, then press **Ctrl+Enter** or **Save answer**.
+**Esc** cancels before saving. During a save the editor is locked against duplicate
+submissions or new edits; wait for its result rather than treating it as cancelled.
+The record loads off the UI thread and Save stays disabled until a current open
+record is available. A concurrent task edit causes a revision-guarded refusal and
+keeps your answer draft; copy it and reopen to review the latest record before retrying.
+
+Success explicitly reports **Saved locally — pending commit**. The action does not
+commit, restart the runner or grant authorization; committed inventory updates only
+after a later commit (including any separately authorized coordinator sweep).
+For an owner-owned task, or one requiring the `live` resource without authorization,
+an answer or section change alone cannot make it executable. Moving an ordinary
+worker-owned, non-live task to Next/Now can make it eligible after commit, subject
+to its other admission gates. CLI equivalent:
 
 ```sh
 autowork tasks decide TASK-1 'Use the smaller design' /path/to/repo
