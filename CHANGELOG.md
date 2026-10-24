@@ -57,6 +57,7 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Retry proven-safe maintainer runtime failures with durable per-item backoff and a three-submission cap without consuming semantic repair opportunities; retain uncertain scratch and role-local failure evidence across ordinary, background and shutdown paths. (TOOLSET-393-f5116fdc)
 - Prevent DOCS-MAINTAINER from inventing product dependencies or mandatory task recuts for overlap alone while preserving genuine prerequisites and scheduler admission safeguards. (TOOLSET-392-5f9e11f6)
 - Avoid automatic cohort rollback when any main-check failure lacks supported attribution; preserve red-main repair and last-green publication. (TOOLSET-391-8eb4527a)
 - Fix Hermes overlap refusal with private, exact-contract reviewed observer bindings shared by installation and startup; malformed cron stores and broken discovery links fail closed without masking competing writers. (FLEET-OBSERVER-01)
