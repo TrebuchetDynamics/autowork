@@ -141,6 +141,9 @@ class Runner:
     question_provenance: dict = field(default_factory=dict, repr=False, compare=False)
     acquisition_errors: list = field(default_factory=list, repr=False, compare=False)
 
+    display_deleted: tuple = field(default=(), repr=False, compare=False)
+    display_recreated: tuple = field(default=(), repr=False, compare=False)
+
     @property
     def color(self):
         return COLORS.get(self.state, 'red')
@@ -412,7 +415,7 @@ def doing(lane):
 def lane_status(runner, lane):
     """An execution annotation must never masquerade as verified inventory status."""
     if runner.snapshot is not None:
-        row = next((r for r in runner.snapshot.rows if r.task == lane.task), None)
+        row = next((r for r in inventory_rows(runner) if r.task == lane.task), None)
         if row is not None and (lane.task, lane.attempt, lane.phase) in runner.snapshot.joined_lanes:
             return row.state, state_style(row)
         return 'Annotation · ' + lane.phase + ' (unmatched execution)', 'dim'
@@ -498,7 +501,7 @@ def _working_verdict(runner: Runner) -> Verdict:
     if runner.job and not runner.lanes:
         return f"Working — {job_text(runner.job)} ({duration(runner.minutes) or '0m'})", 'bold green'
     # Fifteen finished commits waiting to merge must not read as "16 of 1 workers busy".
-    heads = ([row.bucket for row in runner.snapshot.rows] if runner.snapshot is not None else
+    heads = ([row.bucket for row in inventory_rows(runner)] if runner.snapshot is not None else
              [status(lane)[0] for lane in runner.lanes])
     busy = heads.count(ACTIVE) if runner.snapshot is not None else runner.running or heads.count(ACTIVE)
     of = f' of {runner.max_workers}' if runner.max_workers else ''
@@ -556,19 +559,19 @@ def verdict(runner: Runner) -> Verdict:
     if service is not None:
         return service
     if runner.snapshot is not None:
-        snap = runner.snapshot
-        if snap.counts is None:
+        counts = task_counts(runner)
+        if counts is None:
             return ('Task inventory unavailable — ' + (runner.blocker or 'see acquisition errors')), 'bold yellow'
-        if snap.counts[0] or snap.counts[1] or runner.job:
+        if counts[0] or counts[1] or runner.job:
             return _working_verdict(runner)
         if runner.questions:
             return _question_verdict(runner)
-        if snap.counts[3]:
+        if counts[3]:
             return 'Blocker — ' + blocker_parts(runner), 'bold yellow'
-        if snap.counts[2]:
+        if counts[2]:
             return 'Waiting — ' + waiting_line(runner), 'bold yellow'
-        if snap.counts[4]:
-            count = snap.counts[4]
+        if counts[4]:
+            count = counts[4]
             return f'{count} task{"s" if count != 1 else ""} in Needs decision', 'bold yellow'
         return 'Idle — nothing left to run in Now/Next', 'bold green'
     if runner.state == 'working':
@@ -651,7 +654,17 @@ def task_counts(runner):
     for the owner, not the engine. Blocker is the held tasks and the waiting tasks stopped behind
     something that needs a person or a repair: a blocked runner showed Blocker 0 and its stuck
     task as Waiting, as if nothing were wrong."""
-    return snapshot_for(runner).counts
+    snap = snapshot_for(runner)
+    if snap.counts is None or not runner.display_deleted:
+        return snap.counts
+    buckets = (ACTIVE, MERGEABLE, WAITING, BLOCKER, 'Decision')
+    rows = inventory_rows(runner)
+    return (*(sum(row.bucket == bucket for row in rows) for bucket in buckets), len(rows))
+
+
+def inventory_rows(runner):
+    """Effective display only; the attached committed snapshot is never rewritten."""
+    return tuple(row for row in snapshot_for(runner).rows if row.task not in runner.display_deleted)
 
 
 # Why a task in flight waits, as a label of the Waiting row ("7 implemented, waiting for review").
@@ -663,7 +676,7 @@ def waiting_parts(runner):
     flight by phase, then the queue's reasons, then overlap holds. The row showed only the queue's
     reasons, '8: 6 on dependencies · 2 …' beside '15 waiting'."""
     groups = {}
-    for row in snapshot_for(runner).rows:
+    for row in inventory_rows(runner):
         if row.bucket == WAITING:
             groups[row.why] = groups.get(row.why, 0) + 1
     return [(n, label) for label, n in groups.items()]
@@ -672,7 +685,7 @@ def waiting_parts(runner):
 def blocker_parts(runner, asked=()):
     """'3: B Conflict · Agent repair · 2 behind X (outside condition or task not in Now/Next)', or '':
     the Blocker count, then each held task and what stops the waiting ones, adding up to it."""
-    rows = [row for row in snapshot_for(runner).rows if row.bucket == BLOCKER]
+    rows = [row for row in inventory_rows(runner) if row.bucket == BLOCKER]
     details = [f'{row.task} {row.why}' for row in rows]
     if runner.stop_reason:
         details.append(f'Runner: {runner.stop_reason}')
@@ -1288,6 +1301,30 @@ class Action:
     interactive: bool = False   # takes over the terminal (attach, an agent session)
     confirm: str = ''           # a question to ask first, '' for none
     env: dict = field(default_factory=dict)
+    deletion: 'DeleteIdentity | None' = None
+
+
+@dataclass(frozen=True)
+class DeleteIdentity:
+    runner: str
+    workspace: str
+    repository_identity: str | None
+    task: str
+
+
+def observe_deletions(identities):
+    """Off-loop working-tree presence, not membership or task-store authority."""
+    out = []
+    for identity in identities:
+        try:
+            Path(identity.workspace, 'tasks/items', identity.task + '.md').stat()
+            present, error = True, ''
+        except FileNotFoundError:
+            present, error = False, ''
+        except OSError as exc:
+            present, error = None, str(exc)
+        out.append((identity, present, error))
+    return tuple(out)
 
 
 def actions(runner, *, command, script, agent=None):
@@ -1364,6 +1401,10 @@ def freshness(runner, now=None):
         text += f' · {len(snap.pending_paths)} pending paths (working tree, independently observed)'
     if snap.questions_workspace:
         text += f' · questions: {snap.questions_workspace}/BLOCKERS.md (working tree, independently observed)'
+    if runner.display_deleted:
+        text += ' · deletion pending commit: ' + ', '.join(runner.display_deleted)
+    if runner.display_recreated:
+        text += ' · restored/recreated pending record (not committed inventory): ' + ', '.join(runner.display_recreated)
     return ' · '.join((text, *snap.errors, *snap.annotations))
 
 
@@ -1383,16 +1424,19 @@ def task_store(repo):
 def task_rows(runner: Runner, include_closed=False) -> list[TaskRow]:
     """Task rows in priority order, optionally including closures and their provenance."""
     snap = snapshot_for(runner)
-    rows = list(snap.rows) + list(snap.question_rows)
+    rows = list(inventory_rows(runner)) + list(snap.question_rows)
+    # Independent questions remain annotations, never resurrected inventory.
+    rows.extend(replace(row, kind='annotation', bucket='', why='Independent question; deletion pending commit')
+                for row in snap.rows if row.task in runner.display_deleted and row.question)
     if include_closed:
         annotated = {row.task for row in snap.question_rows}
-        rows.extend(row for row in snap.closed_rows if row.task not in annotated)
+        rows.extend(row for row in closed_task_rows(runner) if row.task not in annotated)
     return rows
 
 
 def closed_task_rows(runner):
     """All committed closures, including those with independent question annotations."""
-    return list(snapshot_for(runner).closed_rows)
+    return [row for row in snapshot_for(runner).closed_rows if row.task not in runner.display_deleted]
 
 
 def task_entry(runner, task):
@@ -1423,10 +1467,15 @@ def task_actions(runner, row, *, command, script, agent=None):
     """What the Tasks window can do with one task: re-sort it (its rank is the priority),
     clear or set aside its hold, answer the owner's questions in an agent, or delete it."""
     repo, name, task = runner.repo, runner.name, row.task
+    if task in runner.display_deleted:
+        return []
     confirm = (f'Delete {task}? Its record is removed from tasks/ permanently. '
                'Worktrees, commits and evidence stay; tasks that depend on it stay blocked. '
                'A worker or lease using it produces a warning, not a refusal.')
-    delete = Action('x', 'Delete', [command, 'tasks', 'delete', task, name], confirm=confirm)
+    snap = snapshot_for(runner)
+    identity = DeleteIdentity(name, snap.workspace, snap.repository_identity, task)
+    delete = Action('x', 'Delete', [command, 'tasks', 'delete', task, identity.workspace],
+                    confirm=confirm, deletion=identity)
     if row.kind == 'closed':
         return [delete]
     out = [Action('u', 'Up', [command, 'tasks', 'move', task, 'up', name]),

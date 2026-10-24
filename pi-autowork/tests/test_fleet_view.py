@@ -64,6 +64,32 @@ class FleetViewTests(unittest.TestCase):
         runner.snapshot = task_snapshot.capture(repo, engine_observation=observation, generation=1)
         return runner
 
+    def test_pending_delete_projection_preserves_committed_authority_and_diagnostics(self):
+        from dataclasses import replace
+        runner = self.with_inventory(fleet_view.Runner('fixture'), [
+            ('T-1', 'waiting', '', ''), ('T-2', 'held', 'blocker', '')], decisions=['T-3'])
+        original = runner.snapshot
+        runner.display_deleted = ('T-1', 'T-2', 'T-3')
+        self.assertEqual(fleet_view.task_counts(runner), (0, 0, 0, 0, 0, 0))
+        self.assertEqual(fleet_view.task_rows(runner), [])
+        self.assertEqual(fleet_view.waiting_parts(runner), [])
+        self.assertEqual(fleet_view.blocker_parts(runner), '')
+        self.assertIn('Idle', fleet_view.verdict(runner)[0])
+        self.assertIs(runner.snapshot, original)
+        self.assertEqual(original.counts[-1], 3)
+        self.assertEqual(len(original.store.tasks), 3)
+        row = replace(original.rows[0], question=True)
+        runner.snapshot = replace(original, rows=(row, *original.rows[1:]))
+        annotation = fleet_view.task_view(fleet_view.task_rows(runner), 'questions')
+        self.assertEqual([(r.task, r.kind) for r in annotation], [('T-1', 'annotation')])
+        self.assertEqual(fleet_view.task_actions(runner, row, command='aw', script='unused'), [])
+        lane = fleet_view.Lane('T-1', 'running')
+        runner.snapshot = replace(runner.snapshot, joined_lanes=(('T-1', 1, 'running'),))
+        self.assertIn('Annotation', fleet_view.lane_status(runner, lane)[0])
+        runner.snapshot = replace(original, counts=None, freshness='unavailable')
+        self.assertIsNone(fleet_view.task_counts(runner))
+        self.assertIn('deletion pending commit', fleet_view.freshness(runner))
+
     def test_runner_display_observation_is_explicit_and_absent_from_ls_json(self):
         from dataclasses import replace
         from pi_autowork import command, task_snapshot
@@ -351,7 +377,7 @@ class FleetViewTests(unittest.TestCase):
         closed = fleet_view.TaskRow('T-8', 'Short', 'Now', 'closed', 'closed')
         closed_actions = fleet_view.task_actions(india, closed, command='aw', script='pa.sh')
         self.assertEqual([(a.key, a.label, a.argv) for a in closed_actions],
-                         [('x', 'Delete', ['aw', 'tasks', 'delete', 'T-8', 'india'])])
+                         [('x', 'Delete', ['aw', 'tasks', 'delete', 'T-8', '/git/india'])])
         self.assertTrue(closed_actions[0].confirm)
 
     def test_questions_are_answered_where_the_runner_reads_them(self):

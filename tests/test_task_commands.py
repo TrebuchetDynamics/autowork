@@ -299,10 +299,10 @@ class TaskCommandTests(unittest.TestCase):
                 self.assertEqual(row.state, 'Manual')
                 self.assertEqual(row.why, f'Manually closed by owner at {closure["timestamp"]}; '
                                  'not coordinator-verified. Stopped after review')
-                actions = fleet_view.task_actions(fleet_view.Runner('fixture'), row,
+                actions = fleet_view.task_actions(fleet_view.Runner('fixture', repo=str(self.repo)), row,
                                                    command='aw', script='aw.sh')
                 self.assertEqual([(action.key, action.argv) for action in actions],
-                                 [('x', ['aw', 'tasks', 'delete', tid, 'fixture'])])
+                                 [('x', ['aw', 'tasks', 'delete', tid, str(self.repo)])])
 
     def test_verified_dependencies_require_verification_or_an_owner_waiver(self):
         ordinary = self.add('Ordinary', '--depends-on', 'T-1')

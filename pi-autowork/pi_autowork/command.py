@@ -364,7 +364,8 @@ def paint(text, color, enabled):
     return f'\033[{COLORS.get(color, "31")}m{text}\033[0m' if enabled else text
 
 
-DISPLAY_ONLY_RUNNER_FIELDS = ('snapshot', 'preparation', 'question_provenance', 'acquisition_errors')
+DISPLAY_ONLY_RUNNER_FIELDS = ('snapshot', 'preparation', 'question_provenance', 'acquisition_errors',
+                             'display_deleted', 'display_recreated')
 
 
 def runner_json(runner):
