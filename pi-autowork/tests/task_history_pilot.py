@@ -65,7 +65,7 @@ async def main():
                         await pilot.pause()
                         assert [r.task for r in screen.shown] == ['LEGACY', 'MANUAL']
                         assert screen.current().state == 'Unknown closure'
-                        assert screen.actions(screen.current()) == []
+                        assert [a.key for a in screen.actions(screen.current())] == ([] if view_only else ['x'])
                         await pilot.press('enter')
                         await pilot.pause()
                         assert isinstance(app.screen, tui.TaskScreen)

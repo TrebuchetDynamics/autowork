@@ -9,12 +9,15 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 COMMAND = ROOT / 'pi-autowork/pi_autowork/command.py'
 FIXTURE = ROOT / 'pi-autowork/engine/fixtures/task_store'
 sys.path.insert(0, str(ROOT / 'pi-autowork/engine'))
+sys.path.insert(0, str(ROOT / 'pi-autowork'))
 from task_store import TaskStore, edit  # noqa: E402
+from pi_autowork import task_commands as commands  # noqa: E402
 
 
 class TaskCommandTests(unittest.TestCase):
@@ -296,8 +299,10 @@ class TaskCommandTests(unittest.TestCase):
                 self.assertEqual(row.state, 'Manual')
                 self.assertEqual(row.why, f'Manually closed by owner at {closure["timestamp"]}; '
                                  'not coordinator-verified. Stopped after review')
-                self.assertEqual(fleet_view.task_actions(fleet_view.Runner('fixture'), row,
-                                                       command='aw', script='aw.sh'), [])
+                actions = fleet_view.task_actions(fleet_view.Runner('fixture'), row,
+                                                   command='aw', script='aw.sh')
+                self.assertEqual([(action.key, action.argv) for action in actions],
+                                 [('x', ['aw', 'tasks', 'delete', tid, 'fixture'])])
 
     def test_verified_dependencies_require_verification_or_an_owner_waiver(self):
         ordinary = self.add('Ordinary', '--depends-on', 'T-1')
@@ -329,6 +334,29 @@ class TaskCommandTests(unittest.TestCase):
         record = self.show('T-1')
         self.assertEqual(record['status'], 'superseded')
         self.assertIn(f'- Superseded by: {successor}; replaced', record['notes'])
+
+    def test_delete_removes_any_task_and_warns_without_refusing(self):
+        dependent = self.add('Dependent', '--depends-on', 'T-1')
+        path = self.repo / 'tasks/items/T-1.md'
+        with patch.object(commands, 'in_flight', return_value=({'T-1'}, ['a live coordinator lease'])):
+            warnings = commands.cmd_delete(self.repo, 'T-1')
+        self.assertFalse(path.exists())
+        self.assertTrue((self.repo / f'tasks/items/{dependent}.md').exists())
+        self.assertTrue(any('T-1' in warning and 'held' in warning for warning in warnings), warnings)
+        self.assertIn('a live coordinator lease', warnings)
+        self.assertTrue(any(dependent in warning for warning in warnings), warnings)
+        self.commit()
+        self.assertTrue(json.loads(self.tasks('validate').stdout)['ok'])
+        self.assertEqual(self.tasks('show', 'T-1', ok=False).returncode, 1)
+
+    def test_delete_cli_reports_dependents_and_proceeds(self):
+        dependent = self.add('Dependent', '--depends-on', 'T-1')
+        result = self.tasks('delete', 'T-1')
+        self.assertIn('deleted', result.stdout)
+        self.assertIn(dependent, result.stdout)
+        self.assertFalse((self.repo / 'tasks/items/T-1.md').exists())
+        self.commit()
+        self.assertEqual(self.tasks('show', 'T-1', ok=False).returncode, 1)
 
     def test_why_and_list_name_their_reasons(self):
         before = self.git('status', '--porcelain', '--', 'tasks')

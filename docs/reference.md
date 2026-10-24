@@ -78,7 +78,7 @@ relative to this repository.
 
 | Helper | Commands | Reference |
 | --- | --- | --- |
-| `autowork tasks` ([source](../pi-autowork/pi_autowork/task_commands.py)) | `prepare`, `list`, `show`, `why`, `validate`, `new-id`, `add`, `field`, `place`, `move`, `hold`, `release`, `done`, `supersede`, `goal` ([`prepare` source](../pi-autowork/pi_autowork/task_prepare.py)) | `autowork tasks --help`; [task store](../pi-autowork/task-store.md) |
+| `autowork tasks` ([source](../pi-autowork/pi_autowork/task_commands.py)) | `prepare`, `list`, `show`, `why`, `validate`, `new-id`, `add`, `field`, `place`, `move`, `hold`, `release`, `done`, `supersede`, `delete`, `goal` ([`prepare` source](../pi-autowork/pi_autowork/task_prepare.py)) | `autowork tasks --help`; [task store](../pi-autowork/task-store.md) |
 | `autowork migrate` ([source](../pi-autowork/pi_autowork/task_migrate.py)) | convert a TODO.md + goals.json repository to `tasks/` once | [converting a repository](../pi-autowork/task-store.md#converting-a-repository-autowork-migrate) |
 | [`skills/docs-sync/scripts/docs.py`](../skills/docs-sync/scripts/docs.py) | `validate`, `check`, `stale`, `profiles` | `docs.py --help`; [role manifest](../skills/docs-sync/references/document-scaffold.md#optional-role-manifest) |
 
