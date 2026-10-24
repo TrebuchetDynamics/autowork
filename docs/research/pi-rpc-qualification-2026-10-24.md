@@ -1,7 +1,8 @@
 # Pi RPC qualification — 2026-10-24
 
-This is evidence for TOOLSET-387-132efe18's **bounded implementation slice**, not
-an installed-fleet acceptance receipt. Architecture, setup and rollback are in
+This records TOOLSET-387-132efe18's **bounded implementation slice** and
+TOOLSET-388-b422fa9e's [canonical reconciliation](#canonical-reconciliation--toolset-388-b422fa9e),
+not an installed-fleet acceptance receipt. Architecture, setup and rollback are in
 [the runtime guide](../pi-rpc.md). The earlier [harness audit](pi-harness-audit-2026-10-24.md)
 remains historical evidence; its JSON-baseline recommendation was superseded by
 the owner's explicit request to implement RPC by default.
@@ -143,18 +144,91 @@ engine closure, coordinator-crash recovery, hostile-process containment, complex
 coding quality, automatic steering or installed-fleet acceptance. Raw session
 histories, credentials, private state and disposable repositories stay out of Git.
 
+## Canonical reconciliation — TOOLSET-388-b422fa9e
+
+Tested source revision: `8b99850e52dc55f2fc63d41b46afde2c43630845`.
+It already includes canonical RPC merge
+`37f830ce245d8fdea65022690af12c7249777c13`, the TOOLSET-375 source relocation
+and TOOLSET-369 main-check extraction. Reconciliation therefore verified the landed
+implementation rather than copying the earlier branch or creating another owner.
+This follow-up changes documentation only; the tested runtime bytes are unchanged.
+
+- `Src/pi_autowork/{pi_runtime,pi_rpc,pi_process,pi_events}.py` are the sole
+  implementation owners. Public imports, bootstrap loads and `Layout.implementation`
+  resolve to those same modules; `Layout.python_sources` includes each owner once.
+  `pi-autowork/pi_autowork/` retains only their compatibility adapters.
+- `pi_rpc.run` launches the guard and SDK host through the selected release's
+  `LAYOUT.entrypoint` paths. Main-check supervision remains in
+  `Src/pi_autowork/supervision/main_checks.py`, behind the existing Coordinator
+  facades, and also selects its child command through Layout.
+- Independent read-only review found no remaining canonical ownership or entrypoint
+  defect. Existing checks below cover the reconciled code; no duplicate regression
+  tests or production implementation were added for this documentation correction.
+
+Linux/Python 3.12.14, SDK 0.2.6 and installed Pi 1.4.0 were used. The selected SDK
+interpreter was the existing private `pi-rpc-0.2.6` environment; no install or
+runtime activation was performed by this follow-up.
+
+| Repeated check | Result |
+|---|---|
+| Focused RPC/process/events/recovery/install, main-check extraction, release and public-entrypoint group below | 15 modules, 166 tests: OK; no SDK skips |
+| `tests/test_pi_autowork.py` | 138 tests: OK, including 2 existing expected failures |
+| `pi-autowork/engine/test_parallel_integrate.py` | 167 tests: OK |
+| Direct `test_installed_pi_rpc.py -v` | 3 tests: OK |
+| Direct `test_installed_pi_contract.py -v` | 2 tests: OK |
+| Public-import/bootstrap/Layout/source-inventory probe | All four modules resolve to one canonical owner each |
+
+Commands for the repeated suites (the two longer groups used `autowork-run`):
+
+```sh
+RPC_PYTHON="${PI_AUTOWORK_RPC_PYTHON:-${PI_AUTOWORK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/pi-autowork}/runtimes/pi-rpc-0.2.6/bin/python}"
+autowork-run "$RPC_PYTHON" scripts/check.py \
+  pi-autowork/tests/test_pi_process.py pi-autowork/tests/test_pi_events.py \
+  pi-autowork/tests/test_pi_rpc.py pi-autowork/tests/test_pi_runtime.py \
+  pi-autowork/tests/test_recovery_runtime_failures.py \
+  pi-autowork/tests/test_pi_rpc_install.py pi-autowork/tests/test_blocker_triage.py \
+  pi-autowork/tests/test_maintainer.py pi-autowork/tests/test_main_check.py \
+  pi-autowork/tests/test_supervision_main_checks.py pi-autowork/tests/test_release.py \
+  tests/test_src_entrypoints.py tests/test_cli_startup.py tests/test_install_menu.py \
+  tests/test_pi_rpc_engine.py
+autowork-run "$RPC_PYTHON" scripts/check.py \
+  tests/test_pi_autowork.py pi-autowork/engine/test_parallel_integrate.py
+PI_EXECUTABLE="$(command -v pi)"
+AUTOWORK_TEST_PI="$PI_EXECUTABLE" "$RPC_PYTHON" pi-autowork/tests/test_installed_pi_rpc.py -v
+AUTOWORK_TEST_PI="$PI_EXECUTABLE" "$RPC_PYTHON" pi-autowork/tests/test_installed_pi_contract.py -v
+```
+
+The sharded groups excluded the three optional Hermes integration modules, not
+SDK tests. Legacy engine output included subprocess ResourceWarnings and a fixture
+traceback, but every shard returned OK; its two expected failures remain unqualified
+behaviors, not newly passing coverage. Native tests used isolated HOME/resources
+and the deterministic offline provider, not credentials or real-model calls. These
+results do not replace the coordinator's merged-tree gate or installed/live checks.
+Task-store validation passed with 155 tasks, 18 goals and no drafts or pending
+records. `scripts/affected_tests.py --json` selected all 155 offline modules because
+this evidence document has no narrower test mapping. Only the named suites above
+were run here; no full-repository pass is claimed.
+
+The supported handoff is this task's scoped local commit and worker report, followed
+by the coordinator's serialized integration, independent review and merged-tree
+checks. This worker did not merge, alter another checkout, bypass a runtime guard,
+repin evidence, publish, restart a service or close a task. Existing source
+integration is not an installed release, and this evidence update itself remains a
+candidate until the coordinator integrates it.
+
 ## Remaining delivery gates
 
-1. Reconcile canonical source ownership with TOOLSET-375 relocation and TOOLSET-369
-   extraction, preserving their candidates and serializing canonical writes.
-2. Review/rebase and integrate through the supported path. Local source default
-   and local commits do not update an installed release or authorize publication.
-3. Qualify a single explicitly owned installed runner, including interrupted-attempt
-   recovery and real engine closure. Preserve paused jobs; do not restart a fleet.
-4. Measure matched real engineering tasks and quality/check coverage before claiming
+1. Integrate this evidence follow-up through the coordinator's supported serialized
+   path and preserve independent review, merged-tree checks and publication gates.
+   The canonical source merge above removes the former relocation/extraction hold;
+   it does not update an installed release or authorize publication.
+2. Qualify a single explicitly owned installed runner, including interrupted-attempt
+   recovery and real engine closure (TOOLSET-389-6dedfd8c). Preserve paused jobs;
+   do not restart a fleet.
+3. Measure matched real engineering tasks and quality/check coverage before claiming
    throughput or token improvements. Keep automatic steering off until a production
-   control channel and intervention policy are separately qualified.
-5. Retain the guard's documented SIGKILL/kernel/hostile-process limitations. Stronger
+   control channel and intervention policy are separately qualified (TOOLSET-390-e1c2afa6).
+4. Retain the guard's documented SIGKILL/kernel/hostile-process limitations. Stronger
    containment needs a delegated-cgroup qualification, not a claim from these tests.
 
 TOOLSET-385 remains the canonical recovery reconciliation follow-up. TOOLSET-386

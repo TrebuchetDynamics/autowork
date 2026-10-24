@@ -220,7 +220,7 @@ Existing tasks deliberately reused, not duplicated:
 | FLEET-OBSERVER-01 | Live-owned observer/writer repair under FLEET-RECOVERY; preserve its contract and guards. |
 | TOOLSET-385-6021ba81 | Live-owned technical triage/provisioning reconciliation; new maintainer slice must inspect its final delta and avoid duplicating the shared mechanism. |
 | TOOLSET-386-4288b2e0 | Live-owned JSON/compaction/nested-tool accounting; do not add a competing accounting implementation. |
-| TOOLSET-388-b422fa9e | Source integration is present, but its slot is integrating. Preserve coordinator closure ownership and evidence; do not recreate RPC or manufacture verified closure. |
+| TOOLSET-388-b422fa9e | Integrating at the audit cutoff; integration refresh found coordinator-verified closure in `7e295706`, backed by `tasks/evidence/TOOLSET-388-b422fa9e.toml`. Preserve that closure and the new qualification report; no RPC reimplementation. Installed qualification remains 389. |
 | TOOLSET-389-6dedfd8c | Existing owner-owned, live-denied installed delivery/recovery and matched measurement pilot. Reuse its single authority question; do not schedule it or duplicate a live task. |
 | TOOLSET-390-e1c2afa6 | Still depends on 388 and 389. Reconcile its inactive check handoff; production channel/steering work remains blocked by installed qualification. |
 | TOOLSET-334-f9 / TOOLSET-344-7dadea23 | Manually closed partial parallel-review/optimistic implementation; retain history. New tasks cover specific remaining gaps, not reopened old contracts. |
@@ -232,6 +232,11 @@ At the ownership snapshot, three workers were birth-matched live (observer, 385,
 and 388 was integrating; the coordinator release was `8b99850e`. Configuration
 activation was not inspected. Snapshot freshness is not a continuing lease: refresh
 actual activity before execution or contract changes. No active contract is edited.
+Before landing this plan, canonical main advanced to `7e295706` with 388's
+qualification report and verified closure. The planning branch incorporates those
+changes; runtime source bytes are unchanged. Historical baseline/snapshot observations
+above remain pinned to their original cutoff, not retroactively updated. Task 390's
+remaining unfinished prerequisite is 389; its declared dependencies are preserved.
 The prepare audit also reports unrelated historical-name/goal-without-work notices;
 these are not proof of live defects or permission for a repository-wide rewrite.
 
