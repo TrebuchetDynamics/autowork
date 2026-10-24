@@ -13,12 +13,15 @@ import argparse
 from copy import deepcopy as _deepcopy
 import asyncio
 from dataclasses import replace
+import io
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import time
+import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import fleet_view, portal, tui_reads, blockers_report  # noqa: E402
@@ -1080,34 +1083,54 @@ class BrowseScreen(ReadScreen, Screen):
             self.show_repository(path, lambda ready: start and ready.ready and self.start(ready))
 
 
+def save_report(text, directory):
+    """Explicit export only: a unique private file, never the repository or clipboard."""
+    directory = Path(directory)
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fd, filename = tempfile.mkstemp(prefix='blockers-', suffix='.txt', dir=directory)
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+            stream.write(text)
+    except BaseException:
+        Path(filename).unlink(missing_ok=True)
+        raise
+    return Path(filename)
+
+
 class BlockersScreen(Screen):
     """A frozen, copyable report. Refresh is explicit so selection is not disturbed."""
     BINDINGS = [Binding('escape', 'back', 'Back'),
                 Binding('c', 'copy_report', 'Copy report', priority=True),
+                Binding('d', 'toggle_diagnostics', 'Details', priority=True),
+                Binding('e', 'export_report', 'Export', priority=True),
                 Binding('r', 'refresh_report', 'Refresh', priority=True)]
     DEFAULT_CSS = '''
     BlockersScreen #report-state { height: auto; padding: 0 1; }
     BlockersScreen TextArea { height: 1fr; }
     BlockersScreen Horizontal { height: 3; }
-    BlockersScreen Button { margin-right: 1; }
+    BlockersScreen Button { margin-right: 1; min-width: 8; width: auto; padding: 0 1; }
     '''
 
     def __init__(self, runner):
         super().__init__()
         self.runner = read_input(runner)
-        self.report_text = None
+        self.report_text = self.full_report_text = None
+        self.diagnostics = self.exporting = False
 
     def compose(self):
         yield MenuBar(id='report-menu')
         yield Static(Text(f'{self.runner.name} — read only; loading…'), id='report-state')
         yield TextArea(read_only=True, show_cursor=False, id='blockers-text')
         with Horizontal():
-            yield Button('Copy report (c)', id='copy-report', disabled=True)
+            yield Button('Copy (c)', id='copy-report', disabled=True)
+            yield Button('Details (d)', id='details-report', disabled=True)
+            yield Button('Export (e)', id='export-report', disabled=True)
             yield Button('Refresh (r)', id='refresh-report')
             yield Button('Back (Esc)', id='back-report')
 
     def on_mount(self):
-        self.query_one(MenuBar).show([('escape', 'Back'), ('c', 'Copy'), ('r', 'Refresh')], prefix='Blockers')
+        self.query_one(MenuBar).show([('escape', 'Back'), ('c', 'Copy'), ('d', 'Details'),
+                                      ('e', 'Export'), ('r', 'Refresh')], prefix='Blockers')
         self.action_refresh_report()
 
     def action_refresh_report(self):
@@ -1115,23 +1138,74 @@ class BlockersScreen(Screen):
         self.app.request_blockers(self)
 
     def present_report(self, text):
-        self.report_text = text
-        self.query_one(TextArea).load_text(text)
-        self.query_one('#copy-report', Button).disabled = False
+        self.full_report_text = text
+        self.show_report()
+        for name in ('copy', 'details', 'export'):
+            self.query_one(f'#{name}-report', Button).disabled = name == 'export' and self.exporting
+
+    def show_report(self):
+        text = self.full_report_text
+        self.report_text = (blockers_report.summary(text)
+                            if not self.diagnostics and blockers_report.DIAGNOSTICS in text else text)
+        self.query_one(TextArea).load_text(self.report_text)
+        self.query_one('#details-report', Button).label = 'Summary (d)' if self.diagnostics else 'Details (d)'
         self.query_one('#report-state', Static).update(Text(
-            f'{self.runner.name} — read only; select text or copy the whole report.'))
+            f'{self.runner.name} — read only; {"full diagnostics" if self.diagnostics else "summary"}. '
+            'Copy/export uses this view.'))
+
+    def action_toggle_diagnostics(self):
+        if self.full_report_text is not None:
+            self.diagnostics = not self.diagnostics
+            self.show_report()
 
     def action_copy_report(self):
         if self.report_text is not None:
-            self.app.copy_to_clipboard(self.report_text)
-            self.notify('Report copied; terminal clipboard support is required over SSH.')
+            try:
+                self.app.copy_to_clipboard(self.report_text)
+            except Exception as error:
+                self.notify(f'Clipboard request failed: {error}. Use Export (e).', severity='error')
+            else:
+                self.notify('Clipboard requested; paste to verify. If empty, use Export (e).')
+
+    def action_export_report(self):
+        if self.report_text is None or self.exporting:
+            return
+        self.exporting = True
+        self.query_one('#export-report', Button).disabled = True
+        # App-owned: Escape/Refresh remain responsive, without cancelling an in-flight file write.
+        return self.app.run_worker(self._export_report(self.report_text))
+
+    async def _export_report(self, text):
+        try:
+            if self.app.is_web:
+                content = io.StringIO(text)
+                try:
+                    key = self.app.deliver_text(content, save_filename=f'blockers-{uuid.uuid4().hex}.txt',
+                                                encoding='utf-8', mime_type='text/plain', name='blockers-report')
+                except Exception:
+                    content.close()
+                    raise
+                if key is None:
+                    content.close()
+                    raise OSError('no download transport available')
+                self.notify('Download requested; completion is not yet confirmed.')
+            else:
+                path = await asyncio.to_thread(save_report, text, Path(self.app.state_root) / 'reports')
+                self.notify(f'Saved on app host (not the SSH client): {path}', timeout=15)
+        except Exception as error:
+            self.notify(f'Export failed: {error}', severity='error')
+        finally:
+            self.exporting = False
+            if self in self.app.screen_stack and self.is_mounted:
+                self.query_one('#export-report', Button).disabled = False
 
     def action_back(self):
         self.app.pop_screen()
 
     def on_button_pressed(self, event):
         event.stop()
-        {'copy-report': self.action_copy_report, 'refresh-report': self.action_refresh_report,
+        {'copy-report': self.action_copy_report, 'details-report': self.action_toggle_diagnostics,
+         'export-report': self.action_export_report, 'refresh-report': self.action_refresh_report,
          'back-report': self.action_back}[event.button.id]()
 
 
@@ -1519,6 +1593,16 @@ class FleetApp(App):
         return [replace(action, key='g') if action.key == 'b' else action
                 for action in fleet_view.actions(runner, command=self.command, script=self.script, agent=self.agent)
                 if action.key != 'f']
+
+    def on_delivery_complete(self, event):
+        if event.name == 'blockers-report':
+            event.prevent_default()
+            self.notify('Report download transfer completed; check your browser downloads.')
+
+    def on_delivery_failed(self, event):
+        if event.name == 'blockers-report':
+            event.prevent_default()
+            self.notify(f'Report download failed: {event.exception}', severity='error')
 
     def action_show_blockers(self):
         runner = self.current()
