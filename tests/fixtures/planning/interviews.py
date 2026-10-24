@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Prepare bounded multi-turn interview specimens; score decisions and traces manually."""
 import argparse
-import hashlib
 import json
 from pathlib import Path
 
-from scenarios import EASY, FILES, snapshot
+from scenarios import EASY, FILES, inspect_fixture, prepare_fixture, record_sources, snapshot
 
 # Replies are evaluator inputs, not instructions supplied in the model's first turn.
 # Send each only after inspecting the preceding answer. Never fabricate model turns.
@@ -111,10 +110,7 @@ def main():
             fixture = root / name
             before_path = root / f'{name}.before.json'
             if args.action == 'prepare':
-                for path, text in FILES.items():
-                    dest = fixture / path
-                    dest.parent.mkdir(parents=True, exist_ok=True)
-                    dest.write_text(text)
+                prepare_fixture(fixture, FILES)
                 before_path.write_text(json.dumps(snapshot(fixture), indent=2))
                 (root / f'{name}.request.txt').write_text(
                     f'Load and follow actual entrypoint {source / ENTRYPOINTS[entry]} and its relevant '
@@ -126,16 +122,10 @@ def main():
                 results.append(name)
             else:
                 before = json.loads(before_path.read_text())
-                after = snapshot(fixture)
-                changed = sorted(p for p in before.keys() | after.keys() if before.get(p) != after.get(p))
-                allowed = set() if case in ('vague-intent', 'builder-followup') else {'docs/plan.md', 'TODO.md'}
-                results.append({'case': name, 'changed': changed,
-                                'outside_planning_owners': [p for p in changed if p not in allowed]})
+                results.append({'case': name, **inspect_fixture(
+                    fixture, before, no_write=case in ('vague-intent', 'builder-followup'))})
     if args.action == 'prepare':
-        closure = [source / p for p in ENTRYPOINTS.values()]
-        closure += list((source / 'skills/shared').glob('*.md'))
-        (root / 'source-sha256.json').write_text(json.dumps(
-            {str(p.relative_to(source)): hashlib.sha256(p.read_bytes()).hexdigest() for p in closure}, indent=2))
+        record_sources(root, [ENTRYPOINTS[entry] for entry in entries])
     print(json.dumps(results, indent=2))
 
 
