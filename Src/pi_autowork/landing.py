@@ -76,7 +76,7 @@ def recent_owner_paths(repo, state, paths, quiet):
     return recent
 
 
-def land_around_edits(repo, base, old, new):
+def land_around_edits(repo, base, old, new, *, require_clean=False):
     """Move ``base`` from ``old`` to ``new`` in ``repo`` around uncommitted edits; return the
     reason it could not, or ''.
 
@@ -87,6 +87,8 @@ def land_around_edits(repo, base, old, new):
     the ref, then checked again before installing any output. Snapshot and /proc checks
     detect races, but are not a lock shared by arbitrary external editors.
 
+    ``require_clean`` refuses overlapping working edits instead of rebasing them,
+    including edits appearing after a caller's preflight (planning-console apply).
     Raises LandingBroken when the ref moved and the checkout could not be finished.
     """
     repo = str(repo)
@@ -156,6 +158,8 @@ def land_around_edits(repo, base, old, new):
                 dirty_file = content != base_blob or (a and bool(mode & 0o111) != (a[0] == b'100755'))
                 output = target
                 if dirty_file:
+                    if require_clean:
+                        return f'{path}: dirty working file overlaps the landing'
                     if (content is None or base_blob is None or target is None or a[0] != b[0]
                             or bool(mode & 0o111) != (a[0] == b'100755')):
                         return f'{path}: uncommitted add/delete or mode change overlaps the landing'

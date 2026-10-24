@@ -1,5 +1,10 @@
 # Pi Autowork component
 
+Execution defaults to SDK-backed Pi RPC. See [installation, lifecycle guarantees,
+controls and explicit JSON rollback](../docs/pi-rpc.md), and the separate
+[qualification evidence](../docs/research/pi-rpc-qualification-2026-10-24.md).
+An already-running release is not automatically upgraded by this source change.
+
 The `pi-autowork` runner. `scripts/pi-autowork.sh` is a thin entry point and the
 service command: it finds this component and runs the stable `pi_autowork/cli.py`
 adapter, which continues in the toolset release it resolves. Runner and legacy-reader
@@ -30,7 +35,10 @@ Runtime state lives outside the repository, under
 | `pi_autowork/worker.py` | The engine-launched `--worker` and `--verify` modes |
 | `pi_autowork/service.py` | `--install-service` / `--remove-service` for `pi-autowork@<repository>.service` |
 | `pi_autowork/common.py` | Logging, Git helpers and task lifecycle words |
-| `pi_autowork/pi_runtime.py` | Runs one Pi job: model choice and fallback, bounded retries, timeouts, redacted `runs.jsonl` records of each run's tokens and billing provenance (the production CLI path; the TOOLSET-117-cb boundary is an isolated comparison spike, not wired into this runner) |
+| `pi_autowork/pi_runtime.py` | One Pi job: existing model/fallback policy, RPC by default, explicit JSON rollback, bounded retries and provenance-aware accounting |
+| `pi_autowork/pi_rpc.py` | Pinned AsyncPiClient host, immutable accepted input, session ownership, settlement, private live progress and opt-in bounded controls |
+| `pi_autowork/pi_process.py` | Linux parent/descendant ownership, pidfd signalling and cleanup receipts |
+| `pi_autowork/pi_events.py` | Bounded event projection, lifecycle timing and conservative usage coverage |
 | `pi_autowork/accounting.py`, `scorecard.py` | Private run/owner-time accounting and read-only scorecard aggregation; unknown billing is never priced or treated as zero |
 | `pi_autowork/health.py` | Per-runner `status.json`, one stall announcement per episode with its root blockers, and the `--fleet` view |
 | `pi_autowork/processes.py` | Shared Linux process start ticks, identity-aware liveness, runner ancestry and process names |
@@ -97,7 +105,8 @@ refresh does not change the exported capture. Source: `Src/pi_autowork/tui.py:Bl
 **r** explicitly refreshes; **Esc** returns. Opening, refreshing and copying run no
 agent, runner command or task mutation; only explicit Export writes a report copy.
 Native terminal drag selection remains available.
-The former setup-only Backlog shortcut is now **g**. Interactive repair is still
+**g Plan** opens the embedded planning console for any repository, not only setup.
+Interactive repair is still
 the separate `autowork blockers [dir]` command, not this report.
 
 ## The autowork command
@@ -116,7 +125,8 @@ source/UI semantics, not proof an installed or remote TUI loaded this release.
 
 `autowork` runs, watches and controls the runners on this machine. A repository's
 runner is a systemd user service, `pi-autowork@<repository name>`; a target is a runner
-name, a repository path or `.`. Nothing here calls a model.
+name, a repository path or `.`. Status and inventory reads call no model; planning
+and the explicit agent commands below do.
 
 | Command | What it does |
 |---|---|
@@ -134,10 +144,10 @@ name, a repository path or `.`. Nothing here calls a model.
 | `autowork run [dir]` | Run the runner in the foreground here, for debugging |
 | `autowork web [--port N] [--host H] [--view-only]` | The TUI in a browser at `http://127.0.0.1:8765` (this machine only); `--view-only` disables control keys |
 | `autowork blockers [dir]` | `/autowork blockers` in an agent (`AUTOWORK_AGENT`, else `claude`, else `pi`); records the session's elapsed owner minutes privately when the agent exits |
-| `autowork plan [dir]` | `/plan_for_me` in the same agent, for a repository that has no tasks yet: Docs Sync prepares the store and the planner saves tasks from the accepted intent, inventing none. The TUI offers it as Plan in the browser's not-ready dialog and as `g` Backlog on a runner whose store needs setup; owner minutes are recorded as `planning` |
+| `autowork plan [dir]` | Embedded Pi RPC planning: autonomous discovery, task discussion/investigation, saved sessions, roadmap and explicit Review → Apply. `--interactive` chats/steers; `--list`, `--session ID`, `--history`, `--preview`, `--apply REV` resume/review locally. No service start or push; [planning guide](../docs/planning-console.md). `--legacy` retains the former external-agent planner and its owner-time accounting |
 | `autowork attention MINUTES [--task ID] [--note TEXT] [target]` | Record other owner time (finite, nonnegative minutes); defaults to this repository, optionally attributed to one task. Notes stay private |
 | `autowork tasks list\|validate\|new-id [target]`, `autowork tasks show\|why TASK [target]` | Read the `tasks/` store at HEAD (`validate --worktree`: uncommitted edits too) |
-| `autowork tasks add\|field\|place\|move\|hold\|release\|done\|supersede\|delete\|goal ... [target]` | Edit task and goal files in the working tree, never committing: an owner answer (`field TASK "Owner decision" TEXT`, `"Blocker resolution"`), a section (`place`, optionally `--decision`), the priority (`move TASK up\|down` changes its rank), a hold (`hold --by`, `release`), a manual close (`done ID --by WHO --reason TEXT [--evidence REF]`, not verification), a new task or goal, or a full record removal (`delete ID`; busy or still-depended-on tasks warn but are removed). Each write validates the whole store |
+| `autowork tasks add\|field\|place\|move\|hold\|release\|decide\|done\|supersede\|delete\|goal ... [target]` | Edit task and goal files in the working tree, never committing: an owner answer (`field TASK "Owner decision" TEXT`, `"Blocker resolution"`), a dated direction (`decide TASK TEXT`, optionally `--section`), a section (`place`, optionally `--decision`), the priority (`move TASK up\|down` changes its rank), a hold (`hold --by`, `release`), a manual close (`done ID --by WHO --reason TEXT [--evidence REF]`, not verification), a new task or goal, or a full record removal (`delete ID`; busy or still-depended-on tasks warn but are removed). Each write validates the whole store |
 | `autowork tasks prepare [target] [--check\|--no-commit]` | What Docs Sync runs first: detect the store's state, convert or finish converting a TODO.md + goals.json repository, and report diagnostics with the command that repairs each, as JSON; `--check` writes nothing ([task store](task-store.md#preparing-a-repository-autowork-tasks-prepare)) |
 | `autowork migrate [target] [--dry-run] [--no-commit]` | Convert a TODO.md + goals.json repository to `tasks/` once, in one local commit (`--no-commit`: staged); an interrupted run resumes; it refuses while work is in flight |
 | `autowork scorecard [--days N] [--json \| --csv] [--baseline FILE] [target...]` | Per runner and overall over 1–30 days (default 7): labelled evaluation metrics, weekly breakdown and first-to-last-week changes; JSON retains closure, held-share, questions and task/attempt accounting details; no model call |
@@ -206,7 +216,7 @@ headless TUI pilot cover these displays; they do not qualify live publication.
 In the TUI each key is the first letter of its word, highlighted in the detail pane:
 `l` (or Enter) **L**og, `p` **P**lay/**P**ause (starts a stopped service, resumes a
 paused one, pauses a running one), `s` **S**top, `r` **R**estart, `m` **M**odel
-(from Pi's list, type to filter), `t` **T**asks, `u` **U**ninstall the
+(from Pi's list, type to filter), `t` **T**asks, `g` **Plan**, `u` **U**ninstall the
 service, `n` **N**ew: browse directories (from `~/git`, `AUTOWORK_BROWSE_ROOT`), see which
 repositories are ready or what they need, and `p` there plays one; `q` **Q**uit.
 The fleet has no Fallback or Nous Portal controls. Fallback remains visible in
@@ -238,8 +248,9 @@ history shows **Verified** with the receipt, or **Manual** with the reason
 (a missing/invalid verified receipt is explicitly warned, never relabelled Manual).
 On the selected task `u`/`d`
 move it **U**p or **D**own (its rank is the priority), `s` to another **S**ection (Now,
-Next, Needs decision), `c` **C**lears its hold, `a` sets it **A**side, `b` answers the
-owner's **B**lockers in an agent, and `n` adds a **N**ew task from a form. Enter opens the
+Next, Needs decision), `c` **C**lears its hold, `a` sets it **A**side, `e` **Decide** records
+an owner direction without AI, `g` **Discuss** and `v` **Investigate** open the planning
+console scoped to that task, and `n` adds a **N**ew task from a form. Enter opens the
 task: its question and the runner's suggested answer, its whole task record and its
 worker's last actions. Answer it there, written to the task's record where the runner reads
 it: `w` **W**rite a dated `Owner decision:` note, `d` **D**efer it to Needs decision with your

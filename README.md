@@ -269,7 +269,12 @@ main/master or Merge pending
   retained. Workers never push. Saved per-repository grants are reused; existing
   saved on/off settings are preserved. See the [grant and status commands](pi-autowork/README.md#the-autowork-command).
 
-From your project's main-branch checkout, after the Pi installation above:
+The runner defaults to SDK-backed **Pi RPC** (Pi 1.4.0 / Python SDK 0.2.6).
+The `autowork` installer component installs its isolated Python dependency; for a
+manual Pi-package installation, first follow [RPC setup](docs/pi-rpc.md).
+JSON is explicit temporary rollback, never an automatic replay path.
+
+From your project's main-branch checkout, after the Pi installation and RPC setup:
 
 ```sh
 # Preview only: no workers or repository changes.
@@ -301,7 +306,7 @@ autowork pause india           # stop it and keep it off; autowork resume india 
 autowork model india openai-codex/gpt-6-luna   # per-service model, from: autowork models
 autowork web                  # the TUI in a browser, http://127.0.0.1:8765
 autowork blockers india        # answer what blocks the queue, picking options (/blockers)
-autowork plan ~/git/fresh      # a repository without tasks: /plan_for_me with /docs_sync in an agent
+autowork plan ~/git/project --interactive  # embedded planning/chat; explicit review/apply, no runner start
 autowork scorecard            # per runner, last 7 days: closed, held share, start to merge, questions
 ```
 

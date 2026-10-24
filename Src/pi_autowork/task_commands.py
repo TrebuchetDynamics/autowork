@@ -630,6 +630,22 @@ def cmd_place(repo, tid, section, decision=None):
 
 
 @_serialized
+def cmd_decide(repo, tid, decision, section=None):
+    """Record owner direction, optionally moving an open task; no completion/authority inference."""
+    decision = ' '.join(decision.split())
+    if not decision:
+        raise CommandError('decide needs a nonempty decision')
+    if _task(worktree_store(repo), tid).status != 'open':
+        raise CommandError('decide requires an open task')
+    if not re.match(r'^\d{4}-\d{2}-\d{2}\b', decision):
+        decision = f'{date.today().isoformat()}: {decision}'
+    if section is not None:
+        cmd_place(repo, tid, section, decision=decision)
+    else:
+        _set(repo, tid, {}, ('Owner decision', decision))
+
+
+@_serialized
 def cmd_move(repo, tid, direction):
     """One place up or down within the task's section; returns {id: new rank} changed."""
     store = worktree_store(repo)
@@ -798,6 +814,9 @@ def add_parser(sub):
     p.add_argument('task'); p.add_argument('section', choices=('Now', 'Next', 'Needs decision'))
     p.add_argument('repo', nargs='?', default='.')
     p.add_argument('--decision', help='also record this as its Owner decision (dated, one line)')
+    p = verbs.add_parser('decide', help='record dated owner direction without implying completion or live authorization')
+    p.add_argument('task'); p.add_argument('decision'); p.add_argument('repo', nargs='?', default='.')
+    p.add_argument('--section', choices=('Now', 'Next', 'Needs decision'), help='optionally move the open task')
     p = verbs.add_parser('move')
     p.add_argument('task'); p.add_argument('direction', choices=('up', 'down'))
     p.add_argument('repo', nargs='?', default='.')
@@ -838,7 +857,7 @@ def add_parser(sub):
     return tasks
 
 
-WRITES = ('add', 'field', 'place', 'move', 'hold', 'release', 'done', 'supersede', 'delete', 'goal')
+WRITES = ('add', 'field', 'place', 'decide', 'move', 'hold', 'release', 'done', 'supersede', 'delete', 'goal')
 
 # JSON keys follow option names with underscores; `id` is the add option --id.
 _INPUT_TYPES = {
@@ -962,6 +981,9 @@ def _run(args, repo):
     elif verb == 'place':
         cmd_place(repo, args.task, args.section, args.decision)
         out = f'ok {args.task} -> {args.section}'
+    elif verb == 'decide':
+        cmd_decide(repo, args.task, args.decision, args.section)
+        out = f'ok {args.task} decision recorded (not committed)'
     elif verb == 'move':
         changes = cmd_move(repo, args.task, args.direction)
         out = 'ok ' + ', '.join(f'{tid} rank {rank}' for tid, rank in changes.items())

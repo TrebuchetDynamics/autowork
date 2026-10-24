@@ -21,6 +21,8 @@
     autowork run [dir]            run the runner here, in the foreground (debugging)
     autowork web [--port N] [--host H] [--view-only]
     autowork blockers [dir]       answer what blocks the queue (times the owner session)
+    autowork plan [dir] [--objective TEXT] [--session ID] [--interactive]
+                                  Pi planning chat, proposals and history; --help lists review/apply controls
     autowork attention MINUTES [--task ID] [--note TEXT] [target]
                                   record other owner time in private runner state
     autowork update [flags]       update the installed suite in place (install.sh update)
@@ -46,7 +48,7 @@
 
 A systemd user service (`pi-autowork@<repository name>`) is the default way to run a
 repository's runner. A target is a runner name (sierra), a repository path, or `.`.
-Nothing here calls a model; the TUI and web view run Textual through `uv`.
+Reads call no model; explicit plan/blockers actions can. The TUI and web view run Textual through `uv`.
 """
 from pi_autowork.layout import LAYOUT
 import argparse
@@ -60,7 +62,7 @@ import subprocess
 import sys
 import time
 
-from pi_autowork import accounting, fleet_view, portal, scorecard, service, task_commands, task_migrate, task_prepare  # noqa: E402
+from pi_autowork import accounting, fleet_view, planning_commands, portal, scorecard, service, task_commands, task_migrate, task_prepare  # noqa: E402
 
 COMPONENT = LAYOUT.component
 TOOLSET = COMPONENT.parent
@@ -526,8 +528,11 @@ def cmd_blockers(args, paths):
 
 
 def cmd_plan(args, paths):
-    """`/plan_for_me` in an agent, for a repository that has no tasks yet (the TUI's Plan)."""
-    return agent_session(args, paths, prompt=fleet_view.plan_prompt, category='planning')
+    """Embedded RPC planning; the old external-agent path remains explicit."""
+    if args.legacy:
+        return agent_session(args, paths, prompt=fleet_view.plan_prompt, category='planning')
+    repo = resolve(args.target, paths)[0]
+    return planning_commands.run(args, repo, paths['state_root'])
 
 
 def cmd_clear_held(args, paths):
@@ -614,8 +619,7 @@ def parser():
                             ('remove', 'stop and remove the service'),
                             ('start', "install (if needed) and start the repository's service"),
                             ('run', 'run the runner here in the foreground'),
-                            ('blockers', 'answer what blocks the queue'),
-                            ('plan', 'plan a repository without tasks in an agent (/plan_for_me)')):
+                            ('blockers', 'answer what blocks the queue')):
         item = sub.add_parser(name, help=help_text)
         item.add_argument('target', nargs='?', help='runner name, repository path or . (default: .)')
     attention = sub.add_parser('attention', help='record owner minutes in private runner state')
@@ -668,6 +672,7 @@ def parser():
     formats.add_argument('--csv', action='store_true')
     card.add_argument('--baseline', metavar='FILE', help='JSON owner estimates: cost and minutes per verified task')
     card.add_argument('target', nargs='*', help='runner names or repository paths (default: every runner)')
+    planning_commands.add_parser(sub)
     task_commands.add_parser(sub)
     task_migrate.add_parser(sub)
     sub.add_parser('capabilities', help="this executable's release, commands and prepare API, as JSON")

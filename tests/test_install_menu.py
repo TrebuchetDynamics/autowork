@@ -42,6 +42,12 @@ class InstallMenuTests(unittest.TestCase):
         self.log = self.home / 'calls.log'
         self.log.touch()
         self.fake('pi', PI)
+        # A ready private SDK environment keeps these installer-orchestration
+        # fixtures offline. The RPC installer has separate real wheel qualification.
+        sdk = self.home / '.local/state/pi-autowork/runtimes/pi-rpc-0.2.6/bin/python'
+        sdk.parent.mkdir(parents=True)
+        sdk.write_text('#!/bin/sh\necho 0.2.6\n')
+        sdk.chmod(0o755)
         for name in ('claude', 'codex', 'systemctl'):
             self.fake(name, LOGGING)
         self.env = {'PATH': f'{self.bin}:/usr/bin:/bin', 'HOME': str(self.home), 'FAKE_LOG': str(self.log),

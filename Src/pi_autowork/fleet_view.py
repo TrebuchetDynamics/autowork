@@ -268,6 +268,25 @@ def _actions(state_dir, task, now, size=262144):
 
 def _activity(state_dir, task, now):
     """The last thing the task's Pi session did: (text, seconds ago)."""
+    # This is a display projection, never an attempt/closure authority. Read two
+    # bounded per-task files, not an unbounded scan of retained session histories.
+    from pi_autowork.pi_rpc import runtime_path
+    from pi_autowork.processes import running
+    for role in ('worker', 'verify'):
+        try:
+            with runtime_path(state_dir, role + ':' + task, 'active.json').open() as stream:
+                progress = json.loads(stream.read(8192))
+            if (progress.get('task') != task or progress.get('role') != role
+                    or progress.get('transport') != 'rpc' or not progress.get('active')
+                    or not -2 <= now - float(progress['updated_at']) <= 10 or not running(progress)):
+                continue
+            phase = re.sub(r'[^a-z_ -]', '', str(progress.get('phase') or 'starting'))[:40]
+            tool = re.sub(r'[^A-Za-z0-9_.:-]', '?', str(progress.get('current_tool') or ''))[:40]
+            at = progress.get('last_event_at')
+            age = max(0, int(time.monotonic() - float(at))) if at is not None else None
+            return f'RPC · {phase}' + (f' · {tool}' if tool else ''), age
+        except (OSError, ValueError, TypeError, KeyError):
+            pass
     for text, age, _ in _actions(state_dir, task, now):
         return short(text, 90), age
     return '', None

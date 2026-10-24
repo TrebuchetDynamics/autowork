@@ -60,14 +60,14 @@ class AttentionTests(unittest.TestCase):
         with mock.patch.object(command, 'resolve', return_value=(str(self.repo), 'fixture')), \
                 mock.patch.object(command.fleet_view, 'blockers_agent', return_value=[str(agent)]), \
                 mock.patch('time.monotonic', side_effect=[100, 160]):
-            self.assertEqual(command.main(['plan', str(self.repo)]), 0)
+            self.assertEqual(command.main(['plan', str(self.repo), '--legacy']), 0)
         self.assertTrue(Path(str(agent) + '.args').read_text().startswith(f'/plan_for_me Plan the work of {self.repo}'))
         usage = scorecard.measure(self.repo, 7)['usage']
         self.assertEqual((usage['owner_minutes'], usage['attention_categories']), (1, {'planning': 1}))
         with mock.patch.object(command, 'resolve', return_value=(str(self.repo), 'fixture')), \
                 mock.patch.object(command.fleet_view, 'blockers_agent', return_value=None), \
                 contextlib.redirect_stderr(io.StringIO()) as err:
-            self.assertEqual(command.main(['plan', str(self.repo)]), 1)
+            self.assertEqual(command.main(['plan', str(self.repo), '--legacy']), 1)
         self.assertIn('no agent for planning', err.getvalue())
 
 

@@ -52,7 +52,7 @@ class RuntimeTests(unittest.TestCase):
         pi.write_text(FAKE)
         pi.chmod(pi.stat().st_mode | stat.S_IEXEC)
         self.plan, self.log = root / 'plan.json', root / 'log.jsonl'
-        self.env = {'PI_BIN': str(pi), 'PI_AUTOWORK_BACKOFF': '0', 'PI_AUTOWORK_MAX_RETRIES': '2',
+        self.env = {'PI_AUTOWORK_TRANSPORT': 'json', 'PI_BIN': str(pi), 'PI_AUTOWORK_BACKOFF': '0', 'PI_AUTOWORK_MAX_RETRIES': '2',
                     'PI_AUTOWORK_PRIMARY': 'openai-codex/gpt-6.1-sol',
                     'PI_AUTOWORK_FALLBACK': 'openrouter/deepseek/deepseek-v4.1-flash',
                     'FAKE_PLAN': str(self.plan), 'FAKE_LOG': str(self.log)}

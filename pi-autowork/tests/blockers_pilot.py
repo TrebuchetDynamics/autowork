@@ -207,19 +207,20 @@ async def main():
                     assert len(app.screen_stack) == 1
             print('PASS', width, 'view_only=' + str(view_only), 'keyboard, mouse, copy, literal text, no controls')
 
-    # Backlog remains setup-only, and uses g rather than the read-only b action.
+    # Plan is independent of execution readiness; b remains a read-only report.
     runner = fleet_view.Runner('setup', repo=str(Path(__file__).parent), prepare_state='none')
     app = tui.FleetApp(command='aw', script='pa', state_root='/missing', env_dir='/missing', agent='agent')
     with patch.object(fleet_view, 'collect_for_tui', return_value=collected([runner])), \
-         patch.object(app, 'logs', return_value=''), patch.object(app, 'execute') as execute:
+         patch.object(app, 'logs', return_value=''), patch.object(app, 'open_plan') as plan, \
+         patch.object(app, 'execute') as execute:
         async with app.run_test(size=(80, 24)) as pilot:
             await pilot.press('g')
-            assert execute.call_count == 1
-            assert execute.call_args.args[0].argv == ['aw', 'plan', runner.repo]
+            plan.assert_called_once_with(runner.repo)
             runner.prepare_state = 'converted'
             await pilot.press('g')
-            assert execute.call_count == 1, 'Backlog must be setup-only'
-    print('PASS setup-only Backlog on g')
+            assert plan.call_count == 2
+            execute.assert_not_called()
+    print('PASS planning on g for prepared and unprepared repositories')
 
     # Deterministic barrier: acknowledge Escape and another open while the reader is stalled.
     started, release = threading.Event(), threading.Event()
