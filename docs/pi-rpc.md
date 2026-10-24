@@ -77,7 +77,8 @@ fields, custom Pi protocol implementation, second scheduler or task database is 
 Provider fallback is allowed only for a settled, non-aborted provider failure
 with proven cleanup, under the pre-existing retry/cooldown budget. Aborted,
 uncertain-acceptance, transport/protocol/overflow and unproven-cleanup outcomes do
-not automatically replay the prompt or switch to JSON.
+not trigger runtime prompt replay or a switch to JSON. The coordinator's bounded
+diagnostic triage recovery is separate, as described below.
 
 The guard pins PID birth identities, validates the spawning parent's identity
 before and after parent-death registration, discovers escaped descendants,
@@ -123,13 +124,27 @@ cooldown prevent duplicate replay; ACK means accepted/queued, never consumed.
 LLM supervisor or expose a remote control endpoint. A production cross-process
 control channel and automatic intervention policy are not activated by this slice.
 
-Auxiliary triage/provisioning now distinguish completed results from technical
-failures. Safe pre-acceptance/confirmed-provider failures and unavailable scratch
-use the existing per-profile marker files with a three-attempt recovery budget and
-backoff. Ambiguous transport/cleanup/abort outcomes are replay-blocked. A failed
-triage is not an owner verdict; successful owner decisions remain deduplicated.
-An unapplied engine answer and a missing provisioning scratch are not successful
-completion markers. These records do not authorize or close engineering tasks.
+Auxiliary triage/provisioning distinguish completed results from technical failures.
+The existing private `triage.json` and `provisioned.json` markers retain a
+three-attempt recovery budget with 60-second then 120-second backoff across
+coordinator restarts. Safe pre-acceptance/confirmed-provider failures, unapplied
+engine answers and unavailable provisioning scratch remain eligible within that
+budget. Diagnostic triage also retries transport, timeout, interruption and crash
+failures only with a positive cleanup receipt and unchanged retained tracked and
+nonignored untracked contents. If those contents cannot be snapshotted, diagnosis
+stays a technical hold without submission. Uncertain acceptance, unknown runtime
+results, unproven cleanup, unclassified protocol/observation failures and coordinator
+loss during submission remain replay-blocked. Provisioning transport/timeout/interruption
+failures stay held to avoid repeating a partial installation.
+
+A failed triage is not an owner verdict. Completed owner verdicts, applied answers
+and successful provisioning remain deduplicated. Exhausted or replay-blocked
+technical holds identify the failure and private marker/run paths to inspect;
+reconcile partial work before explicit recovery, rather than blindly clearing
+markers. These records do not authorize or close engineering tasks. Offline
+regressions in `pi-autowork/tests/test_recovery_runtime_failures.py` cover retry,
+restart, exhaustion, missing scratch and completed-result deduplication; they do
+not qualify live provider or host-crash recovery.
 
 ## Verification and rollback
 
