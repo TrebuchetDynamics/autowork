@@ -85,14 +85,23 @@ inside the substep, ask “implement now?”, restart planning or spawn a compet
 worker. Genuine product decisions or external authority remain explicit; choose
 routine reversible planning details yourself.
 
-Write the batch with `autowork tasks add`, `field`, `place` and `goal`; each write
-refuses a file changed since it was read, so a concurrent edit is never overwritten.
+Use Docs Sync's existing capability/prepare flow on the actual consumer before
+reconciling tasks; reuse its result while inputs are unchanged. Write the batch with
+`autowork tasks add`, `field`, `place` and `goal`, using literal JSON for prose. The
+CLI's operation-local conflict check covers its own read, not an earlier agent read.
+After a material earlier read, retain `show ID --worktree`'s `record_revision` and
+pass it to the supported update as `--expect REV`. On refusal reread and reconcile,
+then reapply only the attributable delta; never replay a stale full snapshot or
+blindly retry with a new digest. See [Edit records](TODO-WORKCENTER.md#edit-records).
+
 Then run `autowork tasks validate --worktree .` before reporting it saved: fix every
-error. It lists drafts: a record missing contract fields is never selected. After
-the commit, `autowork tasks why ID` shows whether each task can run and what it
-waits for. Report each task
-as ready, waiting (and on what) or draft. Readiness is not execution authorization
-or a live ownership check. Commit the batch once.
+error. It lists drafts: a record missing contract fields is never selected. Commit
+the batch once. After the commit, `autowork tasks why ID` reports committed-store
+selection eligibility and position, not resource/ownership admission, capacity or
+dispatch. Report each task as selection-ready, waiting (and on what) or draft;
+readiness is not execution authorization or a live ownership check. A branch-local
+commit and passing checks do not establish consumer delivery: disclose whether the
+actual consumer includes that commit and whether selection was checked there.
 
 Diagnose every validation error and draft before closing the handoff. When existing
 owner acceptance unambiguously covers the section, repair its exact status metadata
@@ -103,11 +112,13 @@ repairable draft or substitute queue size for an ordered implementation plan.
 
 For an explicit plan slice, select only its named IDs. Reconcile existing workers,
 dependencies, current source and primary milestone before handoff. A usable
-backlog does not require a fresh documentation prepass. The consumer checks the
-ordered frontier within the named tasks' goals, never an unrelated global goal.
-Preserve the focus goal unless the user reprioritizes it, but an explicitly authorized named
-slice may execute within that scope after current dependency, source and ownership
-checks. No start_goal admission, fallback file or Kanban card is required.
+backlog does not require a fresh documentation prepass. The coordinator reconciles
+the named slice against current dependencies, focus, source and ownership; the CLI
+does not derive a per-goal frontier. Requested-ID filtering preserves supplied order,
+not a newly computed frontier. Preserve the focus goal unless the user reprioritizes
+it; do not move tasks or drop dependencies to manufacture readiness. A named slice
+executes only through the supported selection/admission path under existing authority.
+No start_goal API, fallback file or Kanban card is required.
 
 Under execution authority, the current coordinator executes the selected contract, retaining task IDs, scope,
 sources, expected change, acceptance, verification and stop conditions. There is
