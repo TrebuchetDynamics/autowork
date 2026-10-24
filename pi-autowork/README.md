@@ -43,7 +43,9 @@ checks or scope. Technical/mixed or incomplete evidence does not receive an
 owner-only headline. No worker observations does not prove no active workers.
 An existing dated owner deferral is already answered, not a new permission question.
 When the evidence contains only deferred work and its waiting dependents, the default
-copy is a short overview (at most five task lines); full owner notes stay in Details.
+copy is a short overview (at most five task lines), quoting each recorded owner
+condition instead of a generic deferral label. Long notes are explicitly excerpted;
+the complete dated owner notes stay in Details.
 Missing dependent checks remain visible. Mixed holds, active work, busy integration
 or incomplete sources retain the general report rather than hiding another blocker.
 
