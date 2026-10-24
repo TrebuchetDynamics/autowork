@@ -57,6 +57,7 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Extract main-check supervision into stateless Src helpers behind unchanged Coordinator methods, preserving late-bound collaborators and process/receipt behavior. (TOOLSET-369-b5db2d3a)
 - Extract read-only closure document preparation into a Src integration leaf while preserving canonical transaction authority, changelog composition and compatibility facades. (TOOLSET-370-02928e38)
 - Move runner and engine implementations into Src/pi_autowork while preserving legacy commands, canonical/flat import identity, standalone hooks and selected-release restart safety. (TOOLSET-375-8e02693d)
 - TUI: successful task deletion immediately refreshes rows, counts and detail with pending-commit provenance and stale-read-safe restore/recreation reconciliation. (TOOLSET-383-7a5b0363)
