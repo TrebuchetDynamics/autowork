@@ -13,6 +13,7 @@ from textual.widgets.option_list import Option
 
 from .planning_hub import PlanningHub
 from .planning_views import history_text, preview_text, roadmap_text
+from .tui_dialogs import Confirm
 
 
 class DecisionPrompt(ModalScreen[dict]):
@@ -390,7 +391,6 @@ class PlanScreen(Screen):
     def action_apply(self):
         if self.readonly or self._busy or not self.preview or not self.preview.get('valid') or not self.preview.get('files'):
             return
-        from .tui import Confirm
         planner, sid, revision, repo = self.planner, self.session_id, self.preview['revision'], self.repo
         def confirmed(yes):
             if yes and not self.readonly and (repo, sid) == (self.repo, self.session_id):

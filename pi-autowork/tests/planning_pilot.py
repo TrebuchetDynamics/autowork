@@ -91,6 +91,7 @@ async def main():
             await pilot.pause()
             await pilot.press('n')
             assert planner.applied == []
+            assert 'pi_autowork.tui' not in sys.modules, 'Planning confirmation must not load the fleet application'
             await pilot.click('#plan-apply')
             await pilot.pause()
             await pilot.press('y')

@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pi_autowork import pi_runtime, pi_rpc
+from pi_autowork import pi_runtime, pi_rpc, pi_run_support
 
 FAKE = r'''#!/usr/bin/env python3
 import json, os, sys, threading, time, subprocess
@@ -74,6 +74,16 @@ class SpecTests(unittest.TestCase):
         self.assertEqual(pi_runtime.Settings('/unused', {}).transport, 'rpc')
         self.assertEqual(pi_runtime.Settings('/unused', {'PI_AUTOWORK_TRANSPORT':'json'}).transport, 'json')
 
+    def test_rpc_cancellation_observes_the_callers_live_stop_state(self):
+        settings = pi_runtime.Settings('/unused', {})
+        with patch.object(pi_runtime, 'STOP', False), patch.object(pi_rpc, 'run', return_value={}) as run:
+            pi_runtime.run_pi(settings, '/unused', 'go', 's1', 'p/m', 10, [], 'worker')
+            stopping = run.call_args.kwargs.get('stop_requested')
+            self.assertTrue(callable(stopping), 'RPC must receive the caller-owned cancellation callback')
+            self.assertFalse(stopping())
+            pi_runtime.STOP = True
+            self.assertTrue(stopping())
+
     def test_startup_prompt_file_is_expanded_exactly_and_bounded(self):
         with tempfile.TemporaryDirectory() as root:
             path=Path(root)/'prompt.md'; path.write_text('Task: T-1\nExact accepted scope\u2028retained')
@@ -109,7 +119,7 @@ class SpecTests(unittest.TestCase):
         first=subprocess.Popen(['sleep','30']); unrelated=subprocess.Popen(['sleep','30'])
         try:
             children=lambda pid: [first.pid] if pid==os.getpid() else [unrelated.pid]
-            with patch.object(pi_runtime,'_children',side_effect=children), \
+            with patch.object(pi_run_support,'_children',side_effect=children), \
                     patch.object(pi_process.signal,'pidfd_send_signal') as send:
                 pi_runtime.stop_stuck_commands(os.getpid(),.000001,{})
                 send.assert_not_called()

@@ -711,10 +711,11 @@ class PackageImportTests(unittest.TestCase):
             self.fail(f'pi_autowork import cycle (including deferred imports): {exc}')
         script = ('import importlib,sys; sys.path[:0] = sys.argv[1:4]; '
                   'importlib.import_module(sys.argv[4])')
+        renderers = {'pi_autowork.tui', 'pi_autowork.planning_ui', 'pi_autowork.tui_dialogs'}
         for name in modules:
             with self.subTest(module=name):
                 python = [sys.executable]
-                if name == 'pi_autowork.tui':
+                if name in renderers:
                     if not shutil.which('uv'):
                         self.skipTest('uv is not installed (optional Textual UI)')
                     python = ['uv', 'run', '--offline', '--quiet', '--no-project', '--with',
@@ -722,7 +723,7 @@ class PackageImportTests(unittest.TestCase):
                 result = subprocess.run([*python, '-c', script, str(ROOT / 'pi-autowork'),
                                          str(ROOT / 'pi-autowork/engine'), str(package / 'legacy'), name],
                                         capture_output=True, text=True, timeout=60)
-                if name == 'pi_autowork.tui' and result.returncode == 2 and \
+                if name in renderers and result.returncode == 2 and \
                         'textual' in result.stderr.lower() and 'offline' in result.stderr.lower():
                     self.skipTest('textual==8.2.8 is not in the uv cache (offline)')
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

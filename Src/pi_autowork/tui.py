@@ -26,6 +26,7 @@ import uuid
 
 from pi_autowork import fleet_view, portal, tui_reads, blockers_report  # noqa: E402
 from pi_autowork.planning_ui import PlanScreen, DecisionPrompt, QuestionPicker  # noqa: E402
+from pi_autowork.tui_dialogs import Confirm  # noqa: E402
 
 from rich.text import Text  # noqa: E402  (installed with textual)
 from rich.style import Style  # noqa: E402
@@ -245,40 +246,6 @@ class DecisionScreen(ReadScreen, DecisionPrompt):
             self.query_one('#decision-text', TextArea).focus()
             self.query_one('#decision-status', Static).update(
                 f'Save failed: {message}. Draft kept; close and reopen if the record changed.')
-
-
-class Confirm(ModalScreen[bool]):
-    BINDINGS = [Binding('y', 'answer(True)', 'yes'), Binding('n,escape', 'answer(False)', 'no')]
-    DEFAULT_CSS = '''
-    Confirm { align: center middle; }
-    Confirm > Vertical { width: 76; height: auto; border: thick $warning; background: $surface; padding: 1 2; }
-    Confirm Horizontal { height: auto; align-horizontal: right; margin-top: 1; }
-    Confirm Button { margin-left: 2; }
-    '''
-
-    def __init__(self, question):
-        super().__init__()
-        self.question = question
-
-    def compose(self) -> ComposeResult:
-        with Vertical():
-            yield Label(self.question)
-            with Horizontal():
-                yield Button('Yes (y)', variant='warning', id='yes')
-                yield Button('No (n)', id='no')
-
-    def _answer(self, value):
-        # A button event can arrive after the confirmation was already dismissed (a double
-        # click, a queued key, or a refresh that removed the modal). dismiss() would then pop
-        # the last remaining screen and crash the whole TUI with ScreenStackError.
-        if self.is_current:
-            self.dismiss(value)
-
-    def on_button_pressed(self, event):
-        self._answer(event.button.id == 'yes')
-
-    def action_answer(self, value):
-        self._answer(value)
 
 
 class TextPrompt(ModalScreen[str]):

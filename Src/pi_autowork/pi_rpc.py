@@ -21,6 +21,7 @@ import time
 import uuid
 
 from pi_autowork.layout import LAYOUT
+from pi_autowork import pi_run_support
 
 SDK_VERSION = '0.2.6'
 PI_VERSION = '1.4.0'
@@ -225,11 +226,10 @@ class PiRpcRuntime:
             raise ValueError('canonical contract changed; control refused')
 
     async def _watch_commands(self):
-        from pi_autowork import pi_runtime
         from pi_autowork.processes import alive
-        limit = pi_runtime.command_limit(self.spec.role, self.spec.timeout, env=dict(self.spec.environment))
+        limit = pi_run_support.command_limit(self.spec.role, self.spec.timeout, env=dict(self.spec.environment))
         if limit and self.pi_identity and alive(*self.pi_identity):
-            await asyncio.to_thread(pi_runtime.stop_stuck_commands, os.getpid(), limit,
+            await asyncio.to_thread(pi_run_support.stop_stuck_commands, os.getpid(), limit,
                                     self.stopping, pi_pid=self.pi_identity[0], pi_started=self.pi_identity[1])
 
     def _save_progress(self):
@@ -279,12 +279,11 @@ class PiRpcRuntime:
                                        session_id=self.spec.session, extra_args=self.spec.extra_args,
                                        env=dict(self.spec.environment), inherit_env=False,
                                        strict_version=True, limits=limits)
-            from pi_autowork import pi_runtime
             from pi_autowork.processes import start_time
-            before = set(pi_runtime._children(os.getpid()))
+            before = set(pi_run_support._children(os.getpid()))
             try:
                 async with self.client:
-                    children = set(pi_runtime._children(os.getpid())) - before
+                    children = set(pi_run_support._children(os.getpid())) - before
                     if len(children) == 1:
                         pid = children.pop()
                         born = start_time(pid)
@@ -352,8 +351,7 @@ class PiRpcRuntime:
         try:
             values = self.events.outcome()
         except ProjectionOverflow:
-            from pi_autowork.pi_runtime import analyse
-            values = analyse('')
+            values = pi_run_support.analyse('')
             failure, retry_safe, rc = 'overflow', False, 1
         return dict(values, rc=rc, seconds=time.monotonic()-begin,
                     failure_kind=failure, retry_safe=retry_safe,
@@ -391,11 +389,11 @@ def readiness(settings):
     return ''
 
 
-def run(settings, directory, message, session, target, limit, extra, role=None, task=''):
-    """Synchronous existing-engine seam, isolated async SDK host, OS guard proof."""
-    from pi_autowork import pi_runtime
+def run(settings, directory, message, session, target, limit, extra, role=None, task='', *,
+        stop_requested=lambda: False):
+    """Synchronous engine seam; cancellation stays owned by the calling job runtime."""
     from pi_autowork.processes import start_time
-    base = dict(pi_runtime.analyse(''), rc=1, seconds=0, transport='rpc', sdk_version=SDK_VERSION,
+    base = dict(pi_run_support.analyse(''), rc=1, seconds=0, transport='rpc', sdk_version=SDK_VERSION,
                 failure_kind='toolchain', retry_safe=False, cleanup_complete=False)
     reason = readiness(settings)
     if reason:
@@ -431,7 +429,7 @@ def run(settings, directory, message, session, target, limit, extra, role=None, 
                     break
                 except subprocess.TimeoutExpired:
                     payload = None
-                    if pi_runtime.STOP or time.monotonic() - begin > float(limit) + 20:
+                    if stop_requested() or time.monotonic() - begin > float(limit) + 20:
                         child.terminate()  # Guard remains alive to reap its complete subtree.
             proof = json.loads(identity.read_text())
             try:
@@ -450,7 +448,7 @@ def run(settings, directory, message, session, target, limit, extra, role=None, 
                 result.update(rc=child.returncode, retry_safe=False,
                               failure_kind='timeout' if child.returncode == 124 else 'interrupted')
             result['seconds'] = time.monotonic() - begin
-            result['error'] = pi_runtime.redact(str(result.get('error') or ''))[:300]
+            result['error'] = pi_run_support.redact(str(result.get('error') or ''))[:300]
             return result
         except (OSError, ValueError):
             return dict(base, failure_kind='cleanup_unproven', error='RPC host or ownership proof unavailable',
