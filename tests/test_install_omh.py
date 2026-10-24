@@ -2,11 +2,12 @@
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+
+from src_fixture import copy_sources
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'install-omh.py'
@@ -35,7 +36,7 @@ class InstallOmhTests(unittest.TestCase):
         self.root = Path(temp.name)
         self.repo = self.root / 'repo'
         (self.repo / 'plugins').mkdir(parents=True)
-        shutil.copy2(SCRIPT, self.repo / SCRIPT.name)
+        copy_sources(self.repo)
         self.defaults = self.repo / 'plugins/defaults.json'
         self.defaults.write_text(json.dumps({'omh': {'full': True, 'memory_mode': 'preserve',
                                                     'tui': False, 'menubar': False, 'source': SOURCE}}))

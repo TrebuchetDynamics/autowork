@@ -6,6 +6,8 @@ import sys
 import tempfile
 import unittest
 
+from src_fixture import copy_sources
+
 SCRIPT = Path(__file__).resolve().parents[1] / 'install-graphify.py'
 GRAPHIFY = '''import os, sys
 from pathlib import Path
@@ -26,6 +28,7 @@ class InstallGraphifyTests(unittest.TestCase):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         self.root = Path(temp.name)
+        self.script = copy_sources(self.root / 'repo') / SCRIPT.name
         self.home = self.root / 'hermes'
         (self.home / 'profiles/coder').mkdir(parents=True)
         (self.home / 'profiles/coder/config.yaml').touch()
@@ -41,7 +44,7 @@ class InstallGraphifyTests(unittest.TestCase):
         return path
 
     def run_adapter(self, *args):
-        return subprocess.run([sys.executable, str(SCRIPT), '--hermes-home', str(self.home),
+        return subprocess.run([sys.executable, str(self.script), '--hermes-home', str(self.home),
                                *args], cwd=self.root, env=self.env, capture_output=True, text=True)
 
     def test_installs_complete_tree_in_selected_profiles_only(self):

@@ -229,10 +229,11 @@ The directory tree marks legacy or interrupted conversions **legacy planning**, 
 **needs tasks**; a repository without planning still reads **needs tasks**.
 The headless pilot exercises preparation on disposable repositories, with faked
 service starts and forced service/worker effects; it does not qualify a live service.
-The Tasks window lists open tasks in priority order (section, then rank) with their short title, state and reason,
-followed in All by closed tasks: **Verified** with the receipt, or **Manual** with the reason
-(a missing/invalid verified receipt is explicitly warned, never relabelled Manual);
-`1`–`5` (or Tab) show All, Working, Held, Waiting or Questions; on the selected task `u`/`d`
+The Tasks window lists open tasks in priority order (section, then rank) with their short title, state and reason.
+`1`–`6` (or Tab) show Open, Active, Blocker, Waiting, Questions or Closed. Closed
+history shows **Verified** with the receipt, or **Manual** with the reason
+(a missing/invalid verified receipt is explicitly warned, never relabelled Manual).
+On the selected task `u`/`d`
 move it **U**p or **D**own (its rank is the priority), `s` to another **S**ection (Now,
 Next, Needs decision), `c` **C**lears its hold, `a` sets it **A**side, `b` answers the
 owner's **B**lockers in an agent, and `n` adds a **N**ew task from a form. Enter opens the
@@ -279,6 +280,18 @@ revision/age with the acquisition error visible. The rendered pilot opens all th
 states in wide and narrow viewports, checks painted cells/layout bounds, and scrolls
 a long acquisition error through its final line.
 
+A confirmed TUI **Delete** (`x` or Delete) uses the repository path captured before
+confirmation, not a runner-name lookup. After command success, rows, closed history,
+counts and detail/actions update on the next UI-loop update, without waiting for a
+reader, timer or commit. Inventory diagnostics label this display-only adjustment
+**deletion pending commit**; the original committed snapshot, dependency/admission
+authority, worker activity and independent questions remain unchanged. Failures or
+cancelled confirmation do not remove rows. Old or failed reads cannot resurrect the
+record. Fresh off-loop working-tree and committed observations retire the adjustment
+when deletion is committed or the record is restored. A recreation absent from HEAD
+is disclosed as a pending record, never added to committed inventory. External CLI
+edits retain the normal observation cadence; the TUI never commits deletions.
+
 The TUI runs `collect_for_tui` off the event loop and publishes its `FleetSnapshot`
 envelope atomically, including acquisition errors. Its labelled preparation diagnostics can be
 reused for less than 30 seconds, invalidated by observed revision, dirty-file,
@@ -301,8 +314,11 @@ Read failures retain last-good data with a stale/unavailable diagnostic and allo
 Offline checks in `tests/test_tui_reads.py`, `tests/test_task_snapshot.py`,
 `tests/test_fleet_view.py` and `tests/test_health.py`, plus the headless
 `tests/tui_pilot.py`, cover these boundaries. The pilot acknowledges keys and closes
-screens while reader providers are held by Events, before releasing them. These
-checks do not qualify SSH transport latency, a live service or execution through a provider.
+screens while reader providers are held by Events, before releasing them. Its
+immediate-deletion case runs the real CLI on a private fixture with timers disabled
+and the fleet reader blocked, then checks stale-result rejection, restore and
+pending-only recreation. These checks do not qualify SSH transport latency, a live
+service or execution through a provider.
 
 The main-check line in runner status and the TUI reads the current check receipt,
 not just the runner's cached health snapshot. A missing process or a reused PID

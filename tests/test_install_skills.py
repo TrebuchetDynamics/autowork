@@ -6,6 +6,8 @@ import subprocess
 import tempfile
 import unittest
 
+from src_fixture import copy_sources
+
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'install-skills.sh'
 
@@ -26,7 +28,7 @@ class InstallSkillsTests(unittest.TestCase):
         self.script = self.repo / SCRIPT.name
         if SCRIPT.exists():
             shutil.copy2(SCRIPT, self.script)
-            shutil.copy2(SCRIPT.with_name('install_skills.py'), self.repo / 'install_skills.py')
+            copy_sources(self.repo)
         self.home = self.root / 'hermes'
         for profile in ('coder', 'deleted'):
             directory = self.home / 'profiles' / profile

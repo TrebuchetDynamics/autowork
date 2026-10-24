@@ -1,5 +1,6 @@
 """Retired memory integration cannot be selected by bundle setup."""
 import json
+import runpy
 from pathlib import Path
 import subprocess
 import sys
@@ -16,8 +17,10 @@ class RemovedMemoryIntegration(unittest.TestCase):
         defaults = json.loads((ROOT / 'plugins/defaults.json').read_text())
         self.assertNotIn('hindsight', defaults)
         self.assertNotIn('hindsight', defaults['imported_plugins'])
+        layout = runpy.run_path(str(ROOT / 'autowork_bootstrap.py'))['Layout'](ROOT)
         for name in ('plugin.yaml', 'plugins/PLUGINS.md', 'bundle.py', 'setup_bundle.py', 'install-plugins.sh'):
-            self.assertNotIn('hindsight', (ROOT / name).read_text().lower(), name)
+            source = layout.implementation(name) if name.endswith('.py') else ROOT / name
+            self.assertNotIn('hindsight', source.read_text().lower(), name)
 
     def test_setup_rejects_removed_flag_before_mutation(self):
         with tempfile.TemporaryDirectory() as home:

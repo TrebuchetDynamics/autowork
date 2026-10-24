@@ -6,14 +6,18 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location('native_provisioning', ROOT / 'install_skills.py')
-assert spec is not None and spec.loader is not None
-provisioning = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(provisioning)
+from src_fixture import copy_sources
 
 
 class ProvisioningTests(unittest.TestCase):
+    def setUp(self):
+        self.release = tempfile.TemporaryDirectory()
+        self.addCleanup(self.release.cleanup)
+        repo = copy_sources(Path(self.release.name) / 'repo')
+        spec = importlib.util.spec_from_file_location('native_provisioning', repo / 'install_skills.py')
+        self.provisioning = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.provisioning)
+
     def test_concurrent_complete_winner_is_preserved(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -29,8 +33,8 @@ class ProvisioningTests(unittest.TestCase):
                 (destination / 'SKILL.md').write_text('concurrent winner')
                 raise OSError(errno.ENOTEMPTY, 'destination published concurrently')
 
-            with patch.object(provisioning, '_publish', publish_winner):
-                result = provisioning.install(source, [('owner', home)], report=lambda message: None)
+            with patch.object(self.provisioning, '_publish', publish_winner):
+                result = self.provisioning.install(source, [('owner', home)], report=lambda message: None)
             self.assertEqual(result, 0)
             self.assertEqual((target / 'SKILL.md').read_text(), 'concurrent winner')
             self.assertEqual(sorted(p.name for p in target.parent.iterdir()), ['example'])
@@ -44,7 +48,7 @@ class ProvisioningTests(unittest.TestCase):
             (skill / 'SKILL.md').write_text('bundled skill')
             home = root / 'home'
             target = home / 'skills/example'
-            publish = provisioning._publish
+            publish = self.provisioning._publish
             original_inode = []
 
             def create_slot_then_publish(staged, destination):
@@ -52,8 +56,8 @@ class ProvisioningTests(unittest.TestCase):
                 original_inode.append(destination.stat().st_ino)
                 return publish(staged, destination)
 
-            with patch.object(provisioning, '_publish', create_slot_then_publish):
-                result = provisioning.install(source, [('owner', home)], report=lambda message: None)
+            with patch.object(self.provisioning, '_publish', create_slot_then_publish):
+                result = self.provisioning.install(source, [('owner', home)], report=lambda message: None)
             self.assertEqual(result, 1)
             self.assertEqual(target.stat().st_ino, original_inode[0])
             self.assertEqual(list(target.iterdir()), [])
@@ -69,7 +73,7 @@ class ProvisioningTests(unittest.TestCase):
             target = home / 'skills/example'
             target.mkdir(parents=True)
             (target / 'owner-note').write_text('keep me')
-            result = provisioning.install(source, [('owner', home)], report=lambda message: None)
+            result = self.provisioning.install(source, [('owner', home)], report=lambda message: None)
             self.assertEqual(result, 1)
             self.assertEqual((target / 'owner-note').read_text(), 'keep me')
             self.assertFalse((target / 'SKILL.md').exists())

@@ -1,43 +1,9 @@
-"""Canonical workflow commands with CLI and gateway spellings."""
-from functools import partial
-import logging
+"""Compatibility entry; execute this release's native source in the host namespace."""
+import importlib.util as _importlib_util
+from pathlib import Path as _Path
 
-WORKFLOWS = (
-    ('plan_with_me', 'plan-with-me', None, 'Ask me questions and save our plan'),
-    ('plan_for_me', 'plan-for-me', None, 'Investigate, choose an approach and save the plan'),
-    ('docs_sync', 'docs-sync', None, 'Keep repository documentation and tasks accurate'),
-)
-
-
-def dispatch(invoke, ctx, skill, path, subcommand, raw_args, blockers=None):
-    from . import blockers_args
-
-    rest = blockers_args(raw_args) if blockers else None
-    if rest is not None:
-        return invoke(ctx, 'blockers', blockers, rest)  # `/plan_with_me blockers` is `/blockers`
-    if subcommand:
-        raw_args = f'Selected subcommand: {subcommand}\n\n{raw_args}'
-    return invoke(ctx, skill, path, raw_args)
-
-
-def register(ctx, skills, invoke):
-    from hermes_cli.commands import resolve_command
-    from hermes_cli.plugins import get_plugin_commands
-
-    paths = {name: path for name, _, path in skills}
-    occupied = set(get_plugin_commands()) | {command for name, command, _ in skills
-                                             if name not in {"docs-sync", "plan-with-me", "plan-for-me"}}
-    for public, skill, subcommand, description in WORKFLOWS:
-        if skill not in paths:
-            continue
-        # Telegram resolves underscores as hyphens. Reserve both spellings
-        # together so an existing owner cannot be shadowed on either surface.
-        names = (public.replace('_', '-'), public)
-        if any(name in occupied or resolve_command(name) is not None for name in names):
-            logging.getLogger(__name__).warning('Skipping /%s: command already exists.', public)
-            continue
-        handler = partial(dispatch, invoke, ctx, skill, paths[skill], subcommand,
-                          blockers=paths.get('blockers') if skill == 'plan-with-me' else None)
-        for name in names:
-            ctx.register_command(name, handler, description=description, args_hint='[instructions]')
-            occupied.add(name)
+_spec = _importlib_util.spec_from_file_location(
+    __name__ + '._bootstrap', _Path(__file__).resolve().parent / 'autowork_bootstrap.py')
+_bootstrap = _importlib_util.module_from_spec(_spec)
+_spec.loader.exec_module(_bootstrap)
+_bootstrap.execute(globals(), 'Src/autowork_runtime/workflow_commands.py')
