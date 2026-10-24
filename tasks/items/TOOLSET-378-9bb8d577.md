@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-378-9bb8d577"
 title = "Planning evaluation specimens accept native task records while detecting forbidden writes"
 short = "Modernize planning specimens"
-status = "open"
+status = "done"
 goal = "TASK-STORE-HARDENING"
 section = "Now"
 rank = 4000
@@ -16,6 +16,8 @@ scope = "Modernize scenario/interview builders and README: real disposable Git/n
 acceptance = ["Offline prepare yields valid native goal/task seed preserving FMT-01 scope/history without default TODO/goals; all easy/bulk/nine-outcome/native-portable/authority/interview/challenge/coordinator/stop-resume/later-execution cases survive.", "Inspect accepts valid plan/item/goal edits and detects receipt/code/test/skill/unknown or prohibited metadata edits; no-write allows no scratch/lock changes. Index/ref/object effects stay visible; later execution uses separate phase-one baseline.", "Proposed test_planning_specimens.py validates private fixture mechanics/CLI and negative inventories without model/network/install/live execution. README labels offline versus model/installed-host proof; any deliberate legacy migration case is separate."]
 checks = ["python3 scripts/check.py tests/test_planning_specimens.py", "python3 scripts/affected_tests.py --run"]
 exclusions = ["No new task/schema/allocator/scheduler/closure mechanism, legacy queue, approval system, broad refactor, force conversion, install/profile copy, model evaluation, service/job/worker interruption, publication or live qualification. Planning does not implement or dispatch."]
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-378-9bb8d577.toml"
 +++
 - Sources: docs/plans/planning-skills-current-autowork.md#task-d-make-the-evaluation-specimens-use-the-current-store
 - Planner call: Delegated routine compatibility choices, not separately selected owner options; preserve mandatory checks, IDs, ranks and owner stops.

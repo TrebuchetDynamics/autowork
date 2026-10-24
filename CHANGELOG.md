@@ -57,6 +57,7 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Modernize planning evaluation specimens with committed native task seeds and strict write inventories, including zero-write and separate later-execution boundaries. (TOOLSET-378-9bb8d577)
 - Planning craft now uses evidence-based decomposition, actual hot/cold/test scheduling constraints and worker-focused verification without mandatory extraction or new test files. (TOOLSET-377-e8117892)
 - Fix fleet Tasks to default to open inventory, retain read-only Closed history, disclose unknown legacy closures without backfilling evidence, and keep full snapshot diagnostics bounded and copyable. (TOOLSET-382-fcc9aa05)
 - Keep fleet TUI keys responsive with bounded, coalesced background reads, cancellation-safe resource slots, current-only snapshot publication and preserved selection/filter/log scroll state. (TOOLSET-380-f265bb27)
