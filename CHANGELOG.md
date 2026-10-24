@@ -57,6 +57,7 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Pi invocation accounting includes nested-tool, compaction and independent emitted usage once, while preserving unknown totals and provider-billing provenance. (TOOLSET-386-4288b2e0)
 - Keep transient diagnostic triage failures on durable bounded recovery instead of consuming owner verdicts, retain actionable exhaustion diagnostics, and preserve cleanup, retained-work and provisioning deduplication guards. (TOOLSET-385-6021ba81)
 - Verified the existing Src-owned Pi RPC default and refreshed revision-bound engine, SDK/native, cancellation/recovery and install qualification evidence; installed activation remains separate. (TOOLSET-388-b422fa9e)
 - Move native updater implementations into Src/autowork_runtime while preserving public entrypoints, release-local peers, tracked-source integrity and restart/recovery behavior. (TOOLSET-378-07c50be2)
