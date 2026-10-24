@@ -102,7 +102,12 @@ deployment, legal or explicit owner approval remain user inputs. For backlog rec
 Follow the [work center](../shared/TODO-WORKCENTER.md) and
 [single-pass handoff](../shared/PLAN-HANDOFF.md#one-planning-pass-one-handoff).
 Use [Docs Sync](../docs-sync/SKILL.md) to persist findings and decisions in the
-existing document owners. Save the batch as task records with `autowork tasks add
+existing document owners. Reuse Docs Sync's capability/prepare flow against the
+actual consumer: require `prepare_api` 4 or higher, inspect the reported outcome,
+and never call a deferred conversion or activation-pending consumer ready. Reuse
+that result while its inputs are unchanged; do not duplicate its conversion matrix,
+force conversion, install updates or interrupt workers to complete planning.
+Save the batch as task records with `autowork tasks add
 --goal G --title T --short S --scope ... --acceptance ... --checks ... --touches ...
 --depends-on ...`, adding or updating its goal first with `autowork tasks goal`.
 Include acceptance criteria, dependencies, verification and Now/Next placement;
@@ -110,13 +115,17 @@ distinguish proposed decisions from accepted scope. Save observable criteria in
 `acceptance` and exact verification commands in `checks`. Give each executable task
 `touches` from the paths your investigation found, and `resources` where
 needed, per the work center; set further fields and notes such as `Sources:` with
-`autowork tasks field`. Cut and
-write the tasks by the [planning craft](../shared/PLANNING-CRAFT.md#size-each-task):
+`autowork tasks field`. For literal prose, write JSON with a file-writing tool and
+use `--json`; after an earlier material read, carry `show ID --worktree`'s
+`record_revision` to the update's `--expect REV`. On refusal reread, reconcile and
+reapply only the authorized delta, never a stale snapshot or blind retry (see the
+work center). Cut and write the tasks by the [planning craft](../shared/PLANNING-CRAFT.md#size-each-task):
 small tasks with disjoint write sets, acceptance that names a failing test, and a
 pre-mortem whose guards land in the owning tasks. A record missing contract fields
 is a draft the runner never selects: `autowork tasks validate --worktree .` lists
-drafts, and after the commit `autowork tasks why ID` shows whether a task can run.
-Check both before calling a handoff executable. Do not claim a task or launch execution just to validate a
+drafts, and after the commit `autowork tasks why ID` shows committed-store selection
+eligibility and position. Check both before calling a handoff selection-ready;
+capacity, resource/ownership admission and actual dispatch require separate evidence. Do not claim a task or launch execution just to validate a
 planning handoff. Reconcile one affected batch and reuse input-bound checks when
 the evidence is unchanged. For a discovery batch, save only the evidenced frontier:
 reuse an existing backlog that already covers the gaps, and add no duplicate or
@@ -130,9 +139,11 @@ under the same goal. Note `Plan round: 1 of 10` by default (`autowork tasks fiel
 ID "Plan round" "1 of 10"`) and give it dependencies on every building task in the
 batch. Its scope names the goal and what the next round must find out from the
 finished batch's evidence. When the runner hands you a planning task, close it with
-`autowork tasks done ID --evidence TEXT` in the same commit as the batch it
-produced; a successor advances N in `Plan round: N of M` without resetting its
-limit. Apply the shared stopping rules. A small or single-batch plan adds no
+`autowork tasks done ID --by WHO --reason TEXT [--evidence REF]` in the same commit
+as the batch it produced. This is manual closure of planning, with no verification
+receipt; it does not qualify implementation acceptance or a met goal. Preserve the
+work center's verified-dependency/owner-qualification boundaries. A successor
+advances N in `Plan round: N of M` without resetting its limit. Apply the shared stopping rules. A small or single-batch plan adds no
 planning task and keeps the existing saving flow.
 
 For a rolling plan, the final report says the chain will continue on its own under
@@ -164,5 +175,7 @@ in `Needs decision` with their one `Question:` note. Findings without task IDs a
 finished plan.
 
 Finish with the chosen approach, supporting evidence, the planner's calls, changed
-document paths, task IDs, unresolved questions and the next executable task. Report consumer
-readiness only when its check actually ran; a saved plan is not completed work.
+document paths, task IDs, unresolved questions and the next executable task. Report
+branch-local saving/checks separately from inclusion in the actual consumer and its
+selection result; report consumer readiness only when that check actually ran.
+A saved plan is not dispatch, delivery or completed work.

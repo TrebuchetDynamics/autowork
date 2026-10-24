@@ -8,8 +8,10 @@ invisible backlogs. `BLOCKERS.md` holds owner questions and `CHANGELOG.md` the
 release notes. A `TODO.archive.md` that exists is frozen, read-only history.
 
 Every edit goes through `autowork tasks` (see [Edit records](#edit-records)). It
-writes only the working tree, never commits, refuses a file changed since it was read
-and validates the whole store before keeping a write.
+writes only the working tree, never commits, and validates the whole store before
+keeping a write. Its operation-local conflict check protects the CLI's own read;
+carry `record_revision` to `--expect REV` to protect an earlier planning read across
+calls (see [Edit records](#edit-records)).
 
 Autowork executes in the current agent session with optional authorized host-native
 delegation. Old cards are not leases: inspect real process/workspace activity,
@@ -28,7 +30,7 @@ notes, one per line as `- Label: value`.
 | `status` | `open`, `done` or `superseded`. There is no in-progress status. |
 | `goal` | The goal ID the task serves. |
 | `section`, `rank` | `Now`, `Next` or `Needs decision`, and an integer; lower runs first within its section. |
-| `depends_on` | Task IDs that must be done first. |
+| `depends_on`, `verified_depends_on` | Task IDs that must be done first; the verified subset additionally requires verification or an explicit owner exception. |
 | `touches`, `resources` | The write set and the shared resources (see [Bound the write set](#bound-the-write-set)). |
 | `kind` | `implementation`, `plan` or `inspection`. |
 | `ownership` | `worker`, `coordinator` or `owner`. Only `worker` tasks run in the runner. |
@@ -63,8 +65,9 @@ versions and ask one precise question while continuing unaffected work. Never
 silently overwrite a user order.
 
 Changing priority does not satisfy a dependency, stop a live worker, remove an
-explicit exclusion or establish completion. `autowork tasks why ID` shows why a task
-cannot yet run; choose its prerequisite or independent authorized work. Pauses and
+explicit exclusion or establish completion. `autowork tasks why ID` explains
+committed-store selection eligibility and position, not admission, capacity,
+current ownership or dispatch; choose its prerequisite or independent authorized work. Pauses and
 scope restrictions remain binding. Do not infer execution authorization from an open
 task, a research recommendation or a generated plan alone.
 
@@ -76,11 +79,11 @@ For explicit read-only, chat-only, no-write or --dry-run requests, write nothing
 return proposed task updates in chat. A planning-only or “do not implement” request
 still saves planning documents and task records; it does not change product code.
 
-Reuse existing task IDs and document owners. Every new task ID ends in a two-hex-digit
-hash after its number, such as `TOOLSET-084-a7`, so collaborators who add tasks at the
-same time on separate clones never create two tasks with the same ID. `autowork tasks
-add` allocates one (`autowork tasks new-id` prints the next). Keep existing IDs
-unchanged. A discovery pass that finds the existing backlog already covers the
+Reuse existing task IDs and document owners. New allocation uses an eight-hex-digit
+suffix after the number, such as `TOOLSET-084-a7b8c9d0`, reducing collision risk
+across clones, not guaranteeing uniqueness. `autowork tasks add` allocates one
+(`autowork tasks new-id` prints a candidate, not a reservation). Keep existing IDs unchanged,
+including legacy IDs with shorter suffixes or none; never normalize them. A discovery pass that finds the existing backlog already covers the
 evidenced gaps reports that and changes nothing; a short queue is not permission to
 invent work. A task serves a goal: add a missing one with `autowork tasks goal ID
 --title T --source path#anchor --priority N`.
@@ -90,11 +93,13 @@ and a `Sources:` note linking the plan; a task that uses another's output may na
 seam in `Produces:`/`Consumes:` notes. Each acceptance criterion names the test that
 proves it ([executable acceptance](PLANNING-CRAFT.md#executable-acceptance)). `checks`
 names the focused commands that prove the acceptance (a test file, class or
-selector), plus the repository's normal check only when the change crosses modules;
-acceptance asks for behavior, never for a number of tests (see the
-[test budget](ENGINEERING-CYCLE.md#test-budget)). Under a runner that checks the
-merged tree, a `checks` entry for the repository's full check is satisfied by that
-run, not by the worker. Link a substantial plan from its tasks; do not create a
+selector); preserve all task-required commands and mandatory checks. Acceptance
+asks for behavior, never for a number of tests (see the
+[test budget](ENGINEERING-CYCLE.md#test-budget)). Workers run focused/task checks.
+For this repository's standard check runner, landing runs affected checks on the
+merged candidate; main separately runs the full check after landing. An affected
+pass is not a full-main pass. A task's full-check entry is satisfied by the runner's
+full merged-tree gate, not repeated by a worker; custom required checks remain binding. Link a substantial plan from its tasks; do not create a
 separate plan file merely to satisfy a ritual.
 
 Keep unsupported ideas visibly in `Needs decision` with their `Question:` note
@@ -108,11 +113,15 @@ Every executable task you create or rewrite gets `touches`: the repository-relat
 paths or globs it is expected to change (a trailing `/` covers a directory). Name the
 exact files from the scope, sources and the code you inspected, including its tests
 and docs; when a file is not known yet, widen to the owning directories rather than
-omit the field. Parallel Autowork uses `touches` to run likely-independent work
-first, and a task naming a file that unlanded work also names waits for it: the plan
-is what keeps write sets apart, so tasks can run together
-([disjoint write sets](PLANNING-CRAFT.md#disjoint-write-sets)). Add `resources` where
-needed (`live` or `exclusive` to run alone, or shared names such as `test-db`). Only
+omit the field. Parallel Autowork uses `touches` to rank likely-independent work
+first. A shared literal hot production file (named by at least three unfinished
+contracts) gates overlapping work; test modules are exempt from that hot-file gate.
+Overlapping cold files, directories and globs are scheduling hints, not blanket
+serialization. Report possible merge conflicts honestly; do not invent product
+`depends_on` edges for file overlap. Keep real prerequisites and
+[bounded write sets](PLANNING-CRAFT.md#disjoint-write-sets). Add `resources` where
+needed (`live` or `exclusive` to run alone, or shared names such as `test-db`);
+resource and protected manifest/lock/schema/migration/CI gates still apply. Only
 when no path can be bounded, set `resources` to `exclusive` with the reason in a
 note and `touches` to the widest owning directory. Do not list `tasks/`,
 `BLOCKERS.md`, `TODO.archive.md` or `CHANGELOG.md`: the coordinator owns them.
@@ -122,15 +131,15 @@ note and `touches` to the widest owning directory. Do not list `tasks/`,
 
 | Command | Effect |
 | --- | --- |
-| `autowork tasks list`, `validate [--worktree]`, `show ID`, `why ID` | Read the store; `--worktree` checks uncommitted edits too. |
+| `autowork tasks list`, `validate`, `show ID`, `why ID` | Read the committed store; `list`, `validate` and `show` also accept `--worktree` for uncommitted edits. `why` is selection evidence only. |
 | `autowork tasks add --goal G --title T --short S [--section] [--scope] [--acceptance] [--checks] [--touches] [--depends-on]` | A new open task at the bottom of its section; repeat a list flag per item. |
 | `autowork tasks field ID LABEL VALUE` | A typed field (`rank`, `touches`, `checks`, `kind`, ...) or any note label. |
 | `autowork tasks place ID Now\|Next\|"Needs decision" [--decision TEXT]` | Move to the bottom of a section; `--decision` also records an `Owner decision:` note. |
 | `autowork tasks move ID up\|down` | One place up or down within its section. |
 | `autowork tasks hold ID --by WHO [--until YYYY-MM-DD]`, `release ID` | Keep the runner off a task someone works on outside it, and lift that. |
-| `autowork tasks done ID --evidence TEXT` | Close without the engine, with the evidence that the acceptance is met. |
+| `autowork tasks done ID --by WHO --reason TEXT [--evidence REF]` | Manual close of any task kind; optional evidence is a reference, not verified acceptance. |
 | `autowork tasks supersede ID --by OTHER --reason TEXT` | Replace a task. |
-| `autowork tasks goal ID [--title --source --priority --status --focus/--no-focus --depends-on --evidence]` | Add or change a goal; `--status met` needs `--evidence` naming an executed, passing check. |
+| `autowork tasks goal ID [--title --source --priority --status --focus/--no-focus --depends-on --evidence]` | Add or change a goal; `--status met` needs evidence and all non-superseded owned tasks done and qualified. |
 
 **Pass prose as literal JSON.** For quotes, backticks, `$` (including `$(...)`
 and `$VAR`) or newlines, write a UTF-8 JSON object with a file-writing tool; from
@@ -145,11 +154,39 @@ first and retain Sources, holds and other notes. Do not mix JSON with value flag
 or label/value arguments. See [literal input](../../pi-autowork/task-store.md#literal-prose-input---json)
 for all keys/types. Validation, authority checks and `--expect REV` still apply.
 
+**Protect an earlier read across calls.** Read the current working-tree record,
+retain its `record_revision`, decide the attributable delta, then supply that digest
+as `REV` (not HEAD, `rev` or `contract_hash`):
+
+```sh
+autowork tasks show ID --worktree
+autowork tasks field ID --json field.json --expect REV
+```
+
+Write `field.json` with a file-writing tool as described above. JSON protects literal
+prose, not freshness. On refusal, reread the latest record, compare changes and
+reapply only the still-authorized delta using its new `record_revision`. Preserve
+other edits, notes, ranks, holds and transitions; withdraw obsolete changes. Never
+replay a stale full snapshot or blind retry with a freshly substituted digest. The
+operation-local check alone cannot protect decisions from an earlier call.
+
 Finish a planning batch with `autowork tasks validate --worktree .`, then commit the
 `tasks/` changes. A worker never edits `tasks/`: its commit that does is held and
-never merged. Live authorization is the owner's to grant. The engine's verified
-close writes `status = "done"` and the receipt in one commit; only that close writes
-receipts.
+never merged. Live authorization is the owner's to grant.
+
+### Manual is not verified
+
+A manual close records `closure = "manual"`, actor, timestamp, reason and optional
+reference. It writes no receipt, check result or verification claim. Ordinary
+`depends_on` accepts a manual done task; `verified_depends_on` additionally requires
+verification or an explicit owner exception. A manually closed owned task cannot
+qualify `goal --status met` without an owner-recorded `owner_waiver` (exact criterion,
+reason and risk) or `owner_qualification` (qualification and evidence). Never invent
+these attestations from a planner decision or passing report, or manually close
+implementation acceptance just to make the queue green. Honor explicit owner stops
+without relabelling unmet acceptance as verified. Only the engine's verified close
+writes `closure = "coordinator_verified"` and its receipt with `status = "done"`
+in one commit; planning never fabricates or edits that receipt.
 
 ## Rolling planning
 
@@ -174,7 +211,9 @@ building work can continue.
 
 After the batch finishes, the authorized runner runs the planning task through
 Plan For Me, saves the next known batch, and closes the current planning task with
-`autowork tasks done --evidence` in the same planning commit. If the goal is still
+`autowork tasks done ID --by WHO --reason TEXT [--evidence REF]` in the same planning
+commit. This closes the planning activity manually, not the implementation's
+acceptance or remaining goal proof. If the goal is still
 unmet, N < M and new building work was added, end that batch with one successor
 depending on every new building task. At round M, or when a round adds no building
 task, save no successor. If the goal is still unmet, record what remains and one
