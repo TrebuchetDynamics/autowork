@@ -106,7 +106,7 @@ class FleetViewTests(unittest.TestCase):
         self.assertEqual(row['Waiting'], ('1', ''))
         self.assertEqual(row['Decision'], ('2', 'yellow'))
         self.assertEqual(row['Total'], ('4', 'bold'))
-        self.assertIn('2 tasks need your decision', row['Needs'][0])
+        self.assertIn('2 tasks in Needs decision', row['Needs'][0])
 
     def test_merges_services_and_runner_state(self):
         self.runner_state('/git/india', state='stalled', since=time.time() - 341 * 60, waiting=23,
@@ -435,7 +435,7 @@ class FleetViewTests(unittest.TestCase):
             ('T-2', 'Second task', 'Blocker · Conflict · Agent repair', 'held'),
             ('T-3', 'Third task with a title longer than for…', 'Waiting', 'waiting'),
             ('T-4', 'Asked', 'Waiting · Needs decision', 'waiting')])
-        self.assertEqual((rows[2].why, rows[3].why), ('dependency: T-1', 'needs your decision; you: pick one'))
+        self.assertEqual((rows[2].why, rows[3].why), ('dependency: T-1', 'in Needs decision; you: pick one'))
         self.assertEqual([r.task for r in fleet_view.task_view(rows, 'questions')], ['T-4'])
         self.assertEqual([r.task for r in fleet_view.task_view(rows, 'held')], ['T-2'])
 
@@ -575,6 +575,47 @@ class FleetViewTests(unittest.TestCase):
                 self.assertEqual(result, 0)
                 self.assertIn(f'{len(expected)} question', output.getvalue())
                 self.assertEqual([(folder / 'BLOCKERS.md').read_bytes() for folder in (repo, session)], before)
+
+    def test_resolved_planning_stops_do_not_become_questions_for_the_owner(self):
+        repo = self.base / 'resolved-planning'
+        repo.mkdir()
+        stop = ('### Q-PLAN-OLD — Planning stopped\n\n'
+                '- Status: RESOLVED — existing deferral, not completed proof.\n'
+                '- Task: CONTINUE — owner-only deferred continuation.\n')
+        engine = '<!-- pi-autowork:questions:start -->\n<!-- pi-autowork:questions:end -->\n'
+        for text in ('# BLOCKERS\n\n## Active\n' + engine + '\n## Resolved\n' + stop,
+                     '# BLOCKERS\n\n## Active\n' + stop,
+                     '# BLOCKERS\n\n## Active\n' + stop.replace('- Status: RESOLVED', '- Status: OPEN\n- Status: RESOLVED'),
+                     '# BLOCKERS\n\n## Resolved\n' + stop.replace('- Status: RESOLVED — existing deferral, not completed proof.\n', '')):
+            with self.subTest(text=text):
+                (repo / 'BLOCKERS.md').write_text(text)
+                found = fleet_view.read_questions(repo)
+                self.assertEqual(found, [], 'resolved history is not an unanswered planning stop')
+                runner = fleet_view.Runner('example', questions=found)
+                self.assertEqual(fleet_view.question_summary(runner), '')
+                self.assertEqual((repo / 'BLOCKERS.md').read_text(), text, 'reading does not rewrite history')
+
+    def test_active_planning_questions_survive_resolved_history_and_session_fallback(self):
+        repo, session, state = (self.base / name for name in ('questions-repo', 'questions-session', 'questions-state'))
+        for folder in (repo, session, state):
+            folder.mkdir()
+        active = ('## Active\n### Q-PLAN-NEW — Planning stopped\n'
+                  '- Status: UNRESOLVED\n- Question: Which newly unavailable input?\n')
+        history = ('## Resolved\n### Q-PLAN-OLD — Planning stopped\n'
+                   '- Status: RESOLVED\n- Question: Previous continuation?\n')
+        (repo / 'BLOCKERS.md').write_text('# BLOCKERS\n' + history + active)
+        (session / 'BLOCKERS.md').write_text('# BLOCKERS\n' + history)
+        (state / 'session.json').write_text(json.dumps({'path': str(session)}))
+        found = fleet_view.read_questions(repo, state)
+        self.assertEqual([q.id for q in found], ['PLAN-NEW'])
+        self.assertIn('newly unavailable input', found[0].needs)
+        (repo / 'BLOCKERS.md').write_text(history + active.replace(
+            '- Status: UNRESOLVED', '- Status: RESOLVED\n- Status: UNRESOLVED'))
+        self.assertEqual([q.id for q in fleet_view.read_questions(repo, state)], ['PLAN-NEW'])
+        # An explicitly empty engine block in the preferred session is still authoritative.
+        (session / 'BLOCKERS.md').write_text('<!-- pi-autowork:questions:start -->\n'
+                                           '<!-- pi-autowork:questions:end -->\n' + history)
+        self.assertEqual(fleet_view.read_questions(repo, state), [])
 
     def test_a_runner_verifying_now_is_working_whatever_its_last_status_says(self):
         """sierra: TASK-026's review ran for minutes while the status written before it said stalled."""
@@ -890,7 +931,7 @@ class FleetViewTests(unittest.TestCase):
                             decisions=['D-1', 'D-2', 'D-3', 'D-4'])
         self.assertEqual(fleet_view.task_counts(runner), (0, 0, 2, 0, 4, 6))
         self.assertEqual(fleet_view.needs(fleet_view.Runner(name='a', state='idle', decisions=4)),
-                         '4 tasks need your decision')
+                         '4 tasks in Needs decision')
 
     def test_waiting_row_adds_up_to_the_waiting_count(self):
         """TOOLSET-351-54bd774c: the Waiting row read '8: 6 on dependencies · 2 …' beside '15 waiting':

@@ -42,6 +42,10 @@ execution. Genuine input/authorization holds are not advice to weaken acceptance
 checks or scope. Technical/mixed or incomplete evidence does not receive an
 owner-only headline. No worker observations does not prove no active workers.
 An existing dated owner deferral is already answered, not a new permission question.
+Planning stops under `## Resolved` or explicitly marked `Status: RESOLVED` do not
+count as questions in the fleet banner, Tasks or report. Their source history is
+left untouched. The Needs-decision inventory count still includes deferred records;
+its label names the section rather than demanding another owner answer.
 When the evidence contains only deferred work and its waiting dependents, the default
 copy is a short overview (at most five task lines), quoting each recorded owner
 condition instead of a generic deferral label. Long notes are explicitly excerpted;

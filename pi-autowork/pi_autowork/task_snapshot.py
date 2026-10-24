@@ -232,6 +232,7 @@ def capture(repo, *, engine_observation, generation, last_good=None):
             annotations.append(f'{lane.task}: unmatched slot activity ({lane.phase}); not inventory evidence')
     questions = tuple(obs.get('questions') or ())
     asked = {q.id: q for q in questions}
+    deferred = task_queue.deferred(store)
     rows, joined_lanes = [], []
     for record in records:
         row = compatible.get(record.id, {})
@@ -239,7 +240,8 @@ def capture(repo, *, engine_observation, generation, last_good=None):
         bucket, why = _canonical_reason(record, store)
         kind, words = 'waiting', view.WAITING
         if record.section == 'Needs decision':
-            bucket, why, words = 'Decision', 'needs your decision', 'Waiting · Needs decision'
+            bucket, words = 'Decision', 'Waiting · Needs decision'
+            why = 'recorded owner deferral' if record.id in deferred else 'in Needs decision'
         elif state in view.IN_FLIGHT:
             phase = view.PHASES[state]
             candidates = lane_groups.get(record.id, [])

@@ -568,7 +568,8 @@ def verdict(runner: Runner) -> Verdict:
         if snap.counts[2]:
             return 'Waiting — ' + waiting_line(runner), 'bold yellow'
         if snap.counts[4]:
-            return f'{snap.counts[4]} tasks need your decision', 'bold yellow'
+            count = snap.counts[4]
+            return f'{count} task{"s" if count != 1 else ""} in Needs decision', 'bold yellow'
         return 'Idle — nothing left to run in Now/Next', 'bold green'
     if runner.state == 'working':
         return _working_verdict(runner)
@@ -803,14 +804,19 @@ class Question:
 
 
 def _planning_questions(text):
-    """Read maintainer stop sections outside the engine-owned questions block."""
+    """Read unanswered maintainer stops, not resolved history or the engine block."""
     block = owner_questions.block_of(text)
     if block is not None:
         text = text.replace(owner_questions.START + block + owner_questions.END, '', 1)
+    text = re.sub(r'^##[ \t]+Resolved[ \t]*\n.*?(?=^#{1,2}[ \t]|\Z)', '', text,
+                  flags=re.M | re.S | re.I)
     found = []
     for section in re.finditer(r'^### Q-(\S+) — Planning stopped[ \t]*\n(.*?)(?=^#{1,3} |\Z)',
                                text, re.M | re.S):
         body = section[2]
+        statuses = re.findall(r'^- Status:[ \t]*(.*)$', body, re.M | re.I)
+        if statuses and re.match(r'RESOLVED\b', statuses[-1].strip(), re.I):
+            continue
         fields = re.findall(r'^- ((?:Task|Question): .+)$', body, re.M)
         need = ' '.join(fields) if fields else ' '.join(body.split())
         found.append(Question(section[1], 'decision', 1, need, kind='decision'))
@@ -880,7 +886,7 @@ def needs(runner):
         kind, items = groups[0]
         return f'{kind}: {items}'
     if runner.decisions:
-        return f"{runner.decisions} task{'s' if runner.decisions > 1 else ''} need your decision"
+        return f"{runner.decisions} task{'s' if runner.decisions > 1 else ''} in Needs decision"
     return ''
 
 
