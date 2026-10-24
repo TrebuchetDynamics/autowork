@@ -156,7 +156,7 @@ header strings are escaped on one physical TOML line and read back unchanged.
 `autowork tasks` reads at HEAD (`list`, `show`, `why`, `validate`; `--worktree` on `list`,
 `show` and `validate` reads uncommitted edits through a throwaway commit that leaves the
 repository's objects, index and refs alone) and edits the working tree (`add`, `field`,
-`place`, `move`, `hold`, `release`, `done`, `supersede`, `delete`, `goal`; `new-id` allocates an ID);
+`place`, `move`, `hold`, `release`, `decide`, `done`, `supersede`, `delete`, `goal`; `new-id` allocates an ID);
 it never commits. A write
 holds the repository's task lock (`<git dir>/autowork-tasks.lock`), so two writers never
 interleave; refuses a file that changed since it was read, or since the `record_revision`
@@ -211,7 +211,13 @@ note prefixed with today's local date (`YYYY-MM-DD: `), unless the text already
 starts with a `YYYY-MM-DD` date. Caller-supplied dates are retained. The runner
 treats a dated decision in Needs decision as an answered deferral: dependents wait
 without asking that question again in BLOCKERS.md. The note does not close the task
-or grant execution authority. `field` sets a typed header field, or any other label
+or grant execution authority. `decide ID TEXT [--section SECTION]` records the same
+dated note without changing section unless requested. It normalizes whitespace,
+refuses empty text and closed tasks, preserves worker guards for section changes,
+and does not remove holds or grant live/completion authority. In the TUI, **e Decide**
+opens this form; [the planning console](../docs/planning-console.md) separately
+supports AI discussion and explicit proposal review/apply.
+`field` sets a typed header field, or any other label
 as a body note (`Held by`, `Owner decision`); it does not date arbitrary notes.
 `done ID --by WHO --reason TEXT [--evidence REF]` manually closes **any task kind**.
 It writes `closure = "manual"`, actor, UTC timestamp, reason and the optional evidence
@@ -219,7 +225,8 @@ reference into the task record. It writes no receipt, check result or verificati
 `list`, `show` and `why` return a `closure` object with provenance, metadata and a
 `Verified`/`Manual` label (a verified record with missing or invalid evidence is explicitly
 labelled `Verified (evidence missing or invalid)`, never reclassified as Manual); the fleet/TUI's All view includes closed rows showing the
-receipt or manual reason. Closed rows offer only Delete.
+receipt or manual reason. Closed rows offer Delete and isolated planning discussion/
+investigation, but not direct decision, section, hold or repair mutations.
 
 `delete ID` removes any task record, open or closed, from the working tree. It does not
 remove worktrees, commits, `tasks/evidence/ID.toml` receipts or goals, and it does not

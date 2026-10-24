@@ -384,9 +384,9 @@ async def main():
             menubar = app.query_one('#menubar')
             assert menubar.region.y < app.query_one('#runners').region.y, 'the menu bar is above the runners'
             hints = menubar.render()
-            assert str(hints).rstrip().endswith('Log  Pause  Stop  Restart  Model  Tasks  Blockers  New  Quit'), str(hints)
+            assert str(hints).rstrip().endswith('Log  Pause  Stop  Restart  Model  Tasks  g Plan  Blockers  New  Quit'), str(hints)
             marked = {str(hints)[span.start:span.end] for span in hints.spans if 'underline' in str(span.style)}
-            assert marked == set('LPSRMTBNQ'), marked
+            assert marked == set('LPSRMTBNQg'), marked
             log = '\n'.join(line.text for line in app.query_one('#log').lines)
             assert 'TASK-036: waiting' in log and 'pending —' not in log, log
             agent = base / 'agent'
@@ -401,10 +401,10 @@ async def main():
                 for view_only in (False, True):
                     app.view_only = view_only
                     for service, state_name, menu in (
-                            ('running', 'stalled', 'Log  Pause  Stop  Restart  Model  Tasks  Blockers  New  Quit'),
-                            ('stopped', 'not running', 'Log  Play  Model  Tasks  Uninstall  Blockers  New  Quit'),
-                            ('stopped', 'paused', 'Log  Play  Model  Tasks  Uninstall  Blockers  New  Quit'),
-                            ('', '', 'New  Quit')):
+                            ('running', 'stalled', 'Log  Pause  Stop  Restart  Model  Tasks  g Plan  Blockers  New  Quit'),
+                            ('stopped', 'not running', 'Log  Play  Model  Tasks  Uninstall  g Plan  Blockers  New  Quit'),
+                            ('stopped', 'paused', 'Log  Play  Model  Tasks  Uninstall  g Plan  Blockers  New  Quit'),
+                            ('', '', 'g Plan  New  Quit')):
                         selected = replace(runner, service=service, state=state_name) if service else None
                         envelope = fleet_view.FleetSnapshot((selected,) if selected else (),
                             (fleet_view.snapshot_for(selected),) if selected else (), 1, time.time())
@@ -514,7 +514,7 @@ async def main():
             await pilot.pause()
             assert [str(tasks.get_row_at(i)[1]) for i in range(tasks.row_count)] == ['T-9'], tasks.row_count
             keys = str(app.screen.query_one('#menubar').render())
-            assert keys.rstrip().endswith('enter Open  Up  Down  Section  Clear  Aside  x Delete  New  Info  esc Back'), keys
+            assert keys.rstrip().endswith('enter Open  Decide  g Discuss  Investigate  Up  Down  Section  Clear  Aside  x Delete  New  Info  esc Back'), keys
             await pilot.press('x')                      # delete asks first; decline here
             await pilot.pause()
             assert isinstance(app.screen, Confirm), app.screen
@@ -630,11 +630,15 @@ async def main():
                     assert len(calls) == before, 'cancel must not prepare or start'
                     await pilot.press('p')
                     await pilot.pause()
-                if name == 'fresh':  # Plan needs an agent; without one it says so and runs nothing
+                if name == 'fresh':  # Embedded Plan opens without launching a model or service.
+                    from pi_autowork.planning_ui import PlanScreen
                     app.screen.query_one('#plan').press()
                     await pilot.pause()
-                    assert app.screen is screen and len(calls) == before, calls
+                    assert isinstance(app.screen, PlanScreen) and len(calls) == before, calls
                     assert task_files() == original_tasks
+                    await pilot.press('escape')
+                    await pilot.pause()
+                    assert app.screen is screen
                     await pilot.press('p')
                     await pilot.pause()
                 app.screen.query_one('#' + button).press()

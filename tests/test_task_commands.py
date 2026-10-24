@@ -328,6 +328,36 @@ class TaskCommandTests(unittest.TestCase):
         self.commit()
         self.assertIn('docs/review.md', TaskStore.at(self.repo, 'HEAD').goals['G-1'].body)
 
+    def test_decide_records_direction_without_inventing_authority(self):
+        path = self.repo / 'tasks/items/T-1.md'
+        original = json.loads(self.tasks('show', 'T-1', '--worktree').stdout)
+        self.tasks('decide', 'T-1', 'Use the smaller design')
+        record = json.loads(self.tasks('show', 'T-1', '--worktree').stdout)
+        self.assertIn(f'Owner decision: {date.today().isoformat()}: Use the smaller design', record['notes'])
+        self.assertEqual((record['rank'], record['contract_hash'], record['status'], record['live']),
+                         (original['rank'], original['contract_hash'], 'open', 'denied'))
+        before = path.read_bytes()
+        self.assertEqual(self.tasks('decide', 'T-1', '  ', ok=False).returncode, 1)
+        self.assertEqual(self.tasks('decide', 'T-1', 'Changed', '--expect', original['record_revision'],
+                                    ok=False).returncode, 1)
+        self.assertEqual(path.read_bytes(), before)
+        self.tasks('decide', 'T-1', 'Wait for input', '--section', 'Needs decision')
+        record = json.loads(self.tasks('show', 'T-1', '--worktree').stdout)
+        self.assertEqual(record['section'], 'Needs decision')
+        self.tasks('decide', 'T-1', 'Input supplied; proceed', '--section', 'Next')
+        record = json.loads(self.tasks('show', 'T-1', '--worktree').stdout)
+        self.assertEqual(record['section'], 'Next')
+        self.assertEqual(record['live'], 'denied')
+
+    def test_decide_refuses_closed_task_without_rewriting_history(self):
+        self.tasks('done', 'T-1', '--by', 'owner', '--reason', 'manual closure')
+        path = self.repo / 'tasks/items/T-1.md'
+        before = path.read_bytes()
+        refused = self.tasks('decide', 'T-1', 'Changed direction', ok=False)
+        self.assertEqual(refused.returncode, 1)
+        self.assertIn('open task', refused.stderr)
+        self.assertEqual(path.read_bytes(), before)
+
     def test_supersede_names_its_successor(self):
         successor = self.add('Successor')
         self.tasks('supersede', 'T-1', '--by', successor, '--reason', 'replaced')

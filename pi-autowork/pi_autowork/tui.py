@@ -25,6 +25,7 @@ import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import fleet_view, portal, tui_reads, blockers_report  # noqa: E402
+from pi_autowork.planning_ui import PlanScreen, DecisionPrompt  # noqa: E402
 
 from rich.text import Text  # noqa: E402  (installed with textual)
 from rich.style import Style  # noqa: E402
@@ -530,6 +531,9 @@ class TasksScreen(ReadScreen, Screen):
                 *[Binding(key, f'task("{key}")', key, show=False) for key in 'udcabs'],
                 Binding('n', 'new_task', 'New', show=False),
                 Binding('x,delete', 'task("x")', 'Delete', show=False),
+                Binding('g', 'plan("discuss")', 'Discuss', show=False),
+                Binding('v', 'plan("investigate")', 'Investigate', show=False),
+                Binding('e', 'decide', 'Decide', show=False),
                 Binding('i', 'snapshot_info', 'Snapshot info', show=False, priority=True)]
     DEFAULT_CSS = '''
     #task-views { height: auto; max-height: 3; padding: 0 1; }
@@ -641,6 +645,8 @@ class TasksScreen(ReadScreen, Screen):
         keys = [(a.key, a.label) for a in self.actions(row)]
         if not self.app.view_only:
             keys.append(('n', 'New'))
+            if row:
+                keys = ([('e', 'Decide')] if row.kind != 'closed' else []) + [('g', 'Discuss'), ('v', 'Investigate')] + keys
         self.query_one('#menubar', MenuBar).show(([('enter', 'Open')] if row else [])
                                                  + keys + [('i', 'Info'), ('esc', 'Back')])
         self.query_one('#task-detail', Static).update(text)
@@ -649,6 +655,16 @@ class TasksScreen(ReadScreen, Screen):
         row = self.current()
         if row is not None:
             self.app.push_screen(TaskScreen(self.runner_name, row.task, read_only=self.view == 'closed'))
+
+    def action_plan(self, mode):
+        runner, row = self.runner(), self.current()
+        if runner and row and not self.app.view_only:
+            self.app.open_plan(runner.repo, task=row.task, mode=mode)
+
+    def action_decide(self):
+        runner, row = self.runner(), self.current()
+        if runner and row and row.kind != 'closed' and not self.app.view_only:
+            self.app.decide_task(runner, row.task)
 
     def action_new_task(self):
         runner = self.runner()
@@ -699,6 +715,9 @@ class TaskScreen(ReadScreen, Screen):
     its worker's last actions. Answer it here; refreshed like the main screen."""
     BINDINGS = [Binding('escape,q', 'app.pop_screen', 'Back', show=False),
                 Binding('s', 'section', 'Section', show=False),
+                Binding('e', 'decide', 'Decide', show=False),
+                Binding('g', 'plan("discuss")', 'Discuss', show=False),
+                Binding('v', 'plan("investigate")', 'Investigate', show=False),
                 *[Binding(key, f'answer("{key}")', key, show=False) for key in 'ohrwd']]
     DEFAULT_CSS = '''
     #task-scroll { height: 1fr; padding: 0 1; }
@@ -787,7 +806,9 @@ class TaskScreen(ReadScreen, Screen):
         answers = self.answers()
         self.query_one('#menubar', MenuBar).show([(a.key, a.label) for a in answers]
                                                  + ([] if self.app.view_only or self.read_only or self.closed
-                                                    else [('s', 'Section')]) + [('esc', 'Back')])
+                                                    else [('s', 'Section'), ('e', 'Decide')])
+                                                 + ([] if self.app.view_only else [('g', 'Discuss'), ('v', 'Investigate')])
+                                                 + [('esc', 'Back')])
         explained = Text()  # what each answer does, under the task; the keys are in the menu bar
         for answer in answers:
             explained.append(f' {answer.label:<11}', style='bold')
@@ -808,6 +829,16 @@ class TaskScreen(ReadScreen, Screen):
             self.app.push_screen(TextPrompt(f'{answer.label}: {self.task_id}', answer.explain), run)
         else:
             self.app.push_screen(Confirm(f'{answer.label} {self.task_id}: {answer.explain}?'), lambda yes: yes and run(''))
+
+    def action_plan(self, mode):
+        runner = self.runner()
+        if runner and not self.app.view_only:
+            self.app.open_plan(runner.repo, task=self.task_id, mode=mode)
+
+    def action_decide(self):
+        runner = self.runner()
+        if runner and not self.app.view_only and not self.read_only and not self.closed:
+            self.app.decide_task(runner, self.task_id)
 
     def action_section(self):
         runner = self.runner()
@@ -905,7 +936,8 @@ class RepoTree(DirectoryTree):
 
 class BrowseScreen(ReadScreen, Screen):
     """Pick a repository and start its service."""
-    BINDINGS = [Binding('p', 'start', 'Play'), Binding('escape,q', 'app.pop_screen', 'back')]
+    BINDINGS = [Binding('p', 'start', 'Play'), Binding('g', 'plan_selected', 'Plan'),
+                Binding('escape,q', 'app.pop_screen', 'back')]
     CSS = '''
     #tree, #info-scroll { width: 1fr; }
     #info { padding: 0 1; }
@@ -930,7 +962,7 @@ class BrowseScreen(ReadScreen, Screen):
 
     def on_mount(self):
         self.title = f'start a runner: {self.root or Path.home()}'
-        self.query_one('#menubar', MenuBar).show([('p', 'Play'), ('esc', 'Back')])
+        self.query_one('#menubar', MenuBar).show([('p', 'Play'), ('g', 'Plan'), ('esc', 'Back')])
         if self.root is None:
             home = Path.home()
             def loaded(root):
@@ -1038,19 +1070,14 @@ class BrowseScreen(ReadScreen, Screen):
                 self.confirm_force(ready.path) if choice == 'force' else
                 self.prepare(ready.path, choice == 'prepare-start')))
 
+    def action_plan_selected(self):
+        if self.chosen and self.chosen.repo:
+            self.plan(self.chosen.repo)
+
     def plan(self, path):
-        """`autowork plan` takes over the terminal; readiness is read again when the agent exits."""
-        if self.app.view_only or self.preparing:
-            return
-        if not self.app.agent:
-            self.notify('No agent for planning: install claude or pi, or set AUTOWORK_AGENT.', severity='error')
-            return
-        self.prepare_result = None
-        with self.app.suspend():  # the agent owns the terminal until it exits
-            self.app.runner_cmd([self.app.command, 'plan', str(path)], env=dict(os.environ))
-        self.app.invalidate_reads()
-        if self.is_mounted:
-            self.show_repository(path)
+        """Open embedded planning, independent of execution readiness or service state."""
+        if not self.app.view_only and not self.preparing:
+            self.app.open_plan(str(path))
 
     def confirm_force(self, path):
         self.app.push_screen(Confirm(Text(
@@ -1241,7 +1268,7 @@ class FleetApp(App):
         Binding('m', 'pick_model("model")', 'Model', show=False),
         Binding('t', 'run("t")', 'Tasks', show=False),
         Binding('b', 'show_blockers', 'Blockers', show=False),
-        Binding('g', 'run("g")', 'Backlog', show=False),
+        Binding('g', 'run("g")', 'Plan', show=False),
         Binding('u', 'run("u")', 'Uninstall', show=False),
         Binding('n', 'browse', 'New', show=False),
         Binding('q', 'quit', 'Quit', show=False),
@@ -1315,9 +1342,16 @@ class FleetApp(App):
         self.reload_if_updated()
         self.set_interval(CODE_CHECK, self.reload_if_updated)
 
+    async def action_quit(self):
+        if hasattr(self, 'planning_hub'):
+            await asyncio.to_thread(self.planning_hub.close)
+        self.exit()
+
     def on_unmount(self):
         self.reader.close()
         self.reads.close()
+        if hasattr(self, 'planning_hub'):
+            self.planning_hub.close()
 
     def read(self, kind, identity, loader, apply):
         token = self.reader.request(kind, identity, self.read_epoch, loader)
@@ -1476,7 +1510,8 @@ class FleetApp(App):
             else:
                 detail.update('No pi-autowork runners yet. Press n for a new one: choose a repository and play its service.')
             self.query_one('#lanes', DataTable).display = False
-            menubar.show([] if self.view_only else [('n', 'New'), ('q', 'Quit')])
+            menubar.show([] if self.view_only else [('g', 'Plan'), ('n', 'New'), ('q', 'Quit')],
+                         click_actions={'g': 'app.run("g")'})
             return
         # The keys go in the menu bar at the top, like a GUI app's menu; the pane holds the facts.
         if self.view_only:
@@ -1485,7 +1520,7 @@ class FleetApp(App):
         else:
             menubar.show([(a.key, a.label) for a in self.available(runner)]
                          + [('b', 'Blockers'), ('n', 'New'), ('q', 'Quit')],
-                         click_actions={'b': 'app.show_blockers'})
+                         click_actions={'b': 'app.show_blockers', 'g': 'app.run("g")'})
         text = Text()
         # First the answer to "is it stuck, and why": one sentence, wrapped, never cut.
         sentence, style = fleet_view.verdict(runner)
@@ -1591,9 +1626,23 @@ class FleetApp(App):
 
     # -- actions ----------------------------------------------------------------
     def available(self, runner):
-        return [replace(action, key='g') if action.key == 'b' else action
-                for action in fleet_view.actions(runner, command=self.command, script=self.script, agent=self.agent)
-                if action.key != 'f']
+        return [action for action in fleet_view.actions(runner, command=self.command, script=self.script, agent=self.agent)
+                if action.key not in ('f', 'b')] + [fleet_view.Action('g', 'Plan', [])]
+
+    def open_plan(self, repo, task=None, mode='plan'):
+        if not self.view_only:
+            self.push_screen(PlanScreen(repo, task=task, mode=mode))
+
+    def decide_task(self, runner, task):
+        if self.view_only:
+            return
+        def save(value):
+            if value and not self.view_only:
+                argv = [self.command, 'tasks', 'decide', task, value['text'], runner.repo]
+                if value['section']:
+                    argv += ['--section', value['section']]
+                self.execute(fleet_view.Action('e', f'Decide {task}', argv))
+        self.push_screen(DecisionPrompt(task), save)
 
     def on_delivery_complete(self, event):
         if event.name == 'blockers-report':
@@ -1647,6 +1696,9 @@ class FleetApp(App):
 
     def action_run(self, key):
         runner = self.current()
+        if key == 'g':
+            self.open_plan(runner.repo if runner else str(Path.cwd()))
+            return
         if runner is None:
             if key == 'p':
                 self.action_browse()
