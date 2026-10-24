@@ -8,6 +8,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
+
+from src_fixture import copy_sources
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -17,7 +20,7 @@ class CompleteSetupTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.repo = Path(self.tmp.name) / 'repo with spaces'
-        self.repo.mkdir()
+        copy_sources(self.repo)
         self.home = Path(self.tmp.name) / 'hermes home'
         self.home.mkdir()
         for name in ('sample', 'deleted', 'ghost'):
@@ -52,9 +55,42 @@ sys.exit(5 if os.environ.get('VERIFY_FAIL')==sys.argv[2] else 0)
 
     def run_setup(self, *args):
         self.assertTrue((ROOT / 'setup_bundle.py').is_file(), 'missing complete setup orchestrator')
-        shutil.copy2(ROOT / 'setup_bundle.py', self.repo / 'setup_bundle.py')
         return subprocess.run([sys.executable, str(self.repo / 'setup_bundle.py'), *args],
                               env=self.env, capture_output=True, text=True)
+
+    def test_missing_declared_source_payload_refuses_before_any_stage(self):
+        copy_sources(self.repo)
+        for name in ('plugin.yaml', 'plugins/defaults.json', 'plugins/PLUGINS.md',
+                     'scripts/preflight_config.py'):
+            target = self.repo / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ROOT / name, target)
+        skill = self.repo / 'skills/example/SKILL.md'
+        skill.parent.mkdir(parents=True)
+        skill.write_text('fixture')
+        spec = importlib.util.spec_from_file_location('copied_preflight', self.repo / 'setup_preflight.py')
+        pre = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(pre)
+        payload = ['autowork_bootstrap.py', 'Src/autowork_bootstrap.py',
+                   *['Src/autowork_runtime/' + name for name in (
+                       'install_skills.py', 'setup_bundle.py', 'setup_preflight.py',
+                       'setup_runtime.py', 'install_omh.py', 'install_graphify.py')]]
+        before = sorted(self.home.rglob('*'))
+        for name in payload:
+            with self.subTest(missing=name):
+                path = self.repo / name
+                body = path.read_bytes()
+                path.unlink()
+                try:
+                    with patch.object(pre, 'runtime_check', return_value=[]), \
+                         patch.object(pre.shutil, 'which', return_value='/bin/available'), \
+                         patch.object(pre.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, stdout='')) as run:
+                        report = pre.preflight(self.repo, self.home, [('default', self.home)], bundle_only=True)
+                    self.assertTrue(any(name in error for error in report['errors']), report)
+                    run.assert_not_called()
+                    self.assertEqual(before, sorted(self.home.rglob('*')))
+                finally:
+                    path.write_bytes(body)
 
     def calls(self):
         return [json.loads(line) for line in self.log.read_text().splitlines()] if self.log.exists() else []

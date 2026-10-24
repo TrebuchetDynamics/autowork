@@ -3,6 +3,14 @@
 Source: [setup orchestrator](../setup_bundle.py), [source installer](../install-plugins.sh),
 [profile defaults](../runtime_defaults.py), [native skill provisioning](../install_skills.py).
 
+The native setup bodies live in [`Src/autowork_runtime/`](../Src/autowork_runtime/):
+`setup_bundle.py`, `setup_preflight.py`, `setup_runtime.py`, `install_skills.py`,
+`install_omh.py` and `install_graphify.py`. The root Python files remain the public
+entrypoints, including `install-omh.py` and `install-graphify.py`. Keep their
+same-release `autowork_bootstrap.py` and `Src/` payload together; a single copied
+installer is not standalone. Preflight rejects missing declared source payloads
+before installation stages. This layout does not change setup targets or policy.
+
 ## Full suite from a checkout
 
 `./install.sh` installs the full suite for every available host with verbose output.
