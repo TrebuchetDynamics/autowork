@@ -22,6 +22,8 @@ Runtime state lives outside the repository, under
 | Module | Role |
 | --- | --- |
 | `pi_autowork/engine/task_store.py` | Read-only, pinned-commit TaskStore used by the engine and committed fleet inventory; [schema and API](task-store.md) |
+| `pi_autowork/engine/parallel_integrate.py` | Integration and closure transaction authority, locks, replay and cleanup; compatibility facades compose changelog proposals after document preparation |
+| `pi_autowork/engine/integration/closure_documents.py` | Read-only task, receipt and live-followup preparation returning `{path: text}`; frozen `ClosurePorts` binds current `git`, `passed`, `task_path` and `live_items` callables per facade call |
 | `pi_autowork/cli.py` | Options, repository and toolset resolution (one release per run), `--status`, `--dry-run`, `--fleet`, `--set-aside`, the runner lock |
 | `pi_autowork/coordinator.py` | The loop: engine lease owner, session branch and final merge, settle and close, requests, priority drift, Touches proposals and widening, health, self-update and restart, graceful stop |
 | `pi_autowork/worker.py` | The engine-launched `--worker` and `--verify` modes |
