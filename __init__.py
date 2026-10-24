@@ -89,9 +89,9 @@ def _invoke(ctx, name, path, raw_args, namespace="autowork"):
     )
     if namespace == "autowork" and name in {"autoresearch", "plan-for-me"}:
         prompt = (
-            "TODO.md is the central work queue. By default, persist actionable "
-            "research/planning findings there through docs_sync and synchronize "
-            "goals.json; reuse task IDs and preserve user ordering. Explicit "
+            "tasks/ is the central work queue. By default, persist actionable "
+            "research/planning findings there through Docs Sync and `autowork tasks`; "
+            "reuse task IDs and preserve user ordering. Explicit "
             "read-only, chat-only, no-write and --dry-run requests write nothing. "
             "Planning alone does not authorize implementation or timed scheduling.\n\n"
         ) + prompt

@@ -21,11 +21,16 @@ class WorkflowCommands(unittest.TestCase):
             for spelling in (command, command.replace('_', '-')):
                 with self.subTest(spelling=spelling):
                     self.assertIn(spelling, self.ctx.commands)
-                    raw = 'read-only: compare approaches\n--no-push $(literal)'
+                    raw = ('read-only: compare TODO.md and goals.json\n'
+                           '--no-push $(literal); echo "TODO.md" > goals.json')
                     self.ctx.commands[spelling](raw)
                     prompt, routing = self.ctx.messages[-1]
                     self.assertIn('autowork:' + skill, prompt)
-                    self.assertTrue(prompt.endswith(raw))
+                    injected, arguments = prompt.split('User arguments:\n', 1)
+                    self.assertEqual(arguments, raw)
+                    self.assertNotIn('TODO.md', injected)
+                    self.assertNotIn('goals.json', injected)
+                    self.assertEqual('`autowork tasks`' in injected, skill == 'plan-for-me')
                     self.assertEqual(routing['origin']['chat_id'], 'fixture')
                     if skill.startswith('plan-'):
                         self.assertIn('../shared/RESEARCH-PLAN.md', prompt)
@@ -165,11 +170,18 @@ class WorkflowCommands(unittest.TestCase):
         prompt, _ = self.ctx.messages[-1]
         self.assertIn('skill_view(name="autowork:plan-with-me")', prompt)
         self.assertIn('Selected mode: challenge', prompt)
+        self.assertNotIn('central work queue', prompt)
         self.assertIn('../shared/RESEARCH-PLAN.md', prompt)
         self.assertTrue(prompt.endswith('challenge my cache plan'))
 
     def test_foreign_namespace_keeps_its_own_skill_identity(self):
-        path = self.skill('autoresearch')
-        self.plugin._invoke(self.ctx, 'autoresearch', path, 'debug', namespace='other')
-        self.assertIn('skill_view(name="other:autoresearch")', self.ctx.messages[-1][0])
-        self.assertNotIn('TODO.md is the central work queue', self.ctx.messages[-1][0])
+        for name in ('autoresearch', 'plan-for-me'):
+            with self.subTest(name=name):
+                path = self.skill(name)
+                raw = 'read-only: TODO.md; $(literal) > goals.json'
+                self.plugin._invoke(self.ctx, name, path, raw, namespace='other')
+                prompt = self.ctx.messages[-1][0]
+                self.assertIn(f'skill_view(name="other:{name}")', prompt)
+                self.assertNotIn('central work queue', prompt)
+                self.assertNotIn('../shared/RESEARCH-PLAN.md', prompt)
+                self.assertTrue(prompt.endswith('User arguments:\n' + raw))
