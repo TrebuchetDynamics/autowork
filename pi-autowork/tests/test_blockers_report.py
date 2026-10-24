@@ -259,6 +259,17 @@ class BlockersReportTests(unittest.TestCase):
         self.git('add', '.')
         self.git('commit', '-qm', 'existing deferral and dependent')
         self.runner.state, self.runner.service = 'stalled', 'running'
+        resolved = ('# BLOCKERS\n## Active\n<!-- pi-autowork:questions:start -->\n'
+                    '<!-- pi-autowork:questions:end -->\n## Resolved\n'
+                    '### Q-OLD-PLAN — Planning stopped\n- Status: RESOLVED\n'
+                    '- Task: T-1 — owner-only deferred continuation.\n')
+        (self.repo / 'BLOCKERS.md').write_text(resolved)
+        self.runner.questions = fleet_view.read_questions(self.repo)
+        self.assertEqual(fleet_view.question_summary(self.runner), '')
+        from pi_autowork import task_snapshot
+        snapshot = task_snapshot.capture(self.repo, engine_observation={}, generation=1)
+        self.assertEqual(next(row.why for row in snapshot.rows if row.task == 'T-1'),
+                         'recorded owner deferral')
         self.runner.main_check = {'state': 'green', 'rev': 'a' * 40}
         (self.state / 'status.json').write_text(json.dumps({'updated_at': 1792791493,
             'merge_backlog': {'count': 0, 'paused': False}, 'tasks': [
