@@ -8,7 +8,7 @@ title = "Connect bounded SDK controls to existing coordinator supervision withou
 short = "Qualify coordinator RPC controls"
 section = "Next"
 rank = 4300
-depends_on = ["TOOLSET-388-b422fa9e"]
+depends_on = ["TOOLSET-388-b422fa9e", "TOOLSET-389-6dedfd8c"]
 touches = ["Src","pi-autowork","tests","docs/pi-rpc.md"]
 kind = "implementation"
 ownership = "worker"
@@ -19,3 +19,4 @@ exclusions = ["No custom Pi protocol, new task authority or remote service, auto
 +++
 - Source: docs/research/pi-rpc-qualification-2026-10-24.md
 - This follow-up is pending; no acceptance, ownership release or installed activation is asserted.
+- Delivery gate: Owner direction 2026-10-24: implement coordinator controls only after TOOLSET-389 records real installed-runner engine closure and interrupted-attempt recovery without duplicate dispatch. Source integration or synthetic smokes alone do not satisfy this gate. Automatic steering remains off.
