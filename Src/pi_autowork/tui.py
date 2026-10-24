@@ -25,7 +25,8 @@ import time
 import uuid
 
 from pi_autowork import fleet_view, portal, tui_reads, blockers_report  # noqa: E402
-from pi_autowork.planning_ui import PlanScreen, DecisionPrompt  # noqa: E402
+from pi_autowork.planning_ui import PlanScreen, DecisionPrompt, QuestionPicker  # noqa: E402
+from pi_autowork.tui_dialogs import Confirm  # noqa: E402
 
 from rich.text import Text  # noqa: E402  (installed with textual)
 from rich.style import Style  # noqa: E402
@@ -149,7 +150,7 @@ class ReadScreen:
 
     def on_screen_resume(self):
         if self.is_mounted:
-            for method in ('refresh_tasks', 'refresh_actions', 'refresh_log'):
+            for method in ('refresh_record', 'refresh_tasks', 'refresh_actions', 'refresh_log'):
                 if hasattr(self, method):
                     getattr(self, method)()
                     break
@@ -159,38 +160,92 @@ class ReadScreen:
             self._reader.close()
 
 
-class Confirm(ModalScreen[bool]):
-    BINDINGS = [Binding('y', 'answer(True)', 'yes'), Binding('n,escape', 'answer(False)', 'no')]
-    DEFAULT_CSS = '''
-    Confirm { align: center middle; }
-    Confirm > Vertical { width: 76; height: auto; border: thick $warning; background: $surface; padding: 1 2; }
-    Confirm Horizontal { height: auto; align-horizontal: right; margin-top: 1; }
-    Confirm Button { margin-left: 2; }
-    '''
+class DecisionScreen(ReadScreen, DecisionPrompt):
+    """Read the current record off-thread; save through the CLI with its exact revision."""
+    def __init__(self, runner, task, question=None):
+        context = (f'Question (displayed inventory): {question.needs}\n'
+                   f'Unblocks {question.unblocks} task(s). Suggested answer: {question.answer or "None supplied"}'
+                   if question else 'Owner direction for this task.')
+        store = runner.snapshot.store if runner.snapshot is not None else None
+        dependents = sorted(t.id for t in store.tasks.values() if t.status == 'open' and task in t.depends_on) if store else []
+        context += '\nDependent tasks (committed snapshot): ' + (
+            ', '.join(dependents) if dependents else ('None' if store else 'unavailable'))
+        super().__init__(task, context, loading=True)
+        self.runner_name, self.repo = runner.name, runner.repo
+        self.record = None
 
-    def __init__(self, question):
-        super().__init__()
-        self.question = question
+    def on_mount(self):
+        super().on_mount()
+        self.refresh_record()
 
-    def compose(self) -> ComposeResult:
-        with Vertical():
-            yield Label(self.question)
-            with Horizontal():
-                yield Button('Yes (y)', variant='warning', id='yes')
-                yield Button('No (n)', id='no')
+    def refresh_record(self):
+        # Never rebind an edited draft to newer bytes; only replace an invalidated initial read.
+        if self.record is not None or self.saving:
+            return
+        command, run, repo, task = self.app.command, self.app.runner_cmd, self.repo, self.task_id
+        def load():
+            result = run([command, 'tasks', 'show', task, '--worktree', repo],
+                         capture_output=True, text=True, timeout=30)
+            if result.returncode:
+                raise ValueError((result.stderr or result.stdout or 'Task unavailable').strip())
+            return json.loads(result.stdout)
+        self.read('answer', (repo, task), load, self.loaded_record, self.load_failed)
 
-    def _answer(self, value):
-        # A button event can arrive after the confirmation was already dismissed (a double
-        # click, a queued key, or a refresh that removed the modal). dismiss() would then pop
-        # the last remaining screen and crash the whole TUI with ScreenStackError.
-        if self.is_current:
-            self.dismiss(value)
+    def load_failed(self, error):
+        self.ready = False
+        self.query_one('#decision-save', Button).disabled = True
+        self.query_one('#decision-status', Static).update(f'Cannot answer: {error}. Close and reopen after refreshing.')
 
-    def on_button_pressed(self, event):
-        self._answer(event.button.id == 'yes')
+    def loaded_record(self, record):
+        revision = record.get('record_revision') if isinstance(record, dict) else None
+        if (not isinstance(revision, str) or len(revision) != 64
+                or any(c not in '0123456789abcdef' for c in revision)
+                or record.get('id') != self.task_id or record.get('status') != 'open'):
+            self.load_failed('task is closed, missing, or its revision is unavailable')
+            return
+        self.record, self.ready = record, True
+        previous = '\n'.join(line for line in record.get('notes', '').splitlines()
+                             if line.startswith('- Owner decision:'))
+        self.query_one('#decision-context', TextArea).load_text(
+            self.context + f'\n\n{self.task_id}: {record.get("title", "")}\n'
+            f'Current working record: {record.get("section", "unknown")} · '
+            f'ownership {record.get("ownership", "unknown")} · live {record.get("live", "denied")}\n'
+            + record.get('scope', '') + ('\n' + previous if previous else ''))
+        self.query_one('#decision-save', Button).disabled = False
+        self.query_one('#decision-status', Static).update(
+            'Saves locally, pending commit. Does not grant live permission, clear holds or verify completion.')
 
-    def action_answer(self, value):
-        self._answer(value)
+    def submit(self, value):
+        runner = next((r for r in self.app.runners if (r.name, r.repo) == (self.runner_name, self.repo)), None)
+        if self.app.view_only or runner is None or self.app.deletion_pending(runner, self.task_id):
+            self.load_failed('task actions are no longer available')
+            return
+        argv = [self.app.command, 'tasks', 'decide', self.task_id, value['text'], self.repo,
+                '--expect', self.record['record_revision']]
+        if value['section']:
+            argv += ['--section', value['section']]
+        self.saving = True
+        self.query_one('#decision-text', TextArea).disabled = True
+        self.query_one('#decision-section', Select).disabled = True
+        self.query_one('#decision-save', Button).disabled = True
+        self.query_one('#decision-cancel', Button).disabled = True
+        self.query_one('#decision-status', Static).update('Saving locally… wait for the result; no commit or runner action.')
+        self.app.execute(fleet_view.Action('e', f'Answer {self.task_id}', argv), on_complete=self.saved)
+
+    def saved(self, ok, message):
+        if not self.is_mounted:
+            return
+        self.saving = False
+        if ok:
+            self.dismiss(None)
+        else:
+            self.query_one('#decision-text', TextArea).disabled = False
+            self.query_one('#decision-section', Select).disabled = False
+            self.query_one('#decision-save', Button).disabled = False
+            self.query_one('#decision-cancel', Button).disabled = False
+            self.query_one('#decision-text', TextArea).focus()
+            self.query_one('#decision-status', Static).update(
+                f'Save failed: {message}. Draft kept; close and reopen if the record changed.')
 
 
 class TextPrompt(ModalScreen[str]):
@@ -1290,6 +1345,7 @@ class FleetApp(App):
         Binding('r', 'run("r")', 'Restart', show=False),
         Binding('m', 'pick_model("model")', 'Model', show=False),
         Binding('t', 'run("t")', 'Tasks', show=False),
+        Binding('e', 'answer_question', 'Answer', show=False),
         Binding('b', 'show_blockers', 'Blockers', show=False),
         Binding('g', 'run("g")', 'Plan', show=False),
         Binding('u', 'run("u")', 'Uninstall', show=False),
@@ -1401,6 +1457,8 @@ class FleetApp(App):
         for screen in self.screen_stack:
             if hasattr(screen, '_reader'):
                 screen._reader.invalidate()
+            if isinstance(screen, DecisionScreen):
+                screen.refresh_record()
 
     def action_completed(self, action=None, ok=False):
         if action is not None and action.deletion is not None and ok and id(action) not in self.completed_deletions:
@@ -1602,7 +1660,8 @@ class FleetApp(App):
         else:
             menubar.show([(a.key, a.label) for a in self.available(runner)]
                          + [('b', 'Blockers'), ('n', 'New'), ('q', 'Quit')],
-                         click_actions={'b': 'app.show_blockers', 'g': 'app.run("g")'})
+                         click_actions={'b': 'app.show_blockers', 'g': 'app.run("g")',
+                                        'e': 'app.answer_question'})
         text = Text()
         # First the answer to "is it stuck, and why": one sentence, wrapped, never cut.
         sentence, style = fleet_view.verdict(runner)
@@ -1708,23 +1767,41 @@ class FleetApp(App):
 
     # -- actions ----------------------------------------------------------------
     def available(self, runner):
-        return [action for action in fleet_view.actions(runner, command=self.command, script=self.script, agent=self.agent)
-                if action.key not in ('f', 'b')] + [fleet_view.Action('g', 'Plan', [])]
+        answers = [fleet_view.Action('e', 'Answer', [])] if self.answerable_questions(runner) else []
+        return answers + [action for action in fleet_view.actions(
+            runner, command=self.command, script=self.script, agent=self.agent)
+            if action.key not in ('f', 'b')] + [fleet_view.Action('g', 'Plan', [])]
+
+    def answerable_questions(self, runner):
+        editable = {row.task for row in fleet_view.inventory_rows(runner)}
+        found = {}
+        for question in runner.questions:
+            if question.id in editable and not self.deletion_pending(runner, question.id):
+                found.setdefault(question.id, question)
+        return list(found.values())
+
+    def action_answer_question(self):
+        runner = self.current()
+        if self.view_only or runner is None or len(self.screen_stack) != 1:
+            return
+        questions = self.answerable_questions(runner)
+        if not questions:
+            self.notify('No editable task question. Use Blockers (b) to inspect other questions.', severity='warning')
+        elif len(questions) == 1:
+            self.decide_task(runner, questions[0].id)
+        else:
+            self.push_screen(QuestionPicker(questions), lambda task: task and self.decide_task(runner, task))
 
     def open_plan(self, repo, task=None, mode='plan'):
         if not self.view_only:
             self.push_screen(PlanScreen(repo, task=task, mode=mode))
 
     def decide_task(self, runner, task):
-        if self.view_only:
+        current = next((r for r in self.runners if (r.name, r.repo) == (runner.name, runner.repo)), None)
+        if self.view_only or current is None or self.deletion_pending(current, task):
             return
-        def save(value):
-            if value and not self.view_only:
-                argv = [self.command, 'tasks', 'decide', task, value['text'], runner.repo]
-                if value['section']:
-                    argv += ['--section', value['section']]
-                self.execute(fleet_view.Action('e', f'Decide {task}', argv))
-        self.push_screen(DecisionPrompt(task), save)
+        question = next((q for q in current.questions if q.id == task), None)
+        self.push_screen(DecisionScreen(current, task, question))
 
     def on_delivery_complete(self, event):
         if event.name == 'blockers-report':
@@ -1867,7 +1944,7 @@ class FleetApp(App):
                 self.starting_repositories.discard(ready.repo)
         self.push_screen(Confirm(action.confirm), go)
 
-    def execute(self, action):
+    def execute(self, action, on_complete=None):
         env = {**os.environ, **action.env}
         if action.interactive:
             with self.suspend():
@@ -1877,9 +1954,9 @@ class FleetApp(App):
         # A restart or stop waits for the runner to stop gracefully (up to the unit's 150 s):
         # run it off the event loop, or the whole TUI freezes and looks crashed.
         self.notify(f'{action.label}: running...', timeout=4)
-        self.run_worker(lambda: self.finish_action(action, env), thread=True, group='actions')
+        self.run_worker(lambda: self.finish_action(action, env, on_complete), thread=True, group='actions')
 
-    def finish_action(self, action, env):
+    def finish_action(self, action, env, on_complete=None):
         """In a worker thread: run the command, then report it on the event loop."""
         try:
             result = self.runner_cmd(action.argv, env=env, capture_output=True, text=True)
@@ -1887,8 +1964,13 @@ class FleetApp(App):
             ok, message = result.returncode == 0, (output[-1] if output else action.label)
         except Exception as error:
             ok, message = False, str(error)
+        decision = action.argv[1:3] == ['tasks', 'decide']
+        if ok and decision:
+            message = 'Saved locally — pending commit. This action did not commit or grant live authorization; inventory updates after commit.'
         self.call_from_thread(self.notify, message[:300], severity='information' if ok else 'error',
-                              title=f'{action.label}: {"done" if ok else "failed"}')
+                              title=f'{action.label}: {"done" if ok else "failed"}', timeout=10 if decision else 3)
+        if on_complete is not None:
+            self.call_from_thread(on_complete, ok, message)
         self.call_from_thread(self.action_completed, action, ok)
 
 

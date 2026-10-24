@@ -5,52 +5,102 @@ from pathlib import Path
 
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal
+from rich.text import Text
+from textual.containers import Horizontal, VerticalScroll
 from textual.screen import Screen, ModalScreen
-from textual.widgets import Button, Header, Input, Label, Select, Static, TabbedContent, TabPane, TextArea
+from textual.widgets import Button, Header, Input, Label, OptionList, Select, Static, TabbedContent, TabPane, TextArea
+from textual.widgets.option_list import Option
 
 from .planning_hub import PlanningHub
 from .planning_views import history_text, preview_text, roadmap_text
+from .tui_dialogs import Confirm
 
 
 class DecisionPrompt(ModalScreen[dict]):
     """A manual owner decision is distinct from an AI proposal or a verified close."""
-    BINDINGS = [Binding('escape', 'dismiss(None)', 'Cancel')]
+    BINDINGS = [Binding('escape', 'cancel', 'Cancel'),
+                Binding('ctrl+enter', 'save', 'Save answer', priority=True)]
     DEFAULT_CSS = '''
     DecisionPrompt { align: center middle; }
-    #decision-form { width: 76; max-width: 100%; height: auto; padding: 1 2; background: $surface; border: thick $accent; }
-    #decision-text { height: 6; }
+    #decision-form { width: 84; max-width: 100%; height: auto; max-height: 95%; padding: 0 1; background: $surface; border: thick $accent; }
+    #decision-context { height: 6; }
+    #decision-text { height: 5; }
+    #decision-status { height: auto; max-height: 3; }
     #decision-form Horizontal { height: 3; }
     '''
 
-    def __init__(self, task):
+    def __init__(self, task, context='', *, loading=False):
         super().__init__()
-        self.task_id = task
+        self.task_id, self.context = task, context
+        self.ready, self.saving = not loading, False
 
     def compose(self):
-        from textual.containers import Vertical
-        with Vertical(id='decision-form'):
-            yield Label(f'Decide {self.task_id}: dated owner direction (not verification)', markup=False)
+        with VerticalScroll(id='decision-form'):
+            yield Label(f'Answer {self.task_id} · Ctrl+Enter saves · Esc cancels', markup=False)
+            yield TextArea(self.context, read_only=True, show_cursor=False, id='decision-context')
             yield TextArea(id='decision-text')
-            yield Select([('Keep section', ''), ('Now', 'Now'), ('Next', 'Next'), ('Defer', 'Needs decision')],
+            yield Select([('Save answer — keep section', ''), ('Move to Next', 'Next'),
+                          ('Defer — Needs decision', 'Needs decision'), ('Move to Now', 'Now')],
                          value='', allow_blank=False, id='decision-section')
+            yield Static('Loading current task…' if not self.ready else
+                         'Saves locally, pending commit. Does not grant live permission or verify completion.',
+                         markup=False, id='decision-status')
             with Horizontal():
-                yield Button('Record decision', id='decision-save', variant='primary')
+                yield Button('Save answer', id='decision-save', variant='primary', disabled=not self.ready)
                 yield Button('Cancel', id='decision-cancel')
 
     def on_mount(self):
         self.query_one('#decision-text', TextArea).focus()
 
-    def on_button_pressed(self, event):
-        event.stop()
-        if event.button.id == 'decision-cancel':
+    def action_cancel(self):
+        if not self.saving:
             self.dismiss(None)
+
+    def action_save(self):
+        if not self.ready or self.saving:
             return
         text = self.query_one('#decision-text', TextArea).text.strip()
         if not text:
-            self.notify('Enter the decision first.', severity='warning')
+            self.notify('Enter the answer first.', severity='warning')
             return
-        self.dismiss({'text': text, 'section': self.query_one('#decision-section', Select).value})
+        self.submit({'text': text, 'section': self.query_one('#decision-section', Select).value})
+
+    def submit(self, value):
+        self.dismiss(value)
+
+    def on_button_pressed(self, event):
+        event.stop()
+        if event.button.id == 'decision-cancel':
+            self.action_cancel()
+        elif event.button.id == 'decision-save':
+            self.action_save()
+
+
+class QuestionPicker(ModalScreen[str]):
+    """Choose an editable question without navigating through the task inventory."""
+    BINDINGS = [Binding('escape', 'dismiss(None)', 'Back')]
+    DEFAULT_CSS = '''
+    QuestionPicker { align: center middle; }
+    #answer-picker { width: 84; max-width: 100%; height: auto; max-height: 90%; border: thick $accent; }
+    #answer-questions { height: auto; max-height: 18; }
+    '''
+
+    def __init__(self, questions):
+        super().__init__()
+        self.questions = questions
+
+    def compose(self):
+        with VerticalScroll(id='answer-picker'):
+            yield Label('Answer a question · ↑/↓ choose · Enter opens · Esc cancels')
+            yield OptionList(*(Option(Text(f'{q.id} · {q.effort} · unblocks {q.unblocks}\n{q.needs}'), id=q.id)
+                               for q in self.questions), id='answer-questions')
+
+    def on_mount(self):
+        self.query_one(OptionList).focus()
+
+    def on_option_list_option_selected(self, event):
+        event.stop()
+        self.dismiss(event.option.id)
 
 
 class PlanScreen(Screen):
@@ -341,7 +391,6 @@ class PlanScreen(Screen):
     def action_apply(self):
         if self.readonly or self._busy or not self.preview or not self.preview.get('valid') or not self.preview.get('files'):
             return
-        from .tui import Confirm
         planner, sid, revision, repo = self.planner, self.session_id, self.preview['revision'], self.repo
         def confirmed(yes):
             if yes and not self.readonly and (repo, sid) == (self.repo, self.session_id):
