@@ -529,6 +529,7 @@ class TasksScreen(ReadScreen, Screen):
                   for n, view in enumerate(fleet_view.TASK_VIEWS)],
                 *[Binding(key, f'task("{key}")', key, show=False) for key in 'udcabs'],
                 Binding('n', 'new_task', 'New', show=False),
+                Binding('x,delete', 'task("x")', 'Delete', show=False),
                 Binding('i', 'snapshot_info', 'Snapshot info', show=False, priority=True)]
     DEFAULT_CSS = '''
     #task-views { height: auto; max-height: 3; padding: 0 1; }

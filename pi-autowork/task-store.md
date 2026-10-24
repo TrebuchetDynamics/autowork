@@ -156,7 +156,7 @@ header strings are escaped on one physical TOML line and read back unchanged.
 `autowork tasks` reads at HEAD (`list`, `show`, `why`, `validate`; `--worktree` on `list`,
 `show` and `validate` reads uncommitted edits through a throwaway commit that leaves the
 repository's objects, index and refs alone) and edits the working tree (`add`, `field`,
-`place`, `move`, `hold`, `release`, `done`, `supersede`, `goal`; `new-id` allocates an ID);
+`place`, `move`, `hold`, `release`, `done`, `supersede`, `delete`, `goal`; `new-id` allocates an ID);
 it never commits. A write
 holds the repository's task lock (`<git dir>/autowork-tasks.lock`), so two writers never
 interleave; refuses a file that changed since it was read, or since the `record_revision`
@@ -191,7 +191,8 @@ a pending journal to skip recovery.
 A write to the contract (the hashed fields or the goal), the section, or the status (`done`,
 `supersede`) of a task whose attempt is live (a dispatched, running, reported, integrating
 or integrated slot, or the sequential lease) is refused: rank, title, short and notes stay
-open, and a held or interrupted attempt stays repairable. `add` writes a whole contract at once (`--resources`, `--exclusions`,
+open, and a held or interrupted attempt stays repairable. `delete` is the explicit
+exception: it warns about the holder and still removes the record. `add` writes a whole contract at once (`--resources`, `--exclusions`,
 `--kind`, `--ownership`, `--sources`) and refuses a task whose goal and title match an open
 or done one, naming it. Each list flag (`--acceptance`, `--checks`, `--touches`,
 `--depends-on`, `--verified-depends-on`, `--resources`, `--exclusions`) accepts one
@@ -218,7 +219,15 @@ reference into the task record. It writes no receipt, check result or verificati
 `list`, `show` and `why` return a `closure` object with provenance, metadata and a
 `Verified`/`Manual` label (a verified record with missing or invalid evidence is explicitly
 labelled `Verified (evidence missing or invalid)`, never reclassified as Manual); the fleet/TUI's All view includes closed rows showing the
-receipt or manual reason. Closed rows have no queue-edit actions.
+receipt or manual reason. Closed rows offer only Delete.
+
+`delete ID` removes any task record, open or closed, from the working tree. It does not
+remove worktrees, commits, `tasks/evidence/ID.toml` receipts or goals, and it does not
+edit dependents: a task that still names the deleted ID in `depends_on` or
+`verified_depends_on` stays blocked until that reference is changed. A worker slot or
+live lease holding the task, unreadable runner state, and dependent tasks are reported
+as warnings; they do not refuse the deletion. The TUI's Tasks window exposes the same
+command as `x` Delete, including in the Closed view.
 
 `goal` adds a goal or changes its fields, needs `--evidence` for `--status met`, and moves
 focus from any other goal. Meeting a goal also requires every non-superseded owned task

@@ -1,5 +1,6 @@
 """Task command transactions against a real checkout, without services or models."""
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
+import json
 import multiprocessing
 import os
 from pathlib import Path
@@ -171,6 +172,33 @@ class TaskTransactionTests(unittest.TestCase):
                     self.assertIn(str(saved.relative_to(self.repo)), str(error.exception))
                     saved.unlink()  # this fixture has inspected/reconciled the displaced edit
                 self.assertIn('- External:', read_store(self.repo).tasks['T-1'].body)
+
+    def test_delete_validation_failure_restores_the_record(self):
+        path = self.repo / 'tasks/items/T-1.md'
+        before = path.read_bytes()
+        real = commands.worktree_store
+
+        def reject_after_delete(repo):
+            if not path.exists():
+                raise commands.StoreError('injected after deletion')
+            return real(repo)
+
+        with patch.object(commands, 'worktree_store', reject_after_delete):
+            with self.assertRaises(commands.CommandError):
+                commands.cmd_delete(self.repo, 'T-1')
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(commands.worktree_store(self.repo).tasks['T-1'].title, 'Read tasks')
+
+    def test_an_interrupted_delete_journal_restores_the_record(self):
+        path = self.repo / 'tasks/items/T-1.md'
+        before = path.read_bytes()
+        git_dir = Path(commands._git(self.repo, 'rev-parse', '--absolute-git-dir'))
+        journal = git_dir / 'autowork-tasks.transaction'
+        journal.write_text(json.dumps([['tasks/items/T-1.md', before.hex(), None]]))
+        path.unlink()
+        commands.cmd_validate(self.repo, worktree=True)
+        self.assertEqual(path.read_bytes(), before)
+        self.assertFalse(journal.exists())
 
     def test_interrupted_batches_restore_the_whole_set(self):
         # Per-file writes leave partial ranks/focus after exceptions or process death.

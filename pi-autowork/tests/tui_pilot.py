@@ -514,7 +514,13 @@ async def main():
             await pilot.pause()
             assert [str(tasks.get_row_at(i)[1]) for i in range(tasks.row_count)] == ['T-9'], tasks.row_count
             keys = str(app.screen.query_one('#menubar').render())
-            assert keys.rstrip().endswith('enter Open  Up  Down  Section  Clear  Aside  New  Info  esc Back'), keys
+            assert keys.rstrip().endswith('enter Open  Up  Down  Section  Clear  Aside  x Delete  New  Info  esc Back'), keys
+            await pilot.press('x')                      # delete asks first; decline here
+            await pilot.pause()
+            assert isinstance(app.screen, Confirm), app.screen
+            await pilot.press('n')
+            await pilot.pause()
+            assert isinstance(app.screen, TasksScreen), app.screen
             await pilot.press('u')                      # re-sort: an autowork move
             await pilot.pause()
             await app.workers.wait_for_complete()
