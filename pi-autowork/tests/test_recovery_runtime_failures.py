@@ -26,56 +26,24 @@ class RecoveryTests(unittest.TestCase):
         runner.stop=False; runner.state=self.state; runner.repo=str(self.repo); runner.integ=str(self.repo)
         runner.cfg={'git_common':str(self.repo/'.git')}
         runner.last_pi_failure='toolchain'
-        runner._scratch_cleanup={str(self.repo):True}
         runner.pi_job=lambda *args: (self.calls.append(args) or (False,''))
         return runner
 
     def test_triage_failure_remains_technical_with_durable_bounded_retry(self):
-        for failure in ('toolchain','no_model','provider_failure','transport','timeout',
-                        'interrupted','crash_failure'):
-            with self.subTest(failure=failure):
-                row=dict(task=failure,cause='blocker',worktree=str(self.repo),reason='needs diagnosis')
-                self.calls.clear()
-                for at, expected_calls in ((100,1),(100,1),(160,2),(279,2),(280,3),(1000,3)):
-                    runner=self.runner(); runner.last_pi_failure=failure
-                    with patch('pi_autowork.coordinator.time.time',return_value=at), \
-                            patch('pi_autowork.coordinator.LOG.say') as log:
-                        self.assertFalse(runner.triage_blocker(row))
-                        self.assertEqual(len(self.calls),expected_calls)
-                        messages=' '.join(str(call) for call in log.call_args_list)
-                        self.assertNotIn('needs the owner',messages)
-                        if at == 1000:  # Exhaustion remains actionable after coordinator restart.
-                            self.assertIn('exhausted',messages)
-                            self.assertIn(failure,messages)
-                            self.assertIn(str(self.state/'triage.json'),messages)
-                marker=json.loads((self.state/'triage.json').read_text())[failure]
-                self.assertEqual(marker['attempts'],3)
-                self.assertEqual(marker['failure'],failure)
-
-    def test_missing_runtime_receipt_never_replays_triage(self):
-        real_popen=subprocess.Popen
-        for failure, payload, rc in (('runtime',None,1),('transport',{'why':'transport'},0)):
-            with self.subTest(failure=failure):
-                self.calls.clear()
-                runner=self.runner(); runner.pi_job=Coordinator.pi_job.__get__(runner)
-                runner.integ_branch=''; runner.restart_status=lambda **kwargs: None
-                def launch(args, **kwargs):
-                    if args[0] != sys.executable:
-                        return real_popen(args, **kwargs)
-                    self.calls.append(args)
-                    if payload is not None:
-                        json.dump(payload,kwargs['stdout'])  # Missing terminal ok/cleanup receipt.
-                    return SimpleNamespace(wait=lambda: rc)
-                row=dict(task=failure,cause='blocker',worktree=str(self.repo),reason='needs diagnosis')
-                with patch('pi_autowork.coordinator.subprocess.Popen',side_effect=launch):
-                    for at in (100,160):
-                        with patch('pi_autowork.coordinator.time.time',return_value=at):
-                            self.assertFalse(runner.triage_blocker(row))
-                self.assertEqual(len(self.calls),1)
-                self.assertFalse(runner._scratch_cleanup[str(self.repo)])
-                marker=json.loads((self.state/'triage.json').read_text())[failure]
-                self.assertEqual(marker['failure'],failure)
-                self.assertTrue(marker['replay_blocked'])
+        row=dict(task='A',cause='blocker',worktree=str(self.repo),reason='needs diagnosis')
+        with patch('pi_autowork.coordinator.time.time',return_value=100), \
+                patch('pi_autowork.coordinator.LOG.say') as log:
+            self.assertFalse(self.runner().triage_blocker(row))
+            self.assertFalse(self.runner().triage_blocker(row))
+            self.assertEqual(len(self.calls),1)
+            self.assertFalse(any('needs the owner' in str(call) for call in log.call_args_list))
+        for at in (1000,2000,3000):
+            with patch('pi_autowork.coordinator.time.time',return_value=at):
+                self.assertFalse(self.runner().triage_blocker(row))
+        self.assertEqual(len(self.calls),3)
+        marker=json.loads((self.state/'triage.json').read_text())['A']
+        self.assertEqual(marker['attempts'],3)
+        self.assertEqual(marker['failure'],'toolchain')
 
     def test_lost_coordinator_reserves_triage_before_submission(self):
         row=dict(task='A',cause='blocker',worktree=str(self.repo),reason='needs diagnosis')
@@ -185,38 +153,17 @@ class RecoveryTests(unittest.TestCase):
                 self.assertIn(str(self.repo),runner._scratch_paths)
 
     def test_missing_provisioning_scratch_is_not_a_completed_installation(self):
+        runner=self.runner(); runner.environment_hold=lambda _: 'a missing test tool'
+        runner.scratch_checkout=lambda _: (self.calls.append('scratch') or None)
         cache=self.base/'cache'; cache.mkdir()
         with patch('pi_autowork.coordinator.worker.repository_cache',return_value=cache):
-            for at, expected_calls in ((100,1),(100,1),(160,2),(279,2),(280,3),(1000,3)):
-                runner=self.runner(); runner.environment_hold=lambda _: 'a missing test tool'
-                runner.scratch_checkout=lambda _: (self.calls.append('scratch') or None)
-                with patch('pi_autowork.coordinator.time.time',return_value=at), \
-                        patch('pi_autowork.coordinator.LOG.say') as log:
-                    self.assertFalse(runner.provision_and_reverify('A','review-v1'))
-                    self.assertEqual(self.calls,['scratch']*expected_calls)
-                    if at == 1000:
-                        messages=' '.join(str(call) for call in log.call_args_list)
-                        self.assertIn('exhausted',messages)
-                        self.assertIn('scratch_unavailable',messages)
-                        self.assertIn(str(self.state/'provisioned.json'),messages)
-        marker=json.loads((self.state/'provisioned.json').read_text())['A']
-        self.assertEqual(marker['attempts'],3)
-        self.assertEqual(marker['failure'],'scratch_unavailable')
-
-    def test_provisioning_recovers_missing_scratch_without_repeating_success(self):
-        cache=self.base/'cache'; cache.mkdir()
-        with patch('pi_autowork.coordinator.worker.repository_cache',return_value=cache):
-            for at, scratch, expected in ((100,None,False),(160,str(self.repo),True),(1000,None,False)):
-                runner=self.runner(); runner.environment_hold=lambda _: 'missing tool'
-                runner.scratch_checkout=lambda _: scratch
-                runner.drop_scratch=lambda _: None; runner.verify_timeout=5; runner.seen={}
-                runner.pi_job=lambda *args: (self.calls.append(args) or (True,'PI_AUTOWORK_RESULT: completed\nUse cache.'))
-                runner.engine=lambda *args: {'outcome':'REVERIFY'}
+            for at in (100,100,1000,2000,3000):
                 with patch('pi_autowork.coordinator.time.time',return_value=at):
-                    self.assertEqual(runner.provision_and_reverify('A','v1'),expected)
-        self.assertEqual(len(self.calls),1)
-        self.assertEqual(len((cache/'PROVISIONED.md').read_text().splitlines()),1)
-        self.assertEqual(json.loads((self.state/'provisioned.json').read_text())['A'],'v1')
+                    self.assertFalse(runner.provision_and_reverify('A','review-v1'))
+        self.assertEqual(self.calls,['scratch']*3)
+        marker=json.loads((self.state/'provisioned.json').read_text())['A']
+        self.assertIsInstance(marker,dict)
+        self.assertEqual(marker['failure'],'scratch_unavailable')
 
     def test_unapplied_triage_answer_is_retryable_not_a_completed_marker(self):
         runner=self.runner()

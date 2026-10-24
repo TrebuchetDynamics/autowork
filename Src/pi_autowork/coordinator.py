@@ -25,7 +25,7 @@ import time
 
 from . import (fleet_view, health, janitor, landing, main_check, maintainer, optimistic, pi_runtime, questions, release,
                service, task_commands, telemetry, worker, workspaces)
-from .common import GIT, LOG, dirty, git, git_ok, lifecycle, open_for_writing, safe_name, summary_list
+from .common import LOG, dirty, git, git_ok, lifecycle, open_for_writing, safe_name, summary_list
 from .processes import own_process, process_name
 from .supervision import main_checks
 from pi_autowork.engine.task_queue import commit as task_revision
@@ -201,59 +201,12 @@ def batchable(rows, handled=()):
             if r.get('state') in ('reported', 'integrating') and r['task'] not in handled]
 
 
-def _triage_snapshot(root):
-    """Content-sensitive identity of retained tracked and nonignored untracked work.
-
-    Porcelain alone cannot detect edits to an already-dirty or untracked file.
-    Unreadable/special files (including submodule directories) fail closed.
-    """
-    digest, values = hashlib.sha256(), []
-    try:
-        # Git's text wrapper normalizes CR filenames and cannot decode arbitrary
-        # filesystem bytes. Keep every path and symlink target byte-preserving.
-        for args in (('status', '--porcelain', '--untracked-files=all'),
-                     ('ls-files', '--stage', '-z'),
-                     ('ls-files', '-z', '--cached', '--others', '--exclude-standard')):
-            result = subprocess.run([*GIT, '-C', str(root), *args], capture_output=True)
-            if result.returncode:
-                return None
-            values.append(result.stdout)
-        status, index, files = values
-        for name in sorted(set(files.split(b'\0')) - {b''}):
-            path = Path(root) / os.fsdecode(name)
-            digest.update(name + b'\0')
-            try:
-                digest.update(str(path.lstat().st_mode).encode() + b'\0')
-            except FileNotFoundError:
-                digest.update(b'missing\0')
-                continue
-            content = hashlib.sha256()
-            if path.is_symlink():
-                content.update(os.fsencode(os.readlink(path)))
-            elif path.is_file():
-                with path.open('rb') as stream:
-                    for chunk in iter(lambda: stream.read(1024 * 1024), b''):
-                        content.update(chunk)
-            else:
-                return None
-            digest.update(content.digest())
-    except OSError:
-        return None
-    return git(root, 'rev-parse', 'HEAD'), status, index, digest.hexdigest()
-
-
-def _auxiliary_ready(marker, key, task, record):
+def _auxiliary_ready(marker, key):
     """Completed strings retain their old meaning; technical failures spend a finite budget."""
     if marker == key:
         return False
     if isinstance(marker, dict) and marker.get('key') == key:
         attempts, retry_at = marker.get('attempts'), marker.get('retry_at')
-        exhausted = type(attempts) is int and attempts >= 3
-        if exhausted or marker.get('replay_blocked'):
-            hold = 'recovery budget exhausted' if exhausted else 'automatic replay held'
-            LOG.say(f'{task}: technical {marker.get("failure", "unknown")}; {hold}; '
-                    f'inspect {record} and {record.parent / "runs"} to reconcile partial work '
-                    'before explicit recovery; not an owner verdict')
         return (not marker.get('replay_blocked') and type(attempts) is int and 0 <= attempts < 3
                 and isinstance(retry_at, (int, float)) and time.time() >= retry_at)
     return True
@@ -2533,8 +2486,7 @@ class Coordinator:
     def provision_and_reverify(self, task, version):
         """A review that could not run for a missing tool: one provisioning job installs it into
         the repository's toolchain cache from its own setup docs, then the same commit is
-        reviewed once more. Completed installs are deduplicated per task/reviewer version;
-        incomplete technical recovery has a durable finite budget. True when it went back to review."""
+        reviewed once more. Once per task and reviewer version; True when it went back to review."""
         missing = self.environment_hold(task)
         # On disk, not in memory: every reload started the same job again, and a reload ended it.
         record = self.state / 'provisioned.json'
@@ -2542,7 +2494,7 @@ class Coordinator:
             done = json.loads(record.read_text())
         except (OSError, ValueError):
             done = {}
-        if not missing or not _auxiliary_ready(done.get(task), version, task, record):
+        if not missing or not _auxiliary_ready(done.get(task), version):
             return False
         _auxiliary_reserve(record, done, task, version)
         cache = worker.repository_cache(self.integ)
@@ -2590,8 +2542,7 @@ class Coordinator:
     def triage_blocker(self, row):
         """A worker-reported blocker is answered by the runner and the attempt resumes, unless only a
         person can resolve it: most blockers asked for what the runner already provides, or for a repair
-        the worker may make itself, and waited hours for the owner. Completed verdicts are
-        deduplicated per task/reason; safe technical failures have a durable finite budget."""
+        the worker may make itself, and waited hours for the owner. Once per task and reason."""
         task, root, reason = row.get('task'), row.get('worktree'), ' '.join(str(row.get('reason') or '').split())
         if (self.stop or row.get('waits_for') or row.get('quick_hold') or row.get('worker_live')
                 or int(row.get('answered') or 0) >= 2 or not root or not Path(root).is_dir()):
@@ -2602,12 +2553,9 @@ class Coordinator:
         except (OSError, ValueError):
             done = {}
         key = hashlib.sha256(reason.encode()).hexdigest()[:16]
-        if not _auxiliary_ready(done.get(task), key, task, record):
+        if not _auxiliary_ready(done.get(task), key):
             return False
-        before = _triage_snapshot(root)
-        if before is None:
-            _auxiliary_failed(record, done, task, key, 'triage_snapshot_unavailable')
-            return False
+        before = (git(root, 'rev-parse', 'HEAD'), git(root, 'status', '--porcelain', '--untracked-files=all'))
         report = Path(self.cfg['git_common']) / 'autowork-execution' / 'slot-data' / task
         report = max(report.glob('attempt-*/report.json'), default=report / 'attempt-1' / 'report.json',
                      key=lambda p: int(p.parent.name.split('-')[1]))
@@ -2617,19 +2565,13 @@ class Coordinator:
                                                                           root=root),
                               f'pi-autowork-triage-{task}-{datetime.now():%Y%m%d%H%M%S}', 900)
         verdict = triage_verdict(text) if ok else None
-        if _triage_snapshot(root) != before:
+        if (git(root, 'rev-parse', 'HEAD'), git(root, 'status', '--porcelain', '--untracked-files=all')) != before:
             _auxiliary_failed(record, done, task, key, 'triage_changed_worktree', retryable=False)
             return False
         if verdict is None:
             failure = getattr(self, 'last_pi_failure', '') or 'runtime'
-            # Unlike provisioning, triage is diagnostic only and its checkout is unchanged.
-            # Retry transient execution failures, but never replay uncertain acceptance,
-            # unproven cleanup or other unclassified protocol/observation failures.
-            cleanup_proven = getattr(self, '_scratch_cleanup', {}).get(str(root), False)
             _auxiliary_failed(record, done, task, key, failure,
-                              retryable=cleanup_proven and (ok or failure in (
-                                  'toolchain', 'no_model', 'provider_failure',
-                                  'transport', 'timeout', 'interrupted', 'crash_failure')))
+                              retryable=ok or failure in ('toolchain', 'no_model', 'provider_failure'))
             return False
         if verdict[0] == 'owner':
             done[task] = key
