@@ -305,12 +305,19 @@ class MaintainerTests(unittest.TestCase):
                                  'A: missing evidence\nB: unverified goal has no open task')])
         key = maintainer.key(found)
         self.assertEqual(key, maintainer.key(maintainer.triggers([], ledger_errors=list(reversed(errors)))))
-        with tempfile.TemporaryDirectory() as state:
-            maintainer.remember(state, trigger_key=key, found=found, outcome='no change')
-            maintainer.remember(state, trigger_key='other', found=[('MAIN', 'main red', 'x')], outcome='merged')
-            self.assertFalse(maintainer.due(state, key))
-            changed = maintainer.triggers([], ledger_errors=['A: different error'])
-            self.assertTrue(maintainer.due(state, maintainer.key(changed)))
+        for outcome in ('no change', 'blocked', 'refused: invalid task store'):
+            with self.subTest(outcome=outcome), tempfile.TemporaryDirectory() as state:
+                result = dict(ok=False, why='no_model')
+                maintainer.remember(state, trigger_key=key, found=found, outcome='technical failure: no_model',
+                                    technical=True, result=result)
+                self.assertTrue(maintainer.due(state, key, found=found))
+                self.assertEqual(maintainer.last(state)['runtime'], result)
+                self.assertNotIn(key, maintainer.last(state).get('ledger_attempts', {}))
+                maintainer.remember(state, trigger_key=key, found=found, outcome=outcome)
+                maintainer.remember(state, trigger_key='other', found=[('MAIN', 'main red', 'x')], outcome='merged')
+                self.assertFalse(maintainer.due(state, key))
+                changed = maintainer.triggers([], ledger_errors=['A: different error'])
+                self.assertTrue(maintainer.due(state, maintainer.key(changed)))
 
     def test_handled_items_stay_handled_across_overlapping_batches(self):
         from pi_autowork.coordinator import Coordinator
@@ -423,7 +430,12 @@ class MaintainerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as state:
             first = maintainer.pending(state, found)
             self.assertEqual(first, [('P', 'plan', 'ready for planning')])
+            maintainer.remember(state, trigger_key=maintainer.key(first), found=first,
+                                outcome='technical failure: no_model', technical=True,
+                                result=dict(ok=False, why='no_model'))
+            self.assertEqual(maintainer.pending(state, found), first)
             maintainer.remember(state, trigger_key=maintainer.key(first), found=first, outcome='failed')
+            self.assertEqual(maintainer.last(state)['items']['task:P']['tries'], 1)
             self.assertEqual(maintainer.pending(state, found), [('Q', 'plan', 'ready for planning')])
 
     def test_planning_landing_refuses_malformed_chains_and_stops_for_a_met_goal(self):

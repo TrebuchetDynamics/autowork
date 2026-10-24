@@ -10,7 +10,9 @@ from unittest.mock import patch
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from pi_autowork.coordinator import Coordinator
-from pi_autowork import pi_runtime
+from pi_autowork import maintainer, pi_runtime
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'engine'))
+import store_fixture
 
 
 class RecoveryTests(unittest.TestCase):
@@ -29,6 +31,99 @@ class RecoveryTests(unittest.TestCase):
         runner._scratch_cleanup={str(self.repo):True}
         runner.pi_job=lambda *args: (self.calls.append(args) or (False,''))
         return runner
+
+    def maintainer_runner(self, state, background=False):
+        if not (self.repo / 'tasks').exists():
+            store_fixture.write_todo(self.repo, '- [ ] A — Repair\n  Scope: proof\n')
+        state.mkdir(exist_ok=True); (state/'runs').mkdir(exist_ok=True)
+        runner=self.runner(); runner.state=state
+        runner.toolset=Path(__file__).resolve().parents[2]
+        runner.tasks_cli='autowork tasks'; runner.verify_timeout=5; runner.integ_branch=''
+        runner.in_flight=runner.session_busy=runner.reexec_due=lambda: False
+        reason='shares x.py with B' if background else 'not runnable: missing Checks'
+        runner.tasks=lambda: [dict(task='A',state='waiting',reason=reason)]
+        runner.scratch_checkout=lambda _: str(self.repo)
+        runner.restart_status=lambda **kwargs: None
+        runner.pi_job=Coordinator.pi_job.__get__(runner)
+        runner.engine=lambda *args: self.fail('maintainer must not reset engine budgets')
+        return runner
+
+    def test_maintainer_safe_failure_retries_with_durable_budget(self):
+        real_popen=subprocess.Popen
+        for background in (False,True,'stop'):
+            for restored in (False,True):
+                with self.subTest(background=background,restored=restored):
+                    self.calls.clear(); dropped=[]
+                    state=self.state/f'{background}-{restored}'
+                    def launch(args, **kwargs):
+                        if args[0] != sys.executable:
+                            return real_popen(args, **kwargs)
+                        self.calls.append(args)
+                        payload={'ok':True,'text':'PI_AUTOWORK_RESULT: blocked'} if restored and len(self.calls)>1 else {
+                            'ok':False,'why':'no_model'}
+                        json.dump(payload,kwargs['stdout'])
+                        return SimpleNamespace(wait=lambda:0,poll=lambda:0,returncode=0)
+                    for at, count in ((100,1),(100,1),(159,1),(160,2),(279,2),(280,2 if restored else 3),
+                                      (1000,2 if restored else 3)):
+                        # A new coordinator must observe the same on-disk budget.
+                        runner=self.maintainer_runner(state,background)
+                        runner.drop_scratch=lambda path: dropped.append(path)
+                        runner.last_pi_failure='uncertain_acceptance'  # Unrelated foreground job.
+                        with patch('pi_autowork.coordinator.subprocess.Popen',side_effect=launch), \
+                                patch('pi_autowork.coordinator.time.time',return_value=at):
+                            self.assertFalse(runner.maintain(overlap=background,ledger_errors=[]))
+                            if background:
+                                if background == 'stop' and (not restored or len(self.calls) == 1):
+                                    runner.stop_maintainer()
+                                else:
+                                    runner.finish_maintainer()
+                        self.assertEqual(len(self.calls),count)
+                    markers=json.loads((state/'maintainer-recovery.json').read_text())
+                    self.assertEqual(markers['task:A']['attempts'],2 if restored else 3)
+                    self.assertEqual(len(dropped),len(self.calls))
+                    receipt=maintainer.last(state)
+                    if restored:
+                        self.assertEqual(receipt['tries'],1)
+                        self.assertEqual(receipt['items']['task:A']['tries'],1)
+                    else:
+                        self.assertEqual(receipt['items'],{})
+                        self.assertEqual(receipt['runtime']['why'],'no_model')
+
+    def test_maintainer_uncertain_or_foreign_results_never_replay_or_delete_scratch(self):
+        real_popen=subprocess.Popen
+        for background in (False,True):
+            for why in ('uncertain_acceptance','cleanup_unproven','runtime','lost','negative_cleanup'):
+                with self.subTest(background=background,why=why):
+                    self.calls.clear(); state=self.state/f'held-{background}-{why}'
+                    runner=self.maintainer_runner(state,background)
+                    runner._scratch_paths={str(self.repo)}
+                    def launch(args, **kwargs):
+                        if args[0] != sys.executable:
+                            return real_popen(args, **kwargs)
+                        self.calls.append(args)
+                        if why == 'lost':
+                            raise RuntimeError('lost after submission')
+                        payload={'ok':True,'cleanup_complete':False} if why == 'negative_cleanup' else {
+                            'ok':False,'why':why}
+                        json.dump(payload,kwargs['stdout'])
+                        return SimpleNamespace(wait=lambda:0,poll=lambda:0,returncode=0)
+                    # A safe result from another role/checkout cannot authorize this retry.
+                    runner.last_pi_failure='no_model'
+                    runner.remember_job_cleanup(self.base/'other',{'ok':False,'why':'no_model'})
+                    with patch('pi_autowork.coordinator.subprocess.Popen',side_effect=launch), \
+                            patch('pi_autowork.coordinator.git_ok') as remove:
+                        for at in (100,1000):
+                            with patch('pi_autowork.coordinator.time.time',return_value=at):
+                                try:
+                                    runner.maintain(overlap=background,ledger_errors=[])
+                                    if background: runner.finish_maintainer()
+                                except RuntimeError:
+                                    if why != 'lost': raise
+                        remove.assert_not_called()
+                    self.assertEqual(len(self.calls),1)
+                    marker=json.loads((state/'maintainer-recovery.json').read_text())['task:A']
+                    self.assertTrue(marker['replay_blocked'])
+                    self.assertIn(str(self.repo),runner._scratch_paths)
 
     def test_triage_failure_remains_technical_with_durable_bounded_retry(self):
         for failure in ('toolchain','no_model','provider_failure','transport','timeout',
@@ -171,18 +266,21 @@ class RecoveryTests(unittest.TestCase):
 
     def test_background_and_stopped_jobs_bind_cleanup_to_their_scratch(self):
         for method in ('finish_maintainer','stop_maintainer'):
-            with self.subTest(method=method):
-                runner=self.runner(); runner.last_pi_failure=''
-                runner._scratch_paths={str(self.repo)}; runner.integ=None
-                output=self.state/'background.json'
-                output.write_text(json.dumps({'ok':False,'why':'cleanup_unproven'}))
-                job={'proc':SimpleNamespace(poll=lambda:0,returncode=0),'out':str(output),'scratch':str(self.repo)}
-                runner.maintainer_job=job
-                runner.maintainer_result=lambda job,ok: runner.drop_scratch(job['scratch']) or False
-                with patch('pi_autowork.coordinator.git_ok') as remove:
-                    getattr(runner,method)()
-                remove.assert_not_called()
-                self.assertIn(str(self.repo),runner._scratch_paths)
+            for why in ('cleanup_unproven','uncertain_acceptance','runtime','negative_cleanup'):
+                with self.subTest(method=method,why=why):
+                    runner=self.runner(); runner.last_pi_failure=''
+                    runner._scratch_paths={str(self.repo)}; runner.integ=None
+                    output=self.state/'background.json'
+                    payload={'ok':True,'cleanup_complete':False} if why == 'negative_cleanup' else {
+                        'ok':False,'why':why}
+                    output.write_text(json.dumps(payload))
+                    job={'proc':SimpleNamespace(poll=lambda:0,returncode=0),'out':str(output),'scratch':str(self.repo)}
+                    runner.maintainer_job=job
+                    runner.maintainer_result=lambda job,ok: False
+                    with patch('pi_autowork.coordinator.git_ok') as remove:
+                        getattr(runner,method)()
+                    remove.assert_not_called()
+                    self.assertIn(str(self.repo),runner._scratch_paths)
 
     def test_missing_provisioning_scratch_is_not_a_completed_installation(self):
         cache=self.base/'cache'; cache.mkdir()

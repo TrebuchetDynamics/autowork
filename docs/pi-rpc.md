@@ -137,13 +137,25 @@ results, unproven cleanup, unclassified protocol/observation failures and coordi
 loss during submission remain replay-blocked. Provisioning transport/timeout/interruption
 failures stay held to avoid repeating a partial installation.
 
-A failed triage is not an owner verdict. Completed owner verdicts, applied answers
+DOCS-MAINTAINER uses the same reservation/backoff helpers with per-item incident
+keys in private `maintainer-recovery.json`. Ordinary and background calls retain
+checkout-local runtime receipts, never another role's last failure. An unchanged
+item gets at most three submissions across restarts; only proven preflight
+(`no_model`/`toolchain`) or confirmed-safe provider failures permit technical retry.
+Unknown acceptance or cleanup retains scratch and blocks automatic replacement.
+Technical failures consume neither semantic item receipts nor ledger/planning
+repair opportunities. Completed no-change, blocked and refused repairs remain
+deduplicated; the existing single merge-conflict retry also stays within the total
+submission cap. These bounds do not reset engine attempts or review budgets.
+
+A failed triage or maintainer call is not an owner verdict. Completed owner verdicts, applied answers
 and successful provisioning remain deduplicated. Exhausted or replay-blocked
 technical holds identify the failure and private marker/run paths to inspect;
 reconcile partial work before explicit recovery, rather than blindly clearing
 markers. These records do not authorize or close engineering tasks. Offline
-regressions in `pi-autowork/tests/test_recovery_runtime_failures.py` cover retry,
-restart, exhaustion, missing scratch and completed-result deduplication; they do
+regressions in `pi-autowork/tests/test_recovery_runtime_failures.py` and
+`pi-autowork/tests/test_maintainer.py` cover retry, restart, exhaustion, missing
+scratch, role-local uncertainty fences and semantic receipt deduplication; they do
 not qualify live provider or host-crash recovery.
 
 ## Verification and rollback
