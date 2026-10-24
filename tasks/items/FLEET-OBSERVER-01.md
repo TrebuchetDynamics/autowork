@@ -3,7 +3,7 @@ schema = 1
 id = "FLEET-OBSERVER-01"
 title = "Distinguish explicitly verified read-only monitors from competing Hermes writers"
 short = "Fix observer overlap refusal"
-status = "open"
+status = "done"
 goal = "FLEET-RECOVERY"
 section = "Now"
 rank = 1000
@@ -16,5 +16,9 @@ scope = "Repair the reproduced startup exit-4 false positive in hermes_jobs: an 
 acceptance = ["An offline fixture reproduces the current enabled read-only observer refusal; explicit correctly bound observer classification permits that observer without suppressing another active writer.", "Unknown identity, malformed exemption, changed workdir/prompt/skill/tool contract, duplicate or ambiguous identity and actual Autowork development-writer selection fail closed; paused/disabled jobs preserve current behavior.", "Settings survive supported service installation/restart paths without replacing unrelated policy. No private job IDs, profile identities, credentials or runtime state enter Git.", "Focused regression checks and independent review pass. Docs explain exact binding/review and invalidation, identify classification versus sandbox limits, and give a supported private configuration path without blanket bypass."]
 checks = ["python3 scripts/affected_tests.py --run", "git diff --check"]
 exclusions = ["No RPC branch integration/activation, model/provider changes, cron mutation, monitor renaming, upstream Hermes edits, global overlap bypass or disabling safety gates.", "No service restart, production access, trading, deployment, publication authority changes, forced cleanup, writer claim removal or interrupted-attempt reset.", "No prompt-only heuristic that can exempt an arbitrary writing job; no private runtime/profile data in fixtures."]
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/FLEET-OBSERVER-01.toml"
 +++
 - Sources: docs/plans/2026-10-24-fleet-recovery.md#observer-overlap-defect
+- Pending live: Operational activation through the supported toolset update/install path and fresh competing interactive-writer custody/handoff checks remain separate; no service was restarted or activated here.
+- Pending live: Review actual private monitor effective inherited permissions and skill/script contents before configuring its binding; offline classification does not prove model behavior or safe live coexistence.
