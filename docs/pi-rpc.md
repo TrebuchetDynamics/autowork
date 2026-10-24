@@ -77,8 +77,7 @@ fields, custom Pi protocol implementation, second scheduler or task database is 
 Provider fallback is allowed only for a settled, non-aborted provider failure
 with proven cleanup, under the pre-existing retry/cooldown budget. Aborted,
 uncertain-acceptance, transport/protocol/overflow and unproven-cleanup outcomes do
-not trigger runtime prompt replay or a switch to JSON. The coordinator's bounded
-diagnostic triage recovery is separate, as described below.
+not automatically replay the prompt or switch to JSON.
 
 The guard pins PID birth identities, validates the spawning parent's identity
 before and after parent-death registration, discovers escaped descendants,
@@ -129,13 +128,12 @@ The existing private `triage.json` and `provisioned.json` markers retain a
 three-attempt recovery budget with 60-second then 120-second backoff across
 coordinator restarts. Safe pre-acceptance/confirmed-provider failures, unapplied
 engine answers and unavailable provisioning scratch remain eligible within that
-budget. Diagnostic triage also retries transport, timeout, interruption and crash
-failures only with a positive cleanup receipt and unchanged retained tracked and
-nonignored untracked contents. If those contents cannot be snapshotted, diagnosis
-stays a technical hold without submission. Uncertain acceptance, unknown runtime
-results, unproven cleanup, unclassified protocol/observation failures and coordinator
-loss during submission remain replay-blocked. Provisioning transport/timeout/interruption
-failures stay held to avoid repeating a partial installation.
+budget. An unapplied engine answer and a missing provisioning scratch are not
+successful completion markers. Ambiguous transport/cleanup/abort outcomes,
+uncertain acceptance, unknown runtime results, unclassified protocol/observation
+failures and coordinator loss during submission remain replay-blocked. Provisioning
+transport/timeout/interruption failures stay held to avoid repeating a partial
+installation.
 
 DOCS-MAINTAINER uses the same reservation/backoff helpers with per-item incident
 keys in private `maintainer-recovery.json`. Ordinary and background calls retain
@@ -148,11 +146,11 @@ repair opportunities. Completed no-change, blocked and refused repairs remain
 deduplicated; the existing single merge-conflict retry also stays within the total
 submission cap. These bounds do not reset engine attempts or review budgets.
 
-A failed triage or maintainer call is not an owner verdict. Completed owner verdicts, applied answers
-and successful provisioning remain deduplicated. Exhausted or replay-blocked
-technical holds identify the failure and private marker/run paths to inspect;
-reconcile partial work before explicit recovery, rather than blindly clearing
-markers. These records do not authorize or close engineering tasks. Offline
+A failed triage or maintainer call is not an owner verdict. Completed owner verdicts,
+applied answers and successful provisioning remain deduplicated. For exhausted or
+replay-blocked technical holds, inspect the failure in the private markers and run
+records; reconcile partial work before explicit recovery, rather than blindly
+clearing markers. These records do not authorize or close engineering tasks. Offline
 regressions in `pi-autowork/tests/test_recovery_runtime_failures.py` and
 `pi-autowork/tests/test_maintainer.py` cover retry, restart, exhaustion, missing
 scratch, role-local uncertainty fences and semantic receipt deduplication; they do

@@ -57,6 +57,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Prevent DOCS-MAINTAINER from inventing product dependencies or mandatory task recuts for overlap alone while preserving genuine prerequisites and scheduler admission safeguards. (TOOLSET-392-5f9e11f6)
+- Avoid automatic cohort rollback when any main-check failure lacks supported attribution; preserve red-main repair and last-green publication. (TOOLSET-391-8eb4527a)
+- Fix Hermes overlap refusal with private, exact-contract reviewed observer bindings shared by installation and startup; malformed cron stores and broken discovery links fail closed without masking competing writers. (FLEET-OBSERVER-01)
+- Pi invocation accounting includes nested-tool, compaction and independent emitted usage once, while preserving unknown totals and provider-billing provenance. (TOOLSET-386-4288b2e0)
 - Keep transient diagnostic triage failures on durable bounded recovery instead of consuming owner verdicts, retain actionable exhaustion diagnostics, and preserve cleanup, retained-work and provisioning deduplication guards. (TOOLSET-385-6021ba81)
 - Verified the existing Src-owned Pi RPC default and refreshed revision-bound engine, SDK/native, cancellation/recovery and install qualification evidence; installed activation remains separate. (TOOLSET-388-b422fa9e)
 - Move native updater implementations into Src/autowork_runtime while preserving public entrypoints, release-local peers, tracked-source integrity and restart/recovery behavior. (TOOLSET-378-07c50be2)

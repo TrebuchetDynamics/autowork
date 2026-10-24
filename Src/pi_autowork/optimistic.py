@@ -62,8 +62,8 @@ def frames(log):
 def regression(repo, rev, failing, log, candidates):
     """The landed tasks the new failures point at: each failing test's traceback lines are
     blamed (`git blame` at ``rev``) to the task whose merge brought that line. When every
-    failure points at some task, those tasks; otherwise every candidate, since a failure no
-    landed change explains could be any of them."""
+    failure points at some task, return those tasks; otherwise return no automatic culprits
+    for the cohort, leaving main red for the existing repair path."""
     if not candidates:
         return []
     tracked = set((_git(repo, 'ls-files') or '').splitlines())
@@ -90,7 +90,7 @@ def regression(repo, rev, failing, log, candidates):
             if task := owner(out.split(' ', 1)[0]):
                 hit.add(task)
         if not hit:
-            return [task for task, _ in candidates]
+            return []
         blamed |= hit
     return [task for task, _ in candidates if task in blamed]
 

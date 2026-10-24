@@ -114,8 +114,8 @@ def overlap(row):
 
 
 def overlaps(rows, limit=6):
-    """[(task, 'overlap', why)] for the highest-priority tasks waiting on another task's file:
-    re-cut before they run, a conflict costs no resolver run and no second review."""
+    """[(task, 'overlap', why)] for high-priority file waits worth diagnosing.
+    A legitimate scheduler wait may need no contract change."""
     return [(r['task'], 'overlap', why) for r in rows if r.get('task') and (why := overlap(r))][:limit]
 
 
@@ -159,16 +159,23 @@ PROMPT = (
     'reporting any test result, so no test is known to fail. Never add a repair task for test names. Unless an open task '
     'covers it, add one task to make the full check run to its results (pin or provision the crashing tool from the '
     'repository\'s setup docs, or restate the repository\'s `Full check:` line), with the crash line as Evidence. '
-    'For overlap (the task waits because it names a file another task also names: one running, one whose '
-    'commit waits to land, or one ahead of it in the queue; started together they conflict at merge, which costs '
-    'a resolver run and a second review): you may add, remove, merge and split tasks that have not started, and '
-    'reorder them, so that what runs next has disjoint Touches. Prefer, in order: merge it into the other task '
-    'when that one has not started either (combine Scope, Touches, Acceptance and Checks into one entry and '
-    'supersede the other with {tasks} supersede); split the shared-file part into a follow-up task that '
-    'depends on the other task, so the rest starts now with Touches that no longer name that file; supersede it '
-    'when the other task already delivers it; otherwise make the order explicit in Dependencies. Never edit the '
-    'entry of a task that is running or whose commit waits to land; keep every Acceptance item in whichever task '
-    'now owns it; never widen product scope. '
+    'For overlap: diagnose the current wait against the task sources and scheduler policy; this is not a '
+    'demand to rewrite the graph. A shared path alone is not a product prerequisite. '
+    'Add Dependencies only for a source-backed producer/consumer prerequisite, never for overlap or a preferred sequence. '
+    'Preserve existing Dependencies unless prerequisite evidence justifies changing them. '
+    'The scheduler handles file/resource admission: hot literal production files (named by three or more unfinished tasks, '
+    'including held/noncandidate contracts and live slots awaiting integration) wait for unlanded work; '
+    'cold files, directories, globs and test modules only rank likely-independent work first. '
+    'A hot-to-cold change removes only the file gate, not genuine prerequisites or resource/protected-path admission. '
+    'A held peer alone reserves no files; preserve any real producer prerequisite even when that producer is held. '
+    'Shared named resources and protected-path coordination still apply; never bypass them by narrowing Touches '
+    'without source evidence. Leave legitimate waits unchanged when no contract repair is justified. '
+    'Merge or split only for source-backed cohesion, observed conflict cost or testability, not overlap alone, '
+    'and only for tasks that have not started. Combine or redistribute Scope, Touches, Acceptance and Checks; '
+    'preserve every Acceptance item and priority (never above the owner\'s first tasks in Now). '
+    'Supersede a duplicate with {tasks} supersede only when evidence shows the other task delivers it. '
+    'Never edit the entry of a task that is running, has a live worker (even if held), or whose commit waits to land; '
+    'never widen product scope. '
     'For engineering repair: this retained candidate exhausted review rework. Read both findings and the retained '
     'review record; investigate a materially different repair approach from repository evidence. If one is supported, '
     'save its concrete steps and verification in docs/tasks/<task>-repair.md and add only the note '

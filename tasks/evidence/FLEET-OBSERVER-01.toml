@@ -1,0 +1,9 @@
+schema = 1
+task = "FLEET-OBSERVER-01"
+candidate = "0a3e8b7e345821e51fa53f3a8768848ccfa4e93f"
+integration = "12031809bcc11dee1e7a3c43f37d1c78984895cc"
+tree = "e3377325b78c1e7a1cdf5cfbfc1d465ed493fea3"
+contract_hash = "1ecd52a2a26148674191b34669cd95ed7f277b682dc56a2b0c382289119f6dfe"
+checks = ["<path>", "<path>", "--verify", "<path>", "FLEET-OBSERVER-01"]
+result = "pass"
+review = "passed"

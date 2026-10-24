@@ -21,9 +21,11 @@ def entries(repo):
 
 
 class MaintainerTests(unittest.TestCase):
-    def test_tasks_waiting_on_a_shared_file_are_re_cut_while_worker_slots_idle(self):
-        """Tasks naming one file collided at merge all afternoon; the dispatcher now holds them,
-        and with slots idle the maintainer may merge, split or supersede them before they run."""
+    def test_tasks_waiting_on_a_shared_file_get_optional_evidence_backed_repair(self):
+        """Idle slots invite overlap diagnosis, not invented product prerequisites.
+
+        This guards prompt wording, not model adherence or conflict-free execution.
+        """
         rows = [{'task': 'A', 'state': 'running'},
                 {'task': 'B', 'state': 'waiting', 'reason': 'waits for A (shares hot file x.py)'},  # current
                 {'task': 'C', 'state': 'waiting', 'reason': 'shares y.py with B, which goes first'},  # old journal
@@ -31,9 +33,19 @@ class MaintainerTests(unittest.TestCase):
         found = maintainer.overlaps(rows)
         self.assertEqual([(t, k) for t, k, _ in found], [('B', 'overlap'), ('C', 'overlap')])
         text = maintainer.prompt(found, '/repo', 'autowork tasks')
-        for phrase in ('merge it into the other task', 'split the shared-file part', 'never widen product scope',
+        for phrase in ('A shared path alone is not a product prerequisite',
+                       'Add Dependencies only for a source-backed producer/consumer prerequisite',
+                       'never for overlap or a preferred sequence', 'Leave legitimate waits unchanged',
+                       'Merge or split only for source-backed cohesion, observed conflict cost or testability',
+                       'preserve every Acceptance item and priority', 'never widen product scope',
                        'Never edit the entry of a task that is running'):
-            self.assertIn(phrase, text)
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+        for obsolete in ('so that what runs next has disjoint Touches', 'Prefer, in order:',
+                         'otherwise make the order explicit in Dependencies',
+                         'split the shared-file part into a follow-up task that depends on the other task'):
+            with self.subTest(obsolete=obsolete):
+                self.assertNotIn(obsolete, text)
         from pi_autowork.coordinator import Coordinator
         runner = Coordinator.__new__(Coordinator)
         runner.workers, runner.seen = '2', {}
