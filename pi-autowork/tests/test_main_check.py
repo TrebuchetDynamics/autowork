@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import main_check  # noqa: E402
+from test_optimistic import Repo as OptimisticRepo, git  # noqa: E402
 
 
 def affected_check_fixture(root):
@@ -56,6 +57,42 @@ def affected_check_fixture(root):
         output.write('# selected change\n')
     git('commit', '-qam', 'selected change')
     return base
+
+
+class UnknownAttributionTests(OptimisticRepo):
+    def test_unknown_attribution_preserves_red_repair(self):
+        from pi_autowork import maintainer
+        from pi_autowork.coordinator import Coordinator
+
+        state = Path(self.tmp.name) / 'state'
+        state.mkdir()
+        upstream = Path(self.tmp.name) / 'up.git'
+        git(self.repo, 'init', '-q', '--bare', '-b', 'main', str(upstream))
+        git(self.repo, 'remote', 'add', 'origin', str(upstream))
+        git(self.repo, 'push', '-q', 'origin', f'{self.green}:refs/heads/main')
+        git(self.repo, 'config', 'branch.main.remote', 'origin')
+        git(self.repo, 'config', 'branch.main.merge', 'refs/heads/main')
+        runner = Coordinator.__new__(Coordinator)
+        runner.repo, runner.integ, runner.state = self.repo, self.repo, state
+        runner.base, runner.seen = 'main', {}
+        runner.session_busy = lambda: False
+        repairs = []
+        runner.maintain = lambda **_: repairs.extend(maintainer.triggers([], main_check.read(state)))
+        failure = 'test_lib.LibTests.test_value'
+        (state / 'main-check.log').write_text(f'FAIL: test_value ({failure})\n'
+                                            'Ran 1 test in 0.01s\n\nFAILED (failures=1)\n')
+        (state / 'main-check.exit').write_text('1\n')
+        with patch.dict(os.environ, PI_AUTOWORK_OPTIMISTIC='1', PI_AUTOWORK_PUSH='1'):
+            runner.finish_main_check(dict(rev=self.rev, green=self.green))
+            record = main_check.read(state)
+            self.assertEqual((record['state'], record['rev'], record['green']), ('red', self.rev, self.green))
+            self.assertEqual(record['failures'], [failure])
+            self.assertEqual([(task, kind) for task, kind, _ in repairs], [('MAIN', 'main red')])
+            self.assertIn(failure, repairs[0][2])
+            self.assertEqual(git(self.repo, 'rev-parse', 'HEAD'), self.rev)
+            self.assertEqual(git(self.repo, 'status', '--porcelain'), '')
+            runner.push()
+            self.assertEqual(git(upstream, 'rev-parse', 'main'), self.green)
 
 
 class MainCheckTests(unittest.TestCase):

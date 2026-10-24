@@ -73,9 +73,19 @@ class OptimisticTests(Repo):
         landed = optimistic.landed(self.repo, self.green, self.rev)
         failing = ['test_lib.LibTests.test_value']
         self.assertEqual(optimistic.regression(self.repo, self.rev, failing, self.log(), landed), ['B'])
-        # A failure no landed change explains could be any of them: all are reverted.
-        self.assertEqual(optimistic.regression(self.repo, self.rev, failing, 'FAIL: test_value (x.Y.z)\n', landed),
-                         ['B', 'A'])
+
+    def test_unknown_attribution_does_not_blame_the_cohort(self):
+        landed = optimistic.landed(self.repo, self.green, self.rev)
+        known, unknown = 'test_lib.LibTests.test_value', 'test_other.OtherTests.test_unknown'
+        for label, failing, log in (
+                ('absent trace', [known], ''),
+                ('mismatched test', [unknown], self.log()),
+                ('untracked path', [known], self.log('missing.py')),
+                ('pre-existing line', [known], self.log(line=1)),
+                ('known then unknown', [known, unknown], self.log()),
+                ('unknown then known', [unknown, known], self.log())):
+            with self.subTest(case=label):
+                self.assertEqual(optimistic.regression(self.repo, self.rev, failing, log, landed), [])
 
     def test_the_blamed_task_is_reverted_and_reopened_with_the_failing_tests(self):
         reopened = []
