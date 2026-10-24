@@ -62,6 +62,26 @@ class GateCommandTests(unittest.TestCase):
             self.assertFalse(main_check.complete_results(text, self.repo, env['PI_AUTOWORK_MAIN_CHECK']))
         self.assertTrue((self.repo / 'attempted').is_file())  # the merged run failed; the rerun alone passed
 
+    def test_an_affected_gate_excuses_only_completed_selected_failures(self):
+        from test_main_check import affected_check_fixture
+
+        base = affected_check_fixture(self.repo)
+        env = dict(os.environ, PI_AUTOWORK_VALIDATE='python3 scripts/check.py',
+                   PI_AUTOWORK_MAIN_CHECK='python3 -m pytest -q',
+                   PI_AUTOWORK_CHECK_ROOT=str(self.repo / '.git/check-slots'))
+        with patch.dict(os.environ, env, clear=True):
+            self.assertEqual(worker.full_suite_gate(self.state, 'T-affected', str(self.repo), base), (True, ''))
+        reruns = json.loads(worker.gate_log(self.state, 'T-affected').with_suffix('.reruns.json').read_text())
+        self.assertEqual(reruns['flaky'], ['test_pi_autowork.Selected.test_first'])
+        self.assertFalse(reruns['incomplete'])
+        cache = next((self.state / 'full-check').glob('tree-*.json'))
+        record = json.loads(cache.read_text())
+        self.assertFalse(record['selection']['full'])
+        self.assertEqual(record['full_command'], 'python3 scripts/check.py')
+        self.assertIn(f'--affected {base}..', record['command'])
+        self.assertNotIn('baseline', record)  # no full base check was needed or qualified
+        self.assertFalse(main_check.read(self.state))
+
     def test_recorded_gate_results_keep_their_verdict_reasons(self):
         """Excusing named failures must not excuse an unfinished run or a shared crash.
 
@@ -138,7 +158,7 @@ class GateCommandTests(unittest.TestCase):
         self.assertEqual(holder.stdout.readline().strip(), 'held')
         calls = []
 
-        def rerun(log, checkout, receipt, rev, only=(), workers=None):
+        def rerun(log, checkout, receipt, rev, only=(), workers=None, cmd=None):
             calls.append(workers)
             Path(receipt).write_text(json.dumps({'rev': rev, 'flaky': sorted(only)}))
 
@@ -160,7 +180,7 @@ class GateCommandTests(unittest.TestCase):
         for passes, expected in ((False, [5]), (True, [5, 15])):
             sizes = []
 
-            def rerun(log, checkout, receipt, rev, only=(), workers=None):
+            def rerun(log, checkout, receipt, rev, only=(), workers=None, cmd=None):
                 sizes.append(len(only))
                 Path(receipt).write_text(json.dumps({'rev': rev, 'flaky': sorted(only) if passes else []}))
 

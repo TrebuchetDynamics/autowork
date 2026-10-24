@@ -6,6 +6,7 @@ check (PI_AUTOWORK_MAIN_CHECK) has it run in the background, once per main revis
 disposable checkout of main; a failure names the failing tests and the commits since the
 last green revision, and the DOCS-MAINTAINER adds one repair task for it. Standard library only.
 """
+import argparse
 import ast
 import concurrent.futures
 from contextlib import contextmanager
@@ -449,34 +450,88 @@ def result_class(log_text, code, *, timed_out=False, stopped=False, environment=
     return 'HARNESS_ERROR'
 
 
+def offline_expectations(root, args):
+    """Reconstruct the producing checker's module and shard counts, never log claims."""
+    if (len(args) < 2 or Path(args[0]).name not in ('python', 'python3', Path(sys.executable).name)
+            or (root / args[1]).resolve() != root / 'scripts/check.py'):
+        return None
+    # Only non-filtering execution options and the verified affected range are supported.
+    # Paths, -k, --list and unknown flags cannot explain a full-inventory log.
+    parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False, exit_on_error=False)
+    parser.add_argument('--affected')
+    parser.add_argument('--jobs', type=int, default=1)
+    parser.add_argument('--timeout', type=float, default=1800)
+    try:
+        options, unknown = parser.parse_known_args(args[2:])
+        if unknown or options.jobs <= 0 or not 0 < options.timeout < float('inf'):
+            return None
+        checker = runpy.run_path(str(root / 'scripts/check.py'))
+        tests = checker['discover_tests'](root)
+        if options.affected is not None:
+            if affected_checker(root, shlex.join(args[:2])) is None:
+                return None
+            selection = checker['affected_selection'](root, options.affected)
+            selected = selection['tests']
+            owned = {path.relative_to(root).as_posix() for path in tests}
+            if len(selected) != len(set(selected)) or not set(selected).issubset(owned):
+                return None
+            tests = [path for path in tests if path.relative_to(root).as_posix() in selected]
+        expected = {}
+        for path in tests:
+            name = path.parent.relative_to(root).as_posix()
+            expected.setdefault(name, [0, 0])[0] += 1
+        for directory, _ in checker['units'](root, tests):
+            expected[directory.relative_to(root).as_posix()][1] += 1
+        return expected
+    except (argparse.ArgumentError, OSError, ValueError, KeyError, TypeError, SyntaxError, subprocess.SubprocessError):
+        return None
+
+
 def complete_results(text, root, cmd=None):
     """Do not excuse a flaky test alongside a process that died without a summary.
 
     The offline inventory may shard modules, so count its units, not just modules.
     Unknown shell commands without CHECK boundaries cannot prove completeness.
     ``cmd`` is the command that produced ``text``: the gate's check may be declared in
-    AGENTS.md and never enter this process's environment, so only main's own check passes it
-    explicitly; every other caller means the repository's full check.
+    AGENTS.md and never enter this process's environment. Callers without an explicit command
+    mean the repository's declared full check, never an inferred affected selection.
     """
+    root = Path(root).resolve()
+    cmd = full_check(str(root)) if cmd is None else cmd
+    try:
+        args = shlex.split(cmd)
+    except ValueError:
+        return False
     summary = re.compile(r'^Ran \d+ tests? in [\d.]+s\n\n(?:OK\b|FAILED\b)', re.M)
     sections = list(re.finditer(r'^CHECK (.+) \((\d+) modules\)$', text, re.M))
-    expected = {}
-    if 'Offline inventory:' in text:
-        try:
-            checker = runpy.run_path(str(root / 'scripts/check.py'))
-            for directory, _ in checker['units'](root, checker['discover_tests'](root)):
-                name = directory.relative_to(root).as_posix()
-                expected[name] = expected.get(name, 0) + 1
-        except (OSError, ValueError, KeyError, TypeError):
+    offline = ('Offline inventory:' in text or 'Offline result:' in text
+               or (len(args) >= 2 and (root / args[1]).resolve() == root / 'scripts/check.py'))
+    if offline:
+        expected = offline_expectations(root, args)
+        inventories = list(re.finditer(
+            r'^Offline inventory: (\d+) modules in (\d+) directories; (\d+) excluded\. No model/native qualification\.$',
+            text, re.M))
+        results = list(re.finditer(
+            r'^Offline result: (\d+) test directories passed; (\d+) failed; (\d+) modules excluded\.$',
+            text, re.M))
+        if expected is None or len(inventories) != 1 or len(results) != 1 or TIMEOUT.search(text):
             return False
-        if set(expected) != {section[1] for section in sections}:
+        inventory, result = inventories[0], results[0]
+        if (inventory.end() > result.start()
+                or int(inventory[1]) != sum(counts[0] for counts in expected.values())
+                or int(inventory[2]) != len(expected)
+                or int(result[1]) + int(result[2]) != len(expected) or inventory[3] != result[3]
+                or len(sections) != len(expected) or set(expected) != {section[1] for section in sections}):
             return False
+        for index, section in enumerate(sections):
+            end = sections[index + 1].start() if index + 1 < len(sections) else result.start()
+            modules, units = expected[section[1]]
+            if (section.start() < inventory.end() or section.end() > end or int(section[2]) != modules
+                    or len(summary.findall(text[section.end():end])) != units):
+                return False
+        # The terminal result is emitted only after guards/core and every selected unit finish.
+        return not summary.search(text[result.end():])
     if not sections:
-        cmd = full_check(str(root)) if cmd is None else cmd
-        try:
-            args = shlex.split(cmd)
-        except ValueError:
-            return False
         if 'test' in args and any(a == 'flutter' or a.endswith('/flutter') for a in args):
             # `flutter test` (alone or after `&&` with its pub get) ends in one terminal line.
             return len(FLUTTER_SUMMARY.findall(text)) == 1
@@ -484,7 +539,7 @@ def complete_results(text, root, cmd=None):
                 and not re.search(r'[;&|<>()\n]', cmd) and len(summary.findall(text)) == 1)
     for index, section in enumerate(sections):
         end = sections[index + 1].start() if index + 1 < len(sections) else len(text)
-        if len(summary.findall(text[section.end():end])) != expected.get(section[1], int(section[2])):
+        if len(summary.findall(text[section.end():end])) != int(section[2]):
             return False
     return True
 
