@@ -1,15 +1,27 @@
 # Pi Autowork component
 
 The `pi-autowork` runner. `scripts/pi-autowork.sh` is a thin entry point and the
-service command: it finds this component and runs `pi_autowork/cli.py`, which then
-continues in the toolset release it resolves. The generic task lifecycle (admission, slots,
-integration, closure) stays in the shared engine under `pi-autowork/engine`,
-which is the only authority for task state. Runtime state lives outside the
-repository, under `${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key>/`.
+service command: it finds this component and runs the stable `pi_autowork/cli.py`
+adapter, which continues in the toolset release it resolves. Runner and legacy-reader
+implementations live in `Src/pi_autowork/`; the generic task lifecycle (admission,
+slots, integration, closure) lives in `Src/pi_autowork/engine/` and remains the only
+authority for task state. The original Python paths, `bin/autowork` and shell/service
+commands remain public entry points. Flat engine imports and canonical
+`pi_autowork.engine` imports share the same module objects, including exception types.
+Standalone `worktree_paths.py` and `checkout_lock.py`, test assets and fixture helpers
+remain under `pi-autowork/engine/`. A missing selected source refuses rather than
+borrowing another checkout. Git-free archives support help/read commands, not immutable
+runner launches, which still require a committed Git toolset.
+
+The Python module paths in this table are relative to `Src/`; `bin/autowork` is
+relative to this component. Child commands and reloads use stable public adapters;
+source checks, TUI code stamps and review fingerprints inspect actual implementations.
+Runtime state lives outside the repository, under
+`${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key>/`.
 
 | Module | Role |
 | --- | --- |
-| `engine/task_store.py` | Read-only, pinned-commit TaskStore used by the engine and committed fleet inventory; [schema and API](task-store.md) |
+| `pi_autowork/engine/task_store.py` | Read-only, pinned-commit TaskStore used by the engine and committed fleet inventory; [schema and API](task-store.md) |
 | `pi_autowork/cli.py` | Options, repository and toolset resolution (one release per run), `--status`, `--dry-run`, `--fleet`, `--set-aside`, the runner lock |
 | `pi_autowork/coordinator.py` | The loop: engine lease owner, session branch and final merge, settle and close, requests, priority drift, Touches proposals and widening, health, self-update and restart, graceful stop |
 | `pi_autowork/worker.py` | The engine-launched `--worker` and `--verify` modes |
@@ -63,7 +75,7 @@ times where available; missing data or unknown freshness is not health evidence.
 The committed section reads the selected repository's HEAD on each report request,
 not a last-good inventory. Selection eligibility is never runtime admission.
 Full producer reasons replace matching truncated questions; unavailable full
-reasons remain explicitly truncated. Source: `pi_autowork/blockers_report.py:build`.
+reasons remain explicitly truncated. Source: `Src/pi_autowork/blockers_report.py:build`.
 
 **c Copy** requests the plain text of the current summary/details view, without
 terminal padding. **F7** selects all; **Ctrl+C** requests copying a selection.
@@ -77,7 +89,7 @@ exact **app-host** path—not a file on the SSH client. In browser mode it reque
 a plain-text download; transfer completion is not proof the user saved/opened it.
 Export is explicit, never automatic; reports may contain sensitive operational
 context. Refresh, Details and Escape remain usable during a host save, and a
-refresh does not change the exported capture. Source: `pi_autowork/tui.py:BlockersScreen`.
+refresh does not change the exported capture. Source: `Src/pi_autowork/tui.py:BlockersScreen`.
 
 **r** explicitly refreshes; **Esc** returns. Opening, refreshing and copying run no
 agent, runner command or task mutation; only explicit Export writes a report copy.

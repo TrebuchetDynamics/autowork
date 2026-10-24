@@ -1,20 +1,15 @@
-"""Parse native character-framed cron output without guessing log headings."""
-import re
+"""Compatibility entry; implementation belongs to Src/pi_autowork/engine/cron_output.py."""
+import importlib.util as _util
+from pathlib import Path as _Path
+import sys as _sys
 
-
-def response_body(data, job_id):
-    """Accept the native character-framed document, never guess at log delimiters."""
-    text = data.decode('utf-8').replace('\r\n', '\n').replace('\r', '\n')
-    header = re.match(r'\A# Cron Job: [^\n]+\n\n\*\*Job ID:\*\* ([A-Za-z0-9_-]+)\n'
-                      r'\*\*Run Time:\*\* [^\n]+\n\*\*Schedule:\*\* [^\n]+\n\n'
-                      r'\*\*Prompt Characters:\*\* ([0-9]{1,6})\n## Prompt\n\n', text)
-    if not header or header[1] != job_id:
-        raise ValueError('unknown output envelope')
-    tail = text[header.end() + int(header[2]):]
-    frame = re.match(r'\n\n\*\*Response Characters:\*\* ([0-9]{1,6})\n## Response\n\n', tail)
-    if not frame:
-        raise ValueError('unknown response frame')
-    response = tail[frame.end():]
-    if not response.endswith('\n') or len(response) != int(frame[1]) + 1 or not response[:-1].strip():
-        raise ValueError('incomplete response frame')
-    return response[:-1]
+_root = _Path(__file__).resolve().parents[2]
+_spec = _util.spec_from_file_location('_autowork_entry_bootstrap', _root / 'autowork_bootstrap.py')
+_bootstrap = _util.module_from_spec(_spec)
+_spec.loader.exec_module(_bootstrap)
+if __name__ == '__main__':
+    _bootstrap.load(_root, 'pi_autowork.engine.cron_output')
+    _sys.exit(0)
+else:
+    _sys.modules.pop(__name__, None)
+    _sys.modules[__name__] = _bootstrap.load(_root, 'pi_autowork.engine.cron_output')

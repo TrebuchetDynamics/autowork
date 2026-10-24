@@ -1,103 +1,14 @@
-"""Run acceptance commands and publish owned files to a local task ref only.
+"""Compatibility entry; implementation belongs to Src/pi_autowork/engine/finish_task.py."""
+import importlib.util as _util
+from pathlib import Path as _Path
+import sys as _sys
 
-The caller attests file ownership and supplies the required checks. This helper
-cannot infer acceptance or override a repository/user no-commit instruction.
-"""
-import argparse
-import hashlib
-import json
-import os
-import signal
-from pathlib import Path
-import subprocess
-import sys
-
-from candidate_identity import git_environment
-
-
-def fingerprint(repo, files):
-    result = {}
-    for name in files:
-        path = repo / name
-        if path.is_symlink():
-            result[name] = ('symlink', os.readlink(path))
-        elif path.is_file():
-            result[name] = (path.stat().st_mode, hashlib.sha256(path.read_bytes()).hexdigest())
-        else:
-            result[name] = None
-    return result
-
-
-def run_acceptance(command, repo, timeout, environment):
-    # A timeout or cancellation must release child writers before recovery.
-    with subprocess.Popen(command, cwd=repo, stdout=sys.stderr, env=environment,
-                          start_new_session=os.name == 'posix') as process:
-        try:
-            return process.wait(timeout=timeout)
-        except BaseException:
-            try:
-                if os.name == 'posix':
-                    os.killpg(process.pid, signal.SIGKILL)
-                else:
-                    process.kill()
-            except ProcessLookupError:
-                pass
-            process.wait()
-            raise
-
-
-def finish(repo, profile, card, message, files, checks, timeout):
-    receipts = []
-    environment = git_environment()
-    before = fingerprint(repo, files)
-    for command in checks:
-        try:
-            code = run_acceptance(command, repo, timeout, environment)
-            receipts.append({'argv': command, 'exit_code': code})
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            return {'status': 'validation_failed', 'checks': receipts, 'error': str(exc)}, 1
-        if code:
-            return {'status': 'validation_failed', 'checks': receipts}, 1
-    if fingerprint(repo, files) != before:
-        return {'status': 'source_changed', 'checks': receipts,
-                'error': 'Acceptance changed owned files; inspect and rerun validation.'}, 1
-    try:
-        result = subprocess.run(['bash', str(Path(__file__).with_name('agent_commit.sh')),
-            str(repo), profile, card, message, *files], capture_output=True, text=True,
-            env={**environment, 'AGENT_COMMIT_JSON': '0'}, timeout=timeout)
-        if result.returncode:
-            return {'status': 'commit_failed', 'checks': receipts, 'error': result.stderr.strip()}, 1
-        branch, sha, *rest = result.stdout.strip().split()
-        if rest:
-            return {'status': 'no_changes', 'checks': receipts, 'source_commit': sha}, 0
-        readback = subprocess.check_output(['git', '-C', str(repo), 'rev-parse',
-                                           'refs/heads/' + branch], text=True, env=environment).strip()
-        if readback != sha:
-            raise ValueError('Task ref changed before commit readback')
-        return {'status': 'committed', 'checks': receipts, 'branch': branch, 'commit': sha,
-                'files': files}, 0
-    except (OSError, subprocess.SubprocessError, ValueError) as exc:
-        return {'status': 'commit_failed', 'checks': receipts, 'error': str(exc)}, 1
-
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    for name in ('repo', 'profile', 'card', 'message'):
-        parser.add_argument('--' + name, required=True)
-    parser.add_argument('--check-json', action='append', required=True,
-                        help='Required acceptance argv as a JSON array; repeat for each check')
-    parser.add_argument('--timeout', type=int, default=2400)
-    parser.add_argument('files', nargs='+', help='Explicit owned root-relative files, never directories')
-    args = parser.parse_args()
-    checks = [json.loads(value) for value in args.check_json]
-    if args.timeout <= 0 or any(not isinstance(check, list) or not check or
-            any(not isinstance(arg, str) or not arg for arg in check) for check in checks):
-        parser.error('checks must be nonempty JSON argv arrays; timeout must be positive')
-    receipt, code = finish(Path(args.repo).resolve(), args.profile, args.card,
-                          args.message, args.files, checks, args.timeout)
-    print(json.dumps(receipt))
-    return code
-
-
+_root = _Path(__file__).resolve().parents[2]
+_spec = _util.spec_from_file_location('_autowork_entry_bootstrap', _root / 'autowork_bootstrap.py')
+_bootstrap = _util.module_from_spec(_spec)
+_spec.loader.exec_module(_bootstrap)
 if __name__ == '__main__':
-    sys.exit(main())
+    _sys.exit(_bootstrap.run(_root, 'pi_autowork.engine.finish_task', _sys.argv[1:]))
+else:
+    _sys.modules.pop(__name__, None)
+    _sys.modules[__name__] = _bootstrap.load(_root, 'pi_autowork.engine.finish_task')

@@ -1,5 +1,5 @@
 """Offline source snapshot regressions. No cards, projects or network writes."""
-import importlib.util
+import source_freshness as m
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,8 +8,6 @@ class FreshnessTests(unittest.TestCase):
     def test_changed_source_invalidates_selection(self):
         file=Path(__file__).with_name('source_freshness.py')
         self.assertTrue(file.exists(), 'Missing source-freshness preflight')
-        spec=importlib.util.spec_from_file_location('freshness',file)
-        m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
         with tempfile.TemporaryDirectory() as directory:
             r=Path(directory);(r/'src').mkdir();p=r/'src/client.py';p.write_text('pending fix\n')
             snapshot=m.capture(r,['src/client.py','README.md'])
@@ -19,16 +17,12 @@ class FreshnessTests(unittest.TestCase):
             self.assertFalse(result['fresh']);self.assertIn('src/client.py',result['changed'])
 
     def test_credentials_are_not_evidence_sources(self):
-        spec=importlib.util.spec_from_file_location('freshness',Path(__file__).with_name('source_freshness.py'))
-        m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
         with tempfile.TemporaryDirectory() as directory:
             r=Path(directory);(r/'.env').write_text('fixture only\n')
             with self.assertRaisesRegex(ValueError,'Do not fingerprint credentials'):
                 m.capture(r,['.env'])
 
     def test_appearance_deletion_symlink_and_wrong_workspace(self):
-        spec=importlib.util.spec_from_file_location('freshness',Path(__file__).with_name('source_freshness.py'))
-        m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
         with tempfile.TemporaryDirectory() as directory:
             r=Path(directory);p=r/'README.md';s=m.capture(r,['README.md'])
             p.write_text('another owner added the requested document\n')
