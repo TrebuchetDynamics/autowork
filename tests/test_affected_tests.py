@@ -1,7 +1,9 @@
 """scripts/affected_tests.py selects the test modules a change can reach, with the reason."""
 from pathlib import Path
 import sys
+import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
@@ -40,6 +42,33 @@ class AffectedTestsTests(unittest.TestCase):
                 tests, _, full = affected_tests.select([change])
                 self.assertTrue(full)
                 self.assertGreater(len(tests), 100)
+
+    def test_src_relative_qualified_and_legacy_edges_do_not_confuse_duplicate_stems(self):
+        files = {
+            'Src/pi_autowork/__init__.py': '',
+            'Src/pi_autowork/engine/__init__.py': '',
+            'Src/pi_autowork/engine/owner.py': 'VALUE = 1\n',
+            'Src/pi_autowork/engine/consumer.py': 'from .owner import VALUE\n',
+            'Src/pi_autowork/command.py': 'from .engine import consumer\n',
+            'pi-autowork/pi_autowork/command.py': '# old entry\n',
+            'unrelated/owner.py': 'VALUE = 2\n',
+            'tests/test_public.py': 'import pi_autowork.command\n',
+            'tests/test_path.py': 'ENTRY = "pi-autowork/pi_autowork/command.py"\n',
+            'tests/test_other.py': 'import unrelated.owner\n',
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for name, body in files.items():
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(body)
+            with patch.object(affected_tests, 'ROOT', root):
+                graph = affected_tests.dependency_graph(list(files), conservative=True)
+                self.assertIn('Src/pi_autowork/engine/owner.py', graph['Src/pi_autowork/engine/consumer.py'])
+                self.assertIn('Src/pi_autowork/command.py', graph['pi-autowork/pi_autowork/command.py'])
+                self.assertIn('Src/pi_autowork/__init__.py', graph['tests/test_public.py'])
+                self.assertNotIn('unrelated/owner.py', graph['Src/pi_autowork/engine/consumer.py'])
+                self.assertNotIn('Src/pi_autowork/engine/owner.py', graph['tests/test_other.py'])
 
     def test_planning_records_select_nothing(self):
         tests, _, full = affected_tests.select(['tasks/items/TOOLSET-001-00.md'])

@@ -44,7 +44,7 @@ def default_base():
 
 
 def changed_files(base):
-    tracked = (git('diff', '--name-only', base) or '').split('\n')
+    tracked = (git('diff', '--name-only', '--no-renames', base) or '').split('\n')
     untracked = (git('ls-files', '--others', '--exclude-standard') or '').split('\n')
     return sorted({p for p in tracked + untracked if p})
 
@@ -60,9 +60,20 @@ def repository_files():
     return sorted({p for p in listed if p and (p.endswith(TEXT) or '.' not in Path(p).name) and (ROOT / p).is_file()})
 
 
-def python_references(source):
-    """(module names a Python source imports, the text of its string literals). Import names are
-    last components, as the repository's sys.path setups resolve them by file stem. Paths count
+def module_name(path):
+    """Canonical source names, including the stable pre-Src public entry names."""
+    name = path.removesuffix('.py').replace('/', '.')
+    if name.startswith('Src.'):
+        name = name[4:]
+    elif name.startswith('pi-autowork.pi_autowork.'):
+        name = name[len('pi-autowork.'):]
+    elif name.startswith('pi-autowork.engine.'):
+        name = 'pi_autowork.engine.' + name[len('pi-autowork.engine.'):]
+    return name.removesuffix('.__init__')
+
+
+def python_references(source, path=''):
+    """(top and lazy imported module names, text of string literals). Paths count
     only in string literals, not comments or docstrings: a comment naming pi-autowork.sh made a
     state module depend on the whole runner."""
     try:
@@ -78,10 +89,16 @@ def python_references(source):
     for node in ast.walk(tree):
         names = None
         if isinstance(node, ast.Import):
-            names = {alias.name.split('.')[-1] for alias in node.names}
+            names = {alias.name for alias in node.names}
         elif isinstance(node, ast.ImportFrom):
-            # `from pi_autowork import coordinator` names the module in the alias.
-            names = {alias.name for alias in node.names} | ({node.module.split('.')[-1]} if node.module else set())
+            prefix = node.module or ''
+            if node.level:
+                package = module_name(path).split('.')
+                if Path(path).name != '__init__.py':
+                    package.pop()
+                package = package[:len(package) - node.level + 1]
+                prefix = '.'.join([*package, *([prefix] if prefix else [])])
+            names = {prefix, *(prefix + '.' + alias.name for alias in node.names if alias.name != '*')} - {''}
         elif isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docstrings:
             strings.append(node.value)
         if names:
@@ -98,12 +115,13 @@ def dependency_graph(files, tests=(), *, conservative=False):
     hundreds of files, and through them every change reached 107 of 120 test modules).
     Conservative landing selection also retains named test-file dependencies."""
     tests = set(tests)
-    stems, basenames = {}, {}
+    stems, basenames, modules = {}, {}, {}
     for path in files:
         name = Path(path).name
         basenames.setdefault(name, set()).add(path)
         if path.endswith('.py'):
             stems.setdefault(Path(path).stem, set()).add(path)
+            modules.setdefault(module_name(path), set()).add(path)
             if conservative and Path(path).name == '__init__.py':
                 stems.setdefault(Path(path).parent.name, set()).add(path)
     known = set(files)
@@ -120,6 +138,10 @@ def dependency_graph(files, tests=(), *, conservative=False):
         except OSError:
             continue
         deps = set()
+        # Public adapter -> canonical owner, even while independent migrations land.
+        canonical = module_name(path)
+        if path.startswith('pi-autowork/'):
+            deps |= {p for p in modules.get(canonical, ()) if p.startswith('Src/')}
         if conservative and path.endswith('.py'):
             # Loading a package member executes every ancestor package initializer,
             # including unchanged initializers that import a changed dependency.
@@ -129,9 +151,15 @@ def dependency_graph(files, tests=(), *, conservative=False):
             # An import inside a function is a dependency of the module that makes it, not of
             # everything above it: task_prepare imports fleet_view for one path, and through the
             # shared store fixture that tied 60 engine tests to the fleet view.
-            top, lazy, text = python_references(text)
+            top, lazy, text = python_references(text, path)
             for name in top | (lazy if conservative or path in tests else set()):
-                deps |= stems.get(name, set())
+                deps |= modules.get(name, set())
+                if '.' not in name:
+                    # Old flat engine imports and test-specific path setup can be ambiguous.
+                    deps |= stems.get(name, set())
+                for index in range(1, len(name.split('.'))):
+                    prefix = '.'.join(name.split('.')[:index])
+                    deps |= {p for p in modules.get(prefix, ()) if Path(p).name == '__init__.py'}
         for token in set(MENTION.findall(text)):
             token = token.lstrip('./')
             candidates = basenames.get(Path(token).name, set())
@@ -222,7 +250,7 @@ def main(argv=None):
     changed = changed_files(base)
     if args.full:
         changed = ['scripts/check.py']
-    tests, reasons, full = select(changed, base)
+    tests, reasons, full = select(changed, base, conservative=True)
     if args.json:
         print(json.dumps({'base': base, 'changed': changed, 'full': full, 'tests': tests, 'reasons': reasons}, indent=2))
     else:
