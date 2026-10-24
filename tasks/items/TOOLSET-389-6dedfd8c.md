@@ -20,3 +20,4 @@ exclusions = ["No blanket fleet restart, credential changes, deployment, push gr
 +++
 - Source: docs/research/pi-rpc-qualification-2026-10-24.md
 - This follow-up is pending; no acceptance, ownership release or installed activation is asserted.
+- Pilot preparation: Owner direction 2026-10-24: delivery gates before new RPC features. Proposed bounded installed-runner plan: docs/research/pi-rpc-installed-pilot-plan-2026-10-24.md. Prefer one disposable standalone target, no remotes, one worker, isolated state, automatic steering and publication disabled. Exact target, model/time budget and interruption window still require explicit authorization; live remains denied. Preserve active fleet workers and existing recovery evidence. Source/default/readiness observations are not installed execution or fleet qualification.
