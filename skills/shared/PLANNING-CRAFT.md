@@ -130,7 +130,7 @@ finished without anyone:
   worker makes it. Never write "the coordinator must provide", "obtain a handoff",
   "await a receipt" or "verify exclusivity". The runner provides no more than its
   worker prompt states: private ports and `$TMPDIR`, a fresh baseline, integration
-  by merge, and the full check run on the merged tree.
+  by merge, and merged-tree checks under the repository's execution contract.
 - **Prerequisites are in scope.** If a defect already in the code would stop the
   task's checks, such as a broken test or a missing fixture, the task may repair
   it. Do not forbid "unrelated" fixes that the task's own checks depend on.
@@ -161,19 +161,31 @@ to the one before it and leaves none testable alone.
 
 ## Disjoint write sets
 
-`touches` is the task's expected write set. Parallel Autowork runs likely-independent
-work first, and a task naming a file that unlanded work also names waits until it lands
-(a directory or glob only ranks). The plan is what keeps write sets apart, so tasks can
-run together:
+`touches` is the task's expected write set. Prefer disjoint writes, but report
+actual overlap rather than invent prerequisites. Under
+[`parallel_plan.py::plan`](../../pi-autowork/engine/parallel_plan.py):
 
-- Tasks that can run together have disjoint writes. Re-cut shared ownership where
-  useful; otherwise report the scheduling overlap. Add `depends_on` only for a
-  real prerequisite, not merely a shared path or a preferred sequence.
-- A hot file, one named by three or more open tasks or longer than about 1500 lines,
-  gets a first task that extracts the part being changed into its own module; later
-  tasks touch that module.
-- Put each task's tests in a new focused test file or class, not appended to a
-  shared large suite.
+- Tasks naming the same hot literal production file wait until the unlanded work lands.
+  Hot means named by three or more unfinished tasks, including noncandidate
+  contracts and live slots awaiting integration; file length does not make it hot.
+  Cold files, directories, globs and test modules only rank likely-independent work
+  first; their overlap alone does not hold dispatch. Test modules are excluded from
+  the hot-file gate even when three or more tasks name them. Merge resolves actual
+  conflicts and checks qualify the merged result; overlap is not a promise of no conflict.
+- Add `depends_on` only for a real prerequisite, not merely a shared path or a
+  preferred sequence. For example, overlapping tests or cold files do not require
+  extraction or dependency edges.
+- Choose extraction for cohesion, observed conflict cost and testability, not a
+  line-count or task-count threshold.
+  A bounded fix may stay in a large or hot file when it is cohesive and testable at
+  an existing seam. Re-cut ownership or extract only when evidence makes that useful;
+  do not invent a preliminary extraction task or another permission gate.
+- Shared named resources serialize their users; `exclusive`/`live` run alone only
+  for real resource needs. Keep protected-path coordination: protected-path tasks
+  serialize with each other, not ordinary tasks in isolated worktrees. New manifests,
+  lockfiles, schema/migration and CI files need explicit protected paths in `touches`
+  before editing; a broad directory does not reserve them. These gates apply even
+  when file overlap would otherwise only rank.
 - Name exact files when you know them. Only when you do not, widen to the owning
   directories rather than omit the field.
 - Never list the coordinator's files: `tasks/`, `BLOCKERS.md`, `TODO.archive.md`,
@@ -197,12 +209,31 @@ today's code. `checks` runs those tests directly. A criterion no test can check
 here is a live check, not acceptance. The task's next action starts with the failing
 test named in its acceptance.
 
+Prefer extending an existing public test seam: add or extend at most one focused
+test per behavior changed, without duplicating existing cases. A new focused file
+or class is optional when it improves ownership or discovery, not a prerequisite.
+No tests merely for docs, config or renames; an explicitly scoped
+instruction-contract guard tests the instruction behavior itself, not every prose
+edit. Reuse existing negative guards and required checks rather than add a separate
+test for every risk.
+
+Run focused tests and the task's `checks` while working, not the whole suite after
+every edit. Preserve every task-required check and independent review. Follow the
+repository's execution contract: when the runner owns the merged-tree gate, do not
+repeat it in the worker; otherwise run a required worker full gate once at the end.
+For the supported checker, the runner uses an affected landing check on the merged
+candidate (with conservative full fallback). Main retains its separate full check
+after landing. An affected-only pass is not a full-main pass; neither source-contract
+checks nor this guidance prove model adherence or faster workers. See
+[affected landing checks](../../pi-autowork/README.md#affected-landing-checks).
+
 ## Pre-mortem before saving
 
 Imagine the batch landed and broke something. Name up to three ways: an existing
 behaviour that regressed, an input the plan is silent on (empty, duplicate, huge,
-malformed), or a consumer of changed state that now misreads it. Give each a guard
-test in the task that owns it, or an explicit exclusion in that task's scope. Write
+malformed), or a consumer of changed state that now misreads it. Map each to an
+existing guard, a focused test within the behavior budget, or an explicit exclusion
+in the owning task's scope. Write
 one line of invariants every task in the batch keeps, in the plan section or each
 task (for example "the on-disk format does not change").
 
@@ -232,8 +263,9 @@ Without a subagent tool, read the tasks as that builder yourself. Sort the quest
 
 Then check the batch yourself and fix it before handoff: each executable task
 declares bounded `touches` (and the `exclusive` resource only with a real resource
-reason); shared writes are re-cut or explicitly nonparallel, true prerequisites have
-`depends_on` edges, and unrelated lanes remain independent. `depends_on` lists task
+reason); shared writes have the actual admission/ranking constraints above recorded
+(re-cut only when useful), true prerequisites have `depends_on` edges, and unrelated
+lanes remain independent. `depends_on` lists task
 IDs only; each `Consumes:` matches its producer's `Produces:`. Map every
 requested outcome to a complete saved task or a scoped unresolved choice; future
 roadmap ideas do not replace the requested batch.
