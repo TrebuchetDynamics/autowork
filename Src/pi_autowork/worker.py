@@ -468,7 +468,7 @@ class QuietWindowMissed(Exception):
     """No quiet window came within PI_AUTOWORK_QUIET_WAIT."""
 
 
-def quiet_reruns(state, task, log, checkout, rev, tests, limit):
+def quiet_reruns(state, task, log, checkout, rev, tests, limit, *, cmd=None):
     """The ``tests`` that pass when rerun one at a time with a host check slot held, once this
     repository's main check is done. Rerun four at a time beside main's full suite, the runner's
     own engine tests ran out of their 120 s and held three candidates whose trees pass them.
@@ -493,7 +493,7 @@ def quiet_reruns(state, task, log, checkout, rev, tests, limit):
             raise QuietWindowMissed
 
     def rerun(only):
-        main_check.rerun_failures(str(log), checkout, str(receipt), rev, only=set(only), workers=1)
+        main_check.rerun_failures(str(log), checkout, str(receipt), rev, cmd=cmd, only=set(only), workers=1)
         quiet = json.loads(receipt.read_text())
         if not isinstance(quiet, dict) or quiet.get('rev') != rev or not isinstance(quiet.get('flaky'), list):
             raise ValueError('the rerun left no receipt for this revision')
@@ -603,7 +603,7 @@ def gate_verdict(result, isolated_rerun=(), baseline=None, *, incomplete=False, 
     return (False, 'the full check has new failures the base does not: ' + first_ten(new)) if new else (True, '')
 
 
-def gate_reruns(state, task, checkout, log, failures, limit):
+def gate_reruns(state, task, checkout, log, failures, limit, *, cmd=None):
     """Collect isolated passes and completeness evidence; an invalid rerun receipt excuses nothing."""
     receipt = log.with_suffix('.reruns.json')
     receipt.unlink(missing_ok=True)
@@ -611,7 +611,7 @@ def gate_reruns(state, task, checkout, log, failures, limit):
     check_stop()
     gate_event(state, task, f'rerunning the {len(failures)} failure(s) alone')
     try:
-        main_check.rerun_failures(str(log), checkout, str(receipt), rev)
+        main_check.rerun_failures(str(log), checkout, str(receipt), rev, cmd=cmd)
         reruns = json.loads(receipt.read_text())
     except Exception as error:
         print(f'pi-autowork: rerunning the failures of {task} failed: {error}', file=sys.stderr)
@@ -620,7 +620,8 @@ def gate_reruns(state, task, checkout, log, failures, limit):
         reruns = {}
     remaining = [f for f in failures if f not in (reruns.get('flaky') or [])]
     if remaining and reruns:
-        remaining = [f for f in remaining if f not in quiet_reruns(state, task, log, checkout, rev, remaining, limit)]
+        remaining = [f for f in remaining if f not in quiet_reruns(
+            state, task, log, checkout, rev, remaining, limit, cmd=cmd)]
     isolated = [f for f in failures if f not in remaining]
     gate_event(state, task, f'{len(isolated)} passed alone; {len(remaining)} still fail')
     return isolated, reruns.get('incomplete')
@@ -672,7 +673,8 @@ def _run_gate(state, task, checkout, command, base_rev=None, *, evidence=None, b
     incomplete = False
     if merged['code'] != 0 and not merged['timed_out'] and merged['failures']:
         # If all pass alone, avoid the full base suite altogether.
-        evidence['isolated_rerun'], incomplete = gate_reruns(state, task, checkout, log, merged['failures'], limit)
+        evidence['isolated_rerun'], incomplete = gate_reruns(
+            state, task, checkout, log, merged['failures'], limit, cmd=command)
     verdict = merged_gate_verdict(merged, evidence['isolated_rerun'], incomplete, limit)
     if verdict is not None:
         return verdict

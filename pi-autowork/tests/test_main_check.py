@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -13,6 +14,48 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import main_check  # noqa: E402
+
+
+def affected_check_fixture(root):
+    """Private checker repo: two selected shards, an unselected module and directory."""
+    source = Path(__file__).resolve().parents[2]
+    (root / 'scripts').mkdir()
+    for name in ('check.py', 'affected_tests.py'):
+        shutil.copy2(source / 'scripts' / name, root / 'scripts' / name)
+    files = {
+        'AGENTS.md': 'Full check: python3 scripts/check.py\n',
+        'scripts/tree_guard.py': 'print("CORE guard")\n',
+        'skills/docs-sync/scripts/docs.py': 'print("CORE docs")\n',
+        'tests/test_pi_autowork.py': (
+            'import unittest\nfrom pathlib import Path\n'
+            'class Selected(unittest.TestCase):\n'
+            '    def test_first(self):\n'
+            '        marker = Path(__file__).with_name("attempted")\n'
+            '        if not marker.exists():\n'
+            '            marker.touch()\n'
+            '            self.fail("first run only")\n'
+            '    def test_second(self): pass\n'),
+        'tests/test_other.py': 'import unittest\nclass Other(unittest.TestCase):\n    def test_ok(self): pass\n',
+        'pi-autowork/engine/test_other.py': 'import unittest\nclass Other(unittest.TestCase):\n    def test_ok(self): pass\n',
+    }
+    for name, content in files.items():
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+
+    def git(*args):
+        return subprocess.run(['git', '-C', str(root), '-c', 'user.email=t@example.invalid',
+                               '-c', 'user.name=T', *args], check=True,
+                              capture_output=True, text=True).stdout.strip()
+
+    git('init', '-q')
+    git('add', '-A')
+    git('commit', '-qm', 'base')
+    base = git('rev-parse', 'HEAD')
+    with (root / 'tests/test_pi_autowork.py').open('a') as output:
+        output.write('# selected change\n')
+    git('commit', '-qam', 'selected change')
+    return base
 
 
 class MainCheckTests(unittest.TestCase):
@@ -63,6 +106,54 @@ class MainCheckTests(unittest.TestCase):
         self.assertEqual(main_check.result_class(log, -6), 'TEST_FAILURE')
         self.assertEqual(main_check.result_class(log, -6, timed_out=True), 'TIMEOUT')
         self.assertEqual(main_check.result_class(log, None), 'TEST_FAILURE')
+
+    def test_completeness_uses_the_producing_selection_and_its_shards(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            base = affected_check_fixture(root)
+            command = f'python3 scripts/check.py --affected {base}..HEAD'
+            run = subprocess.run(command.split(), cwd=root, text=True, capture_output=True, timeout=30)
+            self.assertEqual(run.returncode, 1, run.stdout + run.stderr)
+            text = run.stdout + run.stderr
+            self.assertIn('Offline inventory: 1 modules in 1 directories;', text)
+            self.assertEqual(text.count('Ran 1 test in '), 2)  # one module, two shards
+            self.assertNotIn('CHECK pi-autowork/engine', text)
+            summary = 'Ran 1 test in 0.001s\n\nOK\n'
+            terminal = 'Offline result: 0 test directories passed; 1 failed; 0 modules excluded.\n'
+            cases = [
+                ('selected', text, command, True),
+                ('declared full', text, 'python3 scripts/check.py', False),
+                ('unknown command', text, 'echo check', False),
+                ('unresolved selection', text, 'python3 scripts/check.py --affected missing..HEAD', False),
+                ('list only', text, command + ' --list', False),
+                ('missing section', text.replace('CHECK tests (1 modules)\n', ''), command, False),
+                ('duplicate section', text + 'CHECK tests (1 modules)\n' + summary * 2, command, False),
+                ('missing shard', text.replace('Ran 1 test in ', 'Lost summary ', 1), command, False),
+                ('duplicate shard', text.replace(terminal, summary + terminal), command, False),
+                ('wrong modules', text.replace('CHECK tests (1 modules)', 'CHECK tests (2 modules)'), command, False),
+                ('truncated', text.replace(terminal, ''), command, False),
+                ('duplicate result', text + terminal, command, False),
+                ('timeout', text.replace(terminal, 'TIMEOUT: tests after 1s\n' + terminal), command, False),
+                ('core refused', text[:text.index('CHECK tests')] +
+                 'FAIL: an affected core contract refused this tree; no tests ran\n', command, False),
+            ]
+            for name, log, producing, expected in cases:
+                with self.subTest(case=name):
+                    self.assertEqual(main_check.complete_results(log, root, producing), expected)
+            full = subprocess.run(['python3', 'scripts/check.py'], cwd=root,
+                                  text=True, capture_output=True, timeout=30)
+            self.assertEqual(full.returncode, 0, full.stdout + full.stderr)
+            for options in ('', ' --jobs 1', ' --timeout=1800', ' --jobs=2 --timeout 10'):
+                with self.subTest(full_options=options):
+                    self.assertTrue(main_check.complete_results(full.stdout, root, 'python3 scripts/check.py' + options))
+            for options in (' --jobs 0', ' --timeout nan', ' --unknown', ' --list', ' -k first'):
+                with self.subTest(invalid_options=options):
+                    self.assertFalse(main_check.complete_results(full.stdout, root, 'python3 scripts/check.py' + options))
+            (root / 'scripts/affected_tests.py').unlink()  # a full-only checker still proves its inventory
+            checker = root / 'scripts/check.py'
+            checker.write_text(checker.read_text().replace('def affected_selection(', 'def legacy_selection('))
+            self.assertTrue(main_check.complete_results(full.stdout, root, 'python3 scripts/check.py --jobs 1'))
+            self.assertFalse(main_check.complete_results(text, root, command))
 
     def test_a_flutter_check_is_complete_at_its_terminal_line(self):
         """A consumer whose Full check is `flutter test` could never read as complete, so its gate
