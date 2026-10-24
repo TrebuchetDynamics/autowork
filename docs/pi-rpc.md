@@ -123,13 +123,38 @@ cooldown prevent duplicate replay; ACK means accepted/queued, never consumed.
 LLM supervisor or expose a remote control endpoint. A production cross-process
 control channel and automatic intervention policy are not activated by this slice.
 
-Auxiliary triage/provisioning now distinguish completed results from technical
-failures. Safe pre-acceptance/confirmed-provider failures and unavailable scratch
-use the existing per-profile marker files with a three-attempt recovery budget and
-backoff. Ambiguous transport/cleanup/abort outcomes are replay-blocked. A failed
-triage is not an owner verdict; successful owner decisions remain deduplicated.
-An unapplied engine answer and a missing provisioning scratch are not successful
-completion markers. These records do not authorize or close engineering tasks.
+Auxiliary triage/provisioning distinguish completed results from technical failures.
+The existing private `triage.json` and `provisioned.json` markers retain a
+three-attempt recovery budget with 60-second then 120-second backoff across
+coordinator restarts. Safe pre-acceptance/confirmed-provider failures, unapplied
+engine answers and unavailable provisioning scratch remain eligible within that
+budget. An unapplied engine answer and a missing provisioning scratch are not
+successful completion markers. Ambiguous transport/cleanup/abort outcomes,
+uncertain acceptance, unknown runtime results, unclassified protocol/observation
+failures and coordinator loss during submission remain replay-blocked. Provisioning
+transport/timeout/interruption failures stay held to avoid repeating a partial
+installation.
+
+DOCS-MAINTAINER uses the same reservation/backoff helpers with per-item incident
+keys in private `maintainer-recovery.json`. Ordinary and background calls retain
+checkout-local runtime receipts, never another role's last failure. An unchanged
+item gets at most three submissions across restarts; only proven preflight
+(`no_model`/`toolchain`) or confirmed-safe provider failures permit technical retry.
+Unknown acceptance or cleanup retains scratch and blocks automatic replacement.
+Technical failures consume neither semantic item receipts nor ledger/planning
+repair opportunities. Completed no-change, blocked and refused repairs remain
+deduplicated; the existing single merge-conflict retry also stays within the total
+submission cap. These bounds do not reset engine attempts or review budgets.
+
+A failed triage or maintainer call is not an owner verdict. Completed owner verdicts,
+applied answers and successful provisioning remain deduplicated. For exhausted or
+replay-blocked technical holds, inspect the failure in the private markers and run
+records; reconcile partial work before explicit recovery, rather than blindly
+clearing markers. These records do not authorize or close engineering tasks. Offline
+regressions in `pi-autowork/tests/test_recovery_runtime_failures.py` and
+`pi-autowork/tests/test_maintainer.py` cover retry, restart, exhaustion, missing
+scratch, role-local uncertainty fences and semantic receipt deduplication; they do
+not qualify live provider or host-crash recovery.
 
 ## Verification and rollback
 

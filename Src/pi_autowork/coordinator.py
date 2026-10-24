@@ -2263,7 +2263,7 @@ class Coordinator:
         cause or are not runnable as written, one Pi job restates them from the repository's own
         evidence in a disposable checkout. Its commit merges into the session only if it changed
         planning files alone and the task store still validates. Only unhandled trigger items enter
-        the prompt; an unchanged unsuccessful technical repair stays an engineering incident, not another run.
+        the prompt; proven-safe runtime failures get bounded technical retry without spending semantic repairs.
         True when its repair merged, or another ledger-proposal batch still waits."""
         if self.stop or not self.integ or self.maintainer_job:
             return False
@@ -2305,7 +2305,16 @@ class Coordinator:
         found = [item for item in found if not maintainer.own_main_refresh(
             self.repo, item, history.get('items', {}).get(maintainer.item_key(item), {}),
             main.get('rev'), history.get('main_edits', []))]
-        found = maintainer.pending(self.state, found, entries=before, reasons=reasons)
+        recovery_path = self.state / 'maintainer-recovery.json'
+        try:
+            recovery = json.loads(recovery_path.read_text())
+        except (OSError, ValueError):
+            recovery = {}
+        ids = set(history.get('task_ids', [])) | set(before)
+        incidents = {maintainer.item_key(item): maintainer.recovery_key(
+            item, before.get(item[0], {}), reasons, ids) for item in found}
+        found = maintainer.pending(self.state, found, entries=before, reasons=reasons, eligible=lambda item:
+            _auxiliary_ready(recovery.get(maintainer.item_key(item)), incidents[maintainer.item_key(item)]))
         if not found:
             return False
         trigger_key = maintainer.key(found)
@@ -2324,7 +2333,11 @@ class Coordinator:
             self.drop_scratch(scratch)
             raise
         job = dict(found=found, names=names, scratch=scratch, base=base, before=before, reasons=reasons,
-                   rows=rows, trigger_key=trigger_key, rolling=rolling)
+                   rows=rows, trigger_key=trigger_key, rolling=rolling,
+                   recovery={maintainer.item_key(item): incidents[maintainer.item_key(item)] for item in found})
+        for identity, incident in job['recovery'].items():
+            _auxiliary_reserve(recovery_path, recovery, identity, incident)
+        self.remember_job_cleanup(scratch, {})  # Clear stale/foreign evidence before submission.
         session = f'pi-autowork-maintainer-{datetime.now():%Y%m%d%H%M%S}'
         if overlap:
             # A re-cut runs beside the loop, as merge resolutions do: it held reviews, landings
@@ -2336,6 +2349,7 @@ class Coordinator:
         except BaseException:
             self.drop_scratch(scratch)
             raise
+        job['result'] = self._job_results.get(str(scratch), {})
         return self.maintainer_result(job, ok)
 
     def start_maintainer(self, job, message, session):
@@ -2365,7 +2379,9 @@ class Coordinator:
             result = {}
         result = result if isinstance(result, dict) else {}
         self.remember_job_cleanup(job['scratch'], result)
+        job['result'] = self._job_results[str(job['scratch'])]
         if not self._scratch_cleanup[str(job['scratch'])]:
+            self.maintainer_result(job, False)
             job['cleanup_unproven'] = True
             self.maintainer_job = job  # Do not integrate or dispatch replacement work over uncertainty.
             LOG.say('Maintainer cleanup is unproven; preserving its result and scratch for recovery')
@@ -2395,10 +2411,33 @@ class Coordinator:
             result = json.loads(Path(job['out']).read_text()) if job['proc'].returncode == 0 else {}
         except (OSError, ValueError):
             result = {}
+        result = result if isinstance(result, dict) else {}
         self.remember_job_cleanup(job['scratch'], result)
+        if result.get('ok') is False or result.get('cleanup_complete') is False:
+            self.maintainer_failure(job, self._job_results[str(job['scratch'])])
+        elif not result.get('ok'):
+            self._scratch_cleanup[str(job['scratch'])] = False
         if self._scratch_cleanup[str(job['scratch'])]:
             Path(job['out']).unlink(missing_ok=True)
         self.drop_scratch(job['scratch'])
+
+    def maintainer_failure(self, job, result):
+        """Settle a role-local technical receipt, including one collected during shutdown."""
+        scratch = job['scratch']
+        failure = 'cleanup_unproven' if result.get('cleanup_complete') is False else result.get('why') or 'runtime'
+        safe = maintainer.safe_failure(result) and self._scratch_cleanup.get(str(scratch), False)
+        recovery_path = self.state / 'maintainer-recovery.json'
+        try:
+            recovery = json.loads(recovery_path.read_text())
+        except (OSError, ValueError):
+            recovery = {}
+        for identity, incident in job.get('recovery', {}).items():
+            _auxiliary_failed(recovery_path, recovery, identity, incident, failure, retryable=safe)
+        if not safe:
+            self._scratch_cleanup[str(scratch)] = False
+        if job.get('found'):
+            maintainer.remember(self.state, trigger_key=job['trigger_key'], found=job['found'],
+                                outcome='technical failure: ' + failure, technical=True, result=result)
 
     def maintainer_result(self, job, ok):
         """Merge a finished maintainer commit that changed planning files alone and leaves the
@@ -2413,6 +2452,12 @@ class Coordinator:
         def entries(snapshot):
             return maintainer.entries(snapshot, queue)
 
+        result = job.get('result', {})
+        if not ok or result.get('cleanup_complete') is False or result.get('why') in (
+                'uncertain_acceptance', 'cleanup_unproven'):
+            self.maintainer_failure(job, result)
+            self.drop_scratch(scratch)
+            return False
         outcome, changed = 'no change', []
         try:
             head = git(scratch, 'rev-parse', 'HEAD')
@@ -2464,7 +2509,15 @@ class Coordinator:
             self.snapshot = None  # waiting reasons must be reread against the repaired entries
         maintainer.remember(self.state, trigger_key=trigger_key, found=found, outcome=outcome, changed=changed,
                             entries=after, before=before, reasons=reasons,
-                            main_edit=(base, head) if outcome == 'merged' else ())
+                            main_edit=(base, head) if outcome == 'merged' else (), result=result)
+        # Settle the technical reservation without spending another semantic repair.
+        # A merge conflict retains its existing one-retry receipt and total submission cap.
+        recovery_path = self.state / 'maintainer-recovery.json'
+        if job.get('recovery'):
+            recovery = json.loads(recovery_path.read_text())
+            for identity in job['recovery']:
+                recovery[identity].update(phase='completed', failure='', replay_blocked=False, retry_at=0)
+            health.write_status(recovery_path, recovery)
         LOG.say(f'{maintainer.ROLE}: {outcome}' + (f'; changed {", ".join(changed)}' if changed else ''))
         if self.ledger_errors:
             if outcome == 'merged':
@@ -2764,8 +2817,12 @@ class Coordinator:
         """Per-checkout disposition, never the unrelated last foreground job's result."""
         if not hasattr(self, '_scratch_cleanup'):
             self._scratch_cleanup = {}
+        self.__dict__.setdefault('_job_results', {})[str(path)] = {
+            key: result[key] for key in ('ok', 'why', 'accepted', 'cleanup_complete', 'retry_safe', 'failure_kind')
+            if isinstance(result, dict) and key in result}
         self._scratch_cleanup[str(path)] = (isinstance(result, dict) and type(result.get('ok')) is bool
-                                            and result.get('why') != 'cleanup_unproven')
+                                            and result.get('why') != 'cleanup_unproven'
+                                            and result.get('cleanup_complete') is not False)
 
     def drop_scratch(self, path):
         # Only checkouts this instance created are disposable. Other worktrees

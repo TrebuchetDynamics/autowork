@@ -394,6 +394,27 @@ def item_key(item):
     return key([item]) if item[0] in ('MAIN', 'LEDGER') or item[1] == 'ledger edit' else 'task:' + item[0]
 
 
+def recovery_key(item, entry, reasons, task_ids):
+    """Technical incident identity follows the same unchanged-input fences as receipts."""
+    identity = item_key(item)
+    if item[0] == 'MAIN':
+        return key([(identity, '', main_evidence(item))])
+    if item[0] == 'LEDGER' or item[1] in ('repeated quick hold', 'ledger edit', 'engineering repair'):
+        return identity
+    return key([(identity, entry.get('digest', ''), reason_class(reasons.get(item[0], item[2]), task_ids))])
+
+
+def safe_failure(result):
+    """The runtime's compact terminal receipt proves preflight or settled provider failure.
+
+    Other failures may have accepted work; cleanup alone is never replay permission.
+    Explicit negative evidence overrides the compact receipt's legacy guarantees.
+    """
+    return (result.get('ok') is False and result.get('why') in ('no_model', 'toolchain', 'provider_failure')
+            and result.get('cleanup_complete') is not False and result.get('retry_safe') is not False
+            and (result.get('accepted') is not True or result.get('retry_safe') is True))
+
+
 def main_evidence(item):
     return item[2].partition('; evidence bundle: ')[2] if item[0] == 'MAIN' else ''
 
@@ -442,8 +463,8 @@ def matches(receipt, item, entry, reasons, task_ids):
             and reason_class(receipt['reason'], task_ids) == reason_class(why, task_ids))
 
 
-def pending(state, found, *, entries=None, reasons=None):
-    """Only unhandled items, bounded after filtering so old holds cannot starve overflow."""
+def pending(state, found, *, entries=None, reasons=None, eligible=None):
+    """Only unhandled, eligible items; apply batch bounds after all readiness fences."""
     run = last(state)
     records = run.get('items', {})
     # Keep ID context after tasks are archived. Compare both raw reasons with that
@@ -473,7 +494,8 @@ def pending(state, found, *, entries=None, reasons=None):
         elif (item[0] == 'MAIN' and not main_evidence(item) and key([item]) in run.get('handled_triggers', [])
               and run.get('outcome') != RETRYABLE):
             continue  # pre-item-receipt MAIN records
-        selected.append(item)
+        if eligible is None or eligible(item):
+            selected.append(item)
     # Isolate a rolling round from ordinary repairs so its additions and limits are
     # attributable to that round. The runner lease and synchronous job serialize writes.
     planning = [item for item in selected if item[1] == 'plan']
@@ -509,9 +531,19 @@ def due(state, trigger_key, found=None, *, entries=None, reasons=None):
 
 
 def remember(state, *, trigger_key, found, outcome, changed=(), entries=None, before=None, reasons=None,
-             main_edit=(), now=None):
+             main_edit=(), now=None, technical=False, result=None):
     previous = last(state)
-    tries = int(previous.get('tries') or 1) + 1 if previous.get('key') == trigger_key else 1
+    if technical:
+        # No completed repair occurred: preserve semantic receipts/budgets, ledger
+        # attempts and flaky-test deduplication. Recovery is reserved separately.
+        value = dict(previous, role=ROLE, key=trigger_key, at=time.time() if now is None else now,
+                     outcome=outcome, triggers=[task for task, _, _ in found], changed=[],
+                     items=previous.get('items', {}), runtime=result or {}, technical=True,
+                     tries=int(previous.get('tries') or 0) if previous.get('key') == trigger_key else 0)
+        save(state, value)
+        return value
+    tries = (int(previous.get('tries') or (0 if previous.get('technical') else 1)) + 1
+             if previous.get('key') == trigger_key else 1)
     value = dict(role=ROLE, key=trigger_key, at=time.time() if now is None else now, outcome=outcome,
                  triggers=[task for task, _, _ in found], changed=list(changed), tries=tries)
     records = previous.get('items', {}).copy()
@@ -536,6 +568,8 @@ def remember(state, *, trigger_key, found, outcome, changed=(), entries=None, be
         elif item[1] == 'engineering repair':
             records[identity]['evidence'] = item[2]
     value['items'] = records
+    if result is not None:
+        value['runtime'] = result
     edits = list(previous.get('main_edits') or [])
     if outcome == 'merged' and main_edit and any(item[0] == 'MAIN' for item in found):
         edits.append(list(main_edit))
