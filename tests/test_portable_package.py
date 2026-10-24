@@ -15,6 +15,10 @@ class PortablePackageTests(unittest.TestCase):
         self.assertEqual(pi['pi']['skills'], ['./adapters/skills'])
         self.assertEqual(pi['pi']['extensions'], ['./adapters/pi.mjs'])
         self.assertNotIn('scripts', pi, 'installation must not run setup hooks')
+        for entry in ('autowork_bootstrap.py', 'Src/autowork_bootstrap.py', 'Src/pi_autowork/'):
+            self.assertIn(entry, pi['files'])
+        self.assertNotIn('Src/', pi['files'], 'native-only sources must not leak into npm')
+        self.assertNotIn('Src/autowork_runtime/', pi['files'])
         marketplace = json.loads((ROOT / '.agents/plugins/marketplace.json').read_text())
         self.assertEqual(marketplace['plugins'][0]['source'], {'source': 'local', 'path': '.'})
 

@@ -1,5 +1,6 @@
 """Exercise the offline runner in small copies without importing unsafe tests."""
 import importlib.util
+import json
 import os
 from pathlib import Path
 import re
@@ -122,7 +123,7 @@ class OfflineCheckTests(unittest.TestCase):
         self.write('tests/test_one.py', 'import unittest\n')
         self.write('tests/test_two.py', 'import unittest\n')
         self.affected_repo()
-        for path in ('unknown.dat', 'tests/conftest.py', 'pyproject.toml',
+        for path in ('unknown.dat', 'Src/pi_autowork/__init__.py', 'tests/conftest.py', 'pyproject.toml',
                      '.github/workflows/ci.yml', 'scripts/check.py'):
             with self.subTest(path=path):
                 base = self.git('rev-parse', 'HEAD')
@@ -135,6 +136,50 @@ class OfflineCheckTests(unittest.TestCase):
                     self.assertIn(text, result.stdout)
         result = self.run_check('--affected', 'missing..HEAD', '--list')
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+
+    def test_selector_retains_deleted_paths_when_git_detects_a_rename(self):
+        owner = self.write('owner.py', 'VALUE = 1\n')
+        self.write('tests/test_old.py', 'from owner import VALUE\n')
+        self.write('tests/test_new.py', 'from owner import VALUE\n')
+        base = self.affected_repo()
+        for operation in ('rename', 'delete'):
+            with self.subTest(operation=operation):
+                if operation == 'rename':
+                    owner.rename(self.root / 'moved.py')
+                    self.write('tests/test_new.py', 'from moved import VALUE\n')
+                else:
+                    (self.root / 'moved.py').unlink()
+                self.git('add', '-A')
+                result = subprocess.run([sys.executable, str(self.root / 'scripts/affected_tests.py'),
+                                         '--base', base, '--json'], cwd=self.root,
+                                        text=True, capture_output=True, timeout=15)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                selection = json.loads(result.stdout)
+                self.assertIn('owner.py', selection['changed'])
+                self.assertTrue(selection['full'])
+                self.assertEqual(selection['tests'], ['tests/test_new.py', 'tests/test_old.py'])
+
+    def test_source_guard_inspects_owners_not_just_public_shims(self):
+        from src_fixture import copy_sources
+        copy_sources(self.root)
+        self.write('tests/test_one.py', 'import unittest\nclass One(unittest.TestCase):\n    def test_one(self): pass\n')
+        self.write('bundle.py', "bootstrap.execute(globals(), 'Src/autowork_runtime/bundle.py')\n")
+        owner = self.write('Src/autowork_runtime/bundle.py', 'def broken(:\n')
+        result = self.run_check('tests/test_one.py')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Src/autowork_runtime/bundle.py', result.stdout)
+        owner.unlink()
+        result = self.run_check('tests/test_one.py')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('missing selected-release source', result.stdout)
+        self.write('Src/autowork_runtime/bundle.py', 'VALUE = 1\n')
+        bad = self.write('Src/pi_autowork/consumer.py', 'import task_store\n')
+        result = self.run_check('tests/test_one.py')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('unqualified engine import', result.stdout)
+        bad.write_text('from .engine import task_store\n')
+        result = self.run_check('tests/test_one.py')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_importable_inventory_is_side_effect_free(self):
         self.assertTrue(SCRIPT.is_file(), 'missing offline checker')

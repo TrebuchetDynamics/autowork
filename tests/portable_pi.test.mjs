@@ -80,30 +80,63 @@ test('npm package excludes local bytecode and keeps portable support files', asy
   const {execFileSync} = await import('node:child_process');
   const {fileURLToPath} = await import('node:url');
   const root = fileURLToPath(new URL('../', import.meta.url));
-  const packed = JSON.parse(execFileSync('npm', ['pack', '--dry-run', '--json'], {cwd: root, encoding: 'utf8'}))[0];
+  const packed = JSON.parse(execFileSync('npm', ['pack', '--ignore-scripts', '--offline', '--dry-run', '--json'], {cwd: root, encoding: 'utf8'}))[0];
   const paths = new Set(packed.files.map(f => f.path));
   assert.equal(paths.has('adapters/skills/grill-me/SKILL.md'), false);
   assert.equal(paths.has('adapters/skills/grill-me/PROTOCOL.md'), true);
   assert.equal([...paths].some(p => p.includes('__pycache__') || p.endsWith('.pyc')), false);
+  assert.equal([...paths].some(p => p.startsWith('Src/autowork_runtime/')), false);
   for (const path of ['adapters/pi.mjs', 'adapters/skills/COMMON.md',
-    'skills/docs-sync/scripts/docs.py', 'skills/autoresearch/upstream/plan.md', 'skills/impeccable/LICENSE']) {
+    'skills/docs-sync/scripts/docs.py', 'skills/autoresearch/upstream/plan.md', 'skills/impeccable/LICENSE',
+    'autowork_bootstrap.py', 'Src/autowork_bootstrap.py', 'Src/pi_autowork/__init__.py']) {
     assert.equal(paths.has(path), true, path);
   }
 });
 
 test('installed archive resolves portable references and commands without checkout files', async () => {
   const {execFileSync} = await import('node:child_process');
-  const {mkdtemp, readdir, readFile, rm, stat} = await import('node:fs/promises');
+  const {cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile} = await import('node:fs/promises');
   const {tmpdir} = await import('node:os');
   const {join} = await import('node:path');
   const {fileURLToPath, pathToFileURL} = await import('node:url');
   const scratch = await mkdtemp(join(tmpdir(), 'portable-package-'));
   try {
     const root = fileURLToPath(new URL('../', import.meta.url));
-    const archive = JSON.parse(execFileSync('npm', ['pack', '--json', '--pack-destination', scratch],
-      {cwd: root, encoding: 'utf8'}))[0];
+    // A private release fixture, not an install: include the declared resources and
+    // sentinel future owners without redirecting any production public entry.
+    const source = join(scratch, 'source');
+    await mkdir(source);
+    const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
+    for (const entry of ['package.json', ...manifest.files.filter(p => !p.startsWith('!'))]) {
+      const target = join(source, entry);
+      await mkdir(join(target, '..'), {recursive: true});
+      // npm's include list may retain optional paths absent in this release.
+      try { await cp(join(root, entry), target, {recursive: true}); }
+      catch (error) { if (error.code !== 'ENOENT') throw error; }
+    }
+    await mkdir(join(source, 'Src/autowork_runtime'), {recursive: true});
+    await writeFile(join(source, 'Src/autowork_runtime/private.py'), 'raise RuntimeError("native payload")\n');
+    await writeFile(join(source, 'Src/pi_autowork/fixture_reader.py'),
+      'def _compat_main(argv): return len(argv)\n');
+    const archive = JSON.parse(execFileSync('npm', ['pack', '--ignore-scripts', '--offline', '--json', '--pack-destination', scratch],
+      {cwd: source, encoding: 'utf8'}))[0];
+    assert.equal(archive.files.some(f => f.path.startsWith('Src/autowork_runtime/')), false);
     execFileSync('tar', ['-xzf', join(scratch, archive.filename), '-C', scratch]);
     const installed = join(scratch, 'package');
+    const pythonEnv = {...process.env, PYTHONDONTWRITEBYTECODE: '1', PYTHONPATH: installed};
+    const probe = code => execFileSync('python3', ['-B', '-c', code],
+      {cwd: installed, env: pythonEnv, encoding: 'utf8'});
+    probe('from pathlib import Path\nimport autowork_bootstrap as b\nassert b.run(Path.cwd(), "pi_autowork.fixture_reader", ["read"]) == 1\n');
+    const help = execFileSync('python3', ['pi-autowork/pi_autowork/command.py', '--help'],
+      {cwd: installed, env: pythonEnv, encoding: 'utf8'});
+    assert.match(help, /tasks/);
+    const readOnly = JSON.parse(execFileSync('python3', ['pi-autowork/pi_autowork/command.py', 'capabilities'],
+      {cwd: installed, env: pythonEnv, encoding: 'utf8'}));
+    assert.equal(readOnly.release, null);
+    assert.equal(readOnly.commands.includes('tasks'), true);
+    // Reading an archive is not immutable runner qualification: pinning still
+    // needs a committed Git toolset. A fixture never manufactures that evidence.
+    probe('import sys\nfrom pathlib import Path\nsys.path.insert(0, "pi-autowork")\nfrom pi_autowork import release\ntry:\n release.prepare(Path("pin-state"), Path.cwd())\nexcept RuntimeError as e:\n assert "committed toolset release" in str(e), str(e)\nelse:\n raise AssertionError("archive accepted as committed runner")\n');
     let skillCount = 0;
     const walk = async (dir) => {
       for (const entry of await readdir(dir, {withFileTypes: true})) {

@@ -7,6 +7,8 @@ import subprocess
 import tempfile
 import unittest
 
+from src_fixture import copy_sources
+
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'install-plugins.sh'
 MANIFEST = ('https://hermes-agent.nousresearch.com/docs/plugins/omh all profiles\n'
@@ -21,13 +23,7 @@ class InstallPluginsTests(unittest.TestCase):
         self.repo = self.root / 'repo with spaces'
         (self.repo / 'plugins').mkdir(parents=True)
         self.script = self.repo / 'install-plugins.sh'
-        if SCRIPT.exists():
-            shutil.copy2(SCRIPT, self.script)
-        for name in ('install-graphify.py', 'install-omh.py', 'bundle.py', 'plugin.yaml', 'runtime_defaults.py'):
-            helper = SCRIPT.parent / name
-            if helper.exists():
-                shutil.copy2(helper, self.repo / name)
-        shutil.copy2(SCRIPT.parent / 'plugins/defaults.json', self.repo / 'plugins/defaults.json')
+        copy_sources(self.repo, entries=('install-plugins.sh', 'plugin.yaml', 'plugins/defaults.json'))
         self.manifest = self.repo / 'plugins/PLUGINS.md'
         self.manifest.write_text(MANIFEST)
         self.hermes_root = self.root / 'hermes home'

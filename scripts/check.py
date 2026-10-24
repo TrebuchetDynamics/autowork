@@ -183,6 +183,36 @@ def affected_selection(root, revision_range):
                 reasons=reasons, full=full, core=['tree_guard', 'docs check', 'task-store validate'])
 
 
+def source_guard(root):
+    """Check actual selected-release owners without importing product modules.
+
+    Old copies of the checker without a source foundation keep their inventory.
+    A present bootstrap is authoritative: missing payloads are not a fallback.
+    """
+    bootstrap = root / 'autowork_bootstrap.py'
+    if not bootstrap.is_file():
+        return True
+    try:
+        layout_api = runpy.run_path(str(bootstrap))['Layout']
+        sources = layout_api.python_sources(root)
+        engine_names = {p.stem for folder in (root / 'Src/pi_autowork/engine', root / 'pi-autowork/engine')
+                        for p in folder.glob('*.py') if not p.name.startswith('test_')}
+        for source in sources:
+            tree = ast.parse(source.read_bytes(), str(source))
+            if source.is_relative_to(root / 'Src/pi_autowork'):
+                for node in ast.walk(tree):
+                    names = ([alias.name for alias in node.names] if isinstance(node, ast.Import)
+                             else [node.module or ''] if isinstance(node, ast.ImportFrom) and node.level == 0
+                             else [])
+                    if any(name.split('.')[0] in engine_names for name in names):
+                        raise ValueError(f'{source}: unqualified engine import')
+    except (OSError, ImportError, SyntaxError, ValueError) as error:
+        location = f'{error.filename}: ' if isinstance(error, SyntaxError) else ''
+        print(f'FAIL: source guard: {location}{error}', flush=True)
+        return False
+    return True
+
+
 def affected_core(root):
     """Cheap repository contracts, even when no test modules were selected."""
     docs = root / 'skills/docs-sync/scripts/docs.py'
@@ -254,6 +284,8 @@ def main(argv=None):
     guard = root / 'scripts/tree_guard.py'
     if guard.is_file() and subprocess.run([sys.executable, str(guard), '--repo', str(root)]).returncode:
         print('FAIL: the tree guard refused this tree; no tests ran', flush=True)
+        return 1
+    if not source_guard(root):
         return 1
     if selection is not None and not affected_core(root):
         print('FAIL: an affected core contract refused this tree; no tests ran', flush=True)
