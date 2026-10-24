@@ -57,6 +57,7 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Added a release-local Src loading foundation, portable package closure and conservative source-aware affected-test selection without relocating production entrypoints. (TOOLSET-368-24bdb225)
 - Fixed planning handoffs to use valid manual closure, eight-hex new identifiers, revision-checked literal updates, and accurate selection, scheduling, checks and consumer-delivery claims. (TOOLSET-376-79c94947)
 - Correct native Plan For Me and Autoresearch queue injection to use tasks/ through Docs Sync and autowork tasks while preserving literal arguments, routing and authority limits. (TOOLSET-375-da53c314)
 - Modernize planning evaluation specimens with committed native task seeds and strict write inventories, including zero-write and separate later-execution boundaries. (TOOLSET-378-9bb8d577)
