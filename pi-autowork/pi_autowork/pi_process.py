@@ -2,7 +2,17 @@
 
 Executable seam::
 
-    python pi_process.py --identity PRIVATE_JSON --deadline SECONDS -- pi [args...]
+    python pi_process.py --identity PRIVATE_JSON --deadline SECONDS \
+        --parent-pid PID --parent-start TICKS -- pi [args...]
+
+The spawning worker should pass its own PID and /proc start ticks, captured
+before spawn, using --parent-pid and --parent-start together. The guard checks
+that live identity and current parent both initially and after parent-death
+signal registration. A mismatch refuses payload launch and exits 143 with a
+complete, childless receipt. These arguments are optional for generic legacy
+callers, but ONLY the explicit pair closes the race where the worker exits
+before the guard first observes its parent and an ancestor subreaper adopts it.
+An incomplete or malformed pair is an invocation error (125).
 
 The SDK may append --version or --mode rpc. Alternatively guard the SDK host:
 ``-- python pi_rpc.py [args...]``; pi_pid/pi_start_time then identify that host,
@@ -42,6 +52,7 @@ import json
 import math
 import os
 from pathlib import Path
+import select
 import signal
 import subprocess
 import tempfile
@@ -79,6 +90,21 @@ def _pin(pid, started):
         raise
     os.close(fd)
     return None
+
+
+def _parent_matches(pid, started):
+    """Validate a live expected parent, not a recycled PID or adopted ancestor."""
+    if os.getppid() != pid:
+        return False
+    fd = _pin(pid, started)
+    if fd is None:
+        return False
+    try:
+        exited = select.poll()
+        exited.register(fd, select.POLLIN)
+        return not exited.poll(0) and os.getppid() == pid
+    finally:
+        os.close(fd)
 
 
 def _prctl(option, value):
@@ -214,6 +240,8 @@ def main(argv=None):
     parser = _QuietParser(add_help=False)
     parser.add_argument('--identity', required=True, type=Path)
     parser.add_argument('--deadline', required=True, type=float)
+    parser.add_argument('--parent-pid', type=int)
+    parser.add_argument('--parent-start')
     parser.add_argument('command', nargs=argparse.REMAINDER)
     try:
         args = parser.parse_args(argv)
@@ -221,6 +249,11 @@ def main(argv=None):
         if command and command[0] == '--':
             command = command[1:]
         if not command or not math.isfinite(args.deadline) or args.deadline <= 0:
+            return 125
+        if (args.parent_pid is None) != (args.parent_start is None):
+            return 125
+        if args.parent_pid is not None and (args.parent_pid <= 0
+                or not args.parent_start.isascii() or not args.parent_start.isdecimal()):
             return 125
     except (ValueError, TypeError):
         return 125
@@ -231,10 +264,15 @@ def main(argv=None):
     pi = None
     code = 125
     try:
+        if args.parent_pid is not None and (parent != args.parent_pid
+                or not _parent_matches(args.parent_pid, args.parent_start)):
+            stop(signal.SIGTERM, None)
         _write_identity(args.identity, record)
         _prctl(36, 1)  # PR_SET_CHILD_SUBREAPER
         _prctl(1, signal.SIGTERM)  # PR_SET_PDEATHSIG
-        if os.getppid() != parent or parent == 1:
+        if (os.getppid() != parent or parent == 1
+                or (args.parent_pid is not None
+                    and not _parent_matches(args.parent_pid, args.parent_start))):
             stop(signal.SIGTERM, None)  # close the parent-death registration race
         # Fail closed before launching Pi if safe signalling isn't available.
         fd = os.pidfd_open(os.getpid())

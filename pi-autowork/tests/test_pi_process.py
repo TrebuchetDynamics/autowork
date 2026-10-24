@@ -76,9 +76,11 @@ class PiProcessTests(unittest.TestCase):
             except (OSError, ValueError):
                 pass
 
-    def command(self, executable, *args, deadline=5):
+    def command(self, executable, *args, deadline=5, parent=None):
+        expected = [] if parent is None else ['--parent-pid', str(parent[0]),
+                                               '--parent-start', parent[1]]
         return [sys.executable, str(WRAPPER), '--identity', str(self.metadata),
-                '--deadline', str(deadline), '--', executable, *args]
+                '--deadline', str(deadline), *expected, '--', executable, *args]
 
     def launch(self, command, **kwargs):
         child = subprocess.Popen(command, start_new_session=True, **kwargs)
@@ -227,6 +229,93 @@ while not all((root/name).exists() for name in ['ordinary.pid', 'escaped.pid']):
         self.assertEqual(os.waitstatus_to_exitcode(status), 128 + signal.SIGTERM)
         self.assertEqual(launcher.communicate(timeout=3), (b'', b''))
         self.assert_gone(records)
+
+    def test_expected_parent_allows_live_match_and_refuses_wrong_identity(self):
+        for parent, code in [((os.getpid(), identity(os.getpid())), 0),
+                             ((os.getpid(), '0'), 143),
+                             ((os.getppid(), identity(os.getppid())), 143)]:
+            with self.subTest(parent=parent):
+                marker = self.root / 'payload-ran'
+                marker.unlink(missing_ok=True)
+                wrapper = self.launch(self.command(sys.executable, '-c',
+                                      'import pathlib,sys; pathlib.Path(sys.argv[1]).touch()',
+                                      str(marker), parent=parent),
+                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                self.assertEqual(wrapper.communicate(timeout=4), (b'', b''))
+                data = self.assert_finished(wrapper, code)
+                self.assertEqual(marker.exists(), code == 0)
+                if code != 0:
+                    self.assertIsNone(data['pi_pid'])
+                    self.assertIsNone(data['pi_start_time'])
+
+    def test_parent_arguments_must_be_a_valid_pair(self):
+        for arguments in [ ['--parent-pid', str(os.getpid())],
+                           ['--parent-start', identity(os.getpid())],
+                           ['--parent-pid', '0', '--parent-start', '1'],
+                           ['--parent-pid', '-1', '--parent-start', '1'],
+                           ['--parent-pid', 'bad', '--parent-start', '1'],
+                           ['--parent-pid', str(os.getpid()), '--parent-start', ''],
+                           ['--parent-pid', str(os.getpid()), '--parent-start', 'bad'] ]:
+            with self.subTest(arguments=arguments):
+                marker = self.root / 'payload-ran'
+                command = self.command(sys.executable, '-c',
+                                       'import pathlib,sys; pathlib.Path(sys.argv[1]).touch()',
+                                       str(marker))
+                command[2:2] = arguments
+                wrapper = self.launch(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                self.assertEqual(wrapper.communicate(timeout=4), (b'', b''))
+                self.assertEqual(wrapper.returncode, 125)
+                self.assertFalse(marker.exists())
+
+    def test_expected_parent_blocks_delayed_start_after_subreaper_adoption(self):
+        # This test process is the ancestor subreaper. The worker exits normally
+        # BEFORE a gate allows the guard interpreter to start, so its first
+        # getppid() observes us, not its original worker. No timing sleeps decide
+        # that order. Legacy omission demonstrates the otherwise unsafe launch.
+        delayed = self.root / 'delayed.py'
+        delayed.write_text('import os,pathlib,sys,time\n'
+                           'while not pathlib.Path(sys.argv[1]).exists(): time.sleep(.005)\n'
+                           'os.execv(sys.argv[2], sys.argv[2:])\n')
+        worker_code = """import json, os, pathlib, subprocess, sys
+root = pathlib.Path(sys.argv[1])
+command = sys.argv[3:]
+if sys.argv[2] == 'explicit':
+    started = pathlib.Path('/proc/%d/stat' % os.getpid()).read_text().rsplit(')', 1)[1].split()[19]
+    command[2:2] = ['--parent-pid', str(os.getpid()), '--parent-start', started]
+p = subprocess.Popen([sys.executable, str(root/'delayed.py'), str(root/'gate'), *command])
+started = pathlib.Path('/proc/%d/stat' % p.pid).read_text().rsplit(')', 1)[1].split()[19]
+(root/'delayed.pid').write_text(json.dumps([p.pid, started]))
+"""
+        for mode, code in [('legacy', 0), ('explicit', 143)]:
+            with self.subTest(mode=mode):
+                gate, marker = self.root / 'gate', self.root / 'payload-ran'
+                for path in (gate, marker, self.metadata):
+                    path.unlink(missing_ok=True)
+                command = self.command(sys.executable, '-c',
+                                       'import pathlib,sys; pathlib.Path(sys.argv[1]).touch()',
+                                       str(marker))
+                worker = self.launch([sys.executable, '-c', worker_code,
+                                      str(self.root), mode, *command],
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                self.assertEqual(worker.wait(timeout=4), 0)
+                pid, started = json.loads((self.root / 'delayed.pid').read_text())
+                fields = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()
+                self.assertEqual(int(fields[1]), os.getpid())
+                self.assertEqual(fields[19], started)
+                gate.touch()
+                self.assertEqual(worker.communicate(timeout=4), (b'', b''))
+                waited, status = os.waitpid(pid, 0)
+                self.assertEqual(waited, pid)
+                self.assertEqual(os.waitstatus_to_exitcode(status), code)
+                self.assertEqual(marker.exists(), mode == 'legacy')
+                data = json.loads(self.metadata.read_text())
+                self.assertEqual(data['pid'], pid)
+                self.assertEqual(data['start_time'], started)
+                self.assertTrue(data['cleanup_complete'])
+                self.assertEqual(data['exit_code'], code)
+                if mode == 'explicit':
+                    self.assertIsNone(data['pi_pid'])
+                    self.assertIsNone(data['pi_start_time'])
 
     def test_inherited_sigchld_ignore_does_not_lose_exit_status(self):
         launcher = self.launch([sys.executable, '-c',
