@@ -57,6 +57,7 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Planning craft now uses evidence-based decomposition, actual hot/cold/test scheduling constraints and worker-focused verification without mandatory extraction or new test files. (TOOLSET-377-e8117892)
 - Fix fleet Tasks to default to open inventory, retain read-only Closed history, disclose unknown legacy closures without backfilling evidence, and keep full snapshot diagnostics bounded and copyable. (TOOLSET-382-fcc9aa05)
 - Keep fleet TUI keys responsive with bounded, coalesced background reads, cancellation-safe resource slots, current-only snapshot publication and preserved selection/filter/log scroll state. (TOOLSET-380-f265bb27)
 - Add a copyable read-only b Blockers fleet report with serialized background reads, full recorded diagnostics and explicit refresh/back; move setup-only Backlog to g and reconcile the existing Unreleased plan entry's old shortcut. (TOOLSET-381-39d82792)
