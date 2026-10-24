@@ -114,7 +114,11 @@ def _deferred_summary(runner, store, deferred, status, now):
     for task in sorted((t for t in store.tasks.values() if t.status == 'open'),
                        key=lambda t: (t.id not in deferred, t.id)):
         if task.id in deferred:
-            entries.append(f'- {task.id}: recorded owner deferral; gate/evidence in Details.')
+            note = _notes(task).get('Owner decision', '')
+            note = re.sub(r'^\d{4}-\d{2}-\d{2}\s*(?:[:—–-]\s*)?', '', note).strip()
+            # Quote the recorded condition, not an inferred permission or a generic label.
+            excerpt = fleet_view.short(note, 320) if note else 'unblock condition not stated in the owner note'
+            entries.append(f'- {task.id}: deferred — {excerpt} (full note: Details).')
             continue
         waiting = {dep for dep in task.depends_on if dep not in store.tasks
                    or store.tasks[dep].status != 'done'
