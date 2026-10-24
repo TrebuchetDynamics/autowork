@@ -22,8 +22,11 @@ class MainCheckTests(unittest.TestCase):
         coordinator = next(node for node in ast.parse(source.read_text()).body
                            if isinstance(node, ast.ClassDef) and node.name == 'Coordinator')
         roots = ('settle', 'check_main', 'finish_main_check')
+        supervision = ast.parse((source.parent / 'supervision/main_checks.py').read_text())
         methods = [node for node in coordinator.body if isinstance(node, ast.FunctionDef)
-                   and any(node.name == name or node.name.startswith(name + '_') for name in roots)]
+                   and (node.name == 'settle' or node.name.startswith('settle_'))]
+        methods += [node for node in supervision.body if isinstance(node, ast.FunctionDef)
+                    and any(node.name == name or node.name.startswith(name + '_') for name in roots[1:])]
         self.assertTrue(set(roots).issubset(node.name for node in methods))
         for method in methods:
             with self.subTest(method=method.name):

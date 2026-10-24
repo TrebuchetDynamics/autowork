@@ -24,6 +24,7 @@ Runtime state lives outside the repository, under
 | `pi_autowork/engine/task_store.py` | Read-only, pinned-commit TaskStore used by the engine and committed fleet inventory; [schema and API](task-store.md) |
 | `pi_autowork/cli.py` | Options, repository and toolset resolution (one release per run), `--status`, `--dry-run`, `--fleet`, `--set-aside`, the runner lock |
 | `pi_autowork/coordinator.py` | The loop: engine lease owner, session branch and final merge, settle and close, requests, priority drift, Touches proposals and widening, health, self-update and restart, graceful stop |
+| `pi_autowork/supervision/main_checks.py` | Main-check supervision behind unchanged Coordinator methods; stateless helpers use the owner's phase callbacks and current Git/planning predicates. Coordinator retains policy, state, port leases and regression mutation. Child checks use Layout's public entrypoint. |
 | `pi_autowork/worker.py` | The engine-launched `--worker` and `--verify` modes |
 | `pi_autowork/service.py` | `--install-service` / `--remove-service` for `pi-autowork@<repository>.service` |
 | `pi_autowork/common.py` | Logging, Git helpers and task lifecycle words |
