@@ -284,9 +284,7 @@ class AutoworkCommandTests(unittest.TestCase):
             marker.touch() if active else marker.unlink(missing_ok=True)
             for key, value in (('PI_AUTOWORK_PUSH', '0'), ('PI_AUTOWORK_TASK_TIMEOUT', '900'),
                                ('PI_AUTOWORK_WORKERS', '8'), ('PI_AUTOWORK_NO_FALLBACK', '0'),
-                               ('PI_AUTOWORK_ALLOW_HERMES', '0'), ('PI_AUTOWORK_REVIEW', '0'),
-                               ('PI_AUTOWORK_HERMES_HOME', '/private/hermes'),
-                               ('PI_AUTOWORK_HERMES_OBSERVERS', '/private/observers.json')):
+                               ('PI_AUTOWORK_ALLOW_HERMES', '0'), ('PI_AUTOWORK_REVIEW', '0')):
                 with self.subTest(active=active, setting=key):
                     paused = self.env_dir / 'india.paused'
                     paused.write_text('paused\n')

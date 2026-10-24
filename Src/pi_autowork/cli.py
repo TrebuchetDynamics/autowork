@@ -8,6 +8,7 @@ engine always come from one release.
 """
 from pi_autowork.layout import LAYOUT, Layout
 import fcntl
+import glob
 import json
 import os
 from pathlib import Path
@@ -17,7 +18,7 @@ import subprocess
 import sys
 from datetime import datetime
 
-from pi_autowork import health, hermes_observers, main_check, pi_runtime, release, service, worker  # noqa: E402
+from pi_autowork import health, main_check, pi_runtime, release, service, worker  # noqa: E402
 from pi_autowork.common import LOG, die, dirty, git, git_ok, lifecycle, model_of, provider_of, push_guard  # noqa: E402
 from pi_autowork.coordinator import Coordinator  # noqa: E402
 from pi_autowork.processes import running, start_time  # noqa: E402
@@ -98,7 +99,6 @@ Environment (optional):
   PI_AUTOWORK_TMP_STALE     remove /tmp scratch untouched this many seconds (default 7200, 0 off)
   PI_AUTOWORK_STATE_DIR     state root (default ${XDG_STATE_HOME:-~/.local/state}/pi-autowork)
   PI_AUTOWORK_TOOLSET       autowork checkout or Pi package path (default: auto)
-  PI_AUTOWORK_HERMES_OBSERVERS  Absolute private JSON policy for exact reviewed observer contracts
   PI_AUTOWORK_ALLOW_HERMES  1 to run although a Hermes Autowork cron job targets this repository
   PI_BIN                    Pi command (default pi)
   PI_AUTOWORK_TRANSPORT      rpc (default), or json for explicit rollback
@@ -229,7 +229,27 @@ def parse(argv):
 
 def hermes_jobs(repo):
     home = os.environ.get('PI_AUTOWORK_HERMES_HOME') or str(Path.home() / '.hermes')
-    return hermes_observers.competing_jobs(repo, home, os.environ.get('PI_AUTOWORK_HERMES_OBSERVERS'))
+    repo = os.path.realpath(repo)
+    found = []
+    for path in [os.path.join(home, 'cron/jobs.json')] + sorted(glob.glob(os.path.join(home, 'profiles/*/cron/jobs.json'))):
+        try:
+            data = json.load(open(path))
+        except (OSError, ValueError):
+            continue
+        jobs = data.get('jobs', []) if isinstance(data, dict) else data
+        for job in jobs if isinstance(jobs, list) else []:
+            if not isinstance(job, dict) or not job.get('workdir'):
+                continue
+            if os.path.realpath(job['workdir']) != repo or job.get('enabled') is False:
+                continue
+            if job.get('paused_at') or job.get('state') == 'paused':
+                continue
+            text = ' '.join([str(job.get('skill') or ''), *map(str, job.get('skills') or []), str(job.get('prompt') or '')])
+            if 'autowork' in text.lower():
+                relative = os.path.relpath(path, home).split(os.sep)
+                profile = relative[1] if relative[0] == 'profiles' else 'default'
+                found.append(f"{profile}: {job.get('name') or job.get('id')}")
+    return '\n'.join(found)
 
 
 def settings_file(repo):
