@@ -7,7 +7,7 @@ status = "open"
 goal = "CODE-HEALTH-2026-10"
 section = "Next"
 rank = 10000
-depends_on = ["TOOLSET-368-24bdb225"]
+depends_on = ["TOOLSET-368-24bdb225", "TOOLSET-384-45005b0c"]
 touches = ["update_bundle.py", "update_bundle_native.py", "Src/autowork_runtime/update_bundle.py", "Src/autowork_runtime/update_bundle_native.py", "tests/test_update_bundle.py", "tests/test_update_quiet_restart.py"]
 resources = []
 kind = "implementation"
@@ -19,8 +19,9 @@ exclusions = ["No behavior/schema/state/receipt/lock/authority changes, producti
 +++
 - Sources: docs/plans/structural-audit-2026-10.md#native-updater-relocation
 - Planner call: User explicitly added root Src/ (capital S), superseding only the old no-source-root-migration planner choice; preserve completed 355-359 and reuse existing IDs. SDD protocol 1be8e34187e34647bb83adc3a1323b26ae6f6abe, hash c4b97ce3d7f24be0e67fd612c7595f65504872e3a9f8d338d098b2363fdb66ef. Interfaces/behavior oracles specified before movement; no upstream human checkpoints. All implementation tests are proposed/unrun and in scope to create.
-- Next action: Characterize the named compatibility seam before the move, implement this bounded source cut using the foundation, then run Checks on the actual base.
+- Next action: Wait for TOOLSET-384-45005b0c to repair the affected-check completeness defect documented in docs/tasks/TOOLSET-378-validation.md, then resume this bounded updater relocation on the actual current base while preserving retained work. Run the existing focused/affected Checks (--base when needed) to completion and retain required review; isolated passes do not excuse a genuinely truncated check. Original Scope and Acceptance remain unchanged; installed/live qualification remains NOT_CHECKED.
 - Consumes: TOOLSET-368-24bdb225: loading/Layout/fixture contracts from accepted source section. No source/package mapping is requested from an external coordinator.
 - Evidence: Refreshed against canonical 34aca3f6487eda7d0c45589cdd4c1b33cbe2d3fa and independent read-only current-source reviews; no implementation, product tests, installed-copy or live qualification in this occurrence.
 - Planning scope: Owner selected both instruction fixes and Src refresh, instruction fixes first; this occurrence saves metadata only, not execution.
 - Delivery: Saved planning; consumer inclusion/selection must be checked separately from implementation and dispatch.
+- Validation repair: The saved finding on trial integration 3a2d71ddecc5d88539bdb58a61213f519a0a4222 is an incomplete-check verdict, not a concrete updater defect. The underlying affected run reached its terminal Offline result and its sole named failure passed alone, but complete_results compared the selected inventory with the full inventory. Independent checker prerequisite TOOLSET-384-45005b0c owns only verification files; see docs/tasks/TOOLSET-378-validation.md for source trace and private evidence references. Task remains open; neither retained candidate is delivered, and no dropped ledger patch exists.
