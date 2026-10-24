@@ -2322,9 +2322,10 @@ finally:
         self.assertEqual(state.slots(self.common)[0]['attempt'], 1)
 
     def test_integration_discards_only_ignored_bytecode_before_the_vendor_check(self):
-        import shutil
         source = Path(__file__).resolve().parents[2]
-        shutil.copy2(source / 'install_skills.py', self.repo / 'install_skills.py')
+        sys.path.insert(0, str(source / 'tests'))
+        from src_fixture import copy_sources
+        copy_sources(self.repo, source=source)
         skill = self.repo / 'skills/autowork'
         skill.mkdir(parents=True)
         (skill / 'SKILL.md').write_text('Fixture skill\n')
