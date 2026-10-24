@@ -57,6 +57,7 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Fix affected landing-check completeness to verify the producing command's selected modules and shards without granting full-main green authority. (TOOLSET-384-45005b0c)
 - Extract main-check supervision into stateless Src helpers behind unchanged Coordinator methods, preserving late-bound collaborators and process/receipt behavior. (TOOLSET-369-b5db2d3a)
 - Extract read-only closure document preparation into a Src integration leaf while preserving canonical transaction authority, changelog composition and compatibility facades. (TOOLSET-370-02928e38)
 - Move runner and engine implementations into Src/pi_autowork while preserving legacy commands, canonical/flat import identity, standalone hooks and selected-release restart safety. (TOOLSET-375-8e02693d)
