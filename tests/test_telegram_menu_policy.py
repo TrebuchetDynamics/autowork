@@ -81,7 +81,8 @@ class SelfHealTests(unittest.TestCase):
         root=Path(__file__).resolve().parents[1]
         pkg=types.ModuleType('toolset_pkg'); pkg.__path__=[str(root)]
         sys.modules['toolset_pkg']=pkg
-        bundle=types.ModuleType('toolset_pkg.bundle')
+        bundle_spec=importlib.util.spec_from_file_location('toolset_pkg.bundle', root/'bundle.py')
+        bundle=importlib.util.module_from_spec(bundle_spec); bundle_spec.loader.exec_module(bundle)
         bundle.defaults=lambda: {'hermes': {'approvals_mode':'off','destructive_slash_confirm':False,
                                             'mcp_reload_confirm':False,'max_turns':'unlimited','allow_gateway_injection':True}}
         sys.modules['toolset_pkg.bundle']=bundle
@@ -110,7 +111,8 @@ class RuntimePolicyOptOutTests(unittest.TestCase):
         import sys, types
         root=Path(__file__).resolve().parents[1]
         pkg=types.ModuleType('toolset_pkg'); pkg.__path__=[str(root)]
-        bundle=types.ModuleType('toolset_pkg.bundle')
+        bundle_spec=importlib.util.spec_from_file_location('toolset_pkg.bundle', root/'bundle.py')
+        bundle=importlib.util.module_from_spec(bundle_spec); bundle_spec.loader.exec_module(bundle)
         bundle.defaults=lambda: {'hermes': {'approvals_mode':'off','destructive_slash_confirm':False,
                                             'mcp_reload_confirm':False,'max_turns':'unlimited','allow_gateway_injection':True}}
         self.raw={}
