@@ -1,7 +1,10 @@
 """Pinned Textual interaction checks; fixtures only, no real services or agents."""
 import asyncio
+import base64
+import json
 from pathlib import Path
 import sys
+import tempfile
 import threading
 import time
 from unittest.mock import Mock, patch
@@ -9,6 +12,8 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import tui, fleet_view, blockers_report
 from textual.widgets import TextArea, Button
+from textual.drivers.web_driver import WebDriver
+from textual._binary_encode import load as decode_packet
 
 
 def collected(runners):
@@ -17,18 +22,132 @@ def collected(runners):
     return fleet_view.FleetSnapshot(tuple(runners), snapshots, 1, time.time())
 
 
+async def report_actions():
+    runner = fleet_view.Runner('example', repo='/repo/example', prepare_state='converted')
+    concise = 'example — Awaiting owner decisions\nNeeds: autorización y corpus revisado\n'
+    full = concise + '\n\n## Diagnostics\n' + 'source evidence ' * 400
+    with tempfile.TemporaryDirectory() as folder:
+        app = tui.FleetApp(command='aw', script='pa', state_root=folder, env_dir='/missing')
+        with patch.object(fleet_view, 'collect_for_tui', return_value=collected([runner])), \
+             patch.object(app, 'logs', return_value=''), \
+             patch.object(blockers_report, 'build', return_value=full) as build, \
+             patch.object(app, 'notify') as notify:
+            async with app.run_test(size=(80, 30)) as pilot:
+                await pilot.press('b')
+                await app.workers.wait_for_complete()
+                await pilot.pause()
+                screen = app.screen
+                area = screen.query_one(TextArea)
+                assert area.text == concise, 'default report must omit optional diagnostics'
+                for button in screen.query(Button):
+                    assert button.region.right <= 80, 'all report actions must fit a narrow terminal'
+                emitted = []
+                with patch.object(app._driver, 'write', side_effect=emitted.append):
+                    await pilot.press('c')
+                    osc = [value for value in emitted if value.startswith('\x1b]52;c;')]
+                    assert base64.b64decode(osc[-1][7:-1]).decode('utf-8') == concise
+                    assert 'paste to verify' in str(notify.call_args).lower()
+                    assert 'report copied' not in str(notify.call_args).lower()
+                    await pilot.press('d')
+                    assert area.text == full
+                    assert build.call_count == 1, 'details toggle must use the frozen capture'
+                    await pilot.click('#copy-report')
+                    osc = [value for value in emitted if value.startswith('\x1b]52;c;')]
+                    assert base64.b64decode(osc[-1][7:-1]).decode('utf-8') == full
+                with patch.object(app._driver, 'write', side_effect=OSError('clipboard transport unavailable')):
+                    screen.action_copy_report()
+                    assert 'failed' in str(notify.call_args).lower()
+                    assert 'export' in str(notify.call_args).lower()
+                await pilot.press('d')
+                await screen.action_export_report().wait()
+                files = list(Path(folder).glob('reports/*.txt'))
+                assert len(files) == 1 and files[0].read_text() == concise
+                assert files[0].stat().st_mode & 0o777 == 0o600
+                assert 'app host' in str(notify.call_args).lower()
+                await screen.action_export_report().wait()
+                assert len(list(Path(folder).glob('reports/*.txt'))) == 2, 'exports must not overwrite'
+                with patch.object(tui, 'save_report', side_effect=PermissionError('fixture denied')):
+                    await screen.action_export_report().wait()
+                    assert 'failed' in str(notify.call_args).lower()
+                assert area.text == concise
+                # Real WebDriver protocol, only the external wire/input replaced. No browser/OS delivery claim.
+                with patch('textual.drivers.web_driver.InputReader'):
+                    web = WebDriver(app, size=(80, 30))
+                packets = []
+                with patch.object(web, '_write', side_effect=packets.append), patch.object(app, '_driver', web):
+                    await screen.action_export_report().wait()
+                    assert 'requested' in str(notify.call_args).lower()
+                    starts = [json.loads(p[5:]) for p in packets if p[:1] == b'M']
+                    start = next(p for p in starts if p['type'] == 'deliver_file_start')
+                    assert start['mime_type'] == 'text/plain' and start['encoding'] == 'utf-8'
+                    assert start['open_method'] == 'download' and start['name'] == 'blockers-report'
+                    def transfer():
+                        while start['key'] in web._deliveries:
+                            web.on_meta('deliver_chunk_request', dict(key=start['key'], size=17, name=start['name']))
+                    await asyncio.to_thread(transfer)
+                    await pilot.pause()
+                    chunks = [decode_packet(p[5:]) for p in packets if p[:1] == b'P']
+                    assert ''.join(chunk[2] for chunk in chunks) == concise
+                    assert 'transfer completed' in str(notify.call_args).lower()
+                    assert all(int.from_bytes(p[1:5], 'big') == len(p[5:]) for p in packets)
+                    for result in (None, OSError('fixture unavailable')):
+                        kwargs = {'side_effect': result} if isinstance(result, Exception) else {'return_value': result}
+                        with patch.object(app, 'deliver_text', **kwargs):
+                            await screen.action_export_report().wait()
+                            assert 'failed' in str(notify.call_args).lower()
+                    await screen.action_export_report().wait()
+                    key, stream = next(iter(web._deliveries.items()))
+                    stream.close()  # actual asynchronous read failure at the driver boundary
+                    await asyncio.to_thread(web.on_meta, 'deliver_chunk_request',
+                                            dict(key=key, size=17, name='blockers-report'))
+                    await pilot.pause()
+                    assert 'download failed' in str(notify.call_args).lower()
+                # A slow app-host save retains its capture without blocking Refresh or Escape.
+                entered, release = threading.Event(), threading.Event()
+                saved = tui.save_report
+                def slow_save(text, directory):
+                    entered.set()
+                    if not release.wait(5):
+                        raise TimeoutError('fixture release missing')
+                    return saved(text, directory)
+                with patch.object(tui, 'save_report', side_effect=slow_save):
+                    await pilot.press('e')
+                    assert await asyncio.to_thread(entered.wait, 2)
+                    assert screen.exporting
+                    refreshed = asyncio.Event()
+                    present = screen.present_report
+                    def present_refresh(text):
+                        present(text)
+                        refreshed.set()
+                    build.return_value = 'newer capture'
+                    with patch.object(screen, 'present_report', side_effect=present_refresh):
+                        await pilot.press('r')
+                        await asyncio.wait_for(refreshed.wait(), 2)
+                    assert area.text == 'newer capture' and build.call_count == 2
+                    assert screen.query_one('#export-report', Button).disabled
+                    await pilot.press('escape')
+                    assert not isinstance(app.screen, tui.BlockersScreen)
+                    release.set()
+                    await app.workers.wait_for_complete()
+                assert len(list(Path(folder).glob('reports/*.txt'))) == 3
+                assert all(file.read_text() == concise for file in Path(folder).glob('reports/*.txt'))
+    print('PASS frozen views; real OSC52/native export/web protocol; failures; responsive in-flight export')
+
+
 async def main():
+    await report_actions()
     for width in (80, 120):
         for view_only in (False, True):
             runner = fleet_view.Runner('example', repo='/repo/example', state='paused',
                                       service='dead', prepare_state='converted')
-            report = 'Runner: example\nRepository: /repo/example\nQuestion: literal [red]text[/red]\n' + 'long reason ' * 60
+            report = 'Runner: example\nRepository: /repo/example\nQuestion: literal [red]text[/red]\n' + 'long reason ' * 60 + '\n'
+            capture = blockers_report.Report(report, 'Additional source diagnostics\n')
             control = Mock(side_effect=AssertionError('a report must not execute a command'))
             app = tui.FleetApp(command='aw', script='pa', state_root='/missing', env_dir='/missing',
                                agent='agent', view_only=view_only, runner_cmd=control)
             with patch.object(fleet_view, 'collect_for_tui', return_value=collected([runner])), \
                  patch.object(app, 'logs', return_value=''), \
-                 patch.object(blockers_report, 'build', return_value=report) as build, \
+                 patch.object(blockers_report, 'build', return_value=capture) as build, \
                  patch.object(app, 'copy_to_clipboard') as copy:
                 async with app.run_test(size=(width, 30)) as pilot:
                     await pilot.pause()
@@ -50,6 +169,20 @@ async def main():
                     copy.assert_called_with(report)
                     await pilot.click('#copy-report')
                     assert copy.call_count == 2
+                    await pilot.click('#details-report')
+                    assert area.text == str(capture)
+                    assert build.call_count == 1
+                    for button in app.screen.query(Button):
+                        assert button.region.right <= width
+                    await pilot.press('c')
+                    copy.assert_called_with(capture)
+                    await pilot.press('d')
+                    assert area.text == report
+                    with patch.object(tui, 'save_report', side_effect=OSError('fixture cannot save')) as export:
+                        await pilot.click('#export-report')
+                        await app.workers.wait_for_complete()
+                        export.assert_called_once()
+                        assert export.call_args.args[0] == report
                     await pilot.press('r')
                     await app.workers.wait_for_complete()
                     assert build.call_count == 2
