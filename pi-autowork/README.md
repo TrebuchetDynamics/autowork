@@ -34,23 +34,48 @@ repository, under `${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key
 ## Blockers report
 
 Select a runner and press **b** or click **Blockers** in mouse/browser mode.
-The read-only, scrollable report contains its repository path, recorded startup/
-dispatch refusals, resource gates, full main-check revisions/failure IDs, holds,
-waits, integration-backlog reasons, questions, worker observations and committed
-task-selection reasons. It runs no repair agent and changes nothing.
-Fleet/runtime observations are labelled separately and may be stale; missing data
-is not shown as a healthy runner. Recorded questions and reasons are not shortened
-again for this view. The committed section reads the selected repository's HEAD
-on each report request rather than reusing a last-good fleet inventory. Full
-`task_observations` and held/root diagnostics are included when the status producer
-records them; legacy compact rows remain labelled runtime observations, not current
-selection authority. Known fleet/question acquisition errors remain visible even
-when the parsed question list is empty. Source: `pi_autowork/blockers_report.py:build`.
+The read-only summary puts recorded decisions and required inputs first, links
+planning questions to their committed decision task while retaining who raised
+them, and warns when selectable metadata conflicts with an explicit execution
+restriction in an owner note. These warnings do not change admission or authorize
+execution. Genuine input/authorization holds are not advice to weaken acceptance,
+checks or scope. Technical/mixed or incomplete evidence does not receive an
+owner-only headline. No worker observations does not prove no active workers.
+An existing dated owner deferral is already answered, not a new permission question.
+When the evidence contains only deferred work and its waiting dependents, the default
+copy is a short overview (at most five task lines); full owner notes stay in Details.
+Missing dependent checks remain visible. Mixed holds, active work, busy integration
+or incomplete sources retain the general report rather than hiding another blocker.
 
-Use **c** or **Copy report** to copy all the plain text, or select individual text
-in the read-only field (**F7** selects all; **Ctrl+C** copies a selection).
-**r** explicitly refreshes; **Esc** returns. SSH clipboard delivery requires
-terminal support; default native terminal drag selection remains available.
+**d Details** expands the same frozen capture: committed selection reasons,
+main-check revisions/failure IDs, dependency roots and runtime evidence. Identical
+reasons are shown once with explicit references preserving each task/source link;
+linked planning evidence remains in Details even when the committed question is
+primary. Closed history stays in Tasks → Closed, and integrated
+work awaiting closure remains visible. Observations have separate readable source
+times where available; missing data or unknown freshness is not health evidence.
+The committed section reads the selected repository's HEAD on each report request,
+not a last-good inventory. Selection eligibility is never runtime admission.
+Full producer reasons replace matching truncated questions; unavailable full
+reasons remain explicitly truncated. Source: `pi_autowork/blockers_report.py:build`.
+
+**c Copy** requests the plain text of the current summary/details view, without
+terminal padding. **F7** selects all; **Ctrl+C** requests copying a selection.
+Textual emits OSC 52; SSH/tmux, terminal policy or browser permissions can prevent
+clipboard delivery. The UI cannot acknowledge a client clipboard: paste to verify.
+It does not change terminal settings or choose a host desktop clipboard backend.
+
+If copying is unavailable, **e Export** saves the frozen current view as a unique
+private UTF-8 file under `<state-root>/reports/` (normally mode 0600), showing its
+exact **app-host** path—not a file on the SSH client. In browser mode it requests
+a plain-text download; transfer completion is not proof the user saved/opened it.
+Export is explicit, never automatic; reports may contain sensitive operational
+context. Refresh, Details and Escape remain usable during a host save, and a
+refresh does not change the exported capture. Source: `pi_autowork/tui.py:BlockersScreen`.
+
+**r** explicitly refreshes; **Esc** returns. Opening, refreshing and copying run no
+agent, runner command or task mutation; only explicit Export writes a report copy.
+Native terminal drag selection remains available.
 The former setup-only Backlog shortcut is now **g**. Interactive repair is still
 the separate `autowork blockers [dir]` command, not this report.
 
