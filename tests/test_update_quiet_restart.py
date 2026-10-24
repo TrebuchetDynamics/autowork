@@ -195,7 +195,8 @@ class UpdateDefersRestartTests(unittest.TestCase):
         self.git(self.repo, 'pull', '--ff-only')
         prepare = self.mod.prepare
         with patch.object(self.mod, 'prepare', side_effect=lambda *_: prepare(self.repo, self.profiles, upstream=str(self.remote))), \
-             patch.dict('sys.modules', {'setup_bundle': self.stub}), \
+             patch.object(self.mod._AUTOWORK_COMPAT.peer(vars(self.mod), 'setup_bundle'),
+                          'live_profiles', self.stub.live_profiles), \
              patch.object(self.mod, 'finalize_profiles', side_effect=lambda s, r, p, **_: [{'profile': n, 'status': 'ready'} for n, _ in p]), \
              patch.object(self.mod, 'gateway_running', return_value=True), \
              patch.object(self.mod, 'chat_turns', return_value=turns), \
@@ -260,7 +261,8 @@ class UpdateDefersRestartTests(unittest.TestCase):
         self.git(self.repo, 'pull', '--ff-only')
         prepare = self.mod.prepare
         with patch.object(self.mod, 'prepare', side_effect=lambda *_: prepare(self.repo, self.profiles, upstream=str(self.remote))), \
-             patch.dict('sys.modules', {'setup_bundle': self.stub}), \
+             patch.object(self.mod._AUTOWORK_COMPAT.peer(vars(self.mod), 'setup_bundle'),
+                          'live_profiles', self.stub.live_profiles), \
              patch.object(self.mod, 'finalize_profiles', side_effect=lambda s, r, p, **_: [{'profile': n, 'status': 'ready'} for n, _ in p]), \
              patch.object(self.mod, 'gateway_running', return_value=True), \
              patch.object(self.mod, 'gateway_pid', return_value=100), \
@@ -353,7 +355,8 @@ class RestartOutcomeTests(unittest.TestCase):
         stub = ModuleType('setup_bundle')
         def no_profiles(root): raise ValueError('stop after the receipt')
         stub.live_profiles = no_profiles
-        with patch.dict('sys.modules', {'setup_bundle': stub}), contextlib.redirect_stdout(io.StringIO()):
+        with patch.object(self.mod._AUTOWORK_COMPAT.peer(vars(self.mod), 'setup_bundle'),
+                          'live_profiles', stub.live_profiles), contextlib.redirect_stdout(io.StringIO()):
             self.mod.main(['--hermes-home', str(self.root), '--check'])
         marker = json.loads((self.state / 'restart.json').read_text())
         self.assertEqual(marker['outcome']['gateway_restart_result']['gateway_pid'], os.getpid())
@@ -441,7 +444,8 @@ class ConcurrentUpdateTests(unittest.TestCase):
 
     def run_main(self, *extra):
         out = io.StringIO()
-        with patch.dict('sys.modules', {'setup_bundle': self.stub}), contextlib.redirect_stdout(out):
+        with patch.object(self.mod._AUTOWORK_COMPAT.peer(vars(self.mod), 'setup_bundle'),
+                          'live_profiles', self.stub.live_profiles), contextlib.redirect_stdout(out):
             code = self.mod.main(['--hermes-home', str(self.home), *extra])
         return code, out.getvalue()
 
