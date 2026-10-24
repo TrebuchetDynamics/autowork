@@ -30,16 +30,19 @@ class AutoresearchCommands(unittest.TestCase):
                 self.assertIn(f'Selected subcommand: {command}\n', prompt)
                 self.assertTrue(prompt.endswith(raw))
 
-    def test_todo_default_reaches_router_and_aliases_without_losing_restrictions(self):
+    def test_task_store_default_reaches_router_and_aliases_without_losing_restrictions(self):
         self.skill('autoresearch')
         self.plugin.register(self.ctx)
         for alias in ('autoresearch', 'autoresearch:plan', 'autoresearch-plan'):
             for raw in ('Improve onboarding', 'read-only: inspect onboarding', '--dry-run plan onboarding'):
                 self.ctx.commands[alias](raw)
                 prompt, _ = self.ctx.messages[-1]
-                self.assertIn('TODO.md is the central work queue', prompt)
-                self.assertIn('read-only', prompt)
-                self.assertIn('--dry-run', prompt)
+                injected = prompt.split('User arguments:\n', 1)[0]
+                self.assertNotIn('TODO.md', injected)
+                self.assertNotIn('goals.json', injected)
+                self.assertIn('reuse task IDs and preserve user ordering', injected)
+                self.assertIn('read-only, chat-only, no-write and --dry-run requests write nothing', injected)
+                self.assertIn('Planning alone does not authorize implementation or timed scheduling', injected)
                 self.assertTrue(prompt.endswith(raw))
 
     def test_alias_collision_preserves_existing_owner(self):

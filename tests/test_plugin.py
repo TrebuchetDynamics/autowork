@@ -107,15 +107,25 @@ class PluginTests(unittest.TestCase):
     def test_each_handler_loads_its_own_namespaced_skill_and_preserves_arguments(self):
         alpha = self.skill("alpha")
         self.skill("beta")
+        self.skill("plan-for-me")
+        self.skill("autoresearch")
         self.plugin.register(self.ctx)
         self.assertEqual(self.ctx.skills["alpha"], alpha)
         args = 'only src/; $(touch /tmp/should-not-run)\nno push'
-        self.assertIsNone(self.ctx.commands["alpha"](args))
-        message, target = self.ctx.messages[-1]
-        self.assertIn('skill_view(name="autowork:alpha")', message)
-        self.assertIn(args, message)
-        self.assertNotIn("autowork:beta", message)
-        self.assertEqual(target, {})
+        for name in ('alpha', 'plan-for-me', 'autoresearch'):
+            with self.subTest(name=name):
+                self.assertIsNone(self.ctx.commands[name](args))
+                message, target = self.ctx.messages[-1]
+                self.assertIn(f'skill_view(name="autowork:{name}")', message)
+                self.assertTrue(message.endswith('User arguments:\n' + args))
+                self.assertNotIn("autowork:beta", message)
+                self.assertEqual(target, {})
+                if name != 'alpha':
+                    self.assertIn('tasks/ is the central work queue', message)
+                    self.assertIn('Docs Sync', message)
+                    self.assertIn('`autowork tasks`', message)
+                else:
+                    self.assertNotIn('central work queue', message)
 
     def test_gateway_routes_first_command_to_origin_including_topic_and_user(self):
         self.skill("git-commit-push")
