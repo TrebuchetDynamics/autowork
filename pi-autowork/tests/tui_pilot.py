@@ -201,7 +201,195 @@ async def task_inventory_viewport(app, pilot):
     await refresh(app, pilot)
 
 
+async def immediate_deletion():
+    """Real CLI, unchanged HEAD, no timers, and a physically blocked old fleet read."""
+    from pi_autowork import task_snapshot
+    with tempfile.TemporaryDirectory() as folder:
+        base = Path(folder)
+        repo = base / 'repo'
+        repo.mkdir()
+        store_fixture.write_todo(repo, '## Now\n- [ ] T-1 — Only open task\n- [x] T-2 — Closed task\n')
+        snap = task_snapshot.capture(repo, engine_observation={}, generation=1)
+        runner = fleet_view.Runner('fixture', repo=str(repo), snapshot=snap, prepare_state='ready')
+        other_repo = base / 'other'
+        other_repo.mkdir()
+        store_fixture.write_todo(other_repo, '## Now\n- [ ] T-1 — Same ID elsewhere\n')
+        other_snap = task_snapshot.capture(other_repo, engine_observation={}, generation=1)
+        other = fleet_view.Runner('other', repo=str(other_repo), snapshot=other_snap, prepare_state='ready')
+        saved_record = (repo / 'tasks/items/T-1.md').read_bytes()
+        envelope = fleet_view.FleetSnapshot((runner,), (snap,), 1, time.time())
+        entered, release = threading.Event(), threading.Event()
+        command = Path(__file__).resolve().parents[1] / 'pi_autowork/command.py'
+        calls = []
+        def run(argv, **kwargs):
+            calls.append(argv)
+            result = subprocess.run([sys.executable, str(command), *argv[1:]], **kwargs)
+            return subprocess.CompletedProcess(argv, result.returncode, result.stdout + '; warning: retained worker evidence', result.stderr)
+        blocked_calls = []
+        def blocked(*args, **kwargs):
+            blocked_calls.append(kwargs['generation'])
+            entered.set()
+            assert release.wait(20), 'delete fleet reader watchdog'
+            return envelope
+        app = FleetApp(command='aw', script='unused', state_root=base, env_dir=base,
+                       runner_cmd=run, view_only=False)
+        with mock.patch.object(fleet_view, 'collect_for_tui', return_value=envelope), \
+                mock.patch.object(fleet_view, 'logs', return_value=''), \
+                mock.patch.object(FleetApp, 'set_interval'), \
+                mock.patch.object(TasksScreen, 'set_interval'), \
+                mock.patch.object(TaskScreen, 'set_interval'):
+            async with app.run_test(size=(150, 45)) as pilot:
+                await refresh(app, pilot)
+                app.push_screen(TasksScreen('fixture'))
+                await pilot.pause()
+                screen = app.screen
+                action = next(a for a in screen.actions(screen.current()) if a.key == 'x')
+                assert action.argv[-1] == str(repo)
+                await pilot.press('x', 'n')  # cancelled confirmation never reaches the command
+                assert not calls and screen.query_one('#tasks').row_count == 1
+                for result in (subprocess.CompletedProcess([], 1, '', 'refused'), OSError('command failed')):
+                    with mock.patch.object(app, 'runner_cmd', side_effect=result if isinstance(result, Exception) else None,
+                                           return_value=result):
+                        app.execute(action)
+                        await app.workers.wait_for_complete()
+                        await pilot.pause()
+                    assert screen.query_one('#tasks').row_count == 1 and not app.pending_deletions
+                # A real delete may finish while its detail is open. Old detail reads
+                # and a name retarget during confirmation cannot redirect its command.
+                app.push_screen(TaskScreen('fixture', 'T-1'))
+                await pilot.pause()
+                detail_screen = app.screen
+                await drain_reads(app)
+                assert detail_screen.entry
+                app.runners = [runner, other]
+                with mock.patch.object(fleet_view, 'collect_for_tui', side_effect=blocked):
+                    try:
+                        app.poll_refresh()
+                        assert await asyncio.to_thread(entered.wait, 5)
+                        app.execute(action)
+                        await app.workers.wait_for_complete()
+                        await pilot.pause()
+                        assert 'Deletion pending commit' in str(detail_screen.query_one('#task-body').render())
+                        assert 'Only open task' not in str(detail_screen.query_one('#task-body').render())
+                        assert 'Section' not in str(detail_screen.query_one('#menubar').render())
+                        assert not detail_screen.entry and not detail_screen.answers()
+                        assert fleet_view.task_counts(app.runners[1])[-1] == 1
+                        assert (other_repo / 'tasks/items/T-1.md').exists()
+                        acknowledged = dict(app.pending_deletions)
+                        app.action_completed(action, True)
+                        assert app.pending_deletions == acknowledged, 'duplicate completion reset overlay'
+                        assert len(app.reads.active) >= 1  # old physical reader still owns its slot
+                        await pilot.press('escape')
+                        await pilot.pause()
+                        assert not (repo / 'tasks/items/T-1.md').exists()
+                        assert 'T-1' in snap.store.tasks  # deletion has not changed HEAD
+                        assert screen.query_one('#tasks').row_count == 0, 'successful delete retained row'
+                        assert fleet_view.task_counts(app.current()) == (0, 0, 0, 0, 0, 0)
+                        assert [str(c) for c in app.query_one('#runners').get_row_at(0)[2:8]] == ['0'] * 6
+                        assert app.current().snapshot is snap
+                        assert 'deletion pending commit' in str(screen.query_one('#task-provenance').text)
+                        assert 'Deletion pending commit' in str(screen.query_one('#task-freshness').render())
+                        assert 'No task in this view' in str(screen.query_one('#task-detail').render())
+                        assert 'Delete' not in str(screen.query_one('#menubar').render())
+                        await pilot.press('6')
+                        assert screen.query_one('#tasks').row_count == 1  # closed history is independent
+                        await pilot.press('x', 'y')
+                        await app.workers.wait_for_complete()
+                        await pilot.pause()
+                        assert screen.query_one('#tasks').row_count == 0 and screen.view == 'closed'
+                        assert fleet_view.task_counts(app.current())[-1] == 0
+                        await pilot.press('escape')
+                        app.push_screen(TasksScreen('fixture'))
+                        await pilot.pause()
+                        assert app.screen.query_one('#tasks').row_count == 0
+                        assert len(blocked_calls) == 1, 'cancelled physical read admitted an overlapping replacement'
+                    finally:
+                        release.set()
+                    await drain_reads(app)
+                    await pilot.pause()
+                    assert app.screen.query_one('#tasks').row_count == 0, 'old snapshot resurrected deletion'
+                # Failed/last-good acquisition cannot acknowledge a committed deletion.
+                stale = replace(snap, freshness='stale', errors=('inventory denied',))
+                app.publish_fleet(fleet_view.FleetSnapshot((replace(runner, snapshot=stale),), (stale,), 9, time.time()),
+                                  ((action.deletion, False, ''),), app.generation + 1)
+                assert app.screen.query_one('#tasks').row_count == 0
+                assert app.pending_deletions
+                unknown = task_snapshot.capture(repo, engine_observation={}, generation=10)
+                app.publish_fleet(fleet_view.FleetSnapshot((replace(runner, snapshot=unknown),), (unknown,), 10, time.time()),
+                                  ((action.deletion, None, 'presence unavailable'),), app.generation + 1)
+                assert app.pending_deletions and app.screen.query_one('#tasks').row_count == 0
+                assert 'presence unavailable' in app.sub_title
+                # Fresh restoration restores the original committed row, without a new HEAD.
+                subprocess.run(['git', '-C', str(repo), 'restore', 'tasks'], check=True)
+                fresh = task_snapshot.capture(repo, engine_observation={}, generation=10)
+                restored = fleet_view.FleetSnapshot((replace(runner, snapshot=fresh),), (fresh,), 10, time.time())
+                with mock.patch.object(fleet_view, 'collect_for_tui', return_value=restored):
+                    await refresh(app, pilot)
+                assert app.screen.query_one('#tasks').row_count == 1
+                assert not app.pending_deletions and fresh.revision == snap.revision
+                # Delete once more, commit, then recreate before the next observation:
+                # HEAD absence alone must not hide a pending-only record indefinitely.
+                new_action = next(a for a in app.screen.actions(app.screen.current()) if a.key == 'x')
+                retargeted_runner = replace(other, name='fixture')
+                retargeted = fleet_view.FleetSnapshot((retargeted_runner,), (other_snap,), 11, time.time())
+                with mock.patch.object(fleet_view, 'collect_for_tui', return_value=retargeted):
+                    app.push_screen(Confirm(new_action.confirm), lambda yes: yes and app.execute(new_action))
+                    await pilot.pause()
+                    app.runners = [retargeted_runner]  # retarget the name while confirmation is open
+                    await pilot.press('y')
+                    await app.workers.wait_for_complete()
+                    await pilot.pause()
+                    await drain_reads(app)
+                    assert not (repo / 'tasks/items/T-1.md').exists()
+                    assert (other_repo / 'tasks/items/T-1.md').exists()
+                    assert fleet_view.task_counts(app.current())[-1] == 1
+                    assert not app.current().display_deleted
+                app.runners = [replace(runner, snapshot=fresh)]
+                app.project_deletions()
+                app.render_fleet()
+                app.screen.refresh_tasks()
+                subprocess.run(['git', '-C', str(repo), 'add', 'tasks'], check=True)
+                subprocess.run(['git', '-C', str(repo), '-c', 'user.name=Fixture', '-c', 'user.email=f@example.invalid',
+                                'commit', '-qm', 'delete'], check=True)
+                (repo / 'tasks/items/T-1.md').write_bytes(saved_record)
+                recreated = task_snapshot.capture(repo, engine_observation={}, generation=11)
+                recreated_fleet = fleet_view.FleetSnapshot((replace(runner, snapshot=recreated),), (recreated,), 11, time.time())
+                with mock.patch.object(fleet_view, 'collect_for_tui', return_value=recreated_fleet):
+                    await refresh(app, pilot)
+                assert fleet_view.task_counts(app.current())[-1] == 0
+                assert app.screen.query_one('#tasks').row_count == 0
+                assert 'restored/recreated pending record' in fleet_view.freshness(app.current())
+                (repo / 'tasks/items/T-1.md').unlink()
+                committed = task_snapshot.capture(repo, engine_observation={}, generation=12)
+                committed_fleet = fleet_view.FleetSnapshot((replace(runner, snapshot=committed),), (committed,), 12, time.time())
+                # A poll queued before reconciliation may carry a pre-action
+                # last-good capture. Retirement must invalidate that queued input.
+                commit_entered, commit_release = threading.Event(), threading.Event()
+                commit_calls, stale_generation = [], []
+                def commit_read(*args, **kwargs):
+                    commit_calls.append(kwargs['generation'])
+                    if len(commit_calls) == 1:
+                        commit_entered.set()
+                        assert commit_release.wait(10), 'commit reconciliation watchdog'
+                        return committed_fleet
+                    return envelope if kwargs['generation'] in stale_generation else committed_fleet
+                with mock.patch.object(fleet_view, 'collect_for_tui', side_effect=commit_read):
+                    try:
+                        app.action_refresh()
+                        assert await asyncio.to_thread(commit_entered.wait, 5)
+                        queued = app.poll_refresh()
+                        stale_generation.append(app.generation)
+                    finally:
+                        commit_release.set()
+                    await drain_reads(app)
+                    await pilot.pause()
+                assert not app.pending_deletions and not app.current().display_deleted
+                assert queued.cancelled, 'retirement retained a queued pre-reconciliation last-good input'
+                assert app.screen.query_one('#tasks').row_count == 0
+
+
 async def main():
+    await immediate_deletion()
     # A worker's own words, without what its row already says; cut mid-word only to keep far more.
     lane = fleet_view.Lane(task='T-1', phase='verifying', detail='', attempt=1, minutes=1,
                            activity='said: T-1 committed as `abc`.', activity_age=1)
@@ -570,12 +758,13 @@ async def main():
             await pilot.pause()
             assert isinstance(app.screen, WorkerScreen) and app.screen.title == 'india: TASK-036', app.screen
             lines = lambda: [''.join(seg.text for seg in strip) for strip in app.screen.query_one('#worker-actions').lines]
+            await drain_reads(app)
             shown = lines()  # a log: all 30 actions, oldest first, each with its time
             assert len(shown) == 30 and 'step 0' in shown[0] and 'step 29' in shown[-1], shown
             assert shown[0][:8].count(':') == 2, shown[0]
             with transcript.open('a') as stream:
                 stream.write(step(30))
-            app.screen.refresh_actions()
+            await app.screen.refresh_actions().wait()
             await pilot.pause()
             after = lines()  # the new action is appended at the bottom; nothing above it is redrawn
             assert after[:30] == shown and 'step 30' in after[-1] and len(after) == 31, after
@@ -611,6 +800,7 @@ async def main():
                 tree_widget = screen.query_one('#tree')
                 node = next(n for n in tree_widget.root.children if n.data.path.name == name)
                 tree_widget.select_node(node)
+                await pilot.pause()  # dispatch NodeHighlighted before waiting for its read
                 await drain_reads(app)
                 await pilot.pause()
                 assert screen.chosen and not screen.chosen.ready, screen.chosen
@@ -618,6 +808,7 @@ async def main():
                 task_files = lambda: {str(p): p.read_bytes() for p in (tree / name / 'tasks').rglob('*.md')}
                 original_tasks = task_files()
                 await pilot.press('p')
+                await drain_reads(app)
                 await pilot.pause()
                 assert app.screen.query_one('#prepare').label.plain == 'Prepare'
                 assert app.screen.query_one('#prepare-start').label.plain == 'Prepare and start'
@@ -698,6 +889,7 @@ async def main():
             screen = app.screen
             tree_widget = screen.query_one('#tree')
             tree_widget.select_node(next(n for n in tree_widget.root.children if n.data.path.name == 'ready'))
+            await pilot.pause()
             await drain_reads(app)
             await pilot.pause()
             assert screen.chosen.ready, screen.chosen
@@ -726,6 +918,7 @@ async def main():
             screen = app.screen
             tree_widget = screen.query_one('#tree')
             tree_widget.select_node(next(n for n in tree_widget.root.children if n.data.path.name == 'ready'))
+            await pilot.pause()
             await drain_reads(app)
             await pilot.pause()
             await pilot.press('p')

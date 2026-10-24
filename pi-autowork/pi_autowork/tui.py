@@ -592,12 +592,18 @@ class TasksScreen(ReadScreen, Screen):
                              f'generation {snapshot.generation} · captured '
                              + fleet_view.ago(max(0, int(time.time() - snapshot.captured_at)))
                              + f' · execution {snapshot.engine_freshness}', style='dim')
+        if runner and runner.display_deleted:
+            freshness.append(f'\nDeletion pending commit: {len(runner.display_deleted)} record(s) (display only)', style='yellow')
+        if runner and runner.display_recreated:
+            freshness.append(f'\nRestored/recreated pending record(s): {len(runner.display_recreated)} (not committed inventory)',
+                             style='yellow')
         self.query_one('#task-freshness', Static).update(freshness)
         provenance = fleet_view.freshness(runner) if runner else 'Runner unavailable.'
         info = self.query_one('#task-provenance', TextArea)
         if info.text != provenance:
             info.load_text(provenance)
         table = self.query_one('#tasks', DataTable)
+        previous_row = table.cursor_row
         current = follow or (self.current().task if self.current() else None)
         self.shown = self.view_rows(self.view)
         position = {row.task: number + 1 for number, row in enumerate(self.rows)}
@@ -607,8 +613,9 @@ class TasksScreen(ReadScreen, Screen):
                   'Why': (row.why, 'yellow' if row.question else 'dim')} for row in self.shown]
         self.app.fill(table, cells, self.FIXED, self.TEXT, minimum=10)
         tasks = [row.task for row in self.shown]
-        if current in tasks and table.cursor_row != tasks.index(current):
-            table.move_cursor(row=tasks.index(current))
+        target = tasks.index(current) if current in tasks else min(previous_row, len(tasks) - 1)
+        if target >= 0 and table.cursor_row != target:
+            table.move_cursor(row=target)
         self.show_task()
 
     def current(self):
@@ -732,13 +739,19 @@ class TaskScreen(ReadScreen, Screen):
 
     def answers(self):
         runner, question = self.runner(), self.question()
-        if runner is None or question is None or self.app.view_only or self.read_only:
+        if (runner is None or question is None or self.app.view_only or self.read_only
+                or self.app.deletion_pending(runner, self.task_id)):
             return []
         return fleet_view.answers(runner, question, command=self.app.command)
 
     def refresh_tasks(self, follow=None):
         runner = read_input(self.runner())
         task = self.task_id
+        if self.app.deletion_pending(runner, task):
+            self.invalidate_read()
+            self.entry, self.recent = '', []
+            self.show_task()
+            return
         self.show_task()
         if runner:
             return self.read('task-detail', (runner.repo, task),
@@ -746,7 +759,8 @@ class TaskScreen(ReadScreen, Screen):
                              self.loaded_task)
 
     def loaded_task(self, value):
-        self.entry, self.recent = value
+        if not self.app.deletion_pending(self.runner(), self.task_id):
+            self.entry, self.recent = value
         self.show_task()
 
     def show_task(self):
@@ -772,11 +786,14 @@ class TaskScreen(ReadScreen, Screen):
                 text.append(question.answer + '\n', style='dim')
         elif row and row.why and not self.closed:
             text.append(row.why + '\n')
-        entry = self.entry
+        pending_delete = self.app.deletion_pending(runner, self.task_id)
+        if pending_delete:
+            text.append('\nDeletion pending commit; task record/actions unavailable.\n', style='yellow')
+        entry = '' if pending_delete else self.entry
         if entry:
             text.append('\nTask record (working tree; independent of committed inventory)\n', style='bold')
             text.append(entry + '\n')
-        actions = self.recent
+        actions = [] if pending_delete else self.recent
         if actions:
             text.append('\nLast actions\n', style='bold')
             for line, age in actions:
@@ -786,7 +803,7 @@ class TaskScreen(ReadScreen, Screen):
         self.query_one('#task-body', Static).update(text)
         answers = self.answers()
         self.query_one('#menubar', MenuBar).show([(a.key, a.label) for a in answers]
-                                                 + ([] if self.app.view_only or self.read_only or self.closed
+                                                 + ([] if self.app.view_only or self.read_only or self.closed or pending_delete or row is None
                                                     else [('s', 'Section')]) + [('esc', 'Back')])
         explained = Text()  # what each answer does, under the task; the keys are in the menu bar
         for answer in answers:
@@ -811,7 +828,9 @@ class TaskScreen(ReadScreen, Screen):
 
     def action_section(self):
         runner = self.runner()
-        if runner is None or self.app.view_only or self.read_only or self.closed:
+        if (runner is None or self.app.view_only or self.read_only or self.closed
+                or self.app.deletion_pending(runner, self.task_id)
+                or not any(row.task == self.task_id for row in fleet_view.task_rows(runner))):
             return
         self.app.push_screen(PickSection(self.task_id), lambda section: section and self.app.execute(
             fleet_view.Action('s', f'Section {self.task_id}',
@@ -1266,6 +1285,8 @@ class FleetApp(App):
         self.read_epoch = 0
         self.selected = None
         self.starting_repositories = set()
+        self.pending_deletions = {}  # captured identity -> (request generation, success time, recreated)
+        self.completed_deletions = {}  # retain action objects: duplicate callbacks are harmless
         self._report_busy = False
         self._report_pending = None
 
@@ -1343,11 +1364,34 @@ class FleetApp(App):
             if hasattr(screen, '_reader'):
                 screen._reader.invalidate()
 
-    def action_completed(self):
+    def action_completed(self, action=None, ok=False):
+        if action is not None and action.deletion is not None and ok and id(action) not in self.completed_deletions:
+            self.completed_deletions[id(action)] = action
+            self.pending_deletions[action.deletion] = (self.generation, time.time(), False)
+            self.project_deletions()
+            self.render_fleet()
+        # Invalidate subscriptions, not physically running slots. Feedback above is
+        # already painted before any asynchronous replacement observation can finish.
         self.action_refresh()
         screen = self.screen
         if isinstance(screen, (TasksScreen, TaskScreen)):
             screen.refresh_tasks(getattr(screen, 'follow', None))
+
+    def project_deletions(self):
+        projected = []
+        for runner in self.runners:
+            snap = runner.snapshot
+            matching = [(identity.task, state[2]) for identity, state in self.pending_deletions.items()
+                        if snap is not None and identity.workspace == snap.workspace
+                        and identity.repository_identity == snap.repository_identity]
+            deleted = tuple(task for task, recreated in matching if not recreated)
+            recreated = tuple(task for task, recreated in matching if recreated)
+            projected.append(replace(runner, display_deleted=deleted, display_recreated=recreated)
+                             if (deleted, recreated) != (runner.display_deleted, runner.display_recreated) else runner)
+        self.runners = projected
+
+    def deletion_pending(self, runner, task):
+        return runner is not None and task in runner.display_deleted
 
     def on_resize(self, event):
         self._shown = {}  # the columns fit the new width
@@ -1411,14 +1455,48 @@ class FleetApp(App):
         state, env, systemctl, generation = self.state_root, self.env_dir, self.systemctl, self.generation
         previous = read_input(self.fleet_snapshot)
         cached = read_input(cached)
-        return self.read('fleet', (str(state), str(env), systemctl),
-                         lambda: fleet_view.collect_for_tui(state, env, systemctl=systemctl, generation=generation,
-                                                           cached_preparation=cached, last_good=previous), self.publish_fleet)
+        identities = tuple(self.pending_deletions)
+        def load():
+            snapshot = fleet_view.collect_for_tui(state, env, systemctl=systemctl, generation=generation,
+                                                  cached_preparation=cached, last_good=previous)
+            return snapshot, fleet_view.observe_deletions(identities)
+        return self.read('fleet', (str(state), str(env), systemctl), load,
+                         lambda value: self.publish_fleet(value[0], value[1], generation))
 
-    def publish_fleet(self, snapshot):
+    def publish_fleet(self, snapshot, observations=(), generation=0):
+        observation_errors = []
+        reconciled = False
+        for identity, present, error in observations:
+            pending = self.pending_deletions.get(identity)
+            if pending is not None and generation > pending[0] and error:
+                observation_errors.append(f'{identity.task}: {error}')
+            snap = next((s for s in snapshot.snapshots if s.workspace == identity.workspace
+                         and s.repository_identity == identity.repository_identity), None)
+            if (pending is None or generation <= pending[0] or snap is None
+                    or snap.captured_at <= pending[1] or snap.freshness != 'fresh'
+                    or snap.pending_paths is None or snap.store is None or present is None):
+                continue
+            if present and identity.task not in snap.store.tasks:
+                # A working-only recreation is disclosed, never added to inventory.
+                self.pending_deletions[identity] = (*pending[:2], True)
+                reconciled |= not pending[2]
+            elif present or identity.task not in snap.store.tasks:
+                del self.pending_deletions[identity]
+                reconciled = True
+        errors = self.__dict__.setdefault('_read_errors', {})
+        if observation_errors:
+            errors['deletion observation'] = '; '.join(observation_errors)
+        elif observations:
+            errors.pop('deletion observation', None)
         self.fleet_snapshot = snapshot
         self.runners = list(snapshot.runners)
+        self.project_deletions()
         self.render_fleet()
+        if reconciled:
+            # Pending reads captured their last-good input at request time. Once
+            # an overlay retires, do not let those old inputs resurrect its row.
+            # The replacement inherits this newly published committed snapshot.
+            self.action_refresh()
         self.refresh_log()
         screen = self.screen
         if isinstance(screen, (TasksScreen, TaskScreen)):
@@ -1751,11 +1829,11 @@ class FleetApp(App):
             result = self.runner_cmd(action.argv, env=env, capture_output=True, text=True)
             output = ((result.stdout or '') + (result.stderr or '')).strip().splitlines()
             ok, message = result.returncode == 0, (output[-1] if output else action.label)
-        except OSError as error:
+        except Exception as error:
             ok, message = False, str(error)
         self.call_from_thread(self.notify, message[:300], severity='information' if ok else 'error',
                               title=f'{action.label}: {"done" if ok else "failed"}')
-        self.call_from_thread(self.action_completed)
+        self.call_from_thread(self.action_completed, action, ok)
 
 
 def main(argv=None):
