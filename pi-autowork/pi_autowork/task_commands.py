@@ -222,8 +222,25 @@ def _undo_record(path, before, after):
 
     A crash can leave the claimed inode beside the record; the journal makes the
     next undo resume it. If another editor creates a path while we undo, retain
-    both versions rather than replacing the editor's new path.
+    both versions rather than replacing the editor's new path. ``after`` is None
+    when the interrupted batch removed the record.
     """
+    if after is None:
+        # The batch deleted the record. Restore it only while the name is vacant:
+        # an externally recreated record stays authoritative.
+        current = _contents(path)
+        if current == before:
+            return []
+        if current is not None:
+            return [path]
+        if before is None:
+            return []
+        tmp = _stage_bytes(path, before)
+        try:
+            restored = _restore_missing(path, tmp)
+        finally:
+            tmp.unlink(missing_ok=True)
+        return [] if restored else [path]
     saved = _claimed_path(path)
     if not saved.exists():
         current = _contents(path)
@@ -264,7 +281,7 @@ def _undo(repo, journal):
             if not re.fullmatch(r'tasks/(?:items|goals)/[A-Za-z0-9][A-Za-z0-9_-]*\.md', name):
                 raise ValueError('invalid record path')
             records.append((Path(repo) / name, bytes.fromhex(before) if before is not None else None,
-                            bytes.fromhex(after)))
+                            bytes.fromhex(after) if after is not None else None))
     except (ValueError, TypeError) as exc:
         raise CommandError(f'cannot recover {journal.name}: {exc}') from None
     conflicts = []
@@ -280,9 +297,10 @@ def _undo(repo, journal):
 def _write_many(repo, edits):
     """Compare every input before writing, then apply and validate one recoverable set.
 
-    The journal is durable before the first replacement; its removal commits the
-    set. Exceptions undo immediately, process death on the next locked access.
-    Working-tree readers use the same lock and cannot observe half a batch.
+    An edit's ``after`` of None removes that path. The journal is durable before the
+    first replacement; its removal commits the set. Exceptions undo immediately,
+    process death on the next locked access. Working-tree readers use the same lock
+    and cannot observe half a batch.
     """
     edits = list(edits)
     records = []
@@ -292,13 +310,17 @@ def _write_many(repo, edits):
         if _contents(path) != before:
             raise CommandError(f'{path.relative_to(repo)} changed since it was read; nothing written')
         records.append((str(path.relative_to(repo)), before.hex() if before is not None else None,
-                        after.encode().hex()))
+                        after.encode().hex() if after is not None else None))
     journal = Path(_git(repo, 'rev-parse', '--absolute-git-dir')) / 'autowork-tasks.transaction'
     _replace_bytes(journal, json.dumps(records).encode())
     try:
         for path, before, after in edits:
             path.parent.mkdir(parents=True, exist_ok=True)
-            _replace_bytes(path, after.encode())
+            if after is None:
+                path.unlink()
+                _sync_dir(path.parent)
+            else:
+                _replace_bytes(path, after.encode())
         worktree_store(repo)
     except BaseException as exc:
         conflicts = _undo(repo, journal)
@@ -698,6 +720,31 @@ def cmd_supersede(repo, tid, by, reason):
     _set(repo, tid, {'status': 'superseded'}, note)
 
 
+@_serialized
+def cmd_delete(repo, tid):
+    """Remove any task record from the store, whatever its status or holder.
+
+    Returns the warnings that did not stop the deletion: busy worker/lease state and
+    other tasks that still name it as a dependency. Worktrees, commits, evidence and
+    goals stay; a dependent task keeps its dangling reference until it is edited.
+    """
+    store = worktree_store(repo)
+    _task(store, tid)
+    path = _path(repo, tid)
+    before = path.read_bytes()
+    held, problems = in_flight(repo)
+    warnings = []
+    if tid in held:
+        warnings.append(f'{tid} is held by a worker slot or a live execution lease')
+    warnings.extend(problems)
+    dependents = sorted(t.id for t in store.tasks.values()
+                        if t.id != tid and (tid in t.depends_on or tid in t.verified_depends_on))
+    if dependents:
+        warnings.append('other tasks still depend on it: ' + ', '.join(dependents))
+    _write(repo, path, before, None)
+    return warnings
+
+
 # --- CLI -------------------------------------------------------------------------------
 
 def add_parser(sub):
@@ -770,6 +817,8 @@ def add_parser(sub):
     p.add_argument('task'); p.add_argument('repo', nargs='?', default='.')
     p.add_argument('--by', action='append', required=True)
     p.add_argument('--reason', required=True)
+    p = verbs.add_parser('delete', help='remove any task record; worktrees, commits, evidence and goals stay')
+    p.add_argument('task'); p.add_argument('repo', nargs='?', default='.')
     p = verbs.add_parser('goal', help='add a goal, or change its title, source, priority, status, focus or dependencies')
     p.add_argument('goal'); p.add_argument('repo', nargs='?', default='.')
     p.add_argument('--title', default=argparse.SUPPRESS)
@@ -790,7 +839,7 @@ def add_parser(sub):
     return tasks
 
 
-WRITES = ('add', 'field', 'place', 'move', 'hold', 'release', 'done', 'supersede', 'goal')
+WRITES = ('add', 'field', 'place', 'move', 'hold', 'release', 'done', 'supersede', 'delete', 'goal')
 
 # JSON keys follow option names with underscores; `id` is the add option --id.
 _INPUT_TYPES = {
@@ -929,6 +978,9 @@ def _run(args, repo):
     elif verb == 'supersede':
         cmd_supersede(repo, args.task, args.by, args.reason)
         out = f'ok {args.task} superseded'
+    elif verb == 'delete':
+        warnings = cmd_delete(repo, args.task)
+        out = f'ok {args.task} deleted' + ''.join(f'; warning: {warning}' for warning in warnings)
     elif verb == 'goal':
         out = f'{cmd_goal(repo, args.goal, args.title, args.source, args.priority, args.status, args.focus, args.depends_on, args.evidence)} goal {args.goal}'
     return out

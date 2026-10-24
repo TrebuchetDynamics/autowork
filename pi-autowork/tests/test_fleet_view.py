@@ -347,7 +347,12 @@ class FleetViewTests(unittest.TestCase):
             self.assertTrue(task[key].confirm, key)
         ready = fleet_view.TaskRow('T-1', 'Short', 'Now', 'ready', 'ready')
         self.assertEqual(sorted(a.key for a in fleet_view.task_actions(india, ready, command='aw', script='pa.sh')),
-                         ['d', 's', 'u'])  # nothing held, no agent: re-sort and re-section only
+                         ['d', 's', 'u', 'x'])  # nothing held, no agent: re-sort, re-section and delete
+        closed = fleet_view.TaskRow('T-8', 'Short', 'Now', 'closed', 'closed')
+        closed_actions = fleet_view.task_actions(india, closed, command='aw', script='pa.sh')
+        self.assertEqual([(a.key, a.label, a.argv) for a in closed_actions],
+                         [('x', 'Delete', ['aw', 'tasks', 'delete', 'T-8', 'india'])])
+        self.assertTrue(closed_actions[0].confirm)
 
     def test_questions_are_answered_where_the_runner_reads_them(self):
         """From the TUI: each answer writes a note in the task's record, or moves it."""
