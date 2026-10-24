@@ -33,9 +33,10 @@ import time
 import uuid
 
 if __package__:
-    from . import accounting, portal, telemetry
+    from . import accounting, pi_events, portal, telemetry
 else:
     import accounting
+    import pi_events
     import portal
     import telemetry  # pi_runtime.py is also a standalone subprocess entry point.
 
@@ -138,46 +139,38 @@ def choose(s):
 
 # --- One run --------------------------------------------------------------------
 def analyse(raw):
-    events = []
+    """Account one invocation's event stream, never cumulative session history.
+
+    Share authoritative surfaces and conservative coverage with the RPC path.
+    Pi resumes context internally; session headers and RPC history/stat snapshots
+    are not fresh usage. See pi_events for the installed-Pi surface inventory.
+    """
+    projection = pi_events.EventProjection(clock=None)
+    result = projection.outcome()
     for line in raw.split('\n'):
+        if not line.strip():
+            continue
         try:
             value = json.loads(line)
         except ValueError:
-            continue
-        if isinstance(value, dict):
-            events.append(value)
-    settled = [e for e in events if e.get('type') == 'agent_settled']
-    settled = settled[-1] if settled else None
-    messages = [e.get('message') or {} for e in events
-                if e.get('type') == 'message_end' and (e.get('message') or {}).get('role') == 'assistant']
-    last = messages[-1] if messages else {}
-    gaveup = [e for e in events if e.get('type') == 'auto_retry_end' and e.get('success') is False]
-    gaveup = gaveup[-1] if gaveup else {}
-
-    usage = [m.get('usage') or {} for m in messages]
-
-    def token_sum(field):
-        values = [accounting.number(u.get(field)) for u in usage]
-        return sum(values) if values and all(v is not None for v in values) else None
-
-    # Pi's ordinary usage.cost is calculated from catalog rates. It is not a bill.
-    # Only an explicitly provenance-labelled provider amount is measurable; an
-    # adapter that does not supply that provenance leaves spend unknown.
-    costs = [accounting.number((u.get('cost') or {}).get('total'))
-             if u.get('cost_source') == 'provider_reported' and u.get('billing') != 'subscription'
-             else None for u in usage]
-    measured = sum(c for c in costs if c is not None)
-    complete = bool(costs) and all(c is not None for c in costs)
-    return dict(settled=settled is not None, aborted=bool((settled or {}).get('aborted')),
-                stop=last.get('stopReason'), error=last.get('errorMessage') or gaveup.get('finalError'),
-                retries=sum(e.get('type') == 'auto_retry_start' for e in events),
-                tokens=token_sum('totalTokens'), input_tokens=token_sum('input'), output_tokens=token_sum('output'),
-                cost=measured if complete else None, measured_cost_usd=measured,
-                cost_source='provider_reported' if any(c is not None for c in costs) else 'missing',
-                billing=('subscription' if usage and all(u.get('billing') == 'subscription' for u in usage)
-                         else 'mixed' if any(u.get('billing') == 'subscription' for u in usage) else None),
-                text='\n'.join(c.get('text', '') for c in (last.get('content') or [])
-                               if isinstance(c, dict) and c.get('type') == 'text'))
+            value = None
+        # Corrupt/malformed records may hide usage: keep the known subtotal but
+        # do not certify complete coverage merely because settlement survived.
+        try:
+            projection.consume(value if isinstance(value, dict) else {})
+        except pi_events.ProjectionOverflow as error:
+            # The last valid snapshot is a lower bound, not a complete bill.
+            # Retain its measured subtotal and attribution even when the event
+            # that overflowed cannot be safely projected.
+            result.update(settled=False, aborted=False, stop=None, text='', error=str(error),
+                          tokens=None, input_tokens=None, output_tokens=None, cost=None,
+                          failure_kind='projection_overflow', retry_safe=False)
+            result['usage_coverage'].update(overflow=True, complete=False, tokens_complete=False,
+                                           input_tokens_complete=False, output_tokens_complete=False,
+                                           cost_complete=False)
+            return result
+        result = projection.outcome()
+    return result
 
 
 # Build servers a worker starts on purpose and leaves idle are not stuck commands.

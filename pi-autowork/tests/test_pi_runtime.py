@@ -38,6 +38,9 @@ elif behavior == 'crash':
     end(settled=False)
 elif behavior == 'hang':
     time.sleep(30)
+elif behavior == 'overflow':
+    end(text='before overflow', settled=False)
+    end(text='x' * 262145)
 '''
 
 
@@ -126,24 +129,113 @@ class RuntimeTests(unittest.TestCase):
         self.assertLess(time.monotonic() - started, 20)
         self.assertEqual([r['outcome'] for r in self.records()], ['timeout'])
 
+    def test_invocation_usage_counts_assistant_tool_and_compaction_once(self):
+        assistant = dict(role='assistant', responseId='response-1', stopReason='stop',
+                         content=[dict(type='text', text='done')],
+                         usage=dict(totalTokens=7, input=6, output=1))
+        tool = dict(role='toolResult', toolCallId='tool-1', content=[],
+                    usage=dict(totalTokens=5, input=4, output=1))
+        events = [dict(type='session', id='resumed-session'),
+                  # Prior context/session totals are not invocation usage.
+                  dict(type='response', command='get_messages', data=dict(messages=[
+                      dict(role='assistant', usage=dict(totalTokens=900))])),
+                  dict(type='response', command='get_session_stats', data=dict(tokens=dict(total=900))),
+                  dict(type='message_update', usage=dict(totalTokens=700)),
+                  dict(type='message_end', message=assistant),
+                  dict(type='message_end', message=assistant),
+                  dict(type='tool_execution_end', toolCallId='tool-1', result=tool),
+                  dict(type='message_end', message=tool), dict(type='message_end', message=tool),
+                  dict(type='turn_end', message=assistant, toolResults=[tool]),
+                  dict(type='compaction_end', result=dict(usage=dict(totalTokens=11, input=10, output=1))),
+                  dict(type='agent_end', messages=[assistant, tool]), dict(type='agent_settled')]
+        run = runtime.analyse('\n'.join(map(json.dumps, events)))
+        self.assertEqual((run['tokens'], run['input_tokens'], run['output_tokens']), (23, 20, 3))
+        self.assertEqual(run['text'], 'done')
+        self.assertTrue(run['usage_coverage']['tokens_complete'])
+        runtime.record(runtime.Settings(self.state), 'worker', 'T-1', 'finished', 'p/m', '', run)
+        (row,) = self.records()
+        self.assertEqual((row['task'], row['role'], row['known_usage']['totalTokens']), ('T-1', 'worker', 23))
+
+    def test_missing_or_interrupted_usage_retains_only_known_subtotals(self):
+        for omitted in (dict(type='message_end', message=dict(role='toolResult', toolCallId='x')),
+                        dict(type='compaction_end', result={}),
+                        dict(type='summarization_retry_scheduled'),
+                        dict(type='entry_appended', entry=None),
+                        dict(type='entry_appended', entry={}),
+                        dict(type='entry_appended', entry=dict(type='usage', id='entry')),
+                        dict(type='entry_appended', entry=dict(type='future_usage')),
+                        dict(type='message_start', message=dict(role='assistant'))):
+            with self.subTest(omitted=omitted):
+                events = [dict(type='message_end', message=dict(role='assistant', usage=dict(totalTokens=7))),
+                          omitted, dict(type='agent_settled')]
+                run = runtime.analyse('\n'.join(map(json.dumps, events)))
+                self.assertIsNone(run['tokens'])
+                self.assertEqual(run['known_usage']['totalTokens'], 7)
+                self.assertFalse(run['usage_coverage']['tokens_complete'])
+
+    def test_native_usage_entries_and_boundary_compactions_are_independent(self):
+        for entry_type in ('usage', 'compaction'):
+            with self.subTest(entry_type=entry_type):
+                entry = dict(type=entry_type, id='entry-1', kind='cache_warm',
+                             usage=dict(totalTokens=13, input=12, output=1))
+                events = [dict(type='message_end', message=dict(role='assistant', usage=dict(totalTokens=7))),
+                          dict(type='entry_appended', entry=entry), dict(type='entry_appended', entry=entry),
+                          dict(type='entry_appended', entry=dict(type='custom', id='state', data=entry)),
+                          dict(type='agent_settled')]
+                run = runtime.analyse('\n'.join(map(json.dumps, events)))
+                self.assertEqual(run['tokens'], 20)
+                self.assertEqual(run['compactions'], int(entry_type == 'compaction'))
+                self.assertIsNone(run['cost'])
+
+    def test_projection_overflow_is_a_recorded_terminal_failure(self):
+        self.set_plan(['overflow'])
+        result = self.job()
+        self.assertFalse(result['ok'])
+        self.assertEqual(result['why'], 'projection_overflow')
+        (row,) = self.records()
+        self.assertEqual((row['task'], row['role'], row['outcome']), ('T-1', 'worker', 'projection_overflow'))
+        self.assertIsNone(row['tokens'])
+        self.assertTrue(row['usage_coverage']['overflow'])
+        self.assertEqual(row['known_usage']['totalTokens'], 7)
+        self.assertEqual(list((self.state / 'runs').iterdir()), [])
+
+    def test_offline_replay_does_not_invent_execution_timings(self):
+        events = [dict(type='agent_start'),
+                  dict(type='tool_execution_start', toolCallId='x'),
+                  dict(type='tool_execution_end', toolCallId='x'),
+                  dict(type='agent_settled')]
+        for duration, expected in ((None, None), (2500, 2.5)):
+            with self.subTest(duration=duration):
+                events[2]['durationMs'] = duration
+                run = runtime.analyse('\n'.join(map(json.dumps, events)))
+                self.assertIsNone(run['startup_seconds'])
+                self.assertIsNone(run['first_tool_seconds'])
+                self.assertEqual(run['tool_seconds'], expected)
+
     def test_usage_preserves_tokens_but_never_prices_missing_or_subscription_billing(self):
-        for billing, source, cost, expected in (
-                ('api', None, 0.25, None), ('api', 'provider_reported', 0.25, 0.25),
-                ('subscription', 'provider_reported', 0, None), ('api', None, None, None)):
-            with self.subTest(billing=billing, source=source):
-                usage = dict(input=10, output=3, totalTokens=15, cacheRead=2, billing=billing,
-                             cost={'total': cost}, cost_source=source)
-                run = runtime.analyse(json.dumps({'type': 'message_end', 'message':
-                                                 {'role': 'assistant', 'usage': usage}}))
-                self.assertEqual((run['input_tokens'], run['output_tokens'], run['tokens']), (10, 3, 15))
-                self.assertEqual(run['cost'], expected)
-                self.assertEqual(run['measured_cost_usd'], expected or 0)
+        for surface in ('assistant', 'toolResult', 'compaction'):
+            for billing, source, cost, expected in (
+                    ('api', None, 0.25, None), ('api', 'provider_reported', 0.25, 0.25),
+                    ('api', 'provider_reported', 0, 0),
+                    ('subscription', 'provider_reported', 0.25, None), ('api', None, None, None)):
+                with self.subTest(surface=surface, billing=billing, source=source, cost=cost):
+                    usage = dict(input=10, output=3, totalTokens=15, cacheRead=2, billing=billing,
+                                 cost={'total': cost}, cost_source=source)
+                    event = (dict(type='compaction_end', result=dict(usage=usage)) if surface == 'compaction'
+                             else dict(type='message_end', message=dict(role=surface, toolCallId='x', usage=usage)))
+                    run = runtime.analyse('\n'.join(map(json.dumps, [event, dict(type='agent_settled')])))
+                    self.assertEqual((run['input_tokens'], run['output_tokens'], run['tokens']), (10, 3, 15))
+                    self.assertEqual(run['cost'], expected)
+                    self.assertEqual(run['measured_cost_usd'], expected)
         # A mixed run is still unknown overall, but its billed API subset must survive.
         messages = [dict(input=1, output=2, totalTokens=3, cost={'total': amount},
                          cost_source='provider_reported', billing=billing)
                     for amount, billing in ((3, 'api'), (0, 'subscription'))]
-        run = runtime.analyse('\n'.join(json.dumps(dict(type='message_end', message=
-                              dict(role='assistant', usage=usage))) for usage in messages))
+        events = [dict(type='message_end', message=dict(role=role, toolCallId='x', usage=usage))
+                  for role, usage in zip(('assistant', 'toolResult'), messages)]
+        events += [dict(type='compaction_end', result=dict(usage=dict(totalTokens=11, input=10, output=1))),
+                   dict(type='agent_settled')]
+        run = runtime.analyse('\n'.join(map(json.dumps, events)))
         runtime.record(runtime.Settings(self.state), 'merge', 'T-1', 'finished', 'p/m', '', run)
         (row,) = self.records()
         self.assertEqual(row['task'], 'T-1')
@@ -151,7 +243,7 @@ class RuntimeTests(unittest.TestCase):
         accounting.add(total, row)
         self.assertIsNone(total['cost_usd'])
         self.assertEqual(total['measured_cost_usd'], 3)
-        self.assertEqual((total['input_tokens'], total['output_tokens']), (2, 4))
+        self.assertEqual((total['input_tokens'], total['output_tokens']), (12, 5))
 
     def test_model_choice_and_the_budget(self):
         settings = runtime.Settings(self.state)
