@@ -6,8 +6,9 @@ worker-runtime boundary (launch/observe/stop/resume) is TOOLSET-117-cb. Behavior
 - the primary model when authenticated and not cooling down, else the fallback
   (`PI_AUTOWORK_NO_FALLBACK=1` disables it); a provider failure on the primary cools
   it for PI_AUTOWORK_COOLDOWN seconds, recorded in STATE/provider.json;
-- Pi runs under `timeout --foreground -s INT -k 120 LIMIT` in the caller's process
-  group, so a stop reaching the group reaches Pi and its tools; exit 124 is a timeout;
+- RPC is the default: a scoped Linux guard owns an AsyncPiClient host and its Pi/tool
+  descendants. JSON under GNU timeout is explicit rollout rollback only; no automatic
+  transport fallback. Exit 124 is a timeout, not permission to replay uncertain input;
 - a provider failure or an unsettled/aborted run is retried up to
   PI_AUTOWORK_MAX_RETRIES times, resuming the same session, with backoff;
 - every run appends one redacted line to STATE/runs.jsonl; the raw stream, which
@@ -55,6 +56,8 @@ class Settings:
     def __init__(self, state, env=os.environ):
         self.state = Path(state)
         self.pi = env.get('PI_BIN', 'pi')
+        self.transport = env.get('PI_AUTOWORK_TRANSPORT', 'rpc')
+        self.rpc_python = env.get('PI_AUTOWORK_RPC_PYTHON', '')
         self.primary = env.get('PI_AUTOWORK_PRIMARY', 'openai-codex/gpt-6.1-sol')
         self.fallback = env.get('PI_AUTOWORK_FALLBACK', 'openrouter/deepseek/deepseek-v4.1-flash')
         self.fallback_enabled = env.get('PI_AUTOWORK_NO_FALLBACK', '0') != '1'
@@ -231,23 +234,35 @@ def _tree(pid):
     return pids
 
 
-def stop_stuck_commands(runner_pid, limit, stopping, now=None):
+def stop_stuck_commands(runner_pid, limit, stopping, now=None, *, pi_pid=None, pi_started=None):
     """A tool command Pi started that has run longer than ``limit`` gets SIGTERM, then SIGKILL
     30 s later, with everything it started (TOOLSET-215-a8: one browser test hung for 89 of a
     worker's 90 minutes). Pi reports the failed call, so the worker continues the same attempt.
-    ``stopping`` maps pids already signalled to when; returns the commands stopped now."""
+    ``stopping`` maps process birth identities already signalled to when; returns the commands stopped now."""
+    if __package__:
+        from .processes import process_stat, start_time
+        from .pi_process import signal_owned_tree
+    else:
+        from processes import process_stat, start_time
+        from pi_process import signal_owned_tree
     now = time.monotonic() if now is None else now
     stopped = []
-    for pi in _children(runner_pid):  # `timeout` runs Pi as its child
+    for pi in _children(runner_pid):  # timeout or SDK host owns Pi directly
+        if pi_pid is not None and pi != pi_pid:
+            continue
+        parent = process_stat(pi)
+        if (parent is None or parent.parent != runner_pid
+                or (pi_started is not None and parent.started != pi_started)):
+            continue
         for command in _children(pi):
             line = _command(command)
-            if command in stopping:
-                if now - stopping[command] >= 30:
-                    for pid in _tree(command):
-                        try:
-                            os.kill(pid, signal.SIGKILL)
-                        except OSError:
-                            pass
+            born = start_time(command)
+            if not born:
+                continue
+            key = (command, born)
+            if key in stopping:
+                if now - stopping[key] >= 30:
+                    signal_owned_tree(command, born, signal.SIGKILL, parent=pi, parent_started=parent.started)
                 continue
             age = _age(command)
             directory = os.environ.get('AUTOWORK_WORKER_CHECK_DIR')
@@ -263,17 +278,30 @@ def stop_stuck_commands(runner_pid, limit, stopping, now=None):
                     end = max(end, finish)
             if age is None or age < limit or DAEMONS.search(line):
                 continue
-            for pid in reversed(_tree(command)):
-                try:
-                    os.kill(pid, signal.SIGTERM)
-                except OSError:
-                    pass
-            stopping[command] = now
+            if not signal_owned_tree(command, born, signal.SIGTERM, parent=pi, parent_started=parent.started):
+                continue
+            stopping[key] = now
             stopped.append((int(age // 60), line[:120]))
     return stopped
 
 
-def run_pi(s, directory, message, session, target, limit, extra, role=None):
+def run_pi(s, directory, message, session, target, limit, extra, role=None, task=''):
+    if s.transport == 'json':
+        result = run_json(s, directory, message, session, target, limit, extra, role)
+        result['transport'] = 'json'
+        return result
+    if s.transport != 'rpc':
+        return dict(analyse(''), rc=1, seconds=0, error='invalid PI_AUTOWORK_TRANSPORT',
+                    failure_kind='toolchain', retry_safe=False, transport=s.transport)
+    if __package__:
+        from . import pi_rpc
+    else:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from pi_autowork import pi_rpc
+    return pi_rpc.run(s, directory, message, session, target, limit, extra, role, task)
+
+
+def run_json(s, directory, message, session, target, limit, extra, role=None):
     runs = s.state / 'runs'
     runs.mkdir(parents=True, exist_ok=True)
     fd, raw = tempfile.mkstemp(prefix='run.', dir=runs)
@@ -337,7 +365,11 @@ def record(s, role, task, outcome, model, fallback, run, result='', *, directory
            'output_tokens': run.get('output_tokens'), 'cost_usd': run.get('cost'),
            'measured_cost_usd': run.get('measured_cost_usd', 0),
            'cost_source': run.get('cost_source', 'missing'), 'billing': run.get('billing'),
-           'error': run.get('error') or None, 'result': result or None}
+           'error': run.get('error') or None, 'result': result or None,
+           **{key: run.get(key) for key in ('transport', 'sdk_version', 'pi_version', 'session_id',
+                                          'generation', 'prompt_digest', 'failure_kind', 'cleanup_complete',
+                                          'startup_seconds', 'first_tool_seconds', 'tool_seconds',
+                                          'compactions', 'command_interruptions', 'usage_coverage', 'known_usage')}}
     try:
         accounting.append(s.state / 'runs.jsonl', row)
     except OSError as exc:
@@ -356,14 +388,20 @@ def job(s, role, task, directory, message, session, limit, extra):
                    directory=directory)
             return dict(ok=False, text='', notes=notes, why='no_model')
         telemetry.model_run(directory, role, task, chosen, 'selected')
-        run = run_pi(s, directory, message + note, session, chosen, limit, extra, role=role)
+        run = run_pi(s, directory, message + note, session, chosen, limit, extra, role=role, task=task)
+        kind = run.get('failure_kind')
+        # Cleanup uncertainty must survive STOP/timeout classification: callers
+        # must not dispose of scratch while owned descendants may remain.
+        if kind == 'cleanup_unproven' or (kind and not run.get('retry_safe', False)):
+            record(s, role, task, kind, chosen, reason, run, directory=directory)
+            return dict(ok=False, text='', notes=notes, why=kind)
         if STOP:
             record(s, role, task, 'interrupted', chosen, reason, run, directory=directory)
             return dict(ok=False, text='', notes=notes, why='interrupted')
         if run['rc'] == 124:
             record(s, role, task, 'timeout', chosen, reason, run, directory=directory)
             return dict(ok=False, text='', notes=notes, why='timeout')
-        if provider_failure(run) or not run['settled'] or run['aborted']:
+        if run['rc'] != 0 or provider_failure(run) or not run['settled'] or run['aborted']:
             kind = 'provider' if provider_failure(run) else 'crash'
             attempt += 1
             record(s, role, task, kind + '_failure', chosen, reason, run, directory=directory)

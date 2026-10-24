@@ -217,6 +217,39 @@ def _cleanup(pi, started):
             os.close(fd)
 
 
+def signal_owned_tree(pid, started, sig, *, parent, parent_started):
+    """Signal a freshly identified descendant subtree without PID-reuse races.
+
+    Validate root AND parent identities around pinning; an integer child-list
+    snapshot alone cannot establish ownership after PID reuse. Unlike guard
+    cleanup this does not reap another parent's children.
+    """
+    def owned():
+        ancestor = _stat(parent)
+        return (_stat(pid) == (parent, started) and ancestor is not None
+                and ancestor[1] == parent_started)
+    if not owned():
+        return False
+    root = _pin(pid, started)
+    if root is None:
+        return False
+    if not owned():
+        os.close(root)
+        return False
+    handles = {(pid, started): root}
+    try:
+        _discover(pid, started, handles, time.monotonic() + 1)
+        for fd in reversed(list(handles.values())):
+            try:
+                signal.pidfd_send_signal(fd, sig)
+            except ProcessLookupError:
+                pass
+        return True
+    finally:
+        for fd in handles.values():
+            os.close(fd)
+
+
 class _QuietParser(argparse.ArgumentParser):
     def error(self, message):
         # argparse's default error includes raw arguments on stderr.

@@ -464,6 +464,7 @@ class Fixture(unittest.TestCase):
         self.state = self.root / 'state'
         self.env = {**host_environment(), 'PATH': f"{self.bin}:{os.environ['PATH']}", 'FAKE_PI_LOG': str(self.log),
                     'FAKE_PI_PLAN': str(self.plan_file), 'FAKE_PI_ROOT': str(self.root),
+                    'PI_AUTOWORK_TRANSPORT': 'json',  # explicit legacy baseline; RPC has SDK subprocess fixtures
                     'FAKE_MAIN_REPO': str(self.repo), 'FAKE_PI_ENGINE': str(ENGINE_DIR),
                     'PI_AUTOWORK_CHECK_SLOTS': '0',  # fixture checks must not queue behind the host suite running them
                     'PI_AUTOWORK_TMP_STALE': '0',  # never sweep the host's real /tmp from a test
@@ -820,14 +821,16 @@ class EngineTests(Fixture):
             'autowork-execution' / 'cache'
         self.assertIn('for A (fake-sdk 1.0)', (cache / 'PROVISIONED.md').read_text())
 
-    def test_a_missing_tool_that_cannot_be_installed_waits_for_a_person_without_pausing_the_runner(self):
+    def test_incomplete_provisioning_stays_technical_without_pausing_the_runner(self):
         self.plan({'verify:A': ['env', 'env'], 'provision:A': ['block']})
         self.env['PI_AUTOWORK_MAX_FAILURES'] = '1'
         result = self.run_runner('--until-empty')
-        self.assertIn('A: could not install what its review needs (fake-sdk 1.0 (docs/SETUP.md)); it waits for a person',
-                      result.stdout)
+        self.assertIn('A: provisioning is incomplete; retained as a technical recovery hold', result.stdout)
+        self.assertNotIn('it waits for a person', result.stdout)
         self.assertNotIn('in a row; pausing new tasks', result.stdout)
         self.assertTrue(self.done('B'))
+        self.assertFalse(self.done('A'))
+        self.assertFalse(self.done('C'))
 
     def unrunnable_a(self):
         self.edit_task('A', {'checks': []})

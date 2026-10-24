@@ -68,6 +68,7 @@ class ProjectionTests(unittest.TestCase):
                 self.assertIsNone(result['tokens'])
                 self.assertFalse(result['usage_coverage']['tokens_complete'])
                 self.assertEqual(result['usage_coverage']['missing'], 1)
+                self.assertEqual(result['known_usage'],dict(totalTokens=7,input=6,output=1))
 
     def test_partial_stream_never_uses_streaming_usage_as_final(self):
         p = EventProjection()
@@ -103,7 +104,7 @@ class ProjectionTests(unittest.TestCase):
                 p.consume(event)
                 result = settle(p)
                 self.assertEqual(result['cost'], expected)
-                self.assertEqual(result['measured_cost_usd'], expected or 0)
+                self.assertEqual(result['measured_cost_usd'], expected)
         p = EventProjection()
         for billing, amount in (('api', 3), ('subscription', 0)):
             event = assistant()

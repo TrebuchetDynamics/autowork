@@ -1,0 +1,3 @@
+# Qualified SDK/Pi pair: pi-agent-python-sdk 0.2.6 / Pi 1.4.0.
+# Wheel only; no transitive dependencies. Never float this independently of native tests.
+pi-agent-python-sdk==0.2.6 --hash=sha256:64d76dee57a77260447b6354f1c9fae0ed7deb75667d9452b05c31348e6e8792

@@ -53,7 +53,7 @@ class InstalledPiContractTests(unittest.TestCase):
         self.addCleanup(isolated.stop)
         self.version = subprocess.check_output([PI, '--version'], text=True, timeout=15).strip()
         self.assertTrue(self.version, 'Pi did not report its installed version')
-        self.settings = pi_runtime.Settings(self.root / 'state', {'PI_BIN': PI})
+        self.settings = pi_runtime.Settings(self.root / 'state', {'PI_BIN': PI, 'PI_AUTOWORK_TRANSPORT': 'json'})
         self.flags = ['--offline', '--no-extensions', '--no-skills', '--no-context-files',
                       '--no-prompt-templates', '--no-themes', '--no-mcp',
                       '--extension', str(PROVIDER), '--tools', 'fixture_safe,fixture_unsafe',

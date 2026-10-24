@@ -293,7 +293,9 @@ class EventProjection:
                     input_tokens=self._sums['input'] if complete['input'] else None,
                     output_tokens=self._sums['output'] if complete['output'] else None,
                     cost=self._sums['cost'] if complete['cost'] else None,
-                    measured_cost_usd=self._sums['cost'],
+                    measured_cost_usd=self._sums['cost'] if self._known['cost'] else None,
+                    known_usage={field: self._sums[field] if self._known[field] else None
+                                 for field in ('totalTokens', 'input', 'output')},
                     cost_source='provider_reported' if self._known['cost'] else 'missing',
                     billing=('subscription' if count and self._subscription == count else
                              'mixed' if self._subscription else None),

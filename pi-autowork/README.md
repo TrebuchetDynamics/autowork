@@ -1,5 +1,10 @@
 # Pi Autowork component
 
+Execution defaults to SDK-backed Pi RPC. See [installation, lifecycle guarantees,
+controls and explicit JSON rollback](../docs/pi-rpc.md), and the separate
+[qualification evidence](../docs/research/pi-rpc-qualification-2026-10-24.md).
+An already-running release is not automatically upgraded by this source change.
+
 The `pi-autowork` runner. `scripts/pi-autowork.sh` is a thin entry point and the
 service command: it finds this component and runs `pi_autowork/cli.py`, which then
 continues in the toolset release it resolves. The generic task lifecycle (admission, slots,
@@ -15,7 +20,10 @@ repository, under `${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key
 | `pi_autowork/worker.py` | The engine-launched `--worker` and `--verify` modes |
 | `pi_autowork/service.py` | `--install-service` / `--remove-service` for `pi-autowork@<repository>.service` |
 | `pi_autowork/common.py` | Logging, Git helpers and task lifecycle words |
-| `pi_autowork/pi_runtime.py` | Runs one Pi job: model choice and fallback, bounded retries, timeouts, redacted `runs.jsonl` records of each run's tokens and billing provenance (the production CLI path; the TOOLSET-117-cb boundary is an isolated comparison spike, not wired into this runner) |
+| `pi_autowork/pi_runtime.py` | One Pi job: existing model/fallback policy, RPC by default, explicit JSON rollback, bounded retries and provenance-aware accounting |
+| `pi_autowork/pi_rpc.py` | Pinned AsyncPiClient host, immutable accepted input, session ownership, settlement, private live progress and opt-in bounded controls |
+| `pi_autowork/pi_process.py` | Linux parent/descendant ownership, pidfd signalling and cleanup receipts |
+| `pi_autowork/pi_events.py` | Bounded event projection, lifecycle timing and conservative usage coverage |
 | `pi_autowork/accounting.py`, `scorecard.py` | Private run/owner-time accounting and read-only scorecard aggregation; unknown billing is never priced or treated as zero |
 | `pi_autowork/health.py` | Per-runner `status.json`, one stall announcement per episode with its root blockers, and the `--fleet` view |
 | `pi_autowork/processes.py` | Shared Linux process start ticks, identity-aware liveness, runner ancestry and process names |
