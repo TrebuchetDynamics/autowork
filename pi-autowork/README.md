@@ -656,12 +656,15 @@ autowork scorecard --days 30 --baseline /private/baseline.json .
 Text, `--json` and `--csv` render the same evaluation metrics. JSON adds
 `runners.<name>.evaluation` and `overall`, while retaining the existing runner
 counters and `usage`. Each evaluation contains `summary`, `weeks`, `change`,
-`baseline` and `baseline_change`. Each metric has `value`, `unit` and `status`:
+`baseline`, `baseline_change` and separate `phase_diagnostics`. Each metric has
+`value`, `unit` and `status`:
 `measured`, `estimate` or `missing`; missing JSON values are `null`, CSV values
 are empty, and text says `missing`. Metadata (names, window bounds and week
 numbers) is not a metric. CSV is long-form: one row per scope, runner, period
 and metric, with the same labels and values as JSON. Periods are `summary`,
-`week-1` onward, `change`, `baseline` and `baseline_change`.
+`week-1` onward, `change`, `baseline`, `baseline_change` and
+`phase_diagnostics.<row>`. CSV also includes `cohort`, `identity` and `rules`
+columns for diagnostic rows (empty for other periods).
 
 Weeks are consecutive seven-day intervals from the window's start, oldest first;
 the final week can be shorter (two days for a 30-day window). Boundaries are epoch
@@ -704,6 +707,61 @@ Without `--baseline`, every format says `no baseline` and comparison values are
 missing. Keep baseline files and exported reports private; they can reveal
 repository names and operating costs. No evaluation output proves a live 30-day
 run; [the evaluation plan](../docs/evaluation.md#30-day-evaluation) keeps that separate.
+
+### Observed phase diagnostics
+
+`evaluation.phase_diagnostics` (also under `overall`) is an observed-subset
+report, not a replacement for strict whole-cohort summary timing. Each row has
+`cohort`, `identity`, `rules` and `metrics`; text and CSV expose the same labels,
+values and coverage. Rows are:
+
+| Row | Identity and endpoints |
+| --- | --- |
+| `task_accepted_to_dispatched` | Task: first acceptance → first dispatch; retries collapsed. |
+| `task_dispatched_to_integrated` | Task: first dispatch → first integration, including retry waits. |
+| `attempt_running_to_reported` | Task + attempt: first running → first reported. |
+| `attempt_reported_to_integrating` | Task + attempt: first reported → first integrating. |
+| `attempt_integrating_to_integrated` | Task + attempt: first integrating → first integrated; may include holds. |
+| `attempt_integrated_to_closed` | Task + attempt: first integrated → observed closed, matched to that attempt's ID. |
+| `all_attempt_exposure` | Separate all-outcome cohort: first running → first reported. |
+
+The six phase rows select tasks whose **latest receipt-valid verified close** lies
+in the report window, using the same closure dating as the summary. Task rows
+collapse retries; attempt rows retain distinct `(task_id, attempt_id)` keys for
+those tasks, including failed/retry attempts. All retained lifecycle and slot-state
+endpoints through cutoff can resolve a pair: starts may predate the window. Slot
+records without an attempt ID (or with `unknown`/`unassigned`) do not create
+invented attempts. A task-scoped close without an attempt ID cannot supply an
+attempt's close endpoint.
+
+Each row reports `eligible`, `observed_pairs`, `missing_start`,
+`missing_end_terminal`, `right_censored`, `reversed`, `median_minutes` and
+`p95_minutes`. Choose the first timestamp of each endpoint kind, not a later
+convenient pair: a reversed first pair stays excluded even when a later end would
+be ordered. Classify missing start first. A start without an end is terminal-missing
+only if a later attempt of the same task (by first observation) or a closed state
+is observed through cutoff at/after the phase start; otherwise it is
+right-censored. Task rows also use later-attempt evidence when no close endpoint
+is retained. A historical close cannot terminate newer work. A held/interrupted
+attempt can resume, so those states alone do not mean terminal failure. For phase
+rows, eligible equals the sum of observed, missing-start, terminal-missing,
+right-censored and reversed counts. Median and nearest-rank p95 use only observed
+pairs; empty samples have missing values, never fabricated zero latency.
+
+`all_attempt_exposure` instead selects first-running starts in the inclusive
+`[window_start, cutoff]` interval **across all outcomes**, including open and manually
+closed tasks. `missing_start` counts observed attempt keys without running;
+`left_excluded` counts starts before the window. Both are outside this row's
+`eligible` count. Sum only ordered pairs whose first report is also in the window,
+without clipping or extrapolation. `observed_completed_attempt_span_hours` is that
+sum in hours (missing without pairs). Parallel spans can overlap or include
+suspension: these are **attempt-span hours, never runner uptime**. The report does
+not derive deliveries/runner-hour from them. Missing delivered facts or explicit
+runner-availability intervals remain missing evidence, not inferred throughput.
+
+See the [phase cohort contract](../docs/evaluation.md#phase-cohort-and-endpoint-contract).
+Offline identity/coverage, missing-delivery and format-parity fixtures are in
+`pi-autowork/tests/test_scorecard.py`; they do not qualify live delivery or uptime.
 
 ### Accounting details
 

@@ -223,7 +223,8 @@ def measure(repo, days, now=None):
 def _collect(repo, days, now):
     since = now - days * 86400
     common = common_dir(repo)
-    events = journal_events(common, since) if common else []
+    retained_events = journal_events(common, -math.inf) if common else []
+    events = [e for e in retained_events if e['timestamp'] >= since]
     integrated, held, first_start, merge_minutes = 0, 0, {}, []
     for event in events:
         task, state, previous = event.get('task_id'), event.get('state'), event.get('previous_state')
@@ -267,7 +268,7 @@ def _collect(repo, days, now):
             'questions': owner_questions(repo, days),
             'regressions': attributed, 'regressions_incomplete': incomplete, 'usage': usage}
     return row, dict(repo=repo, tasks=snapshot.tasks if snapshot else {}, closings=closings,
-                     lifecycle=lifecycle, regressions=attributed)
+                     lifecycle=lifecycle, slot_events=retained_events, regressions=attributed)
 
 
 BASELINE_METRICS = ('cost_per_verified_task_usd', 'owner_minutes_per_verified_task')
@@ -323,7 +324,119 @@ def observations(data, now):
     attention_valid = not diagnostics['invalid_attention_records'] and all(
         accounting.number(r.get('minutes')) is not None for r in attention)
     return dict(data, completions=completion_times(data, now), by_task=by_task, recoveries=recoveries,
-                attention=attention, attention_valid=attention_valid)
+                attention=attention, attention_valid=attention_valid,
+                phase_endpoints=phase_endpoints(data, now))
+
+
+def phase_endpoints(data, now):
+    """First retained endpoints only; never manufacture an attempt for a legacy slot."""
+    tasks, attempts, closed = {}, {}, {}
+    facts = [(f['task_id'], f.get('attempt_id'), f['event'], f['timestamp'], f.get('scope'))
+             for f in data['lifecycle']]
+    facts.extend((e.get('task_id'), (e.get('slot') or {}).get('attempt_id'), e.get('state'),
+                  e['timestamp'], 'attempt') for e in data['slot_events'])
+    for task, attempt, kind, stamp, scope in facts:
+        if not task or stamp > now:
+            continue
+        endpoints = tasks.setdefault(task, {})
+        endpoints[kind] = min(endpoints.get(kind, stamp), stamp)
+        if kind == 'closed':
+            closed[task] = max(closed.get(task, -math.inf), stamp)
+        if (not attempt or attempt in ('unknown', 'unassigned')
+                or (scope == 'task' and kind != 'closed')):
+            continue
+        endpoints = attempts.setdefault((task, attempt), {})
+        endpoints[kind] = min(endpoints.get(kind, stamp), stamp)
+    # Attempt IDs are opaque. A later attempt means a later first observation,
+    # not lexicographic ID order, a hold or a guessed terminal outcome.
+    earliest, latest = {}, {}
+    for (task, _), endpoints in attempts.items():
+        stamp = min(endpoints.values())
+        earliest[task] = min(earliest.get(task, math.inf), stamp)
+        latest[task] = max(latest.get(task, -math.inf), stamp)
+    # Terminal evidence dates classification only, never a latency endpoint.
+    terminal = {key: max(closed.get(key[0], -math.inf),
+                         latest[key[0]] if min(endpoints.values()) < latest[key[0]] else -math.inf)
+                for key, endpoints in attempts.items()}
+    task_terminal = {task: max(closed.get(task, -math.inf),
+                              latest[task] if earliest.get(task, math.inf) < latest.get(task, -math.inf) else -math.inf)
+                     for task in tasks}
+    return dict(tasks=tasks, attempts=attempts, terminal=terminal, task_terminal=task_terminal)
+
+
+PHASES = (
+    ('task_accepted_to_dispatched', 'task_id', 'accepted', 'dispatched'),
+    ('task_dispatched_to_integrated', 'task_id', 'dispatched', 'integrated'),
+    ('attempt_running_to_reported', 'task_id+attempt_id', 'running', 'reported'),
+    ('attempt_reported_to_integrating', 'task_id+attempt_id', 'reported', 'integrating'),
+    ('attempt_integrating_to_integrated', 'task_id+attempt_id', 'integrating', 'integrated'),
+    ('attempt_integrated_to_closed', 'task_id+attempt_id', 'integrated', 'closed'),
+    ('all_attempt_exposure', 'task_id+attempt_id', 'running', 'reported'),
+)
+PHASE_RULES = (
+    'All retained lifecycle and slot-state endpoints through cutoff; first timestamp of each kind per identity. '
+    'Classify missing start first; ordered pairs are observed, reversed first pairs excluded even if a later end exists. '
+    'Start without end is missing_end_terminal only with a later attempt (by first observation) or observed closed state '
+    'at/after the phase start; '
+    'otherwise right_censored, including held/interrupted states. '
+    'No inferred endpoints or attempt IDs; unknown/unassigned IDs excluded from attempt rows. '
+    'Median and nearest-rank p95 use observed pairs only; empty distributions are missing.'
+)
+
+
+def phase_diagnostics(sources, since, now):
+    """Pool observed subsets and coverage independently of strict whole-cohort metrics."""
+    result = {}
+    for name, identity, first, last in PHASES:
+        exposure = name == 'all_attempt_exposure'
+        task_phase = identity == 'task_id'
+        counts = dict(eligible=0, observed_pairs=0, missing_start=0, missing_end_terminal=0,
+                      right_censored=0, reversed=0)
+        left_excluded, samples = 0, []
+        for data in sources:
+            verified = {t for t, (stamp, kind) in data['completions'].items()
+                        if kind == 'verified' and since <= stamp <= now}
+            endpoints = data['phase_endpoints']
+            rows = ({t: endpoints['tasks'].get(t, {}) for t in verified} if task_phase else
+                    {key: stamps for key, stamps in endpoints['attempts'].items()
+                     if exposure or key[0] in verified})
+            for key, stamps in rows.items():
+                a, b = stamps.get(first), stamps.get(last)
+                if exposure and a is not None and a < since:
+                    left_excluded += 1
+                    continue
+                # Exposure selects known in-window starts. Missing starts are
+                # disclosed separately, outside that cohort's eligible count.
+                counts['eligible'] += not exposure or a is not None
+                if a is None:
+                    counts['missing_start'] += 1
+                elif b is None:
+                    terminal = endpoints['task_terminal' if task_phase else 'terminal'].get(key, -math.inf) >= a
+                    counts['missing_end_terminal' if terminal else 'right_censored'] += 1
+                elif b < a:
+                    counts['reversed'] += 1
+                else:
+                    counts['observed_pairs'] += 1
+                    samples.append((b - a) / 60)
+        unit = 'tasks' if task_phase else 'attempts'
+        metrics = {key: metric(value, unit) for key, value in counts.items()}
+        metrics.update(median_minutes=metric(statistics.median(samples) if samples else None, 'minutes'),
+                       p95_minutes=metric(sorted(samples)[math.ceil(.95 * len(samples)) - 1]
+                                          if samples else None, 'minutes'))
+        cohort = ('Tasks with latest receipt-valid verified close in [window_start, cutoff]; starts may predate window. '
+                  + ('Retries collapsed.' if task_phase else 'Distinct attempts retained, including failed/retry attempts.'))
+        rules = PHASE_RULES
+        if exposure:
+            cohort = 'Attempts with first running in [window_start, cutoff], across all outcomes.'
+            rules += (' First reported must also be in that window; no clipping or extrapolation. '
+                      'missing_start and left_excluded are outside eligible; starts before window are left_excluded. '
+                      'Observed completed attempt-span hours may overlap or include suspension: never runner uptime or delivery throughput.')
+            metrics.update(left_excluded=metric(left_excluded, 'attempts'),
+                           observed_completed_attempt_span_hours=metric(sum(samples) / 60 if samples else None, 'hours'))
+        else:
+            rules += ' eligible = observed_pairs + missing_start + missing_end_terminal + right_censored + reversed.'
+        result[name] = dict(cohort=cohort, identity=identity, rules=rules, metrics=metrics)
+    return result
 
 
 def period_metrics(sources, start, end, *, final=False):
@@ -411,7 +524,8 @@ def evaluation(sources, since, now, baseline):
                           metrics=period_metrics(sources, start, end, final=end == now)))
         start = end
     estimates = {k: metric(baseline[k] if baseline else None, summary[k]['unit'], 'estimate') for k in BASELINE_METRICS}
-    return dict(summary=summary, weeks=weeks, change=differences(weeks[0]['metrics'], weeks[-1]['metrics']),
+    return dict(summary=summary, phase_diagnostics=phase_diagnostics(sources, since, now),
+                weeks=weeks, change=differences(weeks[0]['metrics'], weeks[-1]['metrics']),
                 baseline=dict(description='owner-supplied baseline' if baseline else 'no baseline', metrics=estimates),
                 baseline_change=differences(estimates, {k: summary[k] for k in BASELINE_METRICS}, 'estimate'))
 
@@ -444,13 +558,20 @@ def metric_rows(card):
     yield 'change', card['change']
     yield 'baseline', card['baseline']['metrics']
     yield 'baseline_change', card['baseline_change']
+    for name, row in card['phase_diagnostics'].items():
+        yield f'phase_diagnostics.{name}', row['metrics']
+
+
+def phase_labels(card, period):
+    return card['phase_diagnostics'].get(period.removeprefix('phase_diagnostics.'), {})
 
 
 def csv_report(result):
     """Lossless long-form metrics; empty values mean missing, never numeric zero."""
     output = io.StringIO(newline='')
     writer = csv.writer(output)
-    writer.writerow(['scope', 'runner', 'period', 'since', 'until', 'days', 'metric', 'value', 'status', 'unit', 'baseline'])
+    writer.writerow(['scope', 'runner', 'period', 'since', 'until', 'days', 'metric', 'value', 'status', 'unit', 'baseline',
+                     'cohort', 'identity', 'rules'])
     cards = [('runner', n, r['evaluation']) for n, r in result['runners'].items()]
     cards.append(('overall', '', result['overall']))
     for scope, name, card in cards:
@@ -459,7 +580,8 @@ def csv_report(result):
             window = weeks.get(period, result)
             for key, value in metrics.items():
                 writer.writerow([scope, name, period, window['since'], window['until'], window['days'],
-                                 key, value['value'], value['status'], value['unit'], card['baseline']['description']])
+                                 key, value['value'], value['status'], value['unit'], card['baseline']['description'],
+                                 *(phase_labels(card, period).get(label, '') for label in ('cohort', 'identity', 'rules'))])
     return output.getvalue()
 
 
@@ -470,6 +592,9 @@ def report_table(result):
     for name, card in cards:
         lines.append(f'\n{name}: evaluation ({card["baseline"]["description"]})')
         for period, metrics in metric_rows(card):
+            labels = phase_labels(card, period)
+            if labels:
+                lines.append(f'  {period}: ' + '; '.join(f'{key}={labels[key]}' for key in ('cohort', 'identity', 'rules')))
             lines.append(f'  {period}: ' + '; '.join(
                 f'{key}={value["value"]:g} {value["unit"]} [{value["status"]}]'
                 if value['value'] is not None else f'{key}=missing [missing]' for key, value in metrics.items()))

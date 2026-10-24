@@ -338,6 +338,9 @@ class ScorecardTests(unittest.TestCase):
             periods = [('summary', card['summary']), ('change', card['change']),
                        ('baseline', card['baseline']['metrics']), ('baseline_change', card['baseline_change'])]
             periods += [(f'week-{w["week"]}', w['metrics']) for w in card['weeks']]
+            self.assertIn('phase_diagnostics', card)
+            periods += [(f'phase_diagnostics.{name}', row['metrics'])
+                        for name, row in card['phase_diagnostics'].items()]
             for period, metrics in periods:
                 for name, metric in metrics.items():
                     matches = [r for r in exported if (r['scope'], r['runner'], r['period'], r['metric']) ==
@@ -346,12 +349,137 @@ class ScorecardTests(unittest.TestCase):
                     row = matches[0]
                     self.assertEqual((row['status'], row['unit']), (metric['status'], metric['unit']))
                     self.assertEqual(float(row['value']) if row['value'] else None, metric['value'])
+                    if period.startswith('phase_diagnostics.'):
+                        phase = card['phase_diagnostics'][period.split('.', 1)[1]]
+                        for label in ('cohort', 'identity', 'rules'):
+                            self.assertEqual(row[label], phase[label])
         text = self.scorecard_command()
+        for name, phase in evaluation['phase_diagnostics'].items():
+            self.assertIn(f'phase_diagnostics.{name}', text)
+            for label in ('cohort', 'identity', 'rules'):
+                self.assertIn(phase[label], text)
+            for key, value in phase['metrics'].items():
+                rendered = (f'{key}={value["value"]:g} {value["unit"]} [{value["status"]}]'
+                            if value['value'] is not None else f'{key}=missing [missing]')
+                self.assertIn(rendered, text)
         self.assertIn('no baseline', text)
         self.assertIn('week-5', text)
         # A Git close exactly at the inclusive start belongs to the window.
         boundary = scorecard.report([(self.repo, 'fixture')], 28, now=int(self.now))
         self.assertEqual(boundary['overall']['summary']['verified_tasks']['value'], 2)
+
+    def test_phase_diagnostics_keep_attempt_identity_and_coverage(self):
+        self.evaluation_fixture()
+        start = self.now - 30 * DAY
+        # Minutes from window start; A's starts predate the window. Slot states
+        # supply running/reported/integrating, which lifecycle facts do not collect.
+        rows = [
+            ('A', 'a1', [('accepted', -1440), ('dispatched', -720), ('running', -600),
+                         ('reported', -540), ('integrating', -570), ('integrating', -510)]),
+            ('A', 'a2', [('dispatched', 60), ('running', 120), ('reported', 180),
+                         ('integrating', 240), ('integrated', 300), ('closed', 2880)]),
+            ('A', 'a3', [('reported', 360)]),
+            ('B', 'b1', [('running', 41600), ('reported', 41660), ('integrating', 41680),
+                         ('integrated', 41700), ('dispatched', 41760), ('closed', 41760),
+                         ('integrated', 41800)]),  # later end cannot repair reversal
+            ('OPEN', 'o1', [('running', 400), ('reported', 460)]),
+            ('OPEN', 'o2', [('running', 500), ('held', 510)]),  # later attempt => terminal
+            ('OPEN', 'o3', [('running', 600), ('interrupted', 610)]),
+            ('HELD', None, [('closed', -10)]),  # old close cannot terminate later work
+            ('HELD', 'h', [('running', 700), ('held', 710)]),  # hold alone is not terminal
+            ('HELD', 'future', [('running', 43201)]),  # cannot terminate h at cutoff
+            ('NO-START', 'u', [('reported', 800), ('closed', 810)]),
+            ('REVERSED', 'r', [('running', 900), ('reported', 850), ('reported', 950)]),
+            ('FUTURE', 'f', [('running', 1000), ('reported', 43201)]),
+            ('BOUNDARY', 'z', [('running', 43200), ('reported', 43200)]),
+            ('BOUNDARY', 'start', [('running', 0), ('reported', 0)]),
+            ('MANUAL', 'm', [('running', 1100), ('reported', 1220)]),
+            ('LEGACY', None, [('running', 1300), ('reported', 1360)]),
+        ]
+        envelopes = []
+        for task, attempt, endpoints in rows:
+            for kind, minute in endpoints:
+                stamp = start + minute * 60
+                fact = dict(event_id=f'{task}-{attempt}-{kind}-{minute}', task_id=task,
+                            attempt_id=attempt, event=kind, timestamp=stamp,
+                            scope='task' if kind in ('accepted', 'closed') else 'attempt')
+                if kind in ('running', 'reported', 'integrating', 'held'):
+                    envelopes.append(dict(event='slot_changed', timestamp=stamp, task_id=task,
+                                          state=kind, slot=dict(attempt_id=attempt)))
+                else:
+                    envelopes.append(dict(event='task_lifecycle', timestamp=stamp, lifecycle=[fact, fact]))
+        journal = self.repo / '.git/autowork-execution/journal.jsonl'
+        journal.write_text(''.join(json.dumps(e) + '\n' for e in reversed(envelopes + envelopes)))
+        result = scorecard.report([(self.repo, 'fixture')], 30, now=self.now)
+        self.assertIn('phase_diagnostics', result['overall'])
+        phases = result['overall']['phase_diagnostics']
+        # eligible, observed, missing start, terminal missing end, censored, reversed, median, p95
+        expected = {
+            'task_accepted_to_dispatched': (2, 1, 1, 0, 0, 0, 720, 720),
+            'task_dispatched_to_integrated': (2, 1, 0, 0, 0, 1, 1020, 1020),
+            'attempt_running_to_reported': (4, 3, 1, 0, 0, 0, 60, 60),
+            'attempt_reported_to_integrating': (4, 2, 0, 1, 0, 1, 40, 60),
+            'attempt_integrating_to_integrated': (4, 2, 1, 1, 0, 0, 40, 60),
+            'attempt_integrated_to_closed': (4, 2, 2, 0, 0, 0, 1320, 2580),
+            'all_attempt_exposure': (11, 6, 2, 1, 3, 1, 60, 120),
+        }
+        fields = ('eligible', 'observed_pairs', 'missing_start', 'missing_end_terminal',
+                  'right_censored', 'reversed', 'median_minutes', 'p95_minutes')
+        for name, want in expected.items():
+            with self.subTest(phase=name):
+                row = phases[name]
+                self.assertEqual(tuple(row['metrics'][k]['value'] for k in fields), want)
+                self.assertEqual(row['identity'], 'task_id' if name.startswith('task_') else 'task_id+attempt_id')
+                for rule in ('first timestamp', 'missing start first', 'later attempt', 'closed state', 'held', 'cutoff'):
+                    self.assertIn(rule, row['rules'])
+                if name != 'all_attempt_exposure':
+                    self.assertIn('latest receipt-valid verified close', row['cohort'])
+                    self.assertIn('starts may predate window', row['cohort'])
+        exposure = phases['all_attempt_exposure']
+        self.assertIn('across all outcomes', exposure['cohort'])
+        self.assertIn('missing_start and left_excluded are outside eligible', exposure['rules'])
+        self.assertEqual(exposure['metrics']['left_excluded']['value'], 1)
+        self.assertEqual(exposure['metrics']['observed_completed_attempt_span_hours']['value'], 5)
+        self.assertEqual(result['runners']['fixture']['usage']['delivered_tasks'], 0)
+        # A's older close is outside a shorter completion window, but B still qualifies.
+        narrow = scorecard.report([(self.repo, 'fixture')], 7, now=self.now)['overall']['phase_diagnostics']
+        self.assertEqual(narrow['task_accepted_to_dispatched']['metrics']['eligible']['value'], 1)
+        for field in ('median_minutes', 'p95_minutes'):
+            self.assertEqual(narrow['task_accepted_to_dispatched']['metrics'][field]['status'], 'missing')
+        self.assertEqual(narrow['attempt_running_to_reported']['metrics']['eligible']['value'], 1)
+        # Git verifies A's close, but retained telemetry has no dispatch/close.
+        # Later attempts still prove its missing dispatch is terminal, not censored.
+        without_ends = [e for e in envelopes if not any(
+            f['task_id'] == 'A' and f['event'] in ('dispatched', 'closed') for f in e.get('lifecycle', []))]
+        journal.write_text(''.join(json.dumps(e) + '\n' for e in without_ends))
+        phase = scorecard.report([(self.repo, 'fixture')], 30, now=self.now)['overall'][
+            'phase_diagnostics']['task_accepted_to_dispatched']['metrics']
+        self.assertEqual((phase['missing_end_terminal']['value'], phase['right_censored']['value']), (1, 0))
+
+    def test_missing_delivery_and_uptime_stay_unknown(self):
+        self.evaluation_fixture()
+        journal = self.repo / '.git/autowork-execution/journal.jsonl'
+        envelope = json.loads(journal.read_text())
+        envelope['lifecycle'] = [f for f in envelope['lifecycle'] if f['event'] != 'delivered']
+        journal.write_text(json.dumps(envelope) + '\n')
+        with journal.open('a') as stream:
+            for kind, age in [('running', 180), ('reported', 60)]:
+                stream.write(json.dumps(dict(event='slot_changed', timestamp=self.now - age * 60,
+                                            task_id='B', state=kind, slot=dict(attempt_id='a1'))) + '\n')
+        result = scorecard.report([(self.repo, 'fixture')], 30, now=self.now)
+        usage = result['runners']['fixture']['usage']
+        self.assertEqual(usage['delivered_tasks'], 0)
+        self.assertIsNone(usage['cost_per_delivered_task_usd'])
+        card = result['overall']
+        self.assertIsNone(card['summary']['accepted_to_delivered_median_minutes']['value'])
+        self.assertIsNone(card['summary']['accepted_to_delivered_p95_minutes']['value'])
+        self.assertIn('phase_diagnostics', card)
+        exposure = card['phase_diagnostics']['all_attempt_exposure']['metrics']
+        self.assertEqual(exposure['observed_completed_attempt_span_hours']['value'], 2)
+        # There is no availability collector: exposure must not create a throughput
+        # or uptime summary metric. Existing dispatch timing remains unchanged.
+        self.assertFalse(any('runner_hour' in k or 'uptime' in k for k in card['summary']))
+        self.assertEqual(card['summary']['dispatch_to_integrated_median_minutes']['value'], 120)
 
     def test_empty_evaluation_rates_are_missing_and_manual_closure_is_an_intervention(self):
         self.commit_files(store(A='open'), age_days=31)
@@ -378,6 +506,9 @@ class ScorecardTests(unittest.TestCase):
         self.assertEqual(metrics['cost_per_verified_task_usd']['value'], 16 / 3)
         self.assertEqual(metrics['unattended_completion_percentage']['value'], 200 / 3)
         self.assertEqual(metrics['regression_rate']['value'], 2 / 3)
+        phase = report['overall']['phase_diagnostics']['task_dispatched_to_integrated']['metrics']
+        self.assertEqual((phase['eligible']['value'], phase['median_minutes']['value'], phase['p95_minutes']['value']),
+                         (3, 60, 180))
 
     def test_reopened_task_reclosed_in_window_is_counted_once_in_its_latest_week(self):
         self.evaluation_fixture()
