@@ -1,5 +1,6 @@
 """Headless TUI pilot, run by test_fleet_view under `uv run --with textual==8.2.8`."""
 import asyncio
+from contextlib import asynccontextmanager, ExitStack
 from dataclasses import replace
 import json
 import os
@@ -24,21 +25,94 @@ class Result:
     returncode, stdout, stderr = 0, 'ok', ''
 
 
+def read_state(app):
+    def tokens(reads):
+        return [(t.kind, t.generation, t.epoch, t.cancelled, t.done.done()) for t in reads.values()]
+    return dict(epoch=app.read_epoch, applied=dict(app.reader.applied),
+                active=tokens(app.reads.active), pending=tokens(app.reads.pending),
+                errors=dict(app.__dict__.get('_read_errors', {})))
+
+
 async def drain_reads(app):
     async def drained():
         while app.reads.active or app.reads.pending:
             await asyncio.sleep(0.01)
-    await asyncio.wait_for(drained(), 10)
+    try:
+        await asyncio.wait_for(drained(), 10)
+    except TimeoutError as exc:
+        raise AssertionError(('physical readers did not drain', read_state(app))) from exc
+
+
+@asynccontextmanager
+async def run_pilot(app, **kwargs):
+    """Keep real read timers paused except in the explicit timer case; join on failure too."""
+    timers = {}
+    set_interval = FleetApp.set_interval
+    def paused_interval(owner, interval, callback, **options):
+        options['pause'] = True
+        timer = set_interval(owner, interval, callback, **options)
+        timers[callback] = timer
+        return timer
+    with ExitStack() as patches:
+        for cls in (FleetApp, LogScreen, WorkerScreen, TasksScreen, TaskScreen):
+            patches.enter_context(mock.patch.object(cls, 'set_interval', new=paused_interval))
+        try:
+            async with app.run_test(**kwargs) as pilot:
+                pilot.read_timers = timers
+                try:
+                    yield pilot
+                finally:
+                    for timer in timers.values():
+                        timer.pause()
+                    await drain_reads(app)
+                    # Finish fixture commands while call_from_thread still has
+                    # a live app; DirectoryTree workers are cancelled on unmount.
+                    for worker in list(app.workers):
+                        if worker.group in ('actions', 'prepare'):
+                            await worker.wait()
+                    await drain_reads(app)
+        finally:
+            for timer in timers.values():
+                timer.pause()
+            if hasattr(app, 'reads'):
+                # Textual has unmounted/cancelled its workers. Subscription
+                # cancellation alone does not finish the executor's physical reads.
+                app.reads.close()
+                try:
+                    await drain_reads(app)
+                finally:
+                    await asyncio.to_thread(app.reads.executor.shutdown, wait=True)
+
+
+@asynccontextmanager
+async def patched_reads(app, *patches):
+    """No physical reader may straddle a synthetic provider's lifetime."""
+    await drain_reads(app)
+    with ExitStack() as stack:
+        for patch in patches:
+            stack.enter_context(patch)
+        try:
+            yield
+        finally:
+            await drain_reads(app)
 
 
 async def refresh(app, pilot):
+    # Explicit refresh invalidates subscriptions, not physical reads. Settle
+    # the previous case first so its loader cannot consume this case's provider.
+    await drain_reads(app)
     token = app.action_refresh()
     if token is not None:
         async def applied():
             while app.reader.applied.get('fleet', -1) < token.generation:
                 await asyncio.sleep(0.01)
-        await asyncio.wait_for(applied(), 10)
+        try:
+            await asyncio.wait_for(applied(), 10)
+        except TimeoutError as exc:
+            raise AssertionError(('fleet refresh not applied', token.generation,
+                                  token.cancelled, read_state(app))) from exc
     await pilot.pause()
+    await drain_reads(app)
 
 
 async def blocked_readers(app, pilot):
@@ -55,6 +129,7 @@ async def blocked_readers(app, pilot):
         ('code_stamp', lambda: app.reload_if_updated(), ('down',), None),
     )
     for name, opening, keys, screen_type in providers:
+        await drain_reads(app)
         entered, release = threading.Event(), threading.Event()
         module = sys.modules['pi_autowork.tui'] if name == 'code_stamp' else fleet_view
         original = app.list_models if name == 'models' else getattr(module, name)
@@ -69,11 +144,12 @@ async def blocked_readers(app, pilot):
         # Default discovery must be fresh per opening and scoped to the service,
         # not the deliberately different PI_CODING_AGENT_DIR in the viewing shell.
         saved_models = app.list_models
-        try:
-            with mock.patch.object(module, name, side_effect=stalled) as provider:
+        refreshing = None
+        with mock.patch.object(module, name, side_effect=stalled) as provider:
+            try:
                 if name == 'models':
                     app.list_models = provider
-                opening()
+                token = opening()
                 assert await asyncio.to_thread(entered.wait, 5), name + ' not entered'
                 if screen_type:
                     assert isinstance(app.screen, screen_type), (name, app.screen)
@@ -92,11 +168,25 @@ async def blocked_readers(app, pilot):
                 if name == 'collect_for_tui':
                     for _ in range(12):
                         app.poll_refresh()
-        finally:
-            release.set()
-            app.list_models = saved_models
-        # Drain physical completions while patches/fixtures are still valid.
-        await drain_reads(app)
+                    # A fixture refresh must settle old physical work before it
+                    # invalidates subscriptions or swaps the next case's provider.
+                    started = asyncio.Event()
+                    async def while_reading():
+                        started.set()
+                        await refresh(app, pilot)
+                    refreshing = asyncio.create_task(while_reading())
+                    await started.wait()
+                    assert not token.cancelled, (
+                        'refresh retired an outstanding reader', token.generation,
+                        read_state(app))
+            finally:
+                release.set()
+                try:
+                    if refreshing is not None:
+                        await refreshing
+                    await drain_reads(app)
+                finally:
+                    app.list_models = saved_models
         if name == 'models':
             assert context['agent_dir'] == str(Path.home() / '.pi/agent'), context
         await pilot.pause()
@@ -120,6 +210,7 @@ async def blocked_readers(app, pilot):
             assert 'a JOURNAL' not in '\n'.join(line.text for line in journal.lines), 'wrong runner journal retained'
         finally:
             release.set()
+            await drain_reads(app)
         await token.wait()
     assert 'b JOURNAL' in '\n'.join(line.text for line in journal.lines)
     await refresh(app, pilot)
@@ -156,7 +247,7 @@ async def task_inventory_viewport(app, pilot):
         selected = replace(original)
         selected.snapshot = snapshot
         envelope = fleet_view.FleetSnapshot((selected,), (snapshot,), 7, time.time())
-        with mock.patch.object(fleet_view, 'collect_for_tui', return_value=envelope):
+        async with patched_reads(app, mock.patch.object(fleet_view, 'collect_for_tui', return_value=envelope)):
             await refresh(app, pilot)
             app.push_screen(TasksScreen(selected.name))
             await pilot.pause()
@@ -234,11 +325,8 @@ async def immediate_deletion():
         app = FleetApp(command='aw', script='unused', state_root=base, env_dir=base,
                        runner_cmd=run, view_only=False)
         with mock.patch.object(fleet_view, 'collect_for_tui', return_value=envelope), \
-                mock.patch.object(fleet_view, 'logs', return_value=''), \
-                mock.patch.object(FleetApp, 'set_interval'), \
-                mock.patch.object(TasksScreen, 'set_interval'), \
-                mock.patch.object(TaskScreen, 'set_interval'):
-            async with app.run_test(size=(150, 45)) as pilot:
+                mock.patch.object(fleet_view, 'logs', return_value=''):
+            async with run_pilot(app, size=(150, 45)) as pilot:
                 await refresh(app, pilot)
                 app.push_screen(TasksScreen('fixture'))
                 await pilot.pause()
@@ -262,7 +350,7 @@ async def immediate_deletion():
                 await drain_reads(app)
                 assert detail_screen.entry
                 app.runners = [runner, other]
-                with mock.patch.object(fleet_view, 'collect_for_tui', side_effect=blocked):
+                async with patched_reads(app, mock.patch.object(fleet_view, 'collect_for_tui', side_effect=blocked)):
                     try:
                         app.poll_refresh()
                         assert await asyncio.to_thread(entered.wait, 5)
@@ -323,7 +411,7 @@ async def immediate_deletion():
                 subprocess.run(['git', '-C', str(repo), 'restore', 'tasks'], check=True)
                 fresh = task_snapshot.capture(repo, engine_observation={}, generation=10)
                 restored = fleet_view.FleetSnapshot((replace(runner, snapshot=fresh),), (fresh,), 10, time.time())
-                with mock.patch.object(fleet_view, 'collect_for_tui', return_value=restored):
+                async with patched_reads(app, mock.patch.object(fleet_view, 'collect_for_tui', return_value=restored)):
                     await refresh(app, pilot)
                 assert app.screen.query_one('#tasks').row_count == 1
                 assert not app.pending_deletions and fresh.revision == snap.revision
@@ -332,7 +420,7 @@ async def immediate_deletion():
                 new_action = next(a for a in app.screen.actions(app.screen.current()) if a.key == 'x')
                 retargeted_runner = replace(other, name='fixture')
                 retargeted = fleet_view.FleetSnapshot((retargeted_runner,), (other_snap,), 11, time.time())
-                with mock.patch.object(fleet_view, 'collect_for_tui', return_value=retargeted):
+                async with patched_reads(app, mock.patch.object(fleet_view, 'collect_for_tui', return_value=retargeted)):
                     app.push_screen(Confirm(new_action.confirm), lambda yes: yes and app.execute(new_action))
                     await pilot.pause()
                     app.runners = [retargeted_runner]  # retarget the name while confirmation is open
@@ -354,7 +442,7 @@ async def immediate_deletion():
                 (repo / 'tasks/items/T-1.md').write_bytes(saved_record)
                 recreated = task_snapshot.capture(repo, engine_observation={}, generation=11)
                 recreated_fleet = fleet_view.FleetSnapshot((replace(runner, snapshot=recreated),), (recreated,), 11, time.time())
-                with mock.patch.object(fleet_view, 'collect_for_tui', return_value=recreated_fleet):
+                async with patched_reads(app, mock.patch.object(fleet_view, 'collect_for_tui', return_value=recreated_fleet)):
                     await refresh(app, pilot)
                 assert fleet_view.task_counts(app.current())[-1] == 0
                 assert app.screen.query_one('#tasks').row_count == 0
@@ -373,7 +461,7 @@ async def immediate_deletion():
                         assert commit_release.wait(10), 'commit reconciliation watchdog'
                         return committed_fleet
                     return envelope if kwargs['generation'] in stale_generation else committed_fleet
-                with mock.patch.object(fleet_view, 'collect_for_tui', side_effect=commit_read):
+                async with patched_reads(app, mock.patch.object(fleet_view, 'collect_for_tui', side_effect=commit_read)):
                     try:
                         app.action_refresh()
                         assert await asyncio.to_thread(commit_entered.wait, 5)
@@ -491,7 +579,7 @@ async def main():
         app = FleetApp(command='aw', script='pa.sh', state_root=base / 'state', env_dir=env,
                        systemctl=str(systemctl), journalctl=str(journal), agent=None, runner_cmd=run,
                        browse_root=str(tree), list_models=lambda: ['openai-codex/gpt-6-luna', 'openai-codex/gpt-6.1-sol'])
-        async with app.run_test(size=(150, 45)) as pilot:
+        async with run_pilot(app, size=(150, 45)) as pilot:
             # A resize can paint before the first fleet read returns: say loading, not "no runners".
             app.fleet_snapshot = None
             app.runners = []
@@ -541,7 +629,7 @@ async def main():
             observed = replace(original_runner, state='working', lanes=[fleet_view.Lane('ORPHAN', 'integrated')])
             fleet_view.snapshot_for(observed)
             envelope = fleet_view.FleetSnapshot((observed,), (observed.snapshot,), 7, time.time())
-            with mock.patch.object(fleet_view, 'collect_for_tui', return_value=envelope):
+            async with patched_reads(app, mock.patch.object(fleet_view, 'collect_for_tui', return_value=envelope)):
                 await refresh(app, pilot)
                 shown = str(app.query_one('#detail').render())
                 assert '1 mergeable' not in shown and '2 waiting' in shown, shown
@@ -596,8 +684,8 @@ async def main():
                         selected = replace(runner, service=service, state=state_name) if service else None
                         envelope = fleet_view.FleetSnapshot((selected,) if selected else (),
                             (fleet_view.snapshot_for(selected),) if selected else (), 1, time.time())
-                        with mock.patch.object(fleet_view, 'collect_for_tui', return_value=envelope), \
-                                mock.patch.object(portal, 'probe', side_effect=AssertionError('fleet key probed Portal')):
+                        async with patched_reads(app, mock.patch.object(fleet_view, 'collect_for_tui', return_value=envelope),
+                                mock.patch.object(portal, 'probe', side_effect=AssertionError('fleet key probed Portal'))):
                             await refresh(app, pilot)
                             expected = ('view only  Log  Blockers  Quit' if selected else '') if view_only else menu
                             assert str(menubar.render()).strip() == expected, menubar.render()
@@ -694,7 +782,16 @@ async def main():
             await pilot.press('t')                      # Tasks: every open task in priority order
             await pilot.pause()
             assert isinstance(app.screen, TasksScreen), app.screen
-            await pilot.pause(REFRESH + 0.5)            # the main screen's refresh runs beneath it
+            fleet_timer = pilot.read_timers[app.poll_refresh]
+            generation = app.reader.applied['fleet']
+            try:
+                fleet_timer.resume()
+                await pilot.pause(REFRESH + 0.5)        # the main screen's refresh runs beneath it
+            finally:
+                fleet_timer.pause()
+                await drain_reads(app)
+            assert isinstance(app.screen, TasksScreen), app.screen
+            assert app.reader.applied['fleet'] > generation, read_state(app)
             tasks = app.screen.query_one('#tasks')
             assert [str(tasks.get_row_at(i)[1]) for i in range(tasks.row_count)] == ['TASK-034', 'T-9', 'TASK-040']
             assert str(tasks.get_row_at(0)[2]) == 'Ship it'  # its short name
@@ -820,6 +917,7 @@ async def main():
                     await pilot.pause()
                     assert len(calls) == before, 'cancel must not prepare or start'
                     await pilot.press('p')
+                    await drain_reads(app)
                     await pilot.pause()
                 if name == 'fresh':  # Embedded Plan opens without launching a model or service.
                     from pi_autowork.planning_ui import PlanScreen
@@ -831,6 +929,7 @@ async def main():
                     await pilot.pause()
                     assert app.screen is screen
                     await pilot.press('p')
+                    await drain_reads(app)
                     await pilot.pause()
                 app.screen.query_one('#' + button).press()
                 await pilot.pause()
@@ -846,6 +945,7 @@ async def main():
                     await pilot.pause()
                     assert app.screen is screen and len(calls) == before, 'cancel must not force'
                     await pilot.press('p')
+                    await drain_reads(app)
                     await pilot.pause()
                     app.screen.query_one('#force').press()
                     await pilot.pause()
@@ -881,7 +981,12 @@ async def main():
                 if starts:
                     await pilot.press('y')              # starting still asks for confirmation
                     await pilot.pause()
-                    await app.workers.wait_for_complete()
+                    await drain_reads(app)             # confirmed Start first reads readiness
+                    # Closing Browse cancels its DirectoryTree loader; only the
+                    # action worker must complete, not that retired loader.
+                    for worker in list(app.workers):
+                        if worker.group == 'actions':
+                            await worker.wait()
                     assert calls[before + 1:] == [['aw', 'start', str(tree / name)]], calls
                 else:
                     assert app.screen is screen, 'Prepare must not offer Start before readiness passes'
@@ -898,6 +1003,7 @@ async def main():
             await pilot.pause()
             assert screen.chosen.ready, screen.chosen
             await pilot.press('p')
+            await drain_reads(app)
             await pilot.pause()
             # A discarded confirmed readiness read must release duplicate-Start
             # protection, even if the browser closed before physical completion.
@@ -915,7 +1021,7 @@ async def main():
                     assert len(app.screen_stack) == 1
                 finally:
                     release.set()
-                await drain_reads(app)
+                    await drain_reads(app)
                 await pilot.pause()
             await pilot.press('n')
             await pilot.pause()
@@ -926,16 +1032,20 @@ async def main():
             await drain_reads(app)
             await pilot.pause()
             await pilot.press('p')
+            await drain_reads(app)
             await pilot.pause()
             assert isinstance(app.screen, Confirm), 'closed readiness left Start permanently busy'
             await pilot.press('y')
             await pilot.pause()
-            await app.workers.wait_for_complete()
+            await drain_reads(app)
+            for worker in list(app.workers):
+                if worker.group == 'actions':
+                    await worker.wait()
             assert calls[-1] == ['aw', 'start', str(tree / 'ready')], calls
         narrow = FleetApp(command='aw', script='pa.sh', state_root=base / 'state', env_dir=env,
                           systemctl=str(systemctl), journalctl=str(journal), agent=None, runner_cmd=run,
                           browse_root=str(tree))
-        async with narrow.run_test(size=(80, 30)) as pilot:   # an 80-column terminal: wrapped, not cut
+        async with run_pilot(narrow, size=(80, 30)) as pilot:   # an 80-column terminal: wrapped, not cut
             await refresh(narrow, pilot)
             words = ' '.join(str(narrow.query_one('#detail').render()).split())
             assert 'Blocker — 1: T-9 Blocker · Agent repair' in words and 'on you' not in words, words
@@ -951,6 +1061,7 @@ async def main():
             tree_widget.select_node(next(n for n in tree_widget.root.children if n.data.path.name == 'busy'))
             await pilot.pause()
             await pilot.press('p')
+            await drain_reads(narrow)
             await pilot.pause()
             dialog = narrow.screen.query_one('PrepareRepository > Vertical')
             assert dialog.region.x >= 0 and dialog.region.right <= 80, dialog.region
@@ -989,7 +1100,7 @@ async def main():
                           systemctl=str(systemctl), journalctl=str(journal), agent=['claude'], runner_cmd=run,
                           view_only=True)
         before = len(calls)
-        async with viewer.run_test(size=(140, 40)) as pilot:
+        async with run_pilot(viewer, size=(140, 40)) as pilot:
             await refresh(viewer, pilot)
             assert 'view only' in str(viewer.query_one('#menubar').render())
             for key in ('s', 'p', 'm', 'f', 'r', 'u', 'n', 'o'):
@@ -1003,7 +1114,7 @@ async def main():
         reloader = FleetApp(command='aw', script='pa.sh', state_root=base / 'state', env_dir=env,
                             systemctl=str(systemctl), journalctl=str(journal), agent=['claude'], runner_cmd=run,
                             view_only=True)
-        async with reloader.run_test(size=(140, 40)) as pilot:
+        async with run_pilot(reloader, size=(140, 40)) as pilot:
             await refresh(reloader, pilot)
             await reloader.reload_if_updated().wait()
             await pilot.pause()
