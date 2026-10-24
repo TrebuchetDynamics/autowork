@@ -101,6 +101,14 @@ class Layout:
                         and isinstance(node.args[1], ast.Constant)
                         and isinstance(node.args[1].value, str)):
                     return _inside(self.root, node.args[1].value, required=True)
+                if (Path(relative).parts[:2] in (('pi-autowork', 'pi_autowork'), ('pi-autowork', 'engine'))
+                        and isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                        and node.func.attr in ('load', 'run') and len(node.args) >= 2
+                        and isinstance(node.args[1], ast.Constant)
+                        and isinstance(node.args[1].value, str)
+                        and node.args[1].value.startswith('pi_autowork')):
+                    # A migrated public entry declares an owner, not a fallback.
+                    return _runner_path(self, node.args[1].value)
         parts = Path(relative).parts
         if len(parts) > 2 and parts[:2] in (('pi-autowork', 'pi_autowork'), ('pi-autowork', 'engine')):
             tail = parts[2:] if parts[1] == 'pi_autowork' else ('engine', *parts[2:])
@@ -163,6 +171,15 @@ class _SourceLoader(importlib.abc.Loader):
 
     def exec_module(self, module):
         exec(compile(self.path.read_bytes(), str(self.path), 'exec'), module.__dict__)
+
+    def get_code(self, fullname):
+        # runpy (-m) executes an adapter, not another copy of the owner as __main__.
+        # Library-only modules historically imported and exited without an action.
+        source = (f'import sys as _sys\n'
+                  f'_target = _sys.modules[{__name__!r}].load({str(_ROOT)!r}, {fullname!r})\n'
+                  f'_adapter = getattr(_target, "_compat_main", None)\n'
+                  f'_sys.exit(_adapter(_sys.argv[1:]) if _adapter else None)\n')
+        return compile(source, str(self.path), 'exec')
 
 
 class _AliasLoader(importlib.abc.Loader):

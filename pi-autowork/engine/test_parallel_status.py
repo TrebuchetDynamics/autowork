@@ -168,7 +168,7 @@ class LargeQueueTests(unittest.TestCase):
                 integration_seconds=0.0, waiting_seconds=0.0, peak_workers=0, conflicts=0, retries=0)))
             self.assertEqual(select.call_count, 0)  # one eligibility pass, not 80 selections
             start = time.monotonic()
-            process = subprocess.run([sys.executable, str(Path(execution.__file__).with_name('owner_cycle.py')),
+            process = subprocess.run([sys.executable, str(Path(__file__).with_name('owner_cycle.py')),
                 str(repo), '--apply', '--parallel', '2', '--owner-pid', str(os.getpid()),
                 '--worker-command', '["python3", "-c", "pass"]', '--min-free-mem-mb', str(2 ** 50)],
                 capture_output=True, text=True, timeout=15)

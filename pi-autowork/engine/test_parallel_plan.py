@@ -1,6 +1,5 @@
 """Offline selection/planning contracts; no worker launch or repository writes."""
 from copy import deepcopy
-import importlib.util
 from pathlib import Path
 import sys
 import tempfile
@@ -123,10 +122,8 @@ def task(tid, touches, status='open', deps='None.', resources=''):
 
 class PlanTests(unittest.TestCase):
     def test_independent_tasks_selected_without_mutating_inputs(self):
-        spec = importlib.util.spec_from_file_location('parallel_plan', SCRIPTS / 'parallel_plan.py')
-        self.assertTrue(Path(spec.origin).exists(), 'missing pure planner')
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        import parallel_plan as module
+        self.assertTrue(Path(module.__file__).exists(), 'missing pure planner')
         tasks = [task('A', 'src/a.py'), task('B', 'src/b.py')]
         before = deepcopy(tasks)
         self.assertEqual(module.plan(tasks), {'dispatch': tasks, 'waiting': []})

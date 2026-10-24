@@ -40,7 +40,7 @@ class BacklogPlanTests(unittest.TestCase):
         """The real entry point: backlog_plan.py check --cycle FILE, the queue read from the store."""
         path = Path(self.tmp.name) / 'cycle.json'
         path.write_text(json.dumps(self.cycle))
-        out = subprocess.run([sys.executable, str(Path(backlog_plan.__file__)), 'check', '--cycle', str(path),
+        out = subprocess.run([sys.executable, str(Path(__file__).with_name('backlog_plan.py')), 'check', '--cycle', str(path),
                               '--state-dir', str(self.state)], capture_output=True, text=True, check=True)
         return json.loads(out.stdout)
 

@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'engine'))
 from pi_autowork.coordinator import Coordinator, task_revision  # noqa: E402
 from pi_autowork import health  # noqa: E402
 import store_fixture  # noqa: E402

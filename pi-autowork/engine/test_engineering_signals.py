@@ -1,5 +1,4 @@
 """Read-only source-lead regressions, isolated fixture repositories."""
-import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
@@ -8,9 +7,8 @@ class SignalsTests(unittest.TestCase):
     def module(self):
         path=Path(__file__).with_name('engineering_signals.py')
         self.assertTrue(path.exists(), 'Source discovery must inspect selected implementation paths, not only planning docs')
-        spec=importlib.util.spec_from_file_location('signals',path)
-        m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
-        return m
+        import engineering_signals
+        return engineering_signals
     def test_marks_source_comment_without_claiming_a_bug(self):
         m=self.module()
         with tempfile.TemporaryDirectory() as d:

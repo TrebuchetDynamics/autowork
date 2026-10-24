@@ -91,7 +91,7 @@ class StateTests(unittest.TestCase):
 
     def test_parallel_blocks_sequential_execute(self):
         self.claim()
-        result = subprocess.run([sys.executable, str(Path(execution.__file__).with_name('owner_cycle.py')), str(self.repo),
+        result = subprocess.run([sys.executable, str(Path(__file__).with_name('owner_cycle.py')), str(self.repo),
                                  '--apply', '--owner-pid', str(os.getpid())], capture_output=True, text=True)
         self.assertEqual(json.loads(result.stdout)['outcome'], 'BUSY')
         self.assertFalse((self.common / 'active.json').exists())
@@ -319,7 +319,7 @@ class StateTests(unittest.TestCase):
                                 'import os,sys,json; sys.path.insert(0,sys.argv[1]); '
                                 'import parallel_state as s; '
                                 'print(json.dumps(s.claim(sys.argv[2],os.getppid(),profile="fixture")))',
-                                str(Path(state.__file__).parent), str(linked)],
+                                str(Path(__file__).parent), str(linked)],
                                 capture_output=True, text=True, check=True)
         self.assertEqual(json.loads(result.stdout)['outcome'], 'BUSY')
 

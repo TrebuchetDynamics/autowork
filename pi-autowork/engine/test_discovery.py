@@ -1,12 +1,9 @@
 """Offline regressions for read-only project-source discovery."""
-import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
 
-spec = importlib.util.spec_from_file_location('discover', Path(__file__).with_name('discover_sources.py'))
-m = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(m)
+import discover_sources as m
 
 class DiscoveryTests(unittest.TestCase):
     def discover(self, files, **kwargs):

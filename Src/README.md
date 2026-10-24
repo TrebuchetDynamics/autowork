@@ -1,10 +1,17 @@
-# Source compatibility foundation
+# Source layout and compatibility
 
 The accepted [source-layout plan](../docs/plans/structural-audit-2026-10.md#compatibility-foundation--existing-toolset-368-24bdb225)
-separates source ownership from stable entry paths. This foundation does **not**
-relocate production implementations: the existing root native files and
-`pi-autowork/` runner files still own their behavior. The source package
-initializers are inert; do not redirect an entry to an incomplete source package.
+separates source ownership from stable entry paths. Runner, legacy-reader and engine
+implementations now live in `Src/pi_autowork/`; the public `pi-autowork/` Python
+files are import/command adapters. Standalone checkout/worktree hooks and fixture
+helpers remain at their old paths. Root native files still own their behavior until
+their separate relocation cuts land. Canonical package initializers remain inert.
+
+The mechanical source mapping is `pi-autowork/pi_autowork/<module>.py` to
+`Src/pi_autowork/<module>.py` (including `legacy/`), and
+`pi-autowork/engine/<module>.py` to `Src/pi_autowork/engine/<module>.py`.
+The engine exceptions are `worktree_paths.py`, `checkout_lock.py`,
+`store_fixture.py`, `offline_fixtures.py`, tests and fixtures; they stay in place.
 
 ## Selected-release APIs
 
@@ -20,7 +27,7 @@ not the target repository. `resource(relative)` confines resources to that root.
 canonical dotted runner names, `autowork`, `agent_commit`, or explicit relative
 paths). `implementation(public_relative)` follows literal native `execute`
 payloads and corresponding canonical runner owners; an unmigrated entry remains
-its own owner. A declared but missing native payload fails.
+its own owner. A declared but missing native or runner payload fails.
 
 `Layout.python_sources(root)` returns sorted bounded production Python owners,
 including nested source modules and unmigrated entries. It excludes tests,
@@ -51,12 +58,18 @@ returns a single imported module. Flat engine aliases and canonical engine names
 share objects in either import order, without adding engine directories to
 `sys.path`. A runner already bound to another release is refused. This is separate
 from native multiple-release loading. The only legacy origin exceptions are the
-standalone `worktree_paths.py` and `checkout_lock.py` hooks.
+standalone `worktree_paths.py` and `checkout_lock.py` hooks. Runner workspace
+allocation and engine dispatch reuse the same selected-root hook module rather
+than loading another copy under a private name.
 
 `run(root, canonical_name, argv)` calls the module's explicit `_compat_main(argv)`
-adapter; it never executes the canonical module body a second time. Production
-adapters and their terminal-block semantics belong to the subsequent relocation,
-not this foundation. Existing release pinning and environment contracts are unchanged.
+adapter; it never executes the canonical module body a second time. Public Python
+adapters preserve their former terminal-block exception and exit behavior. Children,
+TUI reload and main-check commands use `Layout.entrypoint`, not implementation
+`__file__` paths. Source discovery, fingerprints and nested candidate syntax checks
+inspect actual owners. Before re-exec, the updater also probes the candidate's
+public capabilities command; an invalid or incomplete payload leaves the running
+release selected. Existing release pinning and environment contracts are unchanged.
 
 ## Offline qualification and packaging
 

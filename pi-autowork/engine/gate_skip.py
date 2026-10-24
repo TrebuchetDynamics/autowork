@@ -1,20 +1,15 @@
-"""Tests that dispatch through the host's real resource gate skip when it refuses (TOOLSET-193-54).
+"""Compatibility entry; implementation belongs to Src/pi_autowork/engine/gate_skip.py."""
+import importlib.util as _util
+from pathlib import Path as _Path
+import sys as _sys
 
-A busy host (the fleet's own workers) made such tests fail, so main read red and reviews
-rejected sound candidates. A refused test is skipped with the gate's reason, and a marker line
-lets `scripts/check.py` and the runner's main check count and recheck those skips.
-"""
-import json
-import re
-import sys
-import unittest
-
-MARKER = 'RESOURCE_GATE_SKIP'
-
-
-def skip_if_gated(*results):
-    """Raise SkipTest when any engine answer in ``results`` carries a resource-gate refusal."""
-    found = re.search(r'resource gate: [^"\\]*', json.dumps(results, default=str))
-    if found:
-        print(f'{MARKER}: {found[0]}', file=sys.stderr, flush=True)
-        raise unittest.SkipTest(f'host busy: {found[0]}')
+_root = _Path(__file__).resolve().parents[2]
+_spec = _util.spec_from_file_location('_autowork_entry_bootstrap', _root / 'autowork_bootstrap.py')
+_bootstrap = _util.module_from_spec(_spec)
+_spec.loader.exec_module(_bootstrap)
+if __name__ == '__main__':
+    _bootstrap.load(_root, 'pi_autowork.engine.gate_skip')
+    _sys.exit(0)
+else:
+    _sys.modules.pop(__name__, None)
+    _sys.modules[__name__] = _bootstrap.load(_root, 'pi_autowork.engine.gate_skip')

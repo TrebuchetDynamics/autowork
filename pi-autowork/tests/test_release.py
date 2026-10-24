@@ -12,6 +12,8 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import release  # noqa: E402
 from pi_autowork.processes import start_time  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'tests'))
+from src_fixture import copy_sources  # noqa: E402
 
 STATE = 'pi-autowork/engine/parallel_state.py'
 
@@ -52,7 +54,11 @@ class ReleaseCheckTests(unittest.TestCase):
         (folder / 'status.json').write_text(json.dumps({'in_flight': in_flight}))
 
     def test_late_imports_keep_the_selected_release_while_unused_releases_are_pruned(self):
-        for name, text in {'first.py': 'def run():\n    from second import old_api\n    return old_api\n',
+        copy_sources(self.work)
+        actual = self.work / 'Src/pi_autowork/engine/parallel_state.py'
+        original = actual.read_text()
+        actual.write_text(original + '\nRELEASE_MARKER = 1\n')
+        for name, text in {'first.py': 'import pi_autowork\ndef run():\n    from pi_autowork.engine import parallel_state\n    return parallel_state.RELEASE_MARKER\n',
                            'second.py': 'old_api = 1\n'}.items():
             (self.work / name).write_text(text)
         self.publish('STATE_SCHEMA = 1\n', 'old API')
@@ -67,8 +73,9 @@ class ReleaseCheckTests(unittest.TestCase):
         os.utime(selected / '.git', ns=(1_000_000_000, 1_000_000_000))
         prepared = [selected]
         child = subprocess.Popen([sys.executable, '-u', '-c',
-                                  'import sys; sys.path.insert(0, sys.argv[1]); '
-                                  'import first; print("ready", flush=True); input(); '
+                                  'import sys; sys.path[:0] = [sys.argv[1], sys.argv[1] + "/pi-autowork"]; '
+                                  'import first; assert "pi_autowork.engine.parallel_state" not in sys.modules; '
+                                  'print("ready", flush=True); input(); '
                                   'print(first.run())', str(selected)],
                                  env=dict(os.environ, PI_AUTOWORK_TOOLSET=str(selected)),
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -82,6 +89,7 @@ class ReleaseCheckTests(unittest.TestCase):
         self.assertTrue(select.select([child.stdout], [], [], 10)[0], 'child did not become ready')
         self.assertEqual(child.stdout.readline().strip(), 'ready')
         for number in range(2, 5):
+            actual.write_text(original + f'\nRELEASE_MARKER = {number}\n')
             (self.work / 'first.py').write_text('from second import new_api\n')
             (self.work / 'second.py').write_text(f'new_api = {number}\n')
             self.publish(f'STATE_SCHEMA = 1\n# {number}\n', f'release {number}')
@@ -136,7 +144,7 @@ class ReleaseCheckTests(unittest.TestCase):
         cli.parent.mkdir(parents=True)
         cli.write_text('print("STATUS fixture")\n')
         before = subprocess.check_output(['git', '-C', str(self.toolset), 'worktree', 'list', '--porcelain'])
-        env = dict(os.environ, PYTHONPATH=str(Path(release.__file__).resolve().parents[1]),
+        env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1]),
                    PI_AUTOWORK_PACKAGE=str(self.toolset), PI_AUTOWORK_TOOLSET=str(self.toolset),
                    PI_AUTOWORK_RESELECT='', PI_AUTOWORK_STATE_DIR=str(self.state_root),
                    PI_AUTOWORK_ENV_DIR=str(self.state_root / 'settings'))

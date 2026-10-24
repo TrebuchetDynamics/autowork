@@ -1,5 +1,5 @@
 """Source/dependency/environment-bound checks, no model or transport."""
-import importlib.util
+import importlib
 from pathlib import Path
 import sys
 import tempfile
@@ -10,10 +10,8 @@ class ReceiptTests(unittest.TestCase):
     def load(self):
         path = Path(__file__).with_name('check_receipt.py')
         self.assertTrue(path.is_file(), 'check receipt implementation missing')
-        spec = importlib.util.spec_from_file_location('check_receipt', path)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module
+        import check_receipt
+        return importlib.reload(check_receipt)
 
     def test_malformed_receipts_are_rejected_without_execution(self):
         import json, subprocess
@@ -33,7 +31,7 @@ class ReceiptTests(unittest.TestCase):
                 saved = json.dumps(value)
                 receipt.write_text(saved)
                 for action in ('reuse', 'run-or-reuse'):
-                    result = subprocess.run([sys.executable, module.__file__, action,
+                    result = subprocess.run([sys.executable, str(Path(__file__).with_name('check_receipt.py')), action,
                         '--workspace', str(root), '--receipt', str(receipt), '--path', 'input',
                         '--', *command], capture_output=True, text=True, timeout=15)
                     self.assertNotEqual(result.returncode, 0)
@@ -48,7 +46,7 @@ class ReceiptTests(unittest.TestCase):
             root = Path(tmp)
             (root/'input').write_text('fixture')
             receipt = root/'new'/'nested'/'check.json'
-            argv = [sys.executable, module.__file__, 'run', '--workspace', str(root),
+            argv = [sys.executable, str(Path(__file__).with_name('check_receipt.py')), 'run', '--workspace', str(root),
                     '--receipt', str(receipt), '--path', 'input', '--', sys.executable, '-c', 'pass']
             result = subprocess.run(argv, capture_output=True, text=True, timeout=15)
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -405,7 +403,7 @@ class ReceiptTests(unittest.TestCase):
             root = Path(tmp)
             (root / 'input').write_text('fixture')
             receipt = root / 'receipt.json'
-            base = [sys.executable, module.__file__, 'run', '--workspace', str(root),
+            base = [sys.executable, str(Path(__file__).with_name('check_receipt.py')), 'run', '--workspace', str(root),
                     '--receipt', str(receipt), '--path', 'input', '--', sys.executable, '-c', 'pass']
             result = subprocess.run(base, capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -425,7 +423,7 @@ class ReceiptTests(unittest.TestCase):
             root = Path(tmp)
             (root/'input').write_text('fixture')
             receipt = root/'receipt.json'
-            argv = [sys.executable, module.__file__, 'run-or-reuse', '--workspace', str(root),
+            argv = [sys.executable, str(Path(__file__).with_name('check_receipt.py')), 'run-or-reuse', '--workspace', str(root),
                     '--receipt', str(receipt), '--path', 'input', '--', sys.executable, '-c', 'pass']
             first = subprocess.run(argv, capture_output=True, text=True)
             self.assertEqual(first.returncode, 0, first.stderr)
@@ -446,7 +444,7 @@ class ReceiptTests(unittest.TestCase):
             root = Path(tmp)
             (root / 'input').write_text('fixture')
             (root / 'dependency.lock').write_text('pinned')
-            argv = [sys.executable, module.__file__, 'run', '--workspace', str(root),
+            argv = [sys.executable, str(Path(__file__).with_name('check_receipt.py')), 'run', '--workspace', str(root),
                     '--receipt', str(root / 'receipt.json'), '--path', 'input',
                     '--external-path', 'dependency.lock', '--', sys.executable, '-c', 'pass']
             result = subprocess.run(argv, capture_output=True, text=True, timeout=30)
@@ -689,7 +687,7 @@ class CandidateReceiptTests(unittest.TestCase):
         module = self.load()
         candidate = self.identity()
         receipt = self.root / 'receipt.json'
-        argv = [sys.executable, module.__file__, 'run', '--workspace', str(self.root),
+        argv = [sys.executable, str(Path(__file__).with_name('check_receipt.py')), 'run', '--workspace', str(self.root),
                 '--receipt', str(receipt), '--path', 'input', '--base', self.base,
                 '--candidate', 'candidate', '--tree', candidate['candidate_tree'],
                 '--timeout', '301', '--platform', 'linux-native', '--backend', 'offline',
@@ -712,7 +710,7 @@ class CandidateReceiptTests(unittest.TestCase):
         candidate = self.identity()
         receipt = self.root / 'receipt.json'
         command = [sys.executable, '-c', 'pass']
-        argv = [sys.executable, module.__file__, 'run', '--workspace', str(self.root),
+        argv = [sys.executable, str(Path(__file__).with_name('check_receipt.py')), 'run', '--workspace', str(self.root),
                 '--receipt', str(receipt), '--path', 'input', '--base', self.base,
                 '--candidate', 'candidate', '--tree', candidate['candidate_tree'],
                 '--', *command]
