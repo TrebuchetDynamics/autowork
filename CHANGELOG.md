@@ -57,6 +57,7 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Avoid automatic cohort rollback when any main-check failure lacks supported attribution; preserve red-main repair and last-green publication. (TOOLSET-391-8eb4527a)
 - Fix Hermes overlap refusal with private, exact-contract reviewed observer bindings shared by installation and startup; malformed cron stores and broken discovery links fail closed without masking competing writers. (FLEET-OBSERVER-01)
 - Pi invocation accounting includes nested-tool, compaction and independent emitted usage once, while preserving unknown totals and provider-billing provenance. (TOOLSET-386-4288b2e0)
 - Keep transient diagnostic triage failures on durable bounded recovery instead of consuming owner verdicts, retain actionable exhaustion diagnostics, and preserve cleanup, retained-work and provisioning deduplication guards. (TOOLSET-385-6021ba81)
