@@ -969,7 +969,7 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         _, result = self.apply()
         self.assertNotIn('A', [d['task'] for d in result['dispatched']], result)
         self.assertIn('B', [d['task'] for d in result['dispatched']], result)
-        self.assertIn('record is not closed yet', next(w['reason'] for w in result['waiting'] if w['id'] == 'A'))
+        self.assertIn('committed reopen evidence required', next(w['reason'] for w in result['waiting'] if w['id'] == 'A'))
 
     def test_unconverted_repo_names_migrate(self):
         bare = self.root / 'unconverted'

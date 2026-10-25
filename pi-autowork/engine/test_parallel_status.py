@@ -55,7 +55,9 @@ class StatusWaitTests(unittest.TestCase):
             with self.subTest(phase=phase):
                 slot = self.common / 'slots/A.json'
                 slot.unlink(missing_ok=True)
-                todo = self.todo.replace('- [ ] A', '- [x] A') if phase in ('done', 'running-done') else self.todo
+                # A closed slot is settled only while the committed record is closed.
+                todo = self.todo.replace('- [ ] A', '- [x] A') if phase in (
+                    'done', 'running-done', 'closed', 'legacy-closed') else self.todo
                 if phase == 'claimed':
                     todo = todo.replace('Status: open', 'Status: open\n  Held by: an interactive session', 1)
                 store_fixture.write_todo(self.repo, todo)
