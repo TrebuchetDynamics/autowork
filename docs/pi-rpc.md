@@ -6,7 +6,11 @@ not task authority: the existing engine still owns contracts, attempts, admissio
 worktrees, checks, independent review, integration and closure.
 
 Canonical implementations live in `Src/pi_autowork/`: `pi_runtime.py`, `pi_rpc.py`,
-`pi_process.py` and `pi_events.py`. The old package paths are compatibility
+`pi_process.py` and `pi_events.py`. Shared redaction and command-watchdog helpers
+live in `Src/pi_autowork/pi_run_support.py`, a dependency leaf used by both
+transports, not a second runtime owner. RPC must not import `pi_runtime` back:
+`pi_runtime.run_pi` supplies a live `stop_requested` callback so cancellation stays
+with the caller without an import cycle. The old package paths are compatibility
 entrypoints; both guard and SDK-host subprocesses launch through the selected
 release's `LAYOUT` adapters. The [planning console](planning-console.md) has a
 separate restricted RPC controller and explicit proposal Apply flow.
@@ -81,8 +85,12 @@ not automatically replay the prompt or switch to JSON.
 
 The guard pins PID birth identities, validates the spawning parent's identity
 before and after parent-death registration, discovers escaped descendants,
-signals through pidfds and reaps its subtree. Normal completion, cancellation,
-timeout and parent death use bounded cleanup. The command watchdog additionally
+signals through pidfds and reaps its subtree. While the payload is live, the guard
+nonblockingly reaps exited adopted children so their process groups can disappear,
+without signalling live descendants or losing the direct payload's exit status.
+Live reaping does not publish cleanup-complete proof: normal completion,
+cancellation, timeout and parent death still require final bounded cleanup.
+The command watchdog additionally
 validates the selected command's ancestry and its Pi parent's birth identity;
 it can interrupt an owned stalled tool without discarding the attempt.
 
@@ -129,11 +137,14 @@ three-attempt recovery budget with 60-second then 120-second backoff across
 coordinator restarts. Safe pre-acceptance/confirmed-provider failures, unapplied
 engine answers and unavailable provisioning scratch remain eligible within that
 budget. An unapplied engine answer and a missing provisioning scratch are not
-successful completion markers. Ambiguous transport/cleanup/abort outcomes,
-uncertain acceptance, unknown runtime results, unclassified protocol/observation
-failures and coordinator loss during submission remain replay-blocked. Provisioning
-transport/timeout/interruption failures stay held to avoid repeating a partial
-installation.
+successful completion markers. Diagnostic triage also retries transport, timeout,
+interruption and crash failures only with a positive checkout-local cleanup receipt
+and unchanged retained tracked and nonignored untracked contents. If those contents
+cannot be snapshotted, diagnosis stays a technical hold without submission.
+Uncertain acceptance, unknown runtime results, unproven cleanup, unclassified
+protocol/observation failures and coordinator loss during submission remain
+replay-blocked. Provisioning transport/timeout/interruption failures stay held to
+avoid repeating a partial installation.
 
 DOCS-MAINTAINER uses the same reservation/backoff helpers with per-item incident
 keys in private `maintainer-recovery.json`. Ordinary and background calls retain
@@ -157,6 +168,14 @@ scratch, role-local uncertainty fences and semantic receipt deduplication; they 
 not qualify live provider or host-crash recovery.
 
 ## Verification and rollback
+
+The import guard includes deferred imports and checks the actual `Src` owners,
+not just compatibility adapters. Run it when changing runtime dependencies:
+
+```sh
+python3 scripts/check.py tests/test_task_prepare.py \
+  -k test_every_module_imports_in_isolation_and_all_import_edges_are_acyclic
+```
 
 ```sh
 # Safe focused tests. SDK-dependent classes require the interpreter above.

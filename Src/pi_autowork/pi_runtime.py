@@ -34,12 +34,12 @@ import uuid
 
 if __package__:
     from . import accounting, portal, telemetry
-    from .pi_run_support import command_limit, redact, stop_stuck_commands
+    from .pi_run_support import analyse, command_limit, redact, stop_stuck_commands
 else:
     import accounting
     import portal
     import telemetry  # pi_runtime.py is also a standalone subprocess entry point.
-    from pi_run_support import command_limit, redact, stop_stuck_commands
+    from pi_run_support import analyse, command_limit, redact, stop_stuck_commands
 
 PROVIDER_FAILURE = re.compile(
     r'429|rate.?limit|quota|usage limit|overloaded|5[0-9]{2}|unavailable|timed? ?out|ECONN|ENOTFOUND|EAI_AGAIN'
@@ -133,49 +133,6 @@ def choose(s):
 
 
 # --- One run --------------------------------------------------------------------
-def analyse(raw):
-    events = []
-    for line in raw.split('\n'):
-        try:
-            value = json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(value, dict):
-            events.append(value)
-    settled = [e for e in events if e.get('type') == 'agent_settled']
-    settled = settled[-1] if settled else None
-    messages = [e.get('message') or {} for e in events
-                if e.get('type') == 'message_end' and (e.get('message') or {}).get('role') == 'assistant']
-    last = messages[-1] if messages else {}
-    gaveup = [e for e in events if e.get('type') == 'auto_retry_end' and e.get('success') is False]
-    gaveup = gaveup[-1] if gaveup else {}
-
-    usage = [m.get('usage') or {} for m in messages]
-
-    def token_sum(field):
-        values = [accounting.number(u.get(field)) for u in usage]
-        return sum(values) if values and all(v is not None for v in values) else None
-
-    # Pi's ordinary usage.cost is calculated from catalog rates. It is not a bill.
-    # Only an explicitly provenance-labelled provider amount is measurable; an
-    # adapter that does not supply that provenance leaves spend unknown.
-    costs = [accounting.number((u.get('cost') or {}).get('total'))
-             if u.get('cost_source') == 'provider_reported' and u.get('billing') != 'subscription'
-             else None for u in usage]
-    measured = sum(c for c in costs if c is not None)
-    complete = bool(costs) and all(c is not None for c in costs)
-    return dict(settled=settled is not None, aborted=bool((settled or {}).get('aborted')),
-                stop=last.get('stopReason'), error=last.get('errorMessage') or gaveup.get('finalError'),
-                retries=sum(e.get('type') == 'auto_retry_start' for e in events),
-                tokens=token_sum('totalTokens'), input_tokens=token_sum('input'), output_tokens=token_sum('output'),
-                cost=measured if complete else None, measured_cost_usd=measured,
-                cost_source='provider_reported' if any(c is not None for c in costs) else 'missing',
-                billing=('subscription' if usage and all(u.get('billing') == 'subscription' for u in usage)
-                         else 'mixed' if any(u.get('billing') == 'subscription' for u in usage) else None),
-                text='\n'.join(c.get('text', '') for c in (last.get('content') or [])
-                               if isinstance(c, dict) and c.get('type') == 'text'))
-
-
 def run_pi(s, directory, message, session, target, limit, extra, role=None, task=''):
     if s.transport == 'json':
         result = run_json(s, directory, message, session, target, limit, extra, role)
@@ -259,7 +216,7 @@ def record(s, role, task, outcome, model, fallback, run, result='', *, directory
            'cost_source': run.get('cost_source', 'missing'), 'billing': run.get('billing'),
            'error': run.get('error') or None, 'result': result or None,
            **{key: run.get(key) for key in ('transport', 'sdk_version', 'pi_version', 'session_id',
-                                          'generation', 'prompt_digest', 'failure_kind', 'cleanup_complete',
+                                          'generation', 'prompt_digest', 'failure_kind', 'cleanup_complete', 'cleanup_proof',
                                           'startup_seconds', 'first_tool_seconds', 'tool_seconds',
                                           'compactions', 'command_interruptions', 'usage_coverage', 'known_usage')}}
     try:

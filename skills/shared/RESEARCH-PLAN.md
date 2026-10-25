@@ -87,7 +87,9 @@ hide them with reset/clean or overwrite unrelated work.
    Resolve consequential design/dependency choices here so Autowork receives an
    executable task, not an instruction to repeat the investigation. Record the
    chosen approach and checks in the existing task; leave reversible coding
-   details to the worker. Follow the [handoff](PLAN-HANDOFF.md#one-planning-pass-one-handoff).
+   details to the worker. Apply [decision closure](PLANNING-CRAFT.md#decision-closure)
+   to choices and builder findings before readiness, then follow the
+   [handoff](PLAN-HANDOFF.md#one-planning-pass-one-handoff).
 3. Apply upstream scope, metric, Verify, Guard and bounded-iteration analysis where
    meaningful. A qualitative plan needs observable acceptance, not a fabricated
    numeric metric. If feature tests do not exist yet, record proposed commands as

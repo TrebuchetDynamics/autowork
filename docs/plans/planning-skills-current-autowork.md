@@ -107,3 +107,190 @@ Prior builder check: an independent read-only reviewer found “nothing importan
 The current occurrence saves both document owners and all 11 retained records. Planner's call: correct the source-proved instruction contradictions before relocating their owners; use rank/section priority rather than a blanket phase gate. Src foundation remains technically independent, while native plugin relocation has the real injection-contract prerequisite. Keep current goal priorities/focus/status; no new goal, schema or workflow is introduced. Rejected importing old candidates wholesale because it could restore pre-snapshot/async/history/question behavior; rejected implementing during this pass because this is standalone planning. All proposed implementation/fixture/model checks remain unrun. New tests are task-owned deliverables, not an external input or approval hold. No profile installation, executable instruction edit, code change, worker dispatch, timer, push or historical receipt backfill is part of this occurrence.
 
 See [the refreshed Src owner](structural-audit-2026-10.md#sdd-maintainability-refactor) for its seven-slice graph, current regression owners and changelog-composition decision.
+
+## Decision-complete Plan For Me
+
+Status: Accepted
+
+Request: “improve plan_for_me skills to plan and leave no decisions on the table.
+It causes stallness later”, explicitly through standalone Plan For Me. This section
+accepts the requested planning scope; the design below is delegated planner judgment,
+not evidence of separately approved implementation. Save this batch and stop.
+
+Goal: every ready task contains the consequential choices needed to finish without
+another design interview. No guarantee against unknown failures or unavailable
+external inputs. Non-goals: runtime scheduler/schema changes, removing owner gates,
+new planning frameworks, mandatory experiments, exhaustive code prescriptions,
+installation, publication, worker dispatch or rewriting unrelated skills.
+Anti-goals: invented approval, silently relaxed acceptance, tests represented as
+model-behavior evidence, and a new bureaucratic gate that itself stalls execution.
+
+### Evidence and chosen approach
+
+Planning baseline: `4462f2fae2c8ed359fb1456e24ffe23b9e71a825`. Earlier sections retain
+historical baselines and completed records; they are not reopened by this request.
+
+- `skills/shared/RESEARCH-PLAN.md` and `PLAN-HANDOFF.md` already require resolving
+  consequential choices. Add the missing closure procedure there rather than
+  another workflow. No new CLI, receipt, registry or required task field.
+- `PLANNING-CRAFT.md` says “Facts are yours, decisions are theirs” and sends
+  consequential trade-offs to the user, while its unattended-worker section calls
+  non-owner choices planner decisions. Its builder triage has answered/minor/theirs
+  but no explicit evidence-resolvable consequential engineering category. Clarify
+  mode/authority, not merely add a stronger adjective to the entrypoints.
+- That builder check asks for unavailable inputs/checks, but readiness also needs
+  a disposition for each finding. `PLAN-HANDOFF.md` already separates metadata
+  validation from admission; neither proves that a worker can reach inputs.
+- `skills/plan-for-me/references/special-cases.md` already rejects unidentified
+  positive mechanisms and distinguishes retained candidates from duplicate work.
+  Preserve and generalize those safeguards, not another recovery task generator.
+- `tests/fixtures/planning/scenarios.py` supplies native/portable and discovery
+  cases; its README explicitly says the inspector is not a decision-quality
+  validator. Extend these aids, not a keyword grader pretending to run a model.
+
+Planner calls: use one compact decision map in the existing plan/task body when
+material choices exist: choice, selected approach and evidence/reason, rejected
+alternative when meaningful, affected task IDs and acceptance/check. This is prose,
+not a mandatory template for every small task. Resolve consequential technical
+choices within delegated constraints now; leave only reversible coding details to
+workers. Missing facts get bounded research; owner-only intent/authority and truly
+unavailable inputs remain explicit on affected tasks. Do not infer authorization
+from an engineering preference, silence or an Accepted heading.
+
+A ready-task closure pass walks from starting inputs through implementation and
+verification to handoff: selected interfaces/data/error/compatibility/migration
+behavior where relevant; reachable inputs and setup; bounded prerequisite repairs;
+exact checks and success evidence. For every material builder finding, persist a
+resolution or mark the affected task pending with the exact missing input and
+resume condition. Recheck changed findings, not the whole unchanged planning pass.
+New tests/fixtures the task can create are deliverables, not external blockers.
+Real live qualification stays separate and unmet; no offline substitute or waiver.
+
+Rejected alternatives: “always ask the owner” preserves the stall; “decide absolutely
+everything” invents intent/authority; a scheduler-enforced completeness schema adds
+an unreliable gate; mandatory prototypes implement during planning. Existing
+conventions and evidence suffice for this instruction improvement.
+
+### Closure contract
+
+Status: Accepted
+
+Task `TOOLSET-398-debf452f` owns `skills/shared/RESEARCH-PLAN.md`,
+`PLANNING-CRAFT.md`, `PLAN-HANDOFF.md` and new
+`tests/test_planning_decision_closure.py`. Add the decision classification and
+closure pass above. Plan For Me chooses evidence-supported engineering trade-offs
+within delegated scope; Plan With Me retains consequential intent interviews.
+Builder findings have four dispositions: already answered, planner-resolvable,
+worker-reversible, genuinely owner/external-blocked. Nothing material remains
+unclassified in a ready task. Keep real gates, full-batch persistence, clear-task
+lightweight handling and all standalone/no-write/coordinator boundaries.
+
+Begin with failing focused source-contract tests at the new seam, covering the
+four dispositions, readiness versus metadata validity, unreachable-input treatment,
+no new authority and preserved interactive mode. Implement the shared guidance;
+run `python3 scripts/check.py tests/test_planning_decision_closure.py tests/test_planning_cli_contract.py tests/test_planning_decomposition_contract.py`.
+These tests guard instructions, not model compliance or reduced stall rates.
+
+### Entrypoint parity
+
+Status: Accepted
+
+Task `TOOLSET-398-472870c6` consumes the closure contract from
+`TOOLSET-398-debf452f`. Own native `skills/plan-for-me/SKILL.md`, portable
+`adapters/skills/plan-for-me/SKILL.md`, native references `discovery.md` and
+`special-cases.md`, and `tests/test_plan_for_me_discovery.py`.
+Link/use the same shared closure procedure without duplicating it. Apply it to
+focused and discovered frontiers; record planner calls and only affected pending
+choices. Do not turn bare discovery into an interview or turn known runtime
+continuation failures into new product decisions. Keep existing task reuse and
+source-bound recovery, planner-only persistence and stop behavior.
+
+Begin with an entrypoint-parity regression at the existing discovery test seam;
+update entrypoints/references to consume the shared rule. Run
+`python3 scripts/check.py tests/test_plan_for_me_discovery.py tests/test_workflow_commands.py tests/test_portable_package.py`.
+No installed copies, plugin routing, aliases or runtime prompts change.
+
+### Stall-focused evaluation specimens
+
+Status: Accepted
+
+Task `TOOLSET-398-2d05d7ae` independently owns
+`tests/fixtures/planning/scenarios.py`, its `README.md`, and
+`tests/test_planning_specimens.py`. Add native and portable variants for: (1) a
+consequential technical choice settled by repository conventions; (2) a missing
+local fixture/setup repair that the saved task may implement; (3) an unavailable
+external qualification input affecting only one of two independent outcomes;
+(4) unresolved owner-only destructive scope despite technical feasibility; and
+(5) a builder finding resolved into the saved contract rather than left as advice.
+Use synthetic public examples, explicit seed evidence and expected task outcomes;
+no private fleet identities, credentials or fabricated historical failures.
+
+Extend existing specimen mechanics tests first, then seed the cases and document
+manual scoring. Offline tests prove valid seeds, native/portable coverage and the
+existing forbidden-write protections; they do not judge a model's decisions.
+Manual scoring checks saved choices/evidence, scoped holds, exact verification,
+independent lanes and zero unauthorized implementation/approval. Require traces and
+source hashes for any actual evaluation; proposed model runs remain unrun and
+subject to separate host/provider authority. No model provider is needed to finish
+this offline slice. Run
+`python3 scripts/check.py tests/test_planning_specimens.py`.
+
+### Batch readiness and delivery limits
+
+All three records use existing goal `TASK-STORE-HARDENING`; retain its priority,
+focus and status and all existing tasks/history. No rolling planning successor.
+The closure and specimen slices are independent disjoint write lanes. Entrypoint
+parity depends on the shared closure contract, not on specimen work. Checks may
+read common files; that is not a dependency or exclusive-resource requirement.
+No live/shared named resource is needed. Observe current writers at execution.
+
+Each implementation task also runs `python3 scripts/affected_tests.py --run`
+against its actual change base (`--base REV` when needed). New regressions and all
+implementation commands above are proposed/unrun in this planning pass. A future
+composed check runs the three focused seams after all slices land; passing static
+checks still does not demonstrate fewer stalls in actual model sessions.
+
+Planning checklist: [x] inspect current owners and preserve previous decisions;
+[x] choose the bounded design and map every requested outcome; [x] save/read back
+all three records; [x] fresh builder check (read-only reviewer: “nothing important
+left”, with the dependency/parallelism and offline-proof boundaries confirmed).
+Task validation returned `ok: true`, 166 tasks, 18 goals and no drafts. Final
+whitespace/source-anchor checks and one scoped planning commit complete persistence.
+
+Check limitation: affected-test selection falls back to the full 156-module
+inventory because this existing plan document has no resolved test mapping. Two
+attempted runs timed out (120 seconds and 30 seconds); neither is a passing check.
+The first also included this review's generated scratch, subsequently preserved
+outside the worktree. No further full-suite retry is appropriate for a planning-only
+change. Use task validation, source-anchor/structure and whitespace checks for this
+batch; no implementation or model-behavior test is claimed passed.
+Next executable slice is the shared closure contract; specimens may run alongside
+it under later execution authority. This planning branch is not integrated or
+published and must not be described as delivered to the live runner.
+
+### Explicit execution and checked implementation
+
+The later owner instruction, “Well autowork has to solve this. Even implementation.
+All up to production releases”, transitions this saved batch into execution and
+its authorized delivery. It does not retroactively turn standalone planning into
+implementation authority or waive genuine live/owner safety gates.
+
+All three slices are implemented. Shared guidance now resolves consequential
+engineering choices and every material builder finding; native/portable and
+discovery paths consume that same procedure. Ten synthetic stall specimens cover
+the five planned cases on both entrypoints, preserving forbidden-write controls.
+The prior planning-only delivery statements above are historical, not current
+execution holds.
+
+Verification: baseline 37 focused tests passed; new closure, entrypoint and fixture
+regressions failed before their changes and passed afterwards. Final composed
+seven-module run passed 45 tests. Parent independently reran closure/discovery:
+13 tests passed. Fresh independent review found no blockers in the bounded 12-file
+implementation. Whitespace checks passed. Affected selection expands to the full
+inventory for the fixture README, so no additional full suite was run here; main
+owns its fresh full check. Actual model-adherence evaluations remain unrun.
+
+The three records are manually closed with this evidence, not assigned fabricated
+coordinator-verification receipts or used to mark the broader goal met. Local
+integration, upstream publication and installed-runtime adoption are separately
+verified delivery stages; these offline results alone claim none of them.
