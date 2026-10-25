@@ -28,13 +28,19 @@ If it grows mid-plan, say so and step up a size. If it is really several indepen
 projects, identify their order and independent lanes, then finish the whole requested
 batch. Do not finish the invocation after planning just the first project.
 
-## Facts are yours, decisions are theirs
+## Facts and decision authority
 
 Look up anything the repository, tools or primary sources can answer: never ask the
 user for a fact. Inspect the relevant owner before asserting current behavior or
 absence; absence from one inspected file is not absence from the repository.
 When a fact is slow to find, keep planning the branches that do not
-depend on it. Put only preferences, intent and consequential trade-offs to the user.
+depend on it. Plan For Me resolves evidence-supported engineering trade-offs
+within delegated scope; missing facts get bounded research, not a worker design
+interview. Plan With Me retains consequential intent interviews and user
+participation in consequential choices; use the uncertainty loop below. In either
+mode, genuine owner-only intent and authority stay with the user.
+Never infer authorization from an engineering preference, silence or an Accepted
+heading.
 
 Cross-check what the user says against the code. When they disagree, surface it:
 "The importer drops whole batches, but you said partial imports are kept. Which is
@@ -237,6 +243,41 @@ in the owning task's scope. Write
 one line of invariants every task in the batch keeps, in the plan section or each
 task (for example "the on-disk format does not change").
 
+## Decision closure
+
+Before calling a task ready, walk from starting inputs through implementation and
+verification to handoff. Select interfaces, data, error, compatibility and migration
+behavior where relevant; check reachable inputs and setup, bounded prerequisite
+repairs, and exact checks and success evidence. Use repository conventions and
+bounded research to settle material engineering choices now, not another design
+interview for the worker.
+
+When material choices exist, keep one compact decision map in the existing
+plan/task body: choice, selected approach and evidence/reason, rejected alternative
+when meaningful, affected task IDs and acceptance/check. This is prose, not a new
+required field or template for every small task. For a clear task, fill only actual
+gaps; no extra interview or builder ceremony.
+
+Give every material builder finding one disposition:
+
+| Finding | Saved disposition |
+| --- | --- |
+| Already answered | Reuse settled evidence; copy the answer and source into the affected task. |
+| Planner-resolvable | Research missing facts and resolve consequential engineering choices within delegated scope; record the planner's call and its check. In Plan With Me, use the uncertainty loop for consequential choices not delegated by the user. |
+| Worker-reversible | Explicitly leave reversible coding details to the worker within the selected contract; no permission question. |
+| Owner/external-blocked | Keep only affected tasks pending with the exact missing intent, authority or input and resume condition; independent accepted tasks stay ready. |
+
+New tests and fixtures the task can create are deliverables, not external blockers.
+Name the bounded local setup/repair in scope and its verification; do not quietly
+expand exclusions. If an input really cannot be reached or created under the
+contract, record that input and its resume condition instead of declaring readiness.
+Keep real live qualification separate and unmet; no offline substitute or waiver.
+
+Persist each resolution in the affected contract, not merely as builder advice.
+No material finding remains unclassified in a ready task. Recheck changed findings,
+not the whole unchanged planning pass. This closes known choices, not a guarantee
+against unknown failures, and grants no implementation or external authority.
+
 ## Builder check before handoff
 
 Before reporting a written plan as ready, have it read as the builder who cannot ask
@@ -254,12 +295,9 @@ questions. Dispatch a fresh subagent (`delegate_task`, or the host's equivalent)
 > run in parallel and why the rest cannot. If nothing important is left, say
 > "nothing important left".
 
-Without a subagent tool, read the tasks as that builder yourself. Sort the questions:
-
-- **Answered already** by the conversation or repository: write the answer into the task.
-- **Minor**: a sensible builder could settle it without changing the outcome. Settle
-  it and mark it as the planner's call.
-- **Theirs**: only the user can answer it, and the answer changes what gets built.
+Without a subagent tool, read the tasks as that builder yourself. Apply
+[decision closure](#decision-closure) to every material finding, including inputs,
+setup and checks, and persist its disposition before reporting readiness.
 
 Then check the batch yourself and fix it before handoff: each executable task
 declares bounded `touches` (and the `exclusive` resource only with a real resource
@@ -270,11 +308,12 @@ IDs only; each `Consumes:` matches its producer's `Produces:`. Map every
 requested outcome to a complete saved task or a scoped unresolved choice; future
 roadmap ideas do not replace the requested batch.
 
-Bring only the unanswered consequential "theirs" pile to the user, most important
-first, with each question's effect on the work. Reuse the uncertainty loop and
-choice-scoped answers; do not turn builder findings into a blanket approval or
-repeat settled questions. If an answer exposes a new material issue, resolve it
-before declaring the affected task ready. Keep just affected tasks pending;
+Bring only genuine owner-only questions to the user, most important first, with
+each question's effect on the work. Plan With Me also keeps its interactive
+consequential choices. Reuse the uncertainty loop and choice-scoped answers;
+do not turn builder findings into a blanket approval or repeat settled questions.
+If an answer exposes a new material issue, resolve it before declaring the affected
+task ready. Keep just affected tasks pending;
 independent tasks stay ready. Skip the check for a clear task, a questions-only
 run or a dry run.
 
