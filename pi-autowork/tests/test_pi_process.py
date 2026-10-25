@@ -11,6 +11,10 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from pi_autowork import pi_process
 
 
 WRAPPER = Path(__file__).resolve().parents[1] / 'pi_autowork' / 'pi_process.py'
@@ -386,6 +390,34 @@ raise SystemExit(subprocess.call(sys.argv[2:]))
         self.assertEqual(identity(sentinel_pid), sentinel_start)
         self.assert_gone([(data['pi_pid'], data['pi_start_time'])])
 
+    def test_unprivileged_host_reaps_after_injected_signal_permission_denial(self):
+        # Exercise real waitpid/pidfds in an isolated fake SDK-host guard. No
+        # foreign UID, sudo, or processes outside this fixture are involved.
+        script = """import json, os, signal, subprocess, sys, time
+from unittest.mock import patch
+from pi_autowork import pi_process
+child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(.3)'])
+started = pi_process._stat(os.getpid())[1]
+if sys.argv[1] == 'live':
+    pi_process._CLEANUP_BUDGET = .05
+with patch.object(signal, 'pidfd_send_signal', side_effect=PermissionError) as send:
+    clean = pi_process._cleanup(child, started)
+result = dict(clean=clean, returncode=child.returncode, denied=send.call_count)
+child.wait(timeout=2)  # Only our harmless fixture; allow natural exit even on false proof.
+print(json.dumps(result))
+"""
+        env = dict(os.environ, PYTHONPATH=str(WRAPPER.parent.parent))
+        for mode, clean, code in [('exits', True, 0), ('live', False, None)]:
+            with self.subTest(mode=mode):
+                host = self.launch([sys.executable, '-c', script, mode], env=env,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                out, err = host.communicate(timeout=4)
+                self.assertEqual((host.returncode, err), (0, b''))
+                result = json.loads(out)
+                self.assertIs(result['clean'], clean)
+                self.assertEqual(result['returncode'], code)
+                self.assertGreater(result['denied'], 0)
+
     def test_stale_start_ticks_cannot_pin_a_live_pid(self):
         self.assertTrue(WRAPPER.exists(), 'process supervisor has not been implemented')
         sys.path.insert(0, str(WRAPPER.parent.parent))
@@ -393,6 +425,58 @@ raise SystemExit(subprocess.call(sys.argv[2:]))
         sentinel = self.launch([sys.executable, '-c', 'import time; time.sleep(60)'])
         self.assertIsNone(module._pin(sentinel.pid, 'stale'))
         self.assertIsNone(sentinel.poll())
+
+
+class CleanupPermissionTests(unittest.TestCase):
+    def test_discovery_permission_error_closes_newly_pinned_handle(self):
+        with patch.object(pi_process, '_stat', side_effect=[(1, 'root'), (123, 'child'), PermissionError]), \
+                patch.object(pi_process, '_pin', return_value=42), \
+                patch.object(pi_process.Path, 'iterdir', return_value=[Path('/proc/123/task/123')]), \
+                patch.object(pi_process.Path, 'read_text', return_value='432'), \
+                patch.object(pi_process.os, 'close') as close:
+            with self.assertRaises(PermissionError):
+                pi_process._discover(123, 'root', {}, time.monotonic() + 1)
+            close.assert_called_once_with(42)
+
+    def test_exited_child_is_reaped_before_attempting_permission_denied_signal(self):
+        def discover(root, started, handles, until):
+            handles[(432, '123')] = 42
+        # Child exits during discovery; waitpid is authoritative, not signal permission.
+        with patch.object(pi_process, '_discover', side_effect=discover), \
+                patch.object(pi_process.os, 'waitpid', side_effect=[(0, 0), (432, 0), ChildProcessError]), \
+                patch.object(pi_process.signal, 'pidfd_send_signal', side_effect=PermissionError) as send, \
+                patch.object(pi_process.os, 'close'):
+            self.assertTrue(pi_process._cleanup(None, 'root'))
+            send.assert_not_called()  # Exited during discovery: reap BEFORE signalling.
+
+    def test_permission_denied_discovery_does_not_skip_final_reap(self):
+        with patch.object(pi_process, '_discover', side_effect=PermissionError), \
+                patch.object(pi_process.os, 'waitpid', side_effect=[(0, 0), (432, 0), ChildProcessError]):
+            self.assertTrue(pi_process._cleanup(None, 'root'))
+
+    def test_unsignalable_live_child_remains_unproven_and_final_waitpid_runs(self):
+        waits = []
+        def waitpid(*args):
+            waits.append(args)
+            return (0, 0)  # A live child still exists, even after the cleanup budget.
+        def discover(root, started, handles, until):
+            handles[(432, '123')] = 42
+        with patch.object(pi_process, '_discover', side_effect=discover), \
+                patch.object(pi_process.os, 'waitpid', side_effect=waitpid), \
+                patch.object(pi_process.signal, 'pidfd_send_signal', side_effect=PermissionError), \
+                patch.object(pi_process.os, 'close'), \
+                patch.object(pi_process, '_CLEANUP_BUDGET', .025):
+            self.assertFalse(pi_process._cleanup(None, 'root'))
+        self.assertGreaterEqual(len(waits), 3)
+
+    def test_permission_denied_signal_still_allows_later_authoritative_reap(self):
+        def discover(root, started, handles, until):
+            handles[(432, '123')] = 42
+        with patch.object(pi_process, '_discover', side_effect=discover), \
+                patch.object(pi_process.os, 'waitpid', side_effect=[(0, 0), (0, 0), (432, 0), ChildProcessError]), \
+                patch.object(pi_process.signal, 'pidfd_send_signal', side_effect=PermissionError), \
+                patch.object(pi_process.os, 'close'):
+            self.assertTrue(pi_process._cleanup(None, 'root'))
 
 
 if __name__ == '__main__':

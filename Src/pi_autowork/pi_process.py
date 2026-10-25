@@ -167,7 +167,11 @@ def _discover(root, started, handles, until):
                 fd = _pin(*key)
                 if fd is None:
                     continue
-                current_parent, current_child = _stat(pid), _stat(child)
+                try:
+                    current_parent, current_child = _stat(pid), _stat(child)
+                except BaseException:
+                    os.close(fd)
+                    raise
                 if (current_parent is None or current_parent[1] != born
                         or current_child != info):
                     os.close(fd)
@@ -198,15 +202,24 @@ def _cleanup(pi, started):
     handles, terminated = {}, set()
     try:
         while time.monotonic() < until:
-            _discover(os.getpid(), started, handles, until)
+            # waitpid is authoritative even for exited children whose UID no
+            # longer permits signalling. Do not let EPERM prevent their reaping.
+            if _reap(pi):
+                return True
+            try:
+                _discover(os.getpid(), started, handles, until)
+            except PermissionError:
+                pass  # Still reap; an undiscoverable LIVE child keeps proof false.
+            if _reap(pi):
+                return True
             force = time.monotonic() - began >= _GRACE
             for key, fd in handles.items():
                 if not force and key in terminated:
                     continue
                 try:
                     signal.pidfd_send_signal(fd, signal.SIGKILL if force else signal.SIGTERM)
-                except ProcessLookupError:
-                    pass
+                except (ProcessLookupError, PermissionError):
+                    pass  # Never infer exit from a failed signal; waitpid decides.
                 terminated.add(key)
             if _reap(pi):
                 return True
