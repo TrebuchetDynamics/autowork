@@ -129,11 +129,14 @@ three-attempt recovery budget with 60-second then 120-second backoff across
 coordinator restarts. Safe pre-acceptance/confirmed-provider failures, unapplied
 engine answers and unavailable provisioning scratch remain eligible within that
 budget. An unapplied engine answer and a missing provisioning scratch are not
-successful completion markers. Ambiguous transport/cleanup/abort outcomes,
-uncertain acceptance, unknown runtime results, unclassified protocol/observation
-failures and coordinator loss during submission remain replay-blocked. Provisioning
-transport/timeout/interruption failures stay held to avoid repeating a partial
-installation.
+successful completion markers. Diagnostic triage also retries transport, timeout,
+interruption and crash failures only with a positive checkout-local cleanup receipt
+and unchanged retained tracked and nonignored untracked contents. If those contents
+cannot be snapshotted, diagnosis stays a technical hold without submission.
+Uncertain acceptance, unknown runtime results, unproven cleanup, unclassified
+protocol/observation failures and coordinator loss during submission remain
+replay-blocked. Provisioning transport/timeout/interruption failures stay held to
+avoid repeating a partial installation.
 
 DOCS-MAINTAINER uses the same reservation/backoff helpers with per-item incident
 keys in private `maintainer-recovery.json`. Ordinary and background calls retain
