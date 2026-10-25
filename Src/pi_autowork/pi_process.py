@@ -350,6 +350,10 @@ def main(argv=None):
                     code = 128 + stopped
                     record['reason'] = 'signal'
                     break
+                # Adopted workers can exit while the payload waits for their
+                # groups to disappear. Reap now, preserving Pi's exit status;
+                # only final cleanup may publish cleanup-complete proof.
+                _reap(pi)
                 result = pi.poll()
                 if result is not None:
                     code = result if result >= 0 else 128 - result
