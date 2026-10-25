@@ -55,6 +55,97 @@ Runtime state lives outside the repository, under
 | `pi_autowork/questions.py` | The owner's questions block in `BLOCKERS.md`, built from the engine status without a model |
 | `pi_autowork/release.py` | Safe-checkpoint test before a self-update: fleet idle, and the new release reads current state |
 
+## Reviewed Hermes observers
+
+Startup and `--install-service` normally refuse active repository Hermes jobs
+mentioning `autowork` (exit 4). A progress monitor is not exempt just because its
+name or prompt says “read-only”. For a **reviewed, genuinely read-only** monitor,
+`PI_AUTOWORK_HERMES_OBSERVERS` can point to one private JSON policy outside Git.
+Other active writers still block; disabled/paused jobs remain ignored. Do not use
+`--allow-hermes` or `PI_AUTOWORK_ALLOW_HERMES=1` to exempt a monitor: those bypass
+all Hermes overlap classification.
+
+### Review and exact binding
+
+1. Privately inspect the exact job in `<hermes-home>/cron/jobs.json` (`default`)
+   or `<hermes-home>/profiles/<profile>/cron/jobs.json`. Require a unique string
+   job ID within that profile. Review the complete prompt, working directory,
+   selected skills, scripts and effective tools, including inherited permissions.
+   The approved contract must prohibit repository edits, dispatch, claims and
+   service actions. An explicit `autowork` development skill (including qualified
+   names and skill paths) is never eligible, even with a matching fingerprint.
+2. Save the reviewed **single job object**, not the jobs wrapper, to a private
+   snapshot. Compute its fingerprint from this release (example paths only):
+
+   ```sh
+   PYTHONPATH=/path/to/autowork/pi-autowork python3 - <<'PY'
+   import json
+   from pathlib import Path
+   from pi_autowork.hermes_observers import contract_sha256
+   job = json.loads(Path('/private/reviewed-job.json').read_text())
+   print(contract_sha256(job))
+   PY
+   ```
+
+   Computing a fingerprint is **not** a safety review. Never automatically refresh
+   a binding after drift. The hash uses UTF-8 Python JSON with sorted keys,
+   separators `(',', ':')`, default ASCII escaping and no nonfinite numbers.
+   It binds the entire job object, including unknown fields, except these
+   scheduler observations: `last_run_at`, `next_run_at`, `last_status`,
+   `last_error`, `last_delivery_error`, `last_execution_error`, `last_failure`,
+   `failure_streak`, and nested `repeat.completed`.
+3. Create a private policy, for example
+   `${XDG_CONFIG_HOME:-~/.config}/pi-autowork/my-project-observers.json`, with
+   mode 0600 in a private directory. Use canonical absolute repository and Hermes
+   installation paths, the exact profile/ID, and the reviewed fingerprint:
+
+   ```json
+   {
+     "version": 1,
+     "repo": "/path/to/my-project",
+     "hermes_home": "/private/hermes-home",
+     "observers": [
+       {"profile": "default", "id": "reviewed-monitor", "sha256": "<64 lowercase hex characters>"}
+     ]
+   }
+   ```
+
+   This is a template, not a valid grant. Duplicate JSON keys, unknown schema
+   fields, missing/unreadable policies, wrong repository/installation, missing
+   or duplicate identities, and changed contracts refuse rather than waive the
+   overlap check. Job identities in different profiles are distinct. Keep real
+   IDs, profile names, snapshots and policy files out of version control.
+4. Set `PI_AUTOWORK_HERMES_OBSERVERS=/absolute/private/policy.json` and, for a
+   nondefault installation, `PI_AUTOWORK_HERMES_HOME=/absolute/hermes-home`.
+   For an existing service, add these lines to its existing private
+   `${XDG_CONFIG_HOME:-~/.config}/pi-autowork/<repository-name>.env` (or configured
+   `PI_AUTOWORK_ENV_DIR`), preserving all unrelated settings. Normal repository
+   settings loading and `--install-service` persist both values across reinstall,
+   restart and terminal launch. Explicit shell values take precedence; `autowork
+   start` refuses conflicting saved settings instead of silently replacing them.
+   An explicitly empty observer setting revokes exemptions and stays empty on
+   reinstall instead of restoring a saved binding. `--status` or `--dry-run` can
+   inspect the next launch's classification without starting workers.
+
+Changes to workdir, prompt, selected skill/tool configuration or any other bound
+field invalidate the review, even when a changed workdir no longer matches this
+repository. Re-review the exact changed contract before replacing the digest.
+Paused/disabled identities do not compete; an old binding will be checked again
+when they become active. Remove an obsolete entry explicitly rather than treating
+its missing job as safe.
+
+This is **classification, not a filesystem/tool sandbox**, continuous enforcement,
+or proof that a past run obeyed its instructions. Fingerprints bind job JSON,
+not the contents of referenced skills/scripts or the implementation/inherited
+configuration of tools. Re-review those dependencies when they change; use real
+permission isolation where required. Checks run at install/start/re-exec, not on
+every cron execution. Existing engine leases and writer-custody checks remain
+necessary. Offline coverage is in `tests/test_hermes_observers.py` and the runner's
+service/command fixtures; live toolset activation, service restart and competing
+interactive-writer handoff require separate operational qualification.
+
+Source: `Src/pi_autowork/hermes_observers.py`, `cli.py`, and `service.py`.
+
 ## Blockers report
 
 Select a runner and press **b** or click **Blockers** in mouse/browser mode.
