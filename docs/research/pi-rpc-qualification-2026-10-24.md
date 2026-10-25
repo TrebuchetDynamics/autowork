@@ -1,7 +1,8 @@
 # Pi RPC qualification — 2026-10-24
 
-This is evidence for TOOLSET-387-132efe18's **bounded implementation slice**, not
-an installed-fleet acceptance receipt. Architecture, setup and rollback are in
+This records TOOLSET-387-132efe18's **bounded implementation slice** and
+TOOLSET-388-b422fa9e's [canonical recheck](#canonical-recheck-after-the-import-cycle-repair),
+not an installed-fleet acceptance receipt. Architecture, setup and rollback are in
 [the runtime guide](../pi-rpc.md). The earlier [harness audit](pi-harness-audit-2026-10-24.md)
 remains historical evidence; its JSON-baseline recommendation was superseded by
 the owner's explicit request to implement RPC by default.
@@ -143,18 +144,80 @@ engine closure, coordinator-crash recovery, hostile-process containment, complex
 coding quality, automatic steering or installed-fleet acceptance. Raw session
 histories, credentials, private state and disposable repositories stay out of Git.
 
+## Canonical recheck after the import-cycle repair
+
+TOOLSET-388-b422fa9e was reopened after the import-isolation gate failed at
+`7e29570686f3482e654a6ad8a8730437f4856454`. Its earlier documentation-only landing
+was reverted. These results instead bind to the new source baseline
+`60eb9b36977505baf797226ffec2e9640fe3ade2`; the current follow-up changes documentation
+only and does not alter tested runtime or test bytes.
+
+Historical source inspection reproduces both `pi_rpc` ↔ `pi_runtime` and
+`planning_ui` ↔ `tui` import cycles, including deferred imports. Repair
+`aeca6caf1f2e730ef5d445b37fc69b4fc5d4c9cf` is already an ancestor of the new baseline:
+it extracted shared run helpers into `Src/pi_autowork/pi_run_support.py` and
+confirmation UI into `tui_dialogs.py`. RPC now depends on the helper leaf rather
+than importing `pi_runtime` back; caller-owned cancellation is an explicit live
+`stop_requested` callback. The unchanged cycle guard passes on all 55 runner
+modules. No duplicate fix or weakened test is needed.
+
+The baseline also retains canonical RPC merge
+`37f830ce245d8fdea65022690af12c7249777c13`, TOOLSET-375 relocation and TOOLSET-369
+main-check extraction. RPC, guard, projection and job-runtime bodies have one
+owner each in `Src/pi_autowork`; old public paths are compatibility adapters.
+Guard/SDK-host children use the selected release's `LAYOUT.entrypoint` paths.
+Main-check supervision remains behind the Coordinator facades in
+`Src/pi_autowork/supervision/main_checks.py`. Public imports, bootstrap loads and
+source inventory confirm one selected-release owner, including the helper leaf.
+
+Fresh checks used Linux, Python 3.12.14, SDK 0.2.6 and Pi 1.4.0:
+
+| Check | Result on the new baseline |
+|---|---|
+| Named import-isolation/acyclicity guard in `tests/test_task_prepare.py` | 1 test: OK, no optional-renderer skip |
+| Focused RPC/process/events/runtime/recovery/install, release, supervision, maintainer, public-entrypoint, CLI and installer checks | 14 modules / 180 tests: OK, no SDK skips |
+| Direct `test_installed_pi_rpc.py -v` | 3 tests: OK |
+| Direct `test_installed_pi_contract.py -v` | 2 tests: OK |
+
+The focused group used the existing SDK interpreter through `autowork-run` and
+`scripts/check.py`. Native tests explicitly selected installed Pi, isolated HOME
+and ambient resources, and used the deterministic offline provider. No credentials,
+real-model calls, installation, service restart or activation were performed.
+The three optional Hermes integration modules were excluded, not RPC SDK cases.
+
+A broader 16-module run also exercised `tests/test_pi_rpc_engine.py` and all of
+`tests/test_task_prepare.py`. Three cases failed before any file was edited and
+failed again individually on that pristine baseline:
+
+- `test_pi_rpc_engine.RpcEngineTests.test_default_rpc_worker_independent_reviewer_and_verified_engine_close`
+- `test_pi_rpc_engine.RpcEngineTests.test_rpc_provider_fallback_preserves_existing_engine_attempt`
+- `test_task_prepare.ForceTests.test_force_stops_the_service_and_a_live_worker_and_converts_keeping_the_work`
+
+The two engine fixtures timed out after worker startup (120 seconds each); the
+force fixture reported that its worker survived SIGKILL. These are retained as
+baseline failures, not passing engine-closure or conversion evidence. The named
+import guard passed both alone and in the broader run. The worker report records
+exact commands, logs and classifications; no full-repository pass is claimed.
+
+The supported delivery remains a scoped local commit/report followed by the
+coordinator's serialized integration, independent review and merged-tree gate.
+This follow-up does not merge, alter another checkout, bypass ownership guards,
+repin failed evidence, close tasks, publish or restart services. A source commit
+is not an installed release.
+
 ## Remaining delivery gates
 
-1. Reconcile canonical source ownership with TOOLSET-375 relocation and TOOLSET-369
-   extraction, preserving their candidates and serializing canonical writes.
-2. Review/rebase and integrate through the supported path. Local source default
-   and local commits do not update an installed release or authorize publication.
-3. Qualify a single explicitly owned installed runner, including interrupted-attempt
-   recovery and real engine closure. Preserve paused jobs; do not restart a fleet.
-4. Measure matched real engineering tasks and quality/check coverage before claiming
+1. Integrate this evidence follow-up through the supported coordinator path, with
+   independent review and merged-tree checks, including the named import guard.
+   Canonical relocation and the cycle repair are already present in the tested
+   baseline; the baseline fixture failures above are not silently qualified.
+2. Qualify a single explicitly owned installed runner, including interrupted-attempt
+   recovery and real engine closure (TOOLSET-389-6dedfd8c). Preserve paused jobs;
+   do not restart a fleet.
+3. Measure matched real engineering tasks and quality/check coverage before claiming
    throughput or token improvements. Keep automatic steering off until a production
-   control channel and intervention policy are separately qualified.
-5. Retain the guard's documented SIGKILL/kernel/hostile-process limitations. Stronger
+   control channel and intervention policy are separately qualified (TOOLSET-390-e1c2afa6).
+4. Retain the guard's documented SIGKILL/kernel/hostile-process limitations. Stronger
    containment needs a delegated-cgroup qualification, not a claim from these tests.
 
 TOOLSET-385 remains the canonical recovery reconciliation follow-up. TOOLSET-386
