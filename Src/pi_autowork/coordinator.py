@@ -15,6 +15,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shlex
 import shutil
 import signal
@@ -26,7 +27,7 @@ import time
 from . import (fleet_view, health, janitor, landing, main_check, maintainer, optimistic, pi_runtime, questions, release,
                service, task_commands, telemetry, worker, workspaces)
 from .common import LOG, dirty, git, git_ok, lifecycle, open_for_writing, safe_name, summary_list
-from .processes import own_process, process_name
+from .processes import own_process, process_name, start_time
 from .supervision import main_checks
 from pi_autowork.engine.task_queue import commit as task_revision
 from pi_autowork.engine.task_store import StoreError
@@ -379,6 +380,38 @@ class Coordinator:
             path.unlink(missing_ok=True)
         return found
 
+    batch_recovered = False
+
+    def recover_batches(self, wait=20):
+        """Invalidate old evidence; never replace a producer without persisted cleanup proof.
+
+        A parent-death supervisor may still be finishing cleanup after the old coordinator
+        releases its lock. Give it the existing cleanup window, but fail closed on missing
+        or false proof. Restart is not permission to forget an uncertain process tree.
+        """
+        folder = self.state / 'batch'
+        for path in folder.glob('*.json'):
+            path.unlink(missing_ok=True)
+        pending = list(folder.glob('*/'))
+        end = time.monotonic() + wait
+        while pending:
+            for directory in list(pending):
+                try:
+                    proof = json.loads((directory / 'process.json').read_text())
+                    if (isinstance(proof, dict) and proof.get('cleanup_complete') is True
+                            and proof.get('pid') and proof.get('start_time')
+                            and type(proof.get('exit_code')) is int):
+                        pending.remove(directory)
+                except (OSError, ValueError):
+                    pass
+            if not pending:
+                break
+            if time.monotonic() >= end:
+                raise Finish(1, 'Abandoned batch cleanup is unproven; no replacement producer: '
+                             + ', '.join(str(path / 'process.json') for path in pending))
+            time.sleep(.05)
+        self.batch_recovered = True
+
     def start_batch(self, tasks, on=None, revisions=None, independent=False):
         """TOOLSET-258-07: one full check on the candidates' merged tree and their reviews side
         by side, as a child the loop polls like a review; the engine then lands each one.
@@ -388,18 +421,43 @@ class Coordinator:
         as checked; it runs as self.train while the batch ahead keeps self.integration.
         ``independent`` (TOOLSET-340-64b75d92): ``on`` is the base the batch ahead was built on,
         not its tip, so its verdicts do not depend on the batch ahead passing."""
+        if not self.batch_recovered:
+            self.recover_batches()
         out = tempfile.NamedTemporaryFile(dir=self.state / 'runs', prefix='batch.', delete=False)
         out.close()
         tip = Path(out.name).with_suffix('.tip')  # where the batch publishes its chain's tip
         args = ['/bin/bash', self.process_script, '--verify-batch', str(self.state), str(self.integ),
                 self.process_script, *tasks]
-        env = dict(os.environ, PI_AUTOWORK_BATCH_TIP=str(tip), **({'PI_AUTOWORK_BATCH_ON': on} if on else {}))
-        with open(out.name, 'w') as stream, open(self.state / 'engine.err', 'a') as err:
-            child = subprocess.Popen(args, stdout=stream, stderr=err, stdin=subprocess.DEVNULL, cwd=self.integ,
-                                     env=env)
+        generation = secrets.token_hex(24)
+        admission = worker.batch_identity(self.integ, tasks)
+        base = on if on else git(self.integ, 'rev-parse', 'HEAD')
+        (self.state / 'batch' / generation).mkdir(parents=True)
+        cleanup = self.state / 'batch' / generation / 'process.json'
+        # Reuse the runtime's birth-bound subreaper, including detached descendants.
+        # Replacement requires its terminal cleanup proof, not merely producer exit.
+        deadline = (worker.setting('PI_AUTOWORK_VALIDATE_TIMEOUT', 3600)
+                    + self.REVIEW_CAP * len(tasks) + 60)
+        args = [sys.executable, str(Path(worker.__file__).with_name('pi_process.py')),
+                '--identity', str(cleanup), '--deadline', str(deadline),
+                '--parent-pid', str(os.getpid()), '--parent-start', str(start_time(os.getpid())), '--', *args]
+        env = dict(os.environ, PI_AUTOWORK_BATCH_TIP=str(tip),
+                   PI_AUTOWORK_BATCH_GENERATION=generation,
+                   PI_AUTOWORK_BATCH_ADMISSION=json.dumps(admission),
+                   **({'PI_AUTOWORK_BATCH_ON': on} if on else {}))
+        try:
+            with open(out.name, 'w') as stream, open(self.state / 'engine.err', 'a') as err:
+                child = subprocess.Popen(args, stdout=stream, stderr=err, stdin=subprocess.DEVNULL, cwd=self.integ,
+                                         env=env)
+        except OSError:
+            # Popen did not launch the supervisor: no producer owns this empty generation.
+            cleanup.parent.rmdir()
+            raise
         job = {'task': self.BATCH, 'proc': child, 'out': out.name, 'started': time.time(),
                'members': list(tasks), 'tip': str(tip), 'on': on, 'independent': independent,
-               'base': on if on else git(self.integ, 'rev-parse', 'HEAD'),
+               'base': base, 'generation': generation, 'admission': admission, 'cleanup': str(cleanup),
+               'reserved': set(), 'integrated': set(), 'command': main_check.full_check(self.integ),
+               'mode': os.environ.get('PI_AUTOWORK_REVIEW', '1'), 'policy_version': worker.review_policy.version(),
+               'optimistic': optimistic.enabled(),
                'revisions': list(revisions if revisions is not None else getattr(self, 'batch_revisions', []))}
         self.snapshot = None
         if on:
@@ -417,6 +475,89 @@ class Coordinator:
         self.batch_members = list(tasks)
         LOG.say(f'Batch of {len(tasks)} candidates ({", ".join(tasks)}): one full check on their merged tree, '
                 'their reviews side by side')
+
+    @staticmethod
+    def batch_cleanup(job):
+        if not job.get('cleanup'):
+            return  # legacy fixture jobs have no supervised producer
+        try:
+            record = json.loads(Path(job['cleanup']).read_text())
+            if (isinstance(record, dict) and record.get('pid') == job['proc'].pid
+                    and record.get('cleanup_complete') is True):
+                return
+        except (OSError, ValueError, TypeError):
+            pass
+        job['invalidated'] = True
+        raise Finish(1, 'Batch descendant cleanup is unproven; keep its generation invalidated and stop before replacement')
+
+    prefix_landing = None  # serial engine child; the batch producer retains the mutation fence
+    prefix_producer = None  # visible only during the bounded serial prefix write
+
+    def promote_batch(self, job, prefix=False):
+        """Promote only fully published, identity-matched, one-use evidence.
+
+        The producer can never write the task-keyed engine channel. Reserving a record
+        before launch prevents an immutable source from replaying a consumed verdict.
+        """
+        reserved = job.setdefault('reserved', set())
+        promoted = []
+        for task, value in worker.batch_publications(self.state, self.integ, job):
+            if task in reserved:
+                if prefix and task not in job.get('integrated', set()):
+                    break
+                continue
+            if value is None or (prefix and not value['ok']):
+                if prefix:
+                    break
+                continue
+            reserved.add(task)
+            worker.publish_batch(worker.batch_record(self.state, task), value)
+            promoted.append(task)
+            if prefix:
+                break  # the next step waits for this engine integration and closure
+        return promoted
+
+    def settle_batch_prefix(self):
+        """Land one eligible step while its producer's tail keeps reviewing detached trees.
+
+        Keep the existing batch job in self.integration outside this narrow serial write
+        section: every other mutation/reload/train guard still sees the producer. An active
+        engine child is collected even if the producer exited meanwhile.
+        """
+        producer = self.integration
+        if not producer or producer['task'] != self.BATCH or not producer.get('generation'):
+            return False
+        self.integration = self.prefix_landing
+        self.prefix_producer = producer
+        try:
+            if self.integration:
+                finished = self.collect_integration()
+                if not finished:
+                    return True
+                self.prefix_landing = None
+                task, result = finished
+                if result.get('outcome') == 'INTEGRATED':
+                    producer['integrated'].add(task)
+                    if self.train and self.train.get('independent'):
+                        self.stop_train('the prefix beside it passed and lands first, on a newer base')
+                elif result.get('outcome') != 'BUSY':
+                    producer['prefix_stopped'] = True
+                self.integrated(task, result, resolve_conflicts=False)
+            if producer['proc'].poll() is not None:
+                return False  # collect the terminal batch after its last prefix engine child
+            if producer.get('prefix_stopped'):
+                return True
+            # A busy/refused reservation is not republished; the terminal path can reverify it.
+            tasks = self.promote_batch(producer, prefix=True)
+            if tasks:
+                (self.state / 'batch-order.txt').write_text('\n'.join(tasks) + '\n')
+                self.start_integration(tasks[0])
+                self.note_integrating(tasks[0], tasks)
+                self.prefix_landing = self.integration
+            return True
+        finally:
+            self.integration = producer
+            self.prefix_producer = None
 
     train = None  # the merge train's next car, checked beside self.integration's batch
 
@@ -512,7 +653,8 @@ class Coordinator:
     def batch_clean(result):
         """Every candidate the batch chained passed: it lands as the tree the next car was built on."""
         tasks = result.get('tasks') or []
-        return result.get('outcome') == 'BATCH' and bool(tasks) and set(result.get('passed') or []) == set(tasks)
+        return result.get('chain_clean', result.get('outcome') == 'BATCH' and bool(tasks)
+                          and set(result.get('passed') or []) == set(tasks))
 
     def finish_train(self):
         """Record the next car's verdicts once it ends; they land after the batch ahead, so they
@@ -520,6 +662,7 @@ class Coordinator:
         job = self.train
         if not job or job['proc'].poll() is None or self.session_busy():
             return
+        self.batch_cleanup(job)
         self.train = None
         try:
             result = json.loads(Path(job['out']).read_text())
@@ -528,18 +671,23 @@ class Coordinator:
         for path in (job['out'], job['tip']):
             Path(path).unlink(missing_ok=True)
         if isinstance(result, dict) and result:
+            self.promote_batch(job)
             self.batch_done(result, job)
 
     def stop_train(self, why=''):
-        job, self.train = self.train, None
+        job = self.train
         if not job:
             return
+        job['invalidated'] = True  # invalidate before termination, never reuse this generation
         if job['proc'].poll() is None:
             job['proc'].terminate()
             try:
                 job['proc'].wait(timeout=20)
             except subprocess.TimeoutExpired:
                 job['proc'].kill()
+                job['proc'].wait(timeout=20)  # uncertainty retains the invalidated job and blocks replacement
+        self.batch_cleanup(job)
+        self.train = None
         for path in (job['out'], job['tip']):
             Path(path).unlink(missing_ok=True)
         # Verdicts its reviews already recorded hold for a tree that will not exist; left, they
@@ -584,7 +732,8 @@ class Coordinator:
             failed = self.batch_failed() | set(checked)
             (self.state / 'batch-failed.json').write_text(json.dumps(sorted(failed)) + '\n')
             return
-        parts = [f'{len(result.get("passed") or [])} passed ({", ".join(result.get("passed") or []) or "none"})']
+        passed = list(result.get('prefix_integrated') or []) + list(result.get('passed') or [])
+        parts = [f'{len(passed)} passed ({", ".join(passed) or "none"})']
         if result.get('held'):
             parts.append(f'held: {", ".join(result["held"])}')
         if result.get('skipped'):
@@ -592,6 +741,7 @@ class Coordinator:
         if result.get('reason'):
             parts.append(str(result['reason']))
         later = [t for t in members if t not in (result.get('tasks') or [])
+                 and t not in (result.get('prefix_integrated') or [])
                  and t not in (result.get('skipped') or [])]
         if later:  # past the batch size: they were neither checked nor reported before (11 of 17)
             parts.append(f'{len(later)} wait for the next batch')
@@ -631,6 +781,9 @@ class Coordinator:
         merges code from main into the session: a reload 4 s after `landing them now` sent one
         passed candidate back to the end of a queue of single reviews for 15 hours. The verdicts'
         own two-hour lifetime (batch_pending) bounds the wait."""
+        if self.prefix_producer:
+            return [t for t in self.prefix_producer['members']
+                    if t not in self.prefix_producer.get('integrated', set())]
         chain = self.batch_chain()
         if not chain or not self.batch_pending():
             return []
@@ -645,6 +798,9 @@ class Coordinator:
 
     def batch_pending(self):
         """Batch verdicts not used yet: the session holds still for them, or their trees no longer match."""
+        producer = self.prefix_producer or self.integration
+        if producer and producer.get('generation') and not producer.get('invalidated'):
+            return True  # includes an exited producer whose terminal answer is not collected yet
         folder = self.state / 'batch'
         now = time.time()
         for path in folder.glob('*.json') if folder.is_dir() else []:
@@ -685,7 +841,7 @@ class Coordinator:
     def session_busy(self):
         """A review is running: the session branch must not move or get dirty meanwhile, or
         its fast-forward at the end fails."""
-        return bool(self.integration) and self.integration['proc'].poll() is None
+        return bool(self.prefix_landing) or (bool(self.integration) and self.integration['proc'].poll() is None)
 
     def collect_integration(self, wait=0):
         """(task, result) of the review once it ended, waiting up to ``wait`` seconds; None while it runs."""
@@ -698,6 +854,8 @@ class Coordinator:
             pass
         if job['proc'].poll() is None:
             return None
+        if job['task'] == self.BATCH:
+            self.batch_cleanup(job)
         self.integration = self.snapshot = None
         try:
             value = json.loads(Path(job['out']).read_text())
@@ -708,12 +866,36 @@ class Coordinator:
         if isinstance(value, dict) and value.get('outcome') in ('INTEGRATED', 'HELD'):
             # Queue contention is not evidence that this repository's checks need a longer budget.
             self.note_review_time(max(0, time.time() - job['started'] - value.get('check_slot_wait_seconds', 0)))
+        if job['task'] == self.BATCH and isinstance(value, dict):
+            self.promote_batch(job)
+            # The terminal answer owns only the remaining tail. Already integrated steps
+            # are recovered/closed by engine state, never enqueued or closed twice here.
+            integrated = job.get('integrated', set())
+            job['clean'] = self.batch_clean(value)
+            for key in ('tasks', 'passed', 'held'):
+                if key in value:
+                    value[key] = [t for t in value[key] if t not in integrated]
+            value['prefix_integrated'] = sorted(integrated)
+            value['chain_clean'] = job['clean']
         return job['task'], value if isinstance(value, dict) else {}
 
     def stop_integration(self):
         """On a stop: end the review; the engine's recovery verifies the commit again later."""
+        if self.integration and self.integration['task'] == self.BATCH:
+            self.integration['invalidated'] = True
         self.stop_train()
-        job, self.integration = self.integration, None
+        if self.prefix_landing:
+            producer, self.integration = self.integration, self.prefix_landing
+            self.prefix_landing = None
+            try:
+                self.stop_integration()
+            finally:
+                self.integration = producer
+        job = self.integration
+        if job:
+            job['invalidated'] = True
+            for task in job.get('members', []):
+                worker.batch_record(self.state, task).unlink(missing_ok=True)
         self.snapshot = None
         if job and job['proc'].poll() is None:
             job['proc'].terminate()
@@ -721,6 +903,10 @@ class Coordinator:
                 job['proc'].wait(timeout=20)
             except subprocess.TimeoutExpired:
                 job['proc'].kill()
+                job['proc'].wait(timeout=20)
+        if job and job['task'] == self.BATCH:
+            self.batch_cleanup(job)
+        self.integration = None
         if job:
             Path(job['out']).unlink(missing_ok=True)
 
@@ -868,7 +1054,7 @@ class Coordinator:
 
     def background_jobs(self):
         """Pi jobs running beside the loop: merge resolutions and a DOCS-MAINTAINER re-cut."""
-        return [*self.resolvers.values(), *[job for job in (self.maintainer_job, self.train) if job]]
+        return [*self.resolvers.values(), *[job for job in (self.maintainer_job, self.train, self.prefix_landing) if job]]
 
     def on_reload(self, *_):
         """SIGHUP (`autowork restart`, `systemctl reload`): re-execute on the current release and
@@ -1717,6 +1903,9 @@ class Coordinator:
         self.settle_reports(rows)
         if self.stop:
             return
+        if self.settle_batch_prefix():
+            self.board_train(rows)
+            return
         if self.session_busy():
             self.board_train(rows)  # the next batch, checked on top of this one beside it
             return  # one review at a time; it is collected when it ends
@@ -2003,7 +2192,8 @@ class Coordinator:
         for node in ast.parse(source).body:
             if isinstance(node, ast.FunctionDef) and node.name in ('review', 'full_suite_gate', 'run_gate', '_run_gate', 'quiet_reruns',
                                                                    'main_green_base', 'review_decision', 'review_gate_evidence',
-                                                                   'batch_review', 'batched_verdict', 'batch_gate'):
+                                                                   'batch_review', 'batched_verdict', 'batch_gate',
+                                                                   'batch_identity', 'batch_publications', 'publish_batch'):
                 parts[node.name] = ast.get_source_segment(source, node)
             elif isinstance(node, ast.Assign):
                 for target in node.targets:
@@ -3038,7 +3228,7 @@ class Coordinator:
         are adopted. Not while a review or a Pi job runs, nor once a review has ended but its
         answer is not read yet (TOOLSET-187-1d: a reload deferred behind a review re-executed the
         moment it ended and lost it): the cycle reads it, and a later cycle re-executes."""
-        busy = self.integration or self.child or self.resolvers or self.maintainer_job or self.train
+        busy = self.integration or self.prefix_landing or self.child or self.resolvers or self.maintainer_job or self.train
         landing = [] if busy else self.batch_landing()
         if busy or landing:
             what = (f"the review of {self.integration['task']}" if self.integration else
@@ -3484,6 +3674,7 @@ class Coordinator:
         signal.signal(signal.SIGHUP, self.on_reload)
         LOG.say(f'Started (PID {os.getpid()}). Stop with Ctrl+C.')
         try:
+            self.recover_batches()
             while True:
                 self.cycle()
         except Finish as done:
