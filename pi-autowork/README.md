@@ -32,6 +32,7 @@ Runtime state lives outside the repository, under
 | `pi_autowork/cli.py` | Options, repository and toolset resolution (one release per run), `--status`, `--dry-run`, `--fleet`, `--set-aside`, the runner lock |
 | `pi_autowork/coordinator.py` | The loop: engine lease owner, session branch and final merge, settle and close, requests, priority drift, Touches proposals and widening, health, self-update and restart, graceful stop |
 | `pi_autowork/supervision/main_checks.py` | Main-check supervision behind unchanged Coordinator methods; stateless helpers use the owner's phase callbacks and current Git/planning predicates. Coordinator retains policy, state, port leases and regression mutation. Child checks use Layout's public entrypoint. |
+| `pi_autowork/post_merge_barrier.py` | Opt-in revision-bound admission, verdict validation and terminal classification using the existing main-check receipt; no separate scheduler. |
 | `pi_autowork/worker.py` | The engine-launched `--worker` and `--verify` modes |
 | `pi_autowork/service.py` | `--install-service` / `--remove-service` for `pi-autowork@<repository>.service` |
 | `pi_autowork/common.py` | Logging, Git helpers and task lifecycle words |
@@ -348,6 +349,53 @@ A green result reads `main check passed at REV` for that revision only. If HEAD
 has advanced, it reads `Last green: OLD · HEAD: NEW · verification pending`.
 These are read-only displays: rendering never signals, cancels or restarts a check.
 
+### Opt-in post-merge admission
+
+`PI_AUTOWORK_POST_MERGE_POLICY=revision-barrier` requires an explicit
+`PI_AUTOWORK_MAIN_CHECK` repository command and a positive
+`PI_AUTOWORK_POST_MERGE_TIMEOUT` of at most 900 seconds (default 900, excluding
+host check-slot wait). The default `async` policy is unchanged. Service installs
+persist these settings without replacing unrelated saved grants; the CLI also
+loads them on terminal launches.
+
+The selected policy runs the command on exact canonical main through existing
+main-check supervision, leases and restart adoption. Every further canonical
+landing waits for a completed zero-exit green verdict bound to that revision and
+attempt. Planning-only commits, batch tree receipts and an older green cannot
+release it. Clean landings also use the existing index-lock/ref-CAS path so a
+concurrent main advance cannot spend stale admission. Dirty-main guards remain;
+owner planning files are not auto-committed in this mode. Deferred legacy conversion
+is refused: migrate explicitly outside the runner before activation. Candidate/review gates
+and isolated worker implementation continue unchanged. Automatic regression
+reverts are disabled for this policy, including jobs adopted while enabling it.
+
+The command writes schema-1 JSON at the absolute
+`AUTOWORK_POST_MERGE_VERDICT` path (`<runner-state>/post-merge-verdict.json`).
+It must echo `AUTOWORK_POST_MERGE_REVISION` and `AUTOWORK_POST_MERGE_RUN_ID`,
+set boolean `complete: true`, and provide `status` and `failures`. Green requires
+exit 0 and no failures; red requires exit 1 and nonempty named failures. The
+supervisor's matching terminal receipt is also required. See the
+[exact schema, environment, timeout and recovery contract](../docs/cross-host.md#revision-bound-post-merge-barrier).
+This is bounded-command qualification, not a full-suite or live pass.
+
+Red creates/deduplicates a revision-keyed repair through supported task writes in
+the session, never by repairing canonical source or automatically reverting.
+Pending repair incidents survive later checks/restarts and refused task commits;
+repair Checks use candidate-specific variables and a private verdict path. Bounded
+green receipts cannot substitute for full-suite base evidence, even with matching
+command strings. No subsequent runner merge, including a repair merge, is permitted while red.
+A real source repair requires separately authorized checked recovery; the resulting
+external main advance is checked afresh. For transient failure, the runner CLI's
+`--recheck-main --repo /path/to/project` requests a fresh attempt without cancelling
+an adopted job, changing attempts or granting green. Terminal broken/red evidence
+otherwise remains held; a dead job without a receipt is retried. The normal main
+receipt/log/evidence files retain diagnostics; restart does not reset admission.
+
+`tests/test_post_merge_barrier.py`, `tests/test_main_check.py` and
+`tests/test_supervision_main_checks.py` provide offline seams, including import
+isolation/DAG checks. These fixtures do not activate an installed service or qualify
+a consumer's touched-project command, time bound, model execution or live hardware.
+
 Manual closure is available for implementation, plan and inspection tasks, but writes no
 receipt or passing-check claim. It alone qualifies neither a goal nor a prerequisite
 explicitly listed in `verified_depends_on`. An authorized owner can record
@@ -500,8 +548,10 @@ accepted supported landing in `landing-check/<task>.json`. A batch receipt names
 the selection for the combined candidate tree, not only one task's changes. The
 core list is a plan: consult the producing log to confirm which tools existed and ran.
 
-Main still runs the declared **full** suite after landing, with existing regression
-attribution and repair/revert handling. Only a passing full-inventory receipt for
+Under the default asynchronous policy, main still runs the declared **full** suite
+after landing, with existing regression attribution and repair/revert handling.
+The [opt-in post-merge policy](#opt-in-post-merge-admission) instead qualifies its
+explicit bounded command; it must not be read as a full-suite result. Only a passing full-inventory receipt for
 the same tree and command can replace main's check. An affected-only pass cannot
 mark main or its base green. Offline fixtures in `tests/test_check.py`,
 `tests/test_pi_autowork.py` and `pi-autowork/tests/test_main_check.py` cover selection,

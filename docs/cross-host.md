@@ -378,6 +378,114 @@ test that passes when rerun alone counts as flaky. The rejection names the new f
 retry's prompt quotes them. The same command is main's check when `PI_AUTOWORK_MAIN_CHECK` is
 unset; a repository with neither gets one `FULL-CHECK` question in BLOCKERS.md.
 
+### Revision-bound post-merge barrier
+
+The default `PI_AUTOWORK_POST_MERGE_POLICY=async` keeps the existing asynchronous
+main-check policy (including separately opted-in optimistic landing). A consumer
+can instead select `revision-barrier`. This is runner admission logic, not an
+AGENTS declaration or a wrapper convention. It does not replace candidate checks,
+review, task attempts or dirty-checkout guards.
+
+Illustrative configuration for a consumer that supplies its own bounded command:
+
+```sh
+PI_AUTOWORK_POST_MERGE_POLICY=revision-barrier \
+PI_AUTOWORK_MAIN_CHECK='python3 scripts/post_merge_check.py' \
+PI_AUTOWORK_POST_MERGE_TIMEOUT=900 \
+bash /path/to/autowork/scripts/pi-autowork.sh --repo /path/to/project
+```
+
+These three settings are also saved by `--install-service`, and loaded by terminal
+launches for that repository. Existing saved grants/settings survive reinstall;
+explicit environment values win. Selecting this policy grants neither publication
+nor service activation. Configuration examples here were not run against an installed
+service. `PI_AUTOWORK_POST_MERGE_TIMEOUT` must be finite, positive and no more than
+900 seconds (default 900). Its execution budget starts **after** the existing host
+check-slot admission; queue wait is additional. The existing main-check port lease,
+process identity and restart adoption are reused. No second scheduler is installed.
+
+Before the first landing, current canonical main must pass this policy's check.
+After every runner fast-forward, including planning-only and upstream-sync landings,
+the new main revision needs its own completed green verdict before any further
+canonical landing. Workers and reviews may continue in isolated worktrees; their
+results cannot bypass the barrier. There is no planning/tree-receipt reuse. A
+concurrent external main advance invalidates admission; the landing uses the
+existing index lock and expected-old ref compare-and-swap. Quiet owner planning
+edits are not auto-committed in this mode: commit them explicitly. Automatic deferred
+legacy-store conversion is also refused; use the supported explicit migration
+outside the runner before activation. Existing dirty file guards still apply; checkout conversions unsupported by the CAS landing are
+held rather than silently converted.
+
+**Repository command contract.** The command runs in a disposable checkout of the
+exact main revision. It receives:
+
+- `AUTOWORK_POST_MERGE_REVISION`: full checked commit ID.
+- `AUTOWORK_POST_MERGE_BASE`: last green revision, or the checked revision itself
+  on initial activation with no previous green. The initial check must select a
+  complete appropriate baseline, not treat an empty diff as qualification.
+- `AUTOWORK_POST_MERGE_RUN_ID`: fresh opaque attempt identity.
+- `AUTOWORK_POST_MERGE_VERDICT`: absolute output path, currently
+  `<runner-state>/post-merge-verdict.json`, removed before each new attempt.
+
+The command owns selection/completeness of its touched-project inventory. It must
+finish all selected checks, without detached checks or unreported skips, then
+atomically replace the supplied verdict file with UTF-8 JSON:
+
+```json
+{"schema":1,"revision":"FULL_CHECKED_COMMIT_ID","run_id":"SUPPLIED_ATTEMPT_ID","complete":true,"status":"green","failures":[]}
+```
+
+A complete green verdict requires command exit **0** and an empty failures array.
+A complete red verdict requires exit **1**, `status: "red"` and a nonempty array
+of nonblank failure strings identifying the failed projects/tests. `schema` is
+integer 1, `complete` is boolean true, and revision/run ID must exactly match the
+supervised attempt. Pending/incomplete work must not write a complete verdict.
+Missing, invalid, stale, incomplete, exit-mismatched, crashed or timed-out attempts
+never admit another merge, even if the command exited zero. The supervisor receipt
+`<runner-state>/main_check.json` must also be terminal green for the same revision,
+command and configured timeout; a verdict file alone is insufficient. The normal
+`main-check.log`, `main-check.exit`, slot status and revision evidence bundles remain
+the diagnostic owners. Green here qualifies only this bounded command, not the
+repository's full suite or live acceptance.
+
+**Red and recovery.** A complete red result records one revision-keyed
+`POST-MERGE-<FULL_UPPERCASE_REVISION>` repair task under the `POST-MERGE` goal,
+using supported task-store writes in the session. It includes exact revision,
+failure strings and evidence path; repeated cycles/restarts deduplicate it. If a
+session writer is busy, recording waits until it is free; pending incidents remain
+in the main-check receipt across new checks/restarts, and a refused task commit is
+retried without staging unrelated work. Repair Checks run the command with candidate
+revision/attempt variables, the failed revision as base, and a temporary private
+verdict path, not the canonical admission file. The policy does not edit
+canonical source, automatically revert, reset attempts or ask the maintainer to
+invent a second main-red repair. Repair implementation may proceed in isolation,
+but **red does not authorize even a repair merge**. For a real source failure,
+retain that candidate for separately authorized, ordinarily checked recovery outside
+the runner's automatic landing path; any external main advance needs its own fresh
+verdict. Never edit a receipt to green or disable checks to land the repair.
+
+For a transient/environment failure, or repaired command provisioning, request a
+fresh check without cancelling an adopted live job or restarting the service:
+
+```sh
+bash /path/to/autowork/scripts/pi-autowork.sh --repo /path/to/project --recheck-main
+```
+
+This writes a revision-bound request; the next coordinator cycle runs a fresh
+attempt after any existing job is reaped. The request holds admission immediately;
+it never grants green. A request superseded by an external main advance is discarded,
+and that new revision is checked normally. A dead job without an exit receipt is
+aborted and retried; terminal red/broken evidence stays held until an explicit
+recheck, command/policy change or a new main revision. Changing command/timeout
+requires fresh evidence. Restart does not erase the gate or task/check history.
+
+Offline fixtures in `pi-autowork/tests/test_post_merge_barrier.py` exercise these
+boundaries with real Git refs and supervised fixture commands. They do not prove
+an installed consumer's activation, touched-project coverage, <=15-minute runtime,
+model execution, device operation or live acceptance; those remain consumer checks.
+
+### Task admission and integration
+
 `Touches:` schedules work: a task naming a file that running work or an unlanded commit
 also names waits until that one lands (a waiting task holds no files); directory and glob
 overlap only ranks it after independent work (TOOLSET-161-17). While slots idle on such

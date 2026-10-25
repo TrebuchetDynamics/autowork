@@ -16,9 +16,10 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import datetime
 
-from pi_autowork import health, main_check, pi_runtime, release, service, worker  # noqa: E402
+from pi_autowork import health, main_check, pi_runtime, post_merge_barrier, release, service, worker  # noqa: E402
 from pi_autowork.common import LOG, die, dirty, git, git_ok, lifecycle, model_of, provider_of, push_guard  # noqa: E402
 from pi_autowork.coordinator import Coordinator  # noqa: E402
 from pi_autowork.processes import running, start_time  # noqa: E402
@@ -55,6 +56,7 @@ Options:
   --max-cycles N       Start at most N Pi workers, then finish
   --no-fallback        Never switch to the fallback model
   --allow-hermes       Run although a Hermes Autowork cron job targets this repository
+  --recheck-main       Request a fresh revision-barrier check of current main (no gate override)
   --install-service    Install and start a systemd user service running this for the repository
   --remove-service     Stop and remove the repository's service
   --help               Show this help
@@ -88,6 +90,10 @@ Environment (optional):
                             (default 3)
   PI_AUTOWORK_PUSH          1 grants automatic upstream publication for this repository
                             (default 0: merged main stays local); saved grants are reused
+  PI_AUTOWORK_POST_MERGE_POLICY async (default), or revision-barrier: require an exact green
+                            command verdict before the next canonical landing
+  PI_AUTOWORK_MAIN_CHECK    explicit repository command required by revision-barrier
+  PI_AUTOWORK_POST_MERGE_TIMEOUT execution seconds for that command (default/max 900)
   PI_AUTOWORK_OPTIMISTIC    1 lands reviewed tasks without the full-suite gate; main's check reverts
                             a regression and only green revisions are pushed (default 0)
   PI_AUTOWORK_STALL_AFTER   seconds with nothing running while work waits before the runner
@@ -175,7 +181,8 @@ def main(argv):
 
 def parse(argv):
     opts = dict(mode='continuous', repo=None, interval='60', max_cycles='0', service=None, status=False,
-                set_aside=None, fleet=False, dry_run=False, workers=os.environ.get('PI_AUTOWORK_WORKERS', '8'))
+                set_aside=None, recheck_main=False, fleet=False, dry_run=False,
+                workers=os.environ.get('PI_AUTOWORK_WORKERS', '8'))
     args = list(argv)
     while args:
         arg = args.pop(0)
@@ -193,6 +200,8 @@ def parse(argv):
             opts['status'] = True
         elif arg == '--fleet':
             opts['fleet'] = True
+        elif arg == '--recheck-main':
+            opts['recheck_main'] = True
         elif arg == '--set-aside':
             opts['set_aside'] = value('a task ID')
         elif arg == '--repo':
@@ -287,6 +296,10 @@ def in_catalog(pi, model):
 def run(argv, start, identity):
     script = os.environ.get('PI_AUTOWORK_SCRIPT') or str(LAYOUT.resource('scripts/pi-autowork.sh'))
     opts = parse(argv)
+    try:
+        post_merge_barrier.validate_settings()
+    except ValueError as exc:
+        setup_error(str(exc))
     pi = os.environ.get('PI_BIN', 'pi')
     for tool in ('git', 'timeout', 'systemd-escape'):
         if not shutil.which(tool):
@@ -352,7 +365,7 @@ def run(argv, start, identity):
                       PI_AUTOWORK_COMPONENT=str(component), PI_AUTOWORK_SCRIPT=script)
     toolset_rev = git(toolset, 'rev-parse', '--short', 'HEAD') or 'unknown'
     settings = pi_runtime.Settings(state_root)
-    if not opts['status'] and not opts['service']:
+    if not opts['status'] and not opts['service'] and not opts['recheck_main']:
         if not in_catalog(pi, settings.primary):
             setup_error(f"Primary model {settings.primary} is not in Pi's model catalog (pi --list-models).")
         if settings.fallback_enabled and not in_catalog(pi, settings.fallback):
@@ -362,6 +375,16 @@ def run(argv, start, identity):
     state = health.state_directory(state_root, repo, git_common)
 
     # A request for the running runner, which owns the engine lease; nothing else changes.
+    if opts['recheck_main']:
+        if opts['dry_run'] or not post_merge_barrier.enabled():
+            setup_error('--recheck-main requires revision-barrier and cannot be combined with --dry-run')
+        (state / 'requests').mkdir(parents=True, exist_ok=True)
+        request = state / 'requests' / 'recheck-main'
+        with tempfile.NamedTemporaryFile(mode='w', dir=request.parent, delete=False) as output:
+            output.write(git(repo, 'rev-parse', base) + '\n')
+        os.replace(output.name, request)
+        print(f'Requested a fresh post-merge check of {base}; the runner acts within one cycle.')
+        return 0
     if opts['set_aside']:
         if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', opts['set_aside']):
             setup_error(f'Not a task ID: {opts["set_aside"]}')
