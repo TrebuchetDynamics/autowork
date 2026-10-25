@@ -167,6 +167,68 @@ while not all((root/name).exists() for name in ['ordinary.pid', 'escaped.pid']):
         self.assertEqual(wrapper.communicate(timeout=4), (b'', b''))
         self.assert_finished(wrapper, 23)
 
+    def test_live_payload_waits_for_adopted_orphan_and_group_to_be_reaped(self):
+        # Without live-loop reaping the payload and test wait forever for the
+        # adopted zombie's group to disappear; final cleanup is too late.
+        script = """import json, os, pathlib, sys, time
+root = pathlib.Path(sys.argv[1])
+guard = os.getppid()
+worker = os.fork()
+if worker == 0:
+    os.setsid()
+    if os.fork() != 0:
+        os._exit(0)
+    pid = os.getpid()
+    started = pathlib.Path('/proc/%d/stat' % pid).read_text().rsplit(')', 1)[1].split()[19]
+    (root/'orphan.pid').write_text(json.dumps([pid, started]))
+    while os.getppid() != guard:
+        time.sleep(.005)
+    (root/'adopted').touch()
+    while not (root/'exit-orphan').exists():
+        time.sleep(.005)
+    os._exit(0)
+os.waitpid(worker, 0)
+while not (root/'adopted').exists():
+    time.sleep(.005)
+pid, started = json.loads((root/'orphan.pid').read_text())
+while pathlib.Path('/proc/%d' % pid).exists():
+    time.sleep(.005)
+while True:
+    try:
+        os.killpg(worker, 0)
+    except ProcessLookupError:
+        break
+    time.sleep(.005)
+(root/'reaped').touch()
+while not (root/'exit-payload').exists():
+    time.sleep(.005)
+sys.exit(23)
+"""
+        wrapper = self.launch(self.command(sys.executable, '-c', script,
+                                           str(self.root), deadline=10),
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.wait_for(lambda: (self.root / 'adopted').exists())
+        record = json.loads((self.root / 'orphan.pid').read_text())
+        pgid = os.getpgid(record[0])
+        initial = self.wait_for(self.metadata_ready)
+        self.assertEqual(pi_process._stat(record[0]), (wrapper.pid, record[1]))
+        os.killpg(pgid, 0)  # A genuinely live adopted child must not be killed.
+        self.assertFalse(initial['cleanup_complete'])
+        (self.root / 'exit-orphan').touch()
+        self.wait_for(lambda: (self.root / 'reaped').exists())
+        self.assert_gone([record])
+        with self.assertRaises(ProcessLookupError):
+            os.killpg(pgid, 0)
+        self.assertIsNone(wrapper.poll())
+        self.assertEqual(identity(initial['pi_pid']), initial['pi_start_time'])
+        current = json.loads(self.metadata.read_text())
+        self.assertFalse(current['cleanup_complete'])
+        self.assertIsNone(current['exit_code'])
+        (self.root / 'exit-payload').touch()
+        self.assertEqual(wrapper.communicate(timeout=4), (b'', b''))
+        final = self.assert_finished(wrapper, 23)
+        self.assertEqual(final['reason'], 'exit')
+
     def test_stdio_is_inherited_without_protocol_or_prompt_metadata(self):
         wrapper = self.launch(self.command(sys.executable, '-c',
                               'import os; os.write(1, os.read(0, 100)); os.write(2, b"diagnostic")'),

@@ -85,8 +85,12 @@ not automatically replay the prompt or switch to JSON.
 
 The guard pins PID birth identities, validates the spawning parent's identity
 before and after parent-death registration, discovers escaped descendants,
-signals through pidfds and reaps its subtree. Normal completion, cancellation,
-timeout and parent death use bounded cleanup. The command watchdog additionally
+signals through pidfds and reaps its subtree. While the payload is live, the guard
+nonblockingly reaps exited adopted children so their process groups can disappear,
+without signalling live descendants or losing the direct payload's exit status.
+Live reaping does not publish cleanup-complete proof: normal completion,
+cancellation, timeout and parent death still require final bounded cleanup.
+The command watchdog additionally
 validates the selected command's ancestry and its Pi parent's birth identity;
 it can interrupt an owned stalled tool without discarding the attempt.
 
