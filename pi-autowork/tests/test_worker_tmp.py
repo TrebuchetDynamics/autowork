@@ -948,7 +948,7 @@ class BatchLandingTests(unittest.TestCase):
     def runner(self, folder, states, record_age=0):
         from pi_autowork import coordinator
         runner = coordinator.Coordinator.__new__(coordinator.Coordinator)
-        runner.state, runner.seen = Path(folder), {}
+        runner.state, runner.seen, runner.integ = Path(folder), {}, folder
         runner.integration = runner.child = None
         (runner.state / 'batch').mkdir()
         for task in states:
@@ -1159,6 +1159,39 @@ class BatchLandingTests(unittest.TestCase):
             ahead.wait()
         runner.integration = {'task': runner.BATCH, 'proc': ahead, 'members': ['A', 'B'], 'tip': str(tip)}
         return runner, coordinator, rows
+
+    def test_train_waits_for_the_prefix_engine_even_after_its_producer_exits(self):
+        """A terminal producer cannot hide a still-running serial landing or close it twice."""
+        from unittest.mock import Mock
+        for producer_running in (True, False):
+            with self.subTest(producer_running=producer_running), tempfile.TemporaryDirectory() as folder:
+                runner, coordinator, _ = self.merge_train_runner(folder, ahead_running=producer_running)
+                producer = runner.integration
+                producer.update(generation='owned', integrated=set())
+                runner.train = {'independent': True}
+                prefix = runner.prefix_landing = {'task': 'A', 'proc': Mock()}
+                seen = []
+                runner.stop_train = lambda why: (seen.append('invalidated car'), setattr(runner, 'train', None))
+                runner.promote_batch = lambda *args, **kwargs: []
+                runner.collect_integration = lambda: None
+                self.assertTrue(runner.settle_batch_prefix())
+                self.assertIs(runner.integration, producer)
+                self.assertIs(runner.prefix_landing, prefix)
+                self.assertTrue(runner.session_busy())
+
+                def collect():
+                    runner.integration = None  # the real collector releases only its engine child
+                    return 'A', {'outcome': 'INTEGRATED'}
+
+                runner.collect_integration = collect
+                runner.integrated = lambda *args, **kwargs: seen.append('closed A')
+                runner.settle_batch_prefix()
+                self.assertEqual(seen, ['invalidated car', 'closed A'])
+                self.assertIsNone(runner.prefix_landing)
+                self.assertEqual(producer['integrated'], {'A'})
+                runner.settle_batch_prefix()
+                self.assertEqual(seen, ['invalidated car', 'closed A'])
+                self.assertIs(runner.integration, producer)
 
     def test_the_next_car_boards_on_the_tip_of_the_batch_still_checking(self):
         with tempfile.TemporaryDirectory() as folder:

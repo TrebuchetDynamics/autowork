@@ -18,6 +18,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / 'scripts/pi-autowork.sh'
@@ -183,6 +184,14 @@ emit({'type': 'session', 'version': 3, 'id': opts.get('--session-id'), 'cwd': os
 if role == 'touches':
     finish(text='PI_AUTOWORK_TOUCHES: ' + ('NONE - only a live device operation' if behavior == 'none' else task + '.txt'))
 elif role == 'verify':
+    if behavior == 'prefix_tail':
+        ready = os.path.join(os.environ['FAKE_PI_ROOT'], 'tail-review-ready')
+        release = os.path.join(os.environ['FAKE_PI_ROOT'], 'tail-review-release')
+        open(ready, 'w').close()
+        while not os.path.exists(release):
+            time.sleep(0.05)
+        finish(text='Checked.\nPI_AUTOWORK_VERIFY: pass all checks')
+        sys.exit(0)
     if behavior == 'tamper':
         open('tampered.txt', 'w').write('x\n')
     if behavior == 'slow_review':  # a review that runs a long check
@@ -612,6 +621,88 @@ class Fixture(unittest.TestCase):
 
     def branches(self):
         return self.git(self.repo, 'branch', '--format=%(refname:short)').splitlines()
+
+
+class BatchPrefixTests(unittest.TestCase):
+    def test_batch_prefix_rejects_stale_and_replayed_evidence(self):
+        """The publication seam fails closed at each prefix/crash boundary."""
+        sys.path.insert(0, str(ROOT / 'pi-autowork'))
+        from pi_autowork import worker
+        from pi_autowork.coordinator import Coordinator, Finish
+        with tempfile.TemporaryDirectory() as folder:
+            runner = Coordinator.__new__(Coordinator)
+            runner.state, runner.integ = Path(folder), '/fixture'
+            admission = {t: dict(task=t, attempt_id='attempt-' + t, contract_hash='contract-' + t,
+                                 commit='candidate-' + t) for t in 'AB'}
+            config = dict(command='true', mode='1', policy_version='v1', optimistic=False)
+            job = dict(generation='current', base='base', admission=admission, members=list('AB'),
+                       reserved=set(), integrated=set(), **config)
+            bindings = [dict(admission[t], generation='current', base='base', head='head-' + t,
+                             tree='tree-' + t, gate_tree='tree-B', selection={'full': False},
+                             review_policy={'required': True}, **config) for t in 'AB']
+            manifest = dict(generation='current', base='base', admission=admission, steps=bindings, **config)
+            directory = runner.state / 'batch/current'
+            worker.publish_batch(directory / 'chain.json', manifest)
+            values = {b['task']: dict(binding=b, tree=b['tree'], commit=b['commit'], selection=b['selection'],
+                                      review_policy=b['review_policy'], ok=True, at=time.time()) for b in bindings}
+            refs = {'head-A^1': 'base', 'head-B^1': 'head-A',
+                    **{f'head-{t}^2': f'candidate-{t}' for t in 'AB'},
+                    **{f'head-{t}^{{tree}}': f'tree-{t}' for t in 'AB'}, 'HEAD^2': 'candidate-B'}
+            with patch.object(worker, 'batch_identity', return_value=admission) as identities, \
+                    patch.object(worker, 'git', side_effect=lambda _, *args: refs.get(args[-1])), \
+                    patch.object(worker.main_check, 'full_check', return_value='true'), \
+                    patch.object(worker.review_policy, 'version', return_value='v1'), \
+                    patch.object(worker.optimistic, 'enabled', return_value=False), \
+                    patch.dict(os.environ, PI_AUTOWORK_REVIEW='1'):
+                worker.publish_batch(directory / 'B.json', values['B'])
+                self.assertEqual(runner.promote_batch(job, prefix=True), [])  # unreviewed predecessor
+                (directory / 'A.json').write_text('{"ok":')
+                self.assertEqual(runner.promote_batch(job, prefix=True), [])  # torn publication
+                worker.publish_batch(directory / 'A.json', dict(values['A'], ok=False))
+                self.assertEqual(runner.promote_batch(job, prefix=True), [])  # failed predecessor
+                for field, wrong in (('generation', 'old'), ('attempt_id', 'old-attempt'),
+                                     ('contract_hash', 'old-contract'), ('commit', 'old-candidate'),
+                                     ('base', 'old-base'), ('tree', 'old-tree'), ('command', 'other'),
+                                     ('selection', {}), ('review_policy', {'required': False})):
+                    with self.subTest(stale=field):
+                        value = dict(values['A'], binding=dict(bindings[0], **{field: wrong}))
+                        worker.publish_batch(directory / 'A.json', value)
+                        self.assertEqual(runner.promote_batch(job, prefix=True), [])
+                worker.publish_batch(directory / 'A.json', values['A'])
+                identities.return_value = dict(admission, A=dict(admission['A'], contract_hash='changed'))
+                self.assertEqual(runner.promote_batch(job, prefix=True), [])  # current contract drift
+                identities.return_value = admission
+                self.assertEqual(runner.promote_batch(job, prefix=True), ['A'])
+                # Consumed before integration: no replay, even though the source still exists.
+                worker.batch_record(runner.state, 'A').unlink()
+                self.assertEqual(runner.promote_batch(job, prefix=True), [])
+                # Integrated before closure: engine recovery owns A; only B can now be offered.
+                job['integrated'].add('A')
+                self.assertEqual(runner.promote_batch(job, prefix=True), ['B'])
+                self.assertEqual(runner.promote_batch(job, prefix=True), [])
+                with patch.object(worker, 'same_code', return_value=False):
+                    self.assertIsNone(worker.batched_verdict(runner.state, 'B', runner.integ))
+                self.assertFalse(worker.batch_record(runner.state, 'B').exists())
+                job['invalidated'] = True
+                worker.publish_batch(directory / 'A.json', values['A'])  # late cancelled producer
+                self.assertEqual(runner.promote_batch(job, prefix=True), [])
+                restarted = dict(job, invalidated=False, generation='fresh', reserved=set(), integrated=set())
+                self.assertEqual(runner.promote_batch(restarted, prefix=True), [])
+                self.assertFalse(list(directory.glob('*.tmp')))
+                # Restart cannot bypass an abandoned producer's cleanup fence. No stale
+                # verdict survives even when recovery must stop on absent/false proof.
+                worker.publish_batch(worker.batch_record(runner.state, 'A'), values['A'])
+                with self.assertRaises(Finish):
+                    runner.recover_batches(wait=0)
+                self.assertFalse(worker.batch_record(runner.state, 'A').exists())
+                proof = dict(pid=123, start_time='1', cleanup_complete=False, exit_code=125)
+                worker.publish_batch(directory / 'process.json', proof)
+                with self.assertRaises(Finish):
+                    runner.recover_batches(wait=0)
+                worker.publish_batch(directory / 'process.json', dict(proof, cleanup_complete=True, exit_code=0))
+                runner.recover_batches(wait=0)
+                self.assertTrue(runner.batch_recovered)
+                self.assertEqual(runner.promote_batch(restarted, prefix=True), [])
 
 
 class EngineTests(Fixture):
@@ -1354,6 +1445,59 @@ class EngineTests(Fixture):
         for receipt in receipts:
             self.assertFalse(receipt['selection']['full'])
             self.assertEqual(receipt['selection']['tests'], ['tests/test_changed.py'])
+
+    def test_batch_passing_prefix_lands_before_tail(self):
+        """A's verified closure must reach main while B's independent review is blocked."""
+        for mode in ('optimistic', 'affected'):
+            with self.subTest(mode=mode):
+                gate = self.root / mode
+                gate.mkdir()
+                self.repo = self.make_repo(gate / 'project', [('A', None), ('B', None)])
+                self.state, self.log = gate / 'state', gate / 'pi.log'
+                self.env.update(FAKE_MAIN_REPO=str(self.repo), FAKE_PI_ROOT=str(gate),
+                                FAKE_PI_LOG=str(self.log), PI_AUTOWORK_STATE_DIR=str(self.state),
+                                PI_AUTOWORK_BATCH='6', PI_AUTOWORK_MAIN_CHECK='true',
+                                PI_AUTOWORK_OPTIMISTIC='1' if mode == 'optimistic' else '0')
+                runs = gate / 'checks'
+                source = Path(__file__).resolve().parents[1]
+                (self.repo / 'scripts').mkdir()
+                (self.repo / 'tests').mkdir()
+                for name in ('check.py', 'affected_tests.py'):
+                    shutil.copy2(source / 'scripts' / name, self.repo / 'scripts' / name)
+                (self.repo / '.gitignore').write_text('__pycache__/\n')
+                (self.repo / 'tests/test_changed.py').write_text(
+                    'import unittest\nfrom pathlib import Path\nclass Check(unittest.TestCase):\n'
+                    '    def test_changes(self):\n'
+                    f'        with open({str(runs)!r}, "a") as out: out.write("ran\\n")\n'
+                    '        for name in ("A.txt", "B.txt"): Path(name)\n')
+                self.git(self.repo, 'add', '-A')
+                self.git(self.repo, 'commit', '-qm', 'affected prefix fixture')
+                self.env['PI_AUTOWORK_VALIDATE'] = ('true' if mode == 'optimistic'
+                                                    else 'python3 scripts/check.py')
+                self.plan({'worker:A': ['barrier'], 'worker:B': ['barrier'],
+                           'verify:B': ['prefix_tail']})
+                runner = self.start_runner('--until-empty', '--workers', '2', '--interval', '1')
+                try:
+                    try:
+                        self.wait_for(gate / 'tail-review-ready', timeout=60)
+                    except AssertionError:
+                        self.retain_evidence()
+                        raise
+                    self.wait_for(self.repo / 'tasks/evidence/A.toml', timeout=45)
+                    self.assertFalse((self.repo / 'tasks/evidence/B.toml').exists())
+                    self.assertFalse(self.done('B'))
+                finally:
+                    (gate / 'tail-review-release').touch()
+                    try:
+                        out, err = runner.communicate(timeout=90)
+                    except subprocess.TimeoutExpired:
+                        runner.send_signal(signal.SIGINT)
+                        out, err = runner.communicate(timeout=60)
+                self.assertEqual(runner.returncode, 0, out + err)
+                self.assertTrue(self.done('A', 'B'), out)
+                self.assertCountEqual([r['task'] for r in self.runs('verify')], ['A', 'B'])
+                if mode == 'affected':
+                    self.assertEqual(runs.read_text().splitlines(), ['ran'])
 
     def test_stop_workers_restart_preserves_an_inflight_batch_result_unless_now(self):
         """A toolset restart must not discard the batch's full check or unread result."""

@@ -687,6 +687,93 @@ def batch_record(state, task):
     return Path(state) / 'batch' / f'{safe_name(task)}.json'
 
 
+def publish_batch(path, value):
+    """Publish only complete records, durably, within the existing batch owner."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix='.', suffix='.tmp', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            json.dump(value, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def batch_identity(session, tasks):
+    """Admission identity, never taken from review text or a verdict file."""
+    dispatch, integrate, state = engine_modules()
+    common = state.common_dir(Path(session))
+    contracts = {t['id']: t for t in dispatch.contracts(Path(session))}
+    identities = {}
+    for slot in state.slots(common):
+        task = slot['task_id']
+        contract = contracts.get(task)
+        if (task not in tasks or not contract or not slot.get('attempt_id') or not slot.get('commit')
+                or integrate.admitted_contract_changed(Path(session), common, slot)):
+            continue
+        identities[task] = dict(task=task, attempt_id=slot['attempt_id'],
+                                contract_hash=contract['contract_hash'], commit=slot['commit'])
+    return identities
+
+
+def batch_publications(state, session, job):
+    """Validate current producer publications against its immutable admitted chain.
+
+    A missing/torn/stale record is never a verdict. The coordinator separately reserves
+    promoted records, so an immutable publication cannot recreate consumed evidence.
+    """
+    if not job.get('generation') or job.get('invalidated'):
+        return []
+    folder = Path(state) / 'batch' / job['generation']
+    try:
+        manifest = json.loads((folder / 'chain.json').read_text())
+        if (manifest['generation'] != job['generation'] or manifest['base'] != job['base']
+                or manifest['admission'] != job['admission']
+                or manifest['command'] != job['command'] or manifest['command'] != main_check.full_check(session)
+                or manifest['mode'] != job['mode'] or manifest['mode'] != os.environ.get('PI_AUTOWORK_REVIEW', '1')
+                or manifest['policy_version'] != job['policy_version']
+                or manifest['policy_version'] != review_policy.version()
+                or manifest['optimistic'] != job['optimistic'] or manifest['optimistic'] != optimistic.enabled()):
+            return []
+        # Once observed, the producer may not substitute another gated chain.
+        if job.setdefault('manifest', manifest) != manifest:
+            return []
+        current = batch_identity(session, job['members'])
+        records, before = [], manifest['base']
+        for binding in manifest['steps']:
+            task = binding['task']
+            if (binding['generation'] != job['generation'] or binding['base'] != manifest['base']
+                    or binding['gate_tree'] != manifest['steps'][-1]['tree']
+                    or any(binding[k] != manifest[k] for k in ('command', 'mode', 'policy_version', 'optimistic'))
+                    or any(binding[k] != job['admission'][task][k] for k in job['admission'][task])
+                    or git(session, 'rev-parse', binding['head'] + '^1') != before
+                    or git(session, 'rev-parse', binding['head'] + '^2') != binding['commit']
+                    or git(session, 'rev-parse', binding['head'] + '^{tree}') != binding['tree']):
+                return []
+            before = binding['head']
+            try:
+                value = json.loads((folder / f'{safe_name(task)}.json').read_text())
+            except (OSError, ValueError):
+                value = None
+            if (current.get(task) != job['admission'][task] or not isinstance(value, dict)
+                    or value.get('binding') != binding or type(value.get('ok')) is not bool
+                    or any(value.get(k) != binding[k] for k in ('tree', 'commit', 'selection', 'review_policy'))):
+                records.append((task, None))
+            else:
+                records.append((task, value))
+        return records
+    except (OSError, ValueError, KeyError, TypeError, IndexError):
+        return []
+
+
 def same_code(checkout, left, right):
     """Whether two trees differ at most in planning files, docs/ or tasks/, which no check reads."""
     if not left:
@@ -703,6 +790,15 @@ def batched_verdict(state, task, checkout):
     try:
         value = json.loads(record.read_text())
     except (OSError, ValueError):
+        return None
+    binding = value.get('binding')
+    if binding and (batch_identity(checkout, [task]).get(task) != {
+            k: binding.get(k) for k in ('task', 'attempt_id', 'contract_hash', 'commit')}
+            or binding.get('command') != main_check.full_check(checkout)
+            or binding.get('mode') != os.environ.get('PI_AUTOWORK_REVIEW', '1')
+            or binding.get('policy_version') != review_policy.version()
+            or binding.get('optimistic') != optimistic.enabled()):
+        record.unlink(missing_ok=True)
         return None
     if value.get('commit') != git(checkout, 'rev-parse', 'HEAD^2') or not same_code(checkout, value.get('tree'), 'HEAD^{tree}'):
         # The session moved since by more than planning files: today's full verification. The record
@@ -902,16 +998,21 @@ def batch_review(state, task, checkout, gate):
     # An environment fail or no verdict writes no findings: an earlier review's would be recorded.
     findings_path(state, task).unlink(missing_ok=True)
     policy = review_decision(state, task, checkout, gate.get('evidence'))
+    binding = gate.get('binding')
+    if binding and (binding['head'] != head or binding['review_policy'] != policy):
+        return 1
     code = review(state, task, checkout, head, gate['note']) if policy['required'] else 0
     reason = review_findings(state, task)
-    record = batch_record(state, task)
-    record.parent.mkdir(parents=True, exist_ok=True)
-    record.write_text(json.dumps({'tree': git(checkout, 'rev-parse', 'HEAD^{tree}'), 'commit': git(checkout, 'rev-parse', 'HEAD^2'),
-                                  'ok': code == 0, 'at': time.time(), 'selection': gate.get('selection'),
-                                  'review_policy': policy,
-                                  # verify prints it as the hold reason, which must never be empty
-                                  'reason': (reason or f'the batch review of {task} failed without a finding '
-                                             '(no verdict, an environment miss or a changed checkout)') if code else ''}))
+    record = (Path(state) / 'batch' / binding['generation'] / f'{safe_name(task)}.json'
+              if binding else batch_record(state, task))
+    value = {'tree': git(checkout, 'rev-parse', 'HEAD^{tree}'),
+             'commit': git(checkout, 'rev-parse', 'HEAD^2'), 'ok': code == 0,
+             'at': time.time(), 'selection': gate.get('selection'), 'review_policy': policy,
+             'reason': (reason or f'the batch review of {task} failed without a finding '
+                        '(no verdict, an environment miss or a changed checkout)') if code else ''}
+    if binding:
+        value.update(binding=binding, tree=binding['tree'], commit=binding['commit'])
+    publish_batch(record, value)
     return code
 
 
@@ -1121,8 +1222,11 @@ def run_batch_reviews(state, session, script, root, steps, gate, result, running
             if git(session, 'worktree', 'add', '--detach', str(where), head) is None:
                 result['tasks'].remove(task)  # unreviewed: it integrates on its own
                 continue
+            instructions = json.loads(gate)
+            if bindings := result.get('bindings'):
+                instructions['binding'] = bindings[task]
             child = subprocess.Popen(['bash', script, '--verify', state, task], cwd=where,
-                                     env=dict(os.environ, PI_AUTOWORK_BATCH_GATE=gate),
+                                     env=dict(os.environ, PI_AUTOWORK_BATCH_GATE=json.dumps(instructions)),
                                      stdout=subprocess.DEVNULL, stderr=sys.stderr)
             running.append((task, where, child))
         if running:  # WNOWAIT leaves reaping to Popen
@@ -1142,8 +1246,10 @@ def cleanup_batch(session, root, running):
     """Stop leftover reviews before removing the scratch worktrees they may still be using."""
     for _, _, child in running:
         if child.poll() is None:
-            child.kill()
-            child.wait()
+            child.terminate()
+            # A timed-out child leaves scratch intact. The enclosing runtime supervisor
+            # owns descendant cleanup; the coordinator requires its proof before replacement.
+            child.wait(timeout=20)
     for path in [p for p in root.iterdir() if p.is_dir()] if root.exists() else []:
         subprocess.run(['git', '-C', session, 'worktree', 'remove', '--force', '--force', str(path)],
                        capture_output=True)
@@ -1182,7 +1288,35 @@ def verify_batch(state, session, script, tasks):
         gate = batch_gate(state, chain, base, steps, result)
         if gate is None:
             return 0
+        generation = os.environ.get('PI_AUTOWORK_BATCH_GENERATION')
+        if generation:
+            admission = json.loads(os.environ['PI_AUTOWORK_BATCH_ADMISSION'])
+            if admission != batch_identity(session, tasks):
+                print(json.dumps(dict(result, reason='batch admission changed before review')))
+                return 0
+            instructions, bindings = json.loads(gate), {}
+            gate_tree = git(chain, 'rev-parse', 'HEAD^{tree}')
+            # Decide and bind policy before any model runs, on each complete candidate.
+            for task, head in steps:
+                git(chain, 'checkout', '--detach', head)
+                policy = review_policy.decide(str(chain), task, evidence=instructions.get('evidence'))
+                policy.update(tree=git(chain, 'rev-parse', 'HEAD^{tree}'), commit=head,
+                              command=main_check.full_check(str(chain)))
+                bindings[task] = dict(admission[task], generation=generation, base=base, head=head,
+                                      tree=policy['tree'], gate_tree=gate_tree,
+                                      selection=instructions.get('selection'), optimistic=optimistic.enabled(),
+                                      command=main_check.full_check(str(chain)), review_policy=policy,
+                                      mode=os.environ.get('PI_AUTOWORK_REVIEW', '1'),
+                                      policy_version=review_policy.version())
+            publish_batch(Path(state) / 'batch' / generation / 'chain.json',
+                          dict(generation=generation, base=base, admission=admission,
+                               command=main_check.full_check(str(chain)),
+                               mode=os.environ.get('PI_AUTOWORK_REVIEW', '1'),
+                               policy_version=review_policy.version(), optimistic=optimistic.enabled(),
+                               steps=list(bindings.values())))
+            result['bindings'] = bindings
         run_batch_reviews(state, session, script, root, steps, gate, result, running, order)
+        result.pop('bindings', None)
         print(json.dumps(result))
         return 0
     except main_check.Stopped:

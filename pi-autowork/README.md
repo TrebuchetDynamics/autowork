@@ -507,6 +507,37 @@ mark main or its base green. Offline fixtures in `tests/test_check.py`,
 `tests/test_pi_autowork.py` and `pi-autowork/tests/test_main_check.py` cover selection,
 landing receipts and this full-main boundary; they do not establish live qualification.
 
+## Passing batch prefixes
+
+After a batch's merged chain passes its existing gate, a contiguous passing prefix
+can land while tail reviews continue in detached checkouts. Each complete candidate
+still receives its own policy decision and independent review when required. A missing
+or failed predecessor blocks early prefix landing; the terminal batch uses the existing
+hold/reverification paths. Integration and closure remain serial engine operations.
+Neither affected checks nor optimistic landing can qualify main's full suite.
+
+The private batch channel publishes complete records by temporary write, flush/fsync
+and atomic rename under `state/batch/<unpredictable-generation>/`. Admission identity
+(task, engine attempt, contract and candidate), batch base, prefix tree, producing
+check selection/command and review policy must match the current owned producer.
+The coordinator reserves each accepted record once before promoting it to the engine's
+one-use verdict channel. An old producer cannot publish into a replacement generation.
+An independent merge-train car is invalidated as soon as a prefix moves its base.
+
+Stopping invalidates the generation before replacement. The existing birth-bound
+runtime supervisor must prove descendant cleanup; missing or false persisted cleanup
+proof stops replacement, including after restart. Restart never adopts unconsumed
+generations. A verdict consumed before integration may need ordinary verification
+again; integrated work uses engine receipt recovery
+and idempotent closure, not another landing. The terminal result excludes prefixes
+already integrated by that producer.
+
+Offline batch-prefix fixtures in `tests/test_pi_autowork.py` cover a fast A landing
+before blocked B in optimistic and affected-gated modes, plus incomplete, stale and
+replayed publication. The train fixture in `pi-autowork/tests/test_worker_tmp.py`
+covers producer exit during prefix landing and independent-car invalidation. These
+are control-flow checks, not live-service qualification or a measured latency benefit.
+
 ## Selective review pilot
 
 Model review remains on by default. `PI_AUTOWORK_REVIEW=auto` is an opt-in,
