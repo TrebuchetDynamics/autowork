@@ -252,6 +252,18 @@ class ClosedRequeueTests(unittest.TestCase):
         self.assertEqual(self.git('rev-parse', 'autowork/A-set-aside-1/keep'), self.baseline)
         self.assertEqual(self.git('rev-parse', 'autowork/A-set-aside-2'), self.slot['commit'])
 
+    def test_tag_branch_ambiguity_cannot_hide_ref_namespace_collision(self):
+        self.closed()
+        self.rollback()
+        name = 'autowork/A-set-aside-1/keep'
+        self.git('branch', name, self.baseline)
+        self.git('tag', name, self.baseline)
+        result = self.module().set_aside(self.repo, self.owner, 'A')
+        self.assertEqual(Path(result['history']).name, '2')
+        self.assertEqual(self.git('rev-parse', 'refs/heads/' + name), self.baseline)
+        self.assertEqual(self.git('rev-parse', 'refs/tags/' + name), self.baseline)
+        self.assertEqual(self.git('rev-parse', 'refs/heads/autowork/A-set-aside-2'), self.slot['commit'])
+
     def test_repeated_evidence_reads_are_cached_but_new_head_and_slot_are_revalidated(self):
         self.closed()
         self.rollback()

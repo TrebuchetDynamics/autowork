@@ -121,7 +121,8 @@ def retire(repo, common, owner_pid, slot):
     if not transaction:
         number = 1
         attempts = [*slot.get('previous_attempts', []), slot]
-        refs = git(repo, 'for-each-ref', '--format=%(refname:short)', 'refs/heads/').splitlines()
+        refs = [ref.removeprefix('refs/heads/') for ref in
+                git(repo, 'for-each-ref', '--format=%(refname)', 'refs/heads/').splitlines()]
         if any(a['branch'].startswith(ref + '/') for ref in refs for a in attempts):
             raise ValueError('set-aside ref namespace has an existing ancestor; preserve it and inspect')
         def collision(branch):
