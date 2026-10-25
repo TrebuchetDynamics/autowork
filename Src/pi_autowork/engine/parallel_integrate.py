@@ -1078,6 +1078,17 @@ def changelog_entry(repo, task, report):
         current = path.read_text()
     except (subprocess.CalledProcessError, OSError, UnicodeDecodeError, ValueError):
         return None
+    text = changelog_text(head, task, report)
+    if text is None or current not in (head, text):  # preserve another writer's uncommitted edit
+        return None
+    return text
+
+
+def changelog_text(head, task, report):
+    """Pure closure renderer, also used to prove disposable batch previews."""
+    proposal = ' '.join(str((report or {}).get('changelog') or '').split())
+    if not proposal:
+        return None
     lines = head.splitlines(keepends=True)
     start = next((i for i, line in enumerate(lines) if line.rstrip('\n') == UNRELEASED), None)
     if start is None:
@@ -1098,10 +1109,7 @@ def changelog_entry(repo, task, report):
         while insert < end and lines[insert].strip() == '':
             insert += 1
         new = lines[:insert] + [bullet] + lines[insert:]
-    text = ''.join(new)
-    if current not in (head, text):  # another writer's uncommitted edit: never fold it into a close
-        return None
-    return text
+    return ''.join(new)
 
 
 def pending_writes(repo, writes):

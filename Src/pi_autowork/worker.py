@@ -750,11 +750,20 @@ def batch_publications(state, session, job):
         records, before = [], manifest['base']
         for binding in manifest['steps']:
             task = binding['task']
+            parent = git(session, 'rev-parse', binding['head'] + '^1')
+            context = binding.get('closure_context')
+            if context is not None:
+                if (not batch_closure_valid(session, context) or context['task'] != task
+                        or context['steps'][-1]['head'] != binding['head']
+                        or (parent != before and not any(p['parent'] == before and p['head'] == parent
+                                                       for p in context['previews']))):
+                    return []
+            elif parent != before:
+                return []
             if (binding['generation'] != job['generation'] or binding['base'] != manifest['base']
                     or binding['gate_tree'] != manifest['steps'][-1]['tree']
                     or any(binding[k] != manifest[k] for k in ('command', 'mode', 'policy_version', 'optimistic'))
                     or any(binding[k] != job['admission'][task][k] for k in job['admission'][task])
-                    or git(session, 'rev-parse', binding['head'] + '^1') != before
                     or git(session, 'rev-parse', binding['head'] + '^2') != binding['commit']
                     or git(session, 'rev-parse', binding['head'] + '^{tree}') != binding['tree']):
                 return []
@@ -792,7 +801,12 @@ def batched_verdict(state, task, checkout):
     except (OSError, ValueError):
         return None
     binding = value.get('binding')
-    if binding and (batch_identity(checkout, [task]).get(task) != {
+    context = binding.get('closure_context') if binding else None
+    if binding and (('closure_context' in binding and (
+                not batch_closure_valid(checkout, context)
+                or context['task'] != task or context['steps'][-1]['head'] != binding.get('head')
+                or git(checkout, 'rev-parse', binding['head'] + '^{tree}') != value.get('tree')))
+            or batch_identity(checkout, [task]).get(task) != {
             k: binding.get(k) for k in ('task', 'attempt_id', 'contract_hash', 'commit')}
             or binding.get('command') != main_check.full_check(checkout)
             or binding.get('mode') != os.environ.get('PI_AUTOWORK_REVIEW', '1')
@@ -1173,10 +1187,96 @@ def batch_suspects(state, checkout, base, steps):
     return [task for task, _ in steps if task in suspects]
 
 
-def merge_batch_candidates(chain, order, slots, size, skipped):
-    """Build the engine's stripped merge chain, counting only candidates that merge."""
+def batch_closure_input(checkout, task):
+    """Retained report and contract identity, including already closed predecessors."""
+    dispatch, integrate, state = engine_modules()
+    try:
+        common = state.common_dir(Path(checkout))
+        slot = next(s for s in state.slots(common) if s['task_id'] == task)
+        record = integrate.task_queue.store(Path(checkout)).tasks[task]
+        raw = (dispatch.data_dir(common, slot) / 'report.json').read_bytes()
+        report = json.loads(raw)
+        if not isinstance(report, dict) or report.get('task') != task:
+            return None
+        named = report.get('commit')
+        if named != slot['commit'] and (
+                not isinstance(named, str) or len(named) < 7
+                or integrate.git(checkout, 'rev-parse', '--verify', named + '^{commit}') != slot['commit']):
+            return None  # match the engine's abbreviated report-commit contract
+        return dict(task=task, attempt_id=slot['attempt_id'], commit=slot['commit'],
+                    contract_hash=record.contract_hash, report_hash=hashlib.sha256(raw).hexdigest())
+    except (OSError, ValueError, KeyError, TypeError, StopIteration):
+        return None
+
+
+def batch_closure_valid(checkout, context):
+    """Prove preview objects, not closure receipts; never relax tree equivalence."""
+    _, integrate, _ = engine_modules()
+    try:
+        inputs, previews = context['inputs'], context['previews']
+        if (not inputs or context['task'] not in inputs
+                or any(batch_closure_input(checkout, task) != value for task, value in inputs.items())):
+            return False
+        # The complete chain, including inherited train cars, must account for every preview.
+        before, used = context['base'], []
+        if set(inputs) != {s['task'] for s in context['steps']} or context['steps'][-1]['task'] != context['task']:
+            return False
+        previous = None
+        for step in context['steps']:
+            parent = git(checkout, 'rev-parse', step['head'] + '^1')
+            if parent != before:
+                preview = next((p for p in previews if p['parent'] == before and p['head'] == parent), None)
+                if preview is None or preview['task'] != previous:
+                    return False
+                used.append(preview)
+            if git(checkout, 'rev-parse', step['head'] + '^2') != inputs[step['task']]['commit']:
+                return False
+            before, previous = step['head'], step['task']
+        if used != previews:
+            return False
+        for preview in previews:
+            task, parent, head = (preview[k] for k in ('task', 'parent', 'head'))
+            if (task not in inputs or git(checkout, 'rev-list', '--parents', '-n', '1', head) != f'{head} {parent}'
+                    or git(checkout, 'rev-parse', parent + '^2') != inputs[task]['commit']
+                    or git(checkout, 'diff', '--name-only', parent, head) != 'CHANGELOG.md'):
+                return False
+            before = git(checkout, 'ls-tree', parent, '--', 'CHANGELOG.md')
+            after = git(checkout, 'ls-tree', head, '--', 'CHANGELOG.md')
+            if (not before or not after or before.split()[0] not in ('100644', '100755')
+                    or before.split()[0] != after.split()[0]):
+                return False
+            old = integrate.git(checkout, 'show', f'{parent}:CHANGELOG.md', raw=True).decode()
+            new = integrate.git(checkout, 'show', f'{head}:CHANGELOG.md', raw=True).decode()
+            if new != integrate.changelog_text(old, task, worker_report(checkout, task)):
+                return False
+        return True
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError, subprocess.SubprocessError):
+        return False
+
+
+def preview_batch_changelog(chain, context):
+    """Only the scratch chain gets proposal bytes; no task/evidence/state closure."""
+    _, integrate, _ = engine_modules()
+    task = context['task']
+    text = integrate.changelog_entry(chain, task, worker_report(chain, task))
+    if text is None:
+        return
+    mode = git(chain, 'ls-tree', 'HEAD', '--', 'CHANGELOG.md')
+    if not mode or mode.split()[0] not in ('100644', '100755'):
+        raise ValueError('batch changelog preview requires a regular tracked file')
+    parent = git(chain, 'rev-parse', 'HEAD')
+    (Path(chain) / 'CHANGELOG.md').write_text(text)
+    if (git(chain, 'add', '--', 'CHANGELOG.md') is None
+            or git(chain, 'commit', '-m', f'Preview changelog proposal for {task}') is None):
+        raise ValueError('could not commit scratch changelog preview')
+    context['previews'].append(dict(task=task, parent=parent, head=git(chain, 'rev-parse', 'HEAD')))
+
+
+def merge_batch_candidates(chain, order, slots, size, skipped, *, context=None, contexts=None):
+    """Build stripped candidate merges, previewing only successful predecessors."""
     _, parallel_integrate, _ = engine_modules()
     steps = []
+    previewed = False
     for task in order:
         if len(steps) >= size:
             break
@@ -1184,6 +1284,14 @@ def merge_batch_candidates(chain, order, slots, size, skipped):
         if not slot or not slot.get('commit'):
             skipped.append(task)
             continue
+        if context is not None:
+            identity = batch_closure_input(chain, task)
+            if identity is None:
+                skipped.append(task)
+                continue  # missing/changed reports cannot authorize a preview
+            if context.get('task') and not previewed:
+                preview_batch_changelog(chain, context)
+                previewed = True
         try:
             # Only integration persists the dropped proposal and slot evidence.
             parallel_integrate.merge_candidate(chain, slot, git(chain, 'rev-parse', 'HEAD'))
@@ -1191,6 +1299,16 @@ def merge_batch_candidates(chain, order, slots, size, skipped):
             skipped.append(task)
             continue
         steps.append((task, git(chain, 'rev-parse', 'HEAD')))
+        if context is not None:
+            context['inputs'][task] = identity
+            context['task'] = task
+            context['steps'].append(dict(task=task, head=steps[-1][1]))
+            contexts[task] = json.loads(json.dumps(context))
+            previewed = False
+    if steps:
+        # Failed trailing merges may leave an unused preview. Gate/publish the final merge only.
+        if git(chain, 'checkout', '--detach', steps[-1][1]) is None:
+            raise ValueError('could not restore final batch merge')
     return steps
 
 
@@ -1273,7 +1391,21 @@ def verify_batch(state, session, script, tasks):
         if not base or git(session, 'worktree', 'add', '--detach', str(chain), base) is None:
             print(json.dumps(dict(result, reason=f'the batch chain could not be created in {root}')))
             return 0
-        steps = merge_batch_candidates(chain, order, slots, size, skipped)
+        contexts = {}
+        context = dict(base=base, steps=[], inputs={}, previews=[])
+        if on and os.environ.get('PI_AUTOWORK_BATCH_INDEPENDENT') != '1':
+            try:
+                context = json.loads(os.environ.get('PI_AUTOWORK_BATCH_CLOSURE') or '{}')
+                if (not batch_closure_valid(chain, context) or context['steps'][-1]['head'] != base
+                        or context['inputs'][context['task']]['commit'] != git(chain, 'rev-parse', 'HEAD^2')):
+                    raise ValueError('missing or changed predecessor context')
+            except (ValueError, KeyError, TypeError):
+                print(json.dumps(dict(result, reason='batch predecessor context unavailable; verify normally')))
+                return 0
+        generation = os.environ.get('PI_AUTOWORK_BATCH_GENERATION')
+        # Old direct invocations retain their old chain: previews require bound publications.
+        steps = merge_batch_candidates(chain, order, slots, size, skipped,
+                                       context=context if generation else None, contexts=contexts)
         result['tasks'] = [t for t, _ in steps]
         if len(steps) < fewest:
             print(json.dumps(dict(result, reason='fewer than two candidates merge together' if fewest == 2
@@ -1282,16 +1414,17 @@ def verify_batch(state, session, script, tasks):
         if os.environ.get('PI_AUTOWORK_BATCH_TIP'):
             # Publish before the long check, so the next car can start beside it.
             Path(os.environ['PI_AUTOWORK_BATCH_TIP']).write_text(
-                json.dumps({'tip': steps[-1][1], 'tasks': result['tasks']}) + '\n')
+                json.dumps({'tip': steps[-1][1], 'tasks': result['tasks'],
+                            'closure_context': contexts.get(steps[-1][0])}) + '\n')
         os.environ['TMPDIR'] = str(root)
         lease = review_port_lease()  # held until this process exits
         gate = batch_gate(state, chain, base, steps, result)
         if gate is None:
             return 0
-        generation = os.environ.get('PI_AUTOWORK_BATCH_GENERATION')
         if generation:
             admission = json.loads(os.environ['PI_AUTOWORK_BATCH_ADMISSION'])
-            if admission != batch_identity(session, tasks):
+            if (admission != batch_identity(session, tasks)
+                    or not all(batch_closure_valid(session, c) for c in contexts.values())):
                 print(json.dumps(dict(result, reason='batch admission changed before review')))
                 return 0
             instructions, bindings = json.loads(gate), {}
@@ -1306,6 +1439,7 @@ def verify_batch(state, session, script, tasks):
                                       tree=policy['tree'], gate_tree=gate_tree,
                                       selection=instructions.get('selection'), optimistic=optimistic.enabled(),
                                       command=main_check.full_check(str(chain)), review_policy=policy,
+                                      closure_context=contexts[task],
                                       mode=os.environ.get('PI_AUTOWORK_REVIEW', '1'),
                                       policy_version=review_policy.version())
             publish_batch(Path(state) / 'batch' / generation / 'chain.json',
