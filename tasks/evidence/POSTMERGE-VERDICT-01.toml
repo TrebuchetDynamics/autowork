@@ -1,0 +1,9 @@
+schema = 1
+task = "POSTMERGE-VERDICT-01"
+candidate = "9a31f92634491d519529867b4e7f9280a9d1f412"
+integration = "9ff84a3c9cbedb231511fdda600a63b02ec419be"
+tree = "b5518610b97ce7ede562cbda287cbba57090068e"
+contract_hash = "ad8af2087b9a3e570f764cf5d58551ad0da91d969c7bb20cd1452e83f582e8bb"
+checks = ["<path>", "<path>", "--verify", "<path>", "POSTMERGE-VERDICT-01"]
+result = "pass"
+review = "passed"
