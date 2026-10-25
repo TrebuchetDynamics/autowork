@@ -412,7 +412,7 @@ class Coordinator:
             time.sleep(.05)
         self.batch_recovered = True
 
-    def start_batch(self, tasks, on=None, revisions=None, independent=False):
+    def start_batch(self, tasks, on=None, revisions=None, independent=False, closure_context=None):
         """TOOLSET-258-07: one full check on the candidates' merged tree and their reviews side
         by side, as a child the loop polls like a review; the engine then lands each one.
 
@@ -443,7 +443,9 @@ class Coordinator:
         env = dict(os.environ, PI_AUTOWORK_BATCH_TIP=str(tip),
                    PI_AUTOWORK_BATCH_GENERATION=generation,
                    PI_AUTOWORK_BATCH_ADMISSION=json.dumps(admission),
-                   **({'PI_AUTOWORK_BATCH_ON': on} if on else {}))
+                   **({'PI_AUTOWORK_BATCH_ON': on} if on else {}),
+                   PI_AUTOWORK_BATCH_INDEPENDENT='1' if independent else '0',
+                   PI_AUTOWORK_BATCH_CLOSURE=json.dumps(closure_context))
         try:
             with open(out.name, 'w') as stream, open(self.state / 'engine.err', 'a') as err:
                 child = subprocess.Popen(args, stdout=stream, stderr=err, stdin=subprocess.DEVNULL, cwd=self.integ,
@@ -585,7 +587,8 @@ class Coordinator:
                                  independent=True)
             return
         try:
-            tip = json.loads(Path(job['tip']).read_text())['tip']
+            publication = json.loads(Path(job['tip']).read_text())
+            tip = publication['tip']
         except (OSError, ValueError, KeyError, TypeError):
             return  # its chain is not built yet
         failed, ahead = self.batch_failed(), set(job['members'])
@@ -595,7 +598,8 @@ class Coordinator:
                 and not worker.batch_record(self.state, t).exists()]
         cars = cars[:max(1, int(os.environ.get('PI_AUTOWORK_BATCH') or 6))]
         if cars:
-            self.start_batch([t for t, _ in cars], on=tip, revisions=[f'{t}@{c}' for t, c in cars])
+            self.start_batch([t for t, _ in cars], on=tip, revisions=[f'{t}@{c}' for t, c in cars],
+                             closure_context=publication.get('closure_context'))
 
     def board_single(self, rows, job):
         """While a candidate whose batch failed is reviewed alone, check the next such candidate

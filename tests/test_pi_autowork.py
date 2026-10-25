@@ -1426,8 +1426,9 @@ class EngineTests(Fixture):
             'import unittest\nfrom pathlib import Path\nclass Check(unittest.TestCase):\n'
             '    def test_changes(self):\n'
             f'        with open({str(runs)!r}, "a") as out: out.write("ran\\n")\n'
-            '        for name in ("A.txt", "B.txt", "C.txt"): Path(name)\n')
+            '        for name in ("A.txt", "B.txt", "C.txt", "CHANGELOG.md"): Path(name)\n')
         (self.repo / 'tests/test_unrelated.py').write_text('raise RuntimeError("unselected module ran")\n')
+        (self.repo / 'CHANGELOG.md').write_text('# Changelog\n\n## [Unreleased]\n\n### Changed\n\n')
         self.git(self.repo, 'add', '-A')
         self.git(self.repo, 'commit', '-qm', 'affected gate fixtures')
         self.env['PI_AUTOWORK_VALIDATE'] = 'python3 scripts/check.py'
@@ -1440,11 +1441,57 @@ class EngineTests(Fixture):
         # One run for the batch tree of A and B, one for C alone: not one per candidate.
         self.assertEqual(runs.read_text().count('ran'), 2, result.stdout)
         self.assertEqual(sorted(r['task'] for r in self.runs('verify')), ['A', 'B', 'C'])  # each reviewed once
+        self.assertIn('- Complete A\n', (self.repo / 'CHANGELOG.md').read_text())
+        self.assertIn('- Complete B\n', (self.repo / 'CHANGELOG.md').read_text())
         receipts = [json.loads(p.read_text()) for p in self.state.glob('*/landing-check/*.json')]
         self.assertEqual(sorted(r['task'] for r in receipts), ['A', 'B', 'C'])
         for receipt in receipts:
             self.assertFalse(receipt['selection']['full'])
             self.assertEqual(receipt['selection']['tests'], ['tests/test_changed.py'])
+
+    def test_three_candidate_batch_checks_predecessor_changelog_once(self):
+        import parallel_state
+
+        self.edit_task('C', {'depends_on': []})
+        initial = '# Changelog\n\n## [Unreleased]\n\n### Changed\n\n'
+        (self.repo / 'CHANGELOG.md').write_text(initial)
+        self.git(self.repo, 'add', 'CHANGELOG.md')
+        self.git(self.repo, 'commit', '-qm', 'three independent candidates with changelog')
+        runs = self.root / 'checks'
+        expected = initial + '- Complete B\n- Complete A\n'
+        exact_check = ('from pathlib import Path; '
+                       f'assert Path("CHANGELOG.md").read_text() == {expected!r}; '
+                       f'open({str(runs)!r}, "a").write("ran\\n")')
+        self.env.update(PI_AUTOWORK_BATCH='6', PI_AUTOWORK_MAIN_CHECK='true',
+                        PI_AUTOWORK_VALIDATE=f'python3 -c {shlex.quote(exact_check)}')
+        self.plan({f'worker:{task}': ['released'] for task in 'ABC'})
+        runner = self.start_runner('--until-empty', '--workers', '3')
+        try:
+            for task in 'ABC':
+                self.wait_for(self.root / f'ready-{task}', timeout=60)
+            common = self.repo / '.git/autowork-execution'
+            slots = [json.loads((common / 'slots' / f'{task}.json').read_text()) for task in 'ABC']
+            with (common / 'writer.lock').open('a') as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                for task in 'ABC':
+                    (self.root / f'release-{task}').touch()
+                deadline = time.monotonic() + 60
+                while any(parallel_state.worker_live(slot) for slot in slots):
+                    self.assertLess(time.monotonic(), deadline, 'released workers did not exit')
+                    time.sleep(.05)
+            out, err = runner.communicate(timeout=180)
+        finally:
+            for task in 'ABC':
+                (self.root / f'release-{task}').touch()
+            if runner.poll() is None:
+                runner.send_signal(signal.SIGINT)
+                runner.communicate(timeout=60)
+        self.assertEqual(runner.returncode, 0, out + err)
+        self.assertIn('Batch: 3 passed (A, B, C)', out)
+        self.assertEqual(self.closed(), {'A', 'B', 'C'})
+        self.assertEqual(runs.read_text().splitlines(), ['ran'])
+        self.assertCountEqual([r['task'] for r in self.runs('verify')], ['A', 'B', 'C'])
+        self.assertEqual((self.repo / 'CHANGELOG.md').read_text(), initial + '- Complete C\n- Complete B\n- Complete A\n')
 
     def test_batch_passing_prefix_lands_before_tail(self):
         """A's verified closure must reach main while B's independent review is blocked."""
@@ -1469,7 +1516,8 @@ class EngineTests(Fixture):
                     'import unittest\nfrom pathlib import Path\nclass Check(unittest.TestCase):\n'
                     '    def test_changes(self):\n'
                     f'        with open({str(runs)!r}, "a") as out: out.write("ran\\n")\n'
-                    '        for name in ("A.txt", "B.txt"): Path(name)\n')
+                    '        for name in ("A.txt", "B.txt", "CHANGELOG.md"): Path(name)\n')
+                (self.repo / 'CHANGELOG.md').write_text('# Changelog\n\n## [Unreleased]\n\n')
                 self.git(self.repo, 'add', '-A')
                 self.git(self.repo, 'commit', '-qm', 'affected prefix fixture')
                 self.env['PI_AUTOWORK_VALIDATE'] = ('true' if mode == 'optimistic'
@@ -1578,6 +1626,17 @@ class EngineTests(Fixture):
                 gate = self.root / order
                 gate.mkdir()
                 self.repo = self.make_repo(gate / 'train', [('A', None), ('B', None), ('C', 'A'), ('D', None)])
+                initial_changelog = '# Changelog\n\n## [Unreleased]\n\n### Changed\n\n'
+                (self.repo / 'CHANGELOG.md').write_text(initial_changelog)
+                self.git(self.repo, 'add', 'CHANGELOG.md')
+                self.git(self.repo, 'commit', '-qm', 'coordinator changelog')
+                expected = ({'AB': 'A', 'ABD': 'BA', 'ABCD': 'DBA'} if order == 'together'
+                            else {'A': '', 'ABD': 'BA', 'ABCD': 'DBA'})
+                exact_check = ('from pathlib import Path; '
+                               'done = "".join(t for t in "ABCD" if Path(t + ".txt").read_text()); '
+                               f'expected = {expected!r}[done]; '
+                               f'assert Path("CHANGELOG.md").read_text() == {initial_changelog!r} + '
+                               '"".join("- Complete " + t + "\\n" for t in expected)')
                 self.state, self.log = gate / 'state', gate / 'pi.log'
                 runs, checked, expired = gate / 'checks', gate / 'rider-checked', gate / 'expired'
                 self.env.update(FAKE_MAIN_REPO=str(self.repo), FAKE_PI_ROOT=str(gate), FAKE_PI_LOG=str(self.log),
@@ -1586,6 +1645,7 @@ class EngineTests(Fixture):
                 # A's solo check proceeds normally. The first batch releases its rider and
                 # waits for the extended tree's check, not a guessed worker duration.
                 self.env['PI_AUTOWORK_VALIDATE'] = (
+                    f'python3 -c {shlex.quote(exact_check)} || exit 1; '
                     f'echo ran >> {runs}; if test -s B.txt; then '
                     f'if test -s {rider}.txt; then touch {checked}; else touch {gate / ("release-" + rider)}; '
                     f'for i in $(seq 1 1200); do test -e {checked} && break; sleep 0.05; done; '

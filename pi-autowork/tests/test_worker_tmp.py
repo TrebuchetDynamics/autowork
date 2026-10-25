@@ -940,6 +940,265 @@ class BatchFailureTests(unittest.TestCase):
             record.unlink()
             self.assertEqual(worker.batch_suspects(str(state), str(repo), base, steps), [])  # no record
 
+class BatchClosureTests(unittest.TestCase):
+    """Real merge/preview objects and retained reports; no synthetic closure receipts."""
+
+    def setUp(self):
+        from pi_autowork.engine import task_store
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.repo = self.root / 'repo'
+        self.repo.mkdir()
+        self.git('init', '-q', '-b', 'main')
+        self.git('config', 'user.name', 'Test')
+        self.git('config', 'user.email', 'test@example.invalid')
+        (self.repo / 'tasks/items').mkdir(parents=True)
+        (self.repo / 'tasks/goals').mkdir()
+        (self.repo / 'tasks/goals/G.md').write_text(task_store.render(dict(
+            schema=1, id='G', title='Fixture', source='docs/fixture.md', priority=1, status='unmet', focus=True), goal=True))
+        for task in 'ABC':
+            (self.repo / f'tasks/items/{task}.md').write_text(task_store.render(dict(
+                schema=1, id=task, title=task, short=task, status='open', goal='G', section='Now',
+                rank=ord(task), depends_on=[], touches=[f'{task}.txt'], resources=[], kind='implementation',
+                ownership='worker', scope=f'Implement {task}', acceptance=['File exists'], checks=['true'], exclusions=[])))
+        self.initial = '# Changelog\n\n## [Unreleased]\n\n### Changed\n\n- Existing entry.\n'
+        (self.repo / 'CHANGELOG.md').write_text(self.initial)
+        self.git('add', '.')
+        self.git('commit', '-qm', 'base')
+        self.base = self.git('rev-parse', 'HEAD')
+        self.slots = {}
+        execution = self.repo / '.git/autowork-execution'
+        (execution / 'slots').mkdir(parents=True)
+        for task in 'ABC':
+            self.git('checkout', '-qb', f'candidate-{task}', self.base)
+            (self.repo / f'{task}.txt').write_text(task + '\n')
+            self.git('add', '.')
+            self.git('commit', '-qm', task)
+            slot = dict(task_id=task, attempt=1, attempt_id=f'attempt-{task}', state='reported',
+                        baseline=self.base, commit=self.git('rev-parse', 'HEAD'))
+            self.slots[task] = slot
+            (execution / f'slots/{task}.json').write_text(json.dumps(slot))
+            report = execution / f'slot-data/{task}/attempt-1/report.json'
+            report.parent.mkdir(parents=True)
+            report.write_text(json.dumps(dict(task=task, commit=slot['commit'], changelog=f'Complete {task}')))
+        self.git('checkout', '-q', 'main')
+        self.context = dict(base=self.base, steps=[], inputs={}, previews=[])
+        self.contexts = {}
+        self.state = self.root / 'state'
+        self.environment = patch.dict(os.environ, PI_AUTOWORK_VALIDATE='true', PI_AUTOWORK_REVIEW='1',
+                                      PI_AUTOWORK_OPTIMISTIC='0', PI_AUTOWORK_CHECK_SLOTS='0')
+        self.environment.start()
+        self.addCleanup(self.environment.stop)
+
+    def git(self, *args):
+        return subprocess.run(['git', '-C', str(self.repo), *args], check=True,
+                              capture_output=True, text=True).stdout.strip()
+
+    def chain(self, tasks='ABC'):
+        self.git('checkout', '-q', '--detach', self.base)
+        return worker.merge_batch_candidates(self.repo, tasks, self.slots, len(tasks), [],
+                                             context=self.context, contexts=self.contexts)
+
+    def record(self, task, head):
+        identity = worker.batch_identity(self.repo, [task])[task]
+        binding = dict(identity, head=head, closure_context=self.contexts[task],
+                       command='true', mode='1', policy_version=worker.review_policy.version(), optimistic=False)
+        return dict(binding=binding, tree=self.git('rev-parse', head + '^{tree}'),
+                    commit=self.slots[task]['commit'], ok=True, review_policy={'required': True})
+
+    def actual(self, tasks, *, close_last=False):
+        _, integrate, _ = worker.engine_modules()
+        self.git('checkout', '-q', '--detach', self.base)
+        for i, task in enumerate(tasks):
+            integrate.merge_candidate(self.repo, self.slots[task], self.git('rev-parse', 'HEAD'))
+            if i < len(tasks) - 1 or close_last:
+                text = integrate.changelog_entry(self.repo, task, worker.worker_report(self.repo, task))
+                (self.repo / 'CHANGELOG.md').write_text(text)
+                # Only metadata drift, not a forged done record or evidence receipt.
+                path = self.repo / f'tasks/items/{task}.md'
+                path.write_text(path.read_text() + '\nFixture closure note.\n')
+                self.git('add', '.')
+                self.git('commit', '-qm', 'serial changelog and metadata')
+        return self.git('rev-parse', 'HEAD')
+
+    def consume(self, task, value):
+        worker.publish_batch(worker.batch_record(self.state, task), value)
+        return worker.batched_verdict(self.state, task, self.repo)
+
+    def test_three_candidates_check_exact_predecessor_bytes_and_reuse_once(self):
+        steps = self.chain()
+        expected = self.initial.replace('- Existing entry.', '- Complete B\n- Complete A\n- Existing entry.')
+        self.assertEqual((self.repo / 'CHANGELOG.md').read_text(), expected)
+        command = f"{sys.executable} -c " + __import__('shlex').quote(
+            f"from pathlib import Path; assert Path('CHANGELOG.md').read_text() == {expected!r}")
+        result = worker.run_suite(command, self.repo, 30, self.root / 'exact-gate.log')
+        self.assertEqual(result['code'], 0)
+        for task, head in steps:
+            self.assertEqual(self.git('rev-parse', head + '^2'), self.slots[task]['commit'])
+            value = self.record(task, head)
+            self.actual('ABC'[:'ABC'.index(task) + 1])
+            self.assertEqual(self.consume(task, value), (True, ''))
+            self.assertIsNone(worker.batched_verdict(self.state, task, self.repo))
+
+    def test_abbreviated_report_commits_keep_batch_reuse_and_reject_other_commits(self):
+        for task in 'AB':
+            path = worker.attempt_data(worker.execution_dir(self.repo), task) / 'report.json'
+            report = json.loads(path.read_text())
+            report['commit'] = self.slots[task]['commit'][:8]
+            path.write_text(json.dumps(report))
+        steps = self.chain('AB')
+        self.assertEqual([task for task, _ in steps], ['A', 'B'])
+        value = self.record('B', steps[-1][1])
+        self.actual('AB')
+        self.assertEqual(self.consume('B', value), (True, ''))
+        path = worker.attempt_data(worker.execution_dir(self.repo), 'B') / 'report.json'
+        report = json.loads(path.read_text())
+        for invalid in (self.slots['A']['commit'][:8], 'not-a-commit', '', None):
+            with self.subTest(commit=invalid):
+                report['commit'] = invalid
+                path.write_text(json.dumps(report))
+                self.assertIsNone(worker.batch_closure_input(self.repo, 'B'))
+
+    def test_tree_and_retained_input_drift_reject_reuse(self):
+        from pi_autowork.engine import task_store
+        steps = self.chain('AB')
+        value = self.record('B', steps[-1][1])
+        actual = self.actual('AB')
+        report = worker.attempt_data(worker.execution_dir(self.repo), 'A') / 'report.json'
+        saved_report = report.read_bytes()
+        for drift in ('bullet', 'mode', 'symlink', 'source', 'report', 'missing-report', 'contract', 'own-report'):
+            with self.subTest(drift=drift):
+                self.git('reset', '--hard', actual)
+                report.write_bytes(saved_report)
+                own = worker.attempt_data(worker.execution_dir(self.repo), 'B') / 'report.json'
+                saved_own = own.read_bytes()
+                if drift == 'bullet':
+                    (self.repo / 'CHANGELOG.md').write_text(self.initial + '- Unchecked bullet.\n')
+                elif drift == 'mode':
+                    (self.repo / 'CHANGELOG.md').chmod(0o755)
+                elif drift == 'symlink':
+                    (self.repo / 'CHANGELOG.md').unlink()
+                    (self.repo / 'CHANGELOG.md').symlink_to('A.txt')
+                elif drift == 'source':
+                    (self.repo / 'A.txt').write_text('unchecked\n')
+                elif drift == 'report':
+                    report.write_bytes(saved_report + b' ')
+                elif drift == 'missing-report':
+                    report.unlink()
+                elif drift == 'own-report':
+                    own.write_bytes(saved_own + b' ')
+                else:
+                    path = self.repo / 'tasks/items/A.md'
+                    path.write_text(task_store.edit(path.read_text(), {'acceptance': ['Different contract']}))
+                if drift in ('bullet', 'mode', 'symlink', 'source', 'contract'):
+                    self.git('add', '.')
+                    self.git('commit', '--amend', '--no-edit')  # preserve candidate HEAD^2
+                self.assertIsNone(self.consume('B', value))
+                self.assertFalse(worker.batch_record(self.state, 'B').exists())
+                own.write_bytes(saved_own)
+        report.write_bytes(saved_report)
+
+    def test_tampered_preview_and_incomplete_context_are_rejected(self):
+        self.chain('AB')
+        original = self.contexts['B']
+        self.assertTrue(worker.batch_closure_valid(self.repo, original))
+        for drift in ('omitted', 'parent', 'task', 'mode', 'bytes', 'source'):
+            with self.subTest(drift=drift):
+                context = json.loads(json.dumps(original))
+                preview = context['previews'][0]
+                if drift == 'omitted':
+                    context['previews'] = []
+                elif drift in ('parent', 'task'):
+                    preview[drift] = self.base if drift == 'parent' else 'B'
+                else:
+                    self.git('checkout', '-q', '--detach', preview['head'])
+                    if drift == 'mode':
+                        (self.repo / 'CHANGELOG.md').chmod(0o755)
+                    elif drift == 'bytes':
+                        (self.repo / 'CHANGELOG.md').write_text(self.initial + 'unexpected\n')
+                    else:
+                        (self.repo / 'A.txt').write_text('unexpected\n')
+                    self.git('add', '.')
+                    self.git('commit', '--amend', '--no-edit')
+                    preview['head'] = self.git('rev-parse', 'HEAD')
+                    # Forge an otherwise coherent later merge: content/mode proof must reject it.
+                    _, integrate, _ = worker.engine_modules()
+                    integrate.merge_candidate(self.repo, self.slots['B'], preview['head'])
+                    context['steps'][-1]['head'] = self.git('rev-parse', 'HEAD')
+                self.assertFalse(worker.batch_closure_valid(self.repo, context))
+
+    def test_next_car_previews_the_gated_tip_without_an_own_final_preview(self):
+        steps = self.chain('AB')
+        tip = steps[-1][1]
+        self.assertEqual(self.git('rev-parse', 'HEAD'), tip)
+        self.assertNotIn('- Complete B', (self.repo / 'CHANGELOG.md').read_text())
+        context = json.loads(json.dumps(self.contexts['B']))
+        contexts = {}
+        steps = worker.merge_batch_candidates(self.repo, ['C'], self.slots, 1, [],
+                                              context=context, contexts=contexts)
+        self.assertTrue(worker.batch_closure_valid(self.repo, contexts['C']))
+        self.assertIn('- Complete B\n- Complete A\n', (self.repo / 'CHANGELOG.md').read_text())
+        self.contexts.update(contexts)
+        value = self.record('C', steps[-1][1])
+        self.actual('ABC')
+        self.assertEqual(self.consume('C', value), (True, ''))
+        # If a predecessor failed and did not land, neither its source nor proposal is excused.
+        self.actual('AC')
+        self.assertIsNone(self.consume('C', value))
+
+    def test_skipped_review_still_requires_exact_tree_with_preview_context(self):
+        steps = self.chain('AB')
+        value = self.record('B', steps[-1][1])
+        value['binding']['mode'] = 'auto'
+        value['review_policy'] = dict(required=False, tree=value['tree'], version=worker.review_policy.version(),
+                                      mode='auto', command='true')
+        with patch.dict(os.environ, PI_AUTOWORK_REVIEW='auto'):
+            self.assertEqual(self.consume('B', value), (True, ''))
+            self.actual('AB')  # identical changelog, different task metadata
+            self.assertTrue(worker.same_code(self.repo, value['tree'], 'HEAD^{tree}'))
+            self.assertIsNone(self.consume('B', value))
+
+    def test_missing_train_context_declines_before_a_gate_or_publication(self):
+        import contextlib
+        import io
+        steps = self.chain('AB')
+        out = io.StringIO()
+        with patch.dict(os.environ, PI_AUTOWORK_BATCH_ON=steps[-1][1], PI_AUTOWORK_BATCH_CLOSURE='null',
+                        PI_AUTOWORK_BATCH_INDEPENDENT='0'), \
+                patch.object(worker, 'batch_order', return_value=(['C'], self.slots)), \
+                patch.object(worker, 'batch_gate', side_effect=AssertionError('unchecked context gated')), \
+                contextlib.redirect_stdout(out):
+            self.assertEqual(worker.verify_batch(self.state, str(self.repo), 'unused', ['C']), 0)
+        self.assertEqual(json.loads(out.getvalue())['tasks'], [])
+        self.assertIn('predecessor context unavailable', out.getvalue())
+        self.assertFalse(worker.batch_record(self.state, 'C').exists())
+
+    def test_conflict_skipped_candidate_never_contributes_a_proposal(self):
+        self.git('checkout', '-qb', 'conflicting', self.base)
+        (self.repo / 'A.txt').write_text('conflict\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'conflict')
+        self.slots['B']['commit'] = self.git('rev-parse', 'HEAD')
+        execution = worker.execution_dir(self.repo)
+        (execution / 'slots/B.json').write_text(json.dumps(self.slots['B']))
+        report = worker.attempt_data(execution, 'B') / 'report.json'
+        report.write_text(json.dumps(dict(task='B', commit=self.slots['B']['commit'], changelog='Complete B')))
+        self.git('checkout', '-q', '--detach', self.base)
+        skipped = []
+        steps = worker.merge_batch_candidates(self.repo, 'ABC', self.slots, 3, skipped,
+                                              context=self.context, contexts=self.contexts)
+        self.assertEqual(skipped, ['B'])
+        self.assertEqual([t for t, _ in steps], ['A', 'C'])
+        self.assertNotIn('Complete B', (self.repo / 'CHANGELOG.md').read_text())
+        self.assertTrue(worker.batch_closure_valid(self.repo, self.contexts['C']))
+        # Trailing conflict: discard the unused A preview before the gate/tip.
+        self.context = dict(base=self.base, steps=[], inputs={}, previews=[])
+        steps = self.chain('AB')
+        self.assertEqual(self.git('rev-parse', 'HEAD'), steps[-1][1])
+        self.assertEqual((self.repo / 'CHANGELOG.md').read_text(), self.initial)
+
+
 class BatchLandingTests(unittest.TestCase):
     """TOOLSET-281-0d: a reload 4 s after `landing them now` sent one batch-passed candidate back to
     a queue of single reviews for 15 hours. Until the passed candidates land, the runner neither
@@ -1197,7 +1456,7 @@ class BatchLandingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             runner, coordinator, rows = self.merge_train_runner(folder)
             started = []
-            runner.start_batch = lambda tasks, on=None, revisions=None: started.append((tasks, on, revisions))
+            runner.start_batch = lambda tasks, on=None, revisions=None, closure_context=None: started.append((tasks, on, revisions))
             runner.board_train(rows)
             self.assertEqual(started, [(['C', 'D'], 'abc123', ['C@c1', 'D@d1'])])
             started.clear()
@@ -1215,7 +1474,7 @@ class BatchLandingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             runner, coordinator, rows = self.merge_train_runner(folder)
             started = []
-            runner.start_batch = lambda tasks, on=None, revisions=None, independent=False: \
+            runner.start_batch = lambda tasks, on=None, revisions=None, independent=False, closure_context=None: \
                 started.append((tasks, on, independent))
             split = runner.state / 'batch-split.json'
             split.write_text(json.dumps([['C@c1'], ['D@d1']]))
