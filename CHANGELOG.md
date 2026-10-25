@@ -57,6 +57,7 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Repair the fixed-journal status golden by committing its closed task record and checking exact JSON states/counts without weakening closed-slot requeue safety. (TOOLSET-397-a1af30c9)
 - Pi Autowork lands verified contiguous batch prefixes while tail reviews continue, with atomic admission-bound generations, one-use evidence and cleanup-fenced restart recovery; train fixture covers the previously held integration case. (TOOLSET-395-6cbb101f)
 - Harden the headless fleet action pilot with reader-lifetime barriers, controlled real timers, failure-safe cleanup and refresh-state diagnostics while retaining every action assertion. (TOOLSET-396-7dc85701)
 - Add coverage-aware observed task/attempt phase diagnostics and separate all-outcome attempt-span exposure to scorecard JSON, CSV and text without inferring delivery or runner uptime. (TOOLSET-394-5fe19498)
