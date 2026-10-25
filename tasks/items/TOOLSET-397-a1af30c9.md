@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-397-a1af30c9"
 title = "Repair the fixed-journal status golden after verified closed-slot requeue"
 short = "Repair closed-slot status golden"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Now"
 rank = 8000
@@ -16,6 +16,8 @@ scope = "Repair test_parallel_e2e.StatusTests.test_fixed_journal_golden_and_json
 acceptance = ["test_parallel_e2e.StatusTests.test_fixed_journal_golden_and_json_details passes with exact text and JSON assertions that represent the committed task records consistently. Keep its detailed worktree/checks/commit/integration assertions, bounded rendering, deterministic journal metrics, and proof that status neither creates a coordinator lease nor changes the fixed journal; no skip, expected-failure marker or removal of the safety assertions.", "test_closed_requeue.ClosedRequeueTests.test_open_slot_mismatch_is_visible_and_does_not_release_dependency and the existing closed-requeue suite still prove that a closed slot with an open committed record is visible as a blocker rather than completed, does not release a dependency, and cannot be retired without the existing committed verified-reopen proof. The ordinary closed-record/closed-slot case remains covered, including historical-wait invalidation in test_parallel_status. Preserve archive/replay, retained attempts, live-worker refusal and wrong/manual receipt protections.", "The full offline check completes successfully on the repaired tree. Report the reproduced mismatch, causal evidence, corrected fixture or behavior, exact commands/results and any unrelated failures honestly; focused success alone is not a full-main or live qualification claim."]
 checks = ["python3 scripts/check.py pi-autowork/engine/test_parallel_e2e.py pi-autowork/engine/test_parallel_status.py pi-autowork/engine/test_closed_requeue.py", "python3 scripts/check.py", "git diff --check"]
 exclusions = ["No task/goal edits, runtime-state mutation, evidence repinning, copied runtime bundles, weakened verification or requeue gates, automatic rollback, remote publication, service restart or live/model qualification.", "Do not broaden this repair to the two unrelated full-run failures that passed their saved isolated reruns: the long-review runner fixture and overlap-held integration fixture."]
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-397-a1af30c9.toml"
 +++
 
 - Sources: DOCS-MAINTAINER MAIN (main red) instruction; [accepted reliability work](docs/project.md#reliability-bug-harvest-2026-10-15); [landed closed-slot recovery contract](docs/cross-host.md#run-autowork-continuously); pi-autowork/engine/test_parallel_e2e.py:ABCWorkload and StatusTests.test_fixed_journal_golden_and_json_details; Src/pi_autowork/engine/parallel_status.py:_snapshot; commit ac44b1c46059e4b4503dae0948459ae4bd155df1.
