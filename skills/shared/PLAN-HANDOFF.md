@@ -33,6 +33,11 @@ action, which starts with the failing test named in Acceptance (see the
 and separate live qualification when applicable. This is a content standard, not
 a new schema, receipt or approval gate; fill only actual gaps in existing tasks.
 Do not prescribe every edit or require unknown implementation details up front.
+Apply [decision closure](PLANNING-CRAFT.md#decision-closure) before reporting ready:
+for every material builder finding, persist a resolution or keep only the affected
+task pending with its exact missing input and resume condition. Metadata validity
+and selection eligibility do not prove reachable inputs or checks; verify those
+against the saved contract, including setup and task-owned prerequisite repairs.
 
 Autowork executes that handoff: inspect the relevant source, implement, test,
 repair, submit required review and finish authorized closeout. Choose routine

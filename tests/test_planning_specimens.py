@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import runpy
 from pathlib import Path
 import subprocess
 import sys
@@ -43,6 +44,8 @@ class PlanningSpecimenTests(unittest.TestCase):
             'old-authority', 'supporting-skill', 'questions-only', 'later-execution',
             'coordinator', 'challenge', 'research-plan',
         }
+        expected |= {f'{entry}-{case}' for entry in ('native', 'portable') for case in (
+            'technical-choice', 'local-fixture', 'external-input', 'owner-destructive', 'builder-closure')}
         interviews = {'two-decisions', 'vague-intent', 'fully-specified', 'ambiguous-round',
                       'shared-constraint', 'stop-resume', 'delegation', 'builder-followup'}
         for script, names in (
@@ -83,6 +86,60 @@ class PlanningSpecimenTests(unittest.TestCase):
                 for entry in ('skills/plan-with-me/SKILL.md', 'adapters/skills/plan-with-me/SKILL.md'):
                     self.assertIn(entry, hashes)
                 self.assertTrue(all(not row['changed'] for row in self.builder(script, 'inspect', root)))
+
+    def test_stall_cases_seed_both_entrypoints_with_reachable_evidence_and_existing_task(self):
+        # Missing cases, invalid seeds or silently replacing FMT-01 must fail offline.
+        cases = ('technical-choice', 'local-fixture', 'external-input',
+                 'owner-destructive', 'builder-closure')
+        names = [f'{entry}-{case}' for entry in ('native', 'portable') for case in cases]
+        available = runpy.run_path(str(FIXTURES / 'scenarios.py'))['CASES']
+        self.assertLessEqual(set(names), set(available))
+        root = self.scratch / 'stalls'
+        self.builder('scenarios.py', 'prepare', root, '--cases', ','.join(names))
+        for entry in ('native', 'portable'):
+            for case in cases:
+                name = f'{entry}-{case}'
+                with self.subTest(name=name):
+                    repo = root / name
+                    request = (root / f'{name}.request.txt').read_text()
+                    source = ('skills' if entry == 'native' else 'adapters/skills') + '/plan-for-me/SKILL.md'
+                    self.assertIn(str(ROOT / source), request)
+                    self.assertTrue(json.loads(self.tasks(repo, 'validate', '--worktree'))['ok'])
+                    task = json.loads(self.tasks(repo, 'show', 'FMT-01'))
+                    self.assertFalse(task['draft'])
+                    self.assertEqual(task['goal'], 'FORMAT')
+                    self.assertEqual(task['rank'], 1000)
+                    self.assertIn('Ownership: Maintainer', task['notes'])
+                    self.assertEqual(self.run_command('git', 'show', 'HEAD:tasks/items/FMT-01.md', cwd=repo),
+                                     (repo / 'tasks/items/FMT-01.md').read_text())
+                    if case == 'technical-choice':
+                        # The convention is executable evidence, not just a prompt hint.
+                        self.run_command(sys.executable, '-B', '-c',
+                                         'from src.rows import encode_row; '
+                                         'assert encode_row(["a|b", "c"]) == \'"a|b"|c\\n\'', cwd=repo)
+                    elif case == 'local-fixture':
+                        self.assertFalse((repo / 'tests/fixtures/normalization.json').exists())
+                        check = subprocess.run(
+                            [sys.executable, '-B', '-m', 'unittest', 'discover', '-s', 'tests',
+                             '-p', 'test_fixture_contract.py'], cwd=repo, capture_output=True, text=True)
+                        self.assertNotEqual(check.returncode, 0)
+                        self.assertIn('FileNotFoundError', check.stderr)
+                        self.assertIn('normalization.json', check.stderr)
+                        self.assertIn('[" X ", " y "]', (repo / 'docs/plan.md').read_text())
+                    elif case == 'external-input':
+                        self.assertFalse((repo / 'external/scanner-v2.json').exists())
+                        self.assertIn('scanner-v2.json', (repo / 'docs/plan.md').read_text())
+                        self.assertIn('independent', request)
+                    elif case == 'owner-destructive':
+                        self.assertEqual((repo / 'archive/sample.txt').read_text(), 'Public sample export.\n')
+                        self.assertIn('not authorized deletion', (repo / 'docs/plan.md').read_text())
+                    else:
+                        self.assertIn('all-whitespace', (repo / 'docs/builder-review.md').read_text())
+                        self.run_command(sys.executable, '-B', '-m', 'unittest', 'discover',
+                                         '-s', 'tests', '-p', 'test_importer.py', cwd=repo)
+        # Read/validation commands must not disguise implementation writes.
+        for row in self.builder('scenarios.py', 'inspect', root, '--cases', ','.join(names)):
+            self.assertEqual(row['outside_planning_owners'], [])
 
     def test_inspect_accepts_native_planning_but_reports_forbidden_inventories(self):
         # A blanket tasks/ or .git/ exception would hide the negative inventory.

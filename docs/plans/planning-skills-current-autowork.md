@@ -267,3 +267,30 @@ batch; no implementation or model-behavior test is claimed passed.
 Next executable slice is the shared closure contract; specimens may run alongside
 it under later execution authority. This planning branch is not integrated or
 published and must not be described as delivered to the live runner.
+
+### Explicit execution and checked implementation
+
+The later owner instruction, “Well autowork has to solve this. Even implementation.
+All up to production releases”, transitions this saved batch into execution and
+its authorized delivery. It does not retroactively turn standalone planning into
+implementation authority or waive genuine live/owner safety gates.
+
+All three slices are implemented. Shared guidance now resolves consequential
+engineering choices and every material builder finding; native/portable and
+discovery paths consume that same procedure. Ten synthetic stall specimens cover
+the five planned cases on both entrypoints, preserving forbidden-write controls.
+The prior planning-only delivery statements above are historical, not current
+execution holds.
+
+Verification: baseline 37 focused tests passed; new closure, entrypoint and fixture
+regressions failed before their changes and passed afterwards. Final composed
+seven-module run passed 45 tests. Parent independently reran closure/discovery:
+13 tests passed. Fresh independent review found no blockers in the bounded 12-file
+implementation. Whitespace checks passed. Affected selection expands to the full
+inventory for the fixture README, so no additional full suite was run here; main
+owns its fresh full check. Actual model-adherence evaluations remain unrun.
+
+The three records are manually closed with this evidence, not assigned fabricated
+coordinator-verification receipts or used to mark the broader goal met. Local
+integration, upstream publication and installed-runtime adoption are separately
+verified delivery stages; these offline results alone claim none of them.

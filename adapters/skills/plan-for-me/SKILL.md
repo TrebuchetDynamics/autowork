@@ -43,8 +43,12 @@ goal or a verified prerequisite; use only an actual recorded owner waiver/qualif
 Its successor notes
 `Plan round: N of M` with `autowork tasks field`. Planning does not implement or dispatch workers.
 Explicit read-only/chat-only/no-write/dry-run requests save nothing. Record goals, non-goals,
-anti-goals and every default as the planner's call, and run the builder check on
-the saved tasks, then run `autowork tasks validate --worktree .` and commit the batch once before reporting it ready. Report saved paths, task IDs, the
+anti-goals and every default as the planner's call. For focused tasks and discovered
+frontiers, apply shared [decision closure](../../../skills/shared/PLANNING-CRAFT.md#decision-closure):
+record planner calls and keep only genuinely owner/external-blocked affected tasks
+pending. Run the builder check and persist each material finding's disposition in
+the saved contract, then run `autowork tasks validate --worktree .` and commit the
+batch once before reporting it ready. Report saved paths, task IDs, the
 planner's calls and the next executable task, distinguishing proposals from ready work.
 
 Use the [single-pass handoff](../../../skills/shared/PLAN-HANDOFF.md#one-planning-pass-one-handoff):

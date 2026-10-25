@@ -105,7 +105,9 @@ For each substantial discovery result, work in this order: **Discover -> Specify
   already answer it. Create an ADR only when the decision is hard to reverse,
   surprising without context and a real trade-off.
 - **Decompose** into bounded tasks. **Validate** feasibility, authorization,
-  ordering and duplication. **Hand off** through the existing Docs Sync and
+  ordering and duplication with shared [decision closure](../../shared/PLANNING-CRAFT.md#decision-closure);
+  persist planner calls and builder dispositions in the frontier's task contracts,
+  leaving only genuinely blocked affected tasks pending. **Hand off** through the existing Docs Sync and
   `autowork tasks` contracts; do not implement, dispatch, restart or schedule.
 
 Keep new product strategy as a proposal in the appropriate document or a

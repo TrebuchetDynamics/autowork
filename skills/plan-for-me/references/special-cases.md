@@ -1,7 +1,10 @@
 # Plan For Me: special cases
 
 Load the section that matches the request. [SKILL.md](../SKILL.md) and the
-[planning craft](../../shared/PLANNING-CRAFT.md) still apply.
+[planning craft](../../shared/PLANNING-CRAFT.md) still apply. Use shared
+[decision closure](../../shared/PLANNING-CRAFT.md#decision-closure) for material
+choices and builder findings in these handoffs; special cases do not leave the
+worker another design interview.
 
 ## Aspirational quality goals
 
@@ -42,8 +45,10 @@ otherwise a stale blocker creates duplicate work. Distinguish reviewed candidate
 main inclusion, deployment and live acceptance, and retain historical failed evidence
 without treating it as the current frontier when a matching newer check passes.
 Separate missing intent or excluded repair scope from transport, gate or accounting
-failures, comparing the fix with the original worker contract. Reuse the original
-task and candidate. Save findings in the existing task body; a conditional recovery recommendation
+failures, comparing the fix with the original worker contract. A known runtime
+continuation failure is not a new product decision: return the exact failed
+operation and source-bound evidence to the same coordinator for supported recovery.
+Reuse the original task and candidate. Save findings in the existing task body; a conditional recovery recommendation
 is not an executable next task, and consumer eligibility does not prove a free lease
 or authorize redispatch. Before proposing a "patch-only" security-remediation
 exception, compare the resolved versions, advisory fixed ranges, available releases

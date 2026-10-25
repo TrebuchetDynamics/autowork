@@ -100,6 +100,31 @@ class PlanForMeDiscoveryContractTests(unittest.TestCase):
             with self.subTest(requirement=requirement):
                 self.assertIn(requirement, text)
 
+    def test_focused_discovered_and_recovery_routes_consume_shared_decision_closure(self):
+        # Entrypoints must not retain the old minor-versus-user triage or fork closure.
+        special = ROOT / 'skills/plan-for-me/references/special-cases.md'
+        for path, link in (
+                (SKILL, '../shared/PLANNING-CRAFT.md#decision-closure'),
+                (ADAPTER, '../../../skills/shared/PLANNING-CRAFT.md#decision-closure'),
+                (DISCOVERY, '../../shared/PLANNING-CRAFT.md#decision-closure'),
+                (special, '../../shared/PLANNING-CRAFT.md#decision-closure')):
+            with self.subTest(path=path):
+                text = words(path)
+                self.assertIn(link, text)
+                target, anchor = link.split('#')
+                self.assertEqual((path.parent / target).resolve(), PLANNING_CRAFT)
+                self.assertIn('## Decision closure', PLANNING_CRAFT.read_text())
+                self.assertNotIn('## Decision closure', path.read_text())
+        for path in (SKILL, ADAPTER):
+            text = words(path)
+            self.assertIn('focused tasks and discovered frontiers', text)
+            self.assertIn('record planner calls', text)
+            self.assertIn('only genuinely owner/external-blocked affected tasks pending', text)
+        self.assertNotIn('settle minor ones', words(SKILL))
+        self.assertIn('runtime continuation failure is not a new product decision', words(special))
+        self.assertIn('Reuse the original task and candidate', words(special))
+        self.assertIn('positive trust/capability mechanism is still unidentified', words(special))
+
     def test_discovery_fixture_matrix_covers_required_situations_and_prepares(self):
         cases = runpy.run_path(str(SCENARIOS))['CASES']
         required = {'bare-established', 'bare-sparse', 'bare-undefined', 'mature-backlog',

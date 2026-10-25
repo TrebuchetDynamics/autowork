@@ -152,14 +152,14 @@ and explains how to stop it: move the planning task to `Needs decision`
 (`autowork tasks place ID "Needs decision"`). Saving the
 chain does not start a runner or grant execution authority.
 
-Before reporting the plan ready, run the
-[builder check](../shared/PLANNING-CRAFT.md#builder-check-before-handoff): a fresh
-reader in Autowork's place lists what it would have to guess. Write answers already
-known into the tasks, settle minor ones as the planner's call, and ask the user only
-the questions that change what gets built, in one message. Keep just the affected
-tasks pending until they answer; independent tasks stay ready. Then run `autowork
-tasks validate --worktree .`, fix every error and draft you did not mean, and commit
-the batch once ([plan handoff](../shared/PLAN-HANDOFF.md)).
+For focused tasks and discovered frontiers, apply shared
+[decision closure](../shared/PLANNING-CRAFT.md#decision-closure): record planner calls
+and keep only genuinely owner/external-blocked affected tasks pending. Before
+reporting ready, use the [builder check](../shared/PLANNING-CRAFT.md#builder-check-before-handoff)
+and persist each material finding's disposition in the saved contract, not as
+advice to a later worker. Then run `autowork tasks validate --worktree .`, fix every
+error and draft you did not mean, and commit the batch once
+([plan handoff](../shared/PLAN-HANDOFF.md)).
 
 Planning includes saving this work by default. Explicit read-only, chat-only,
 no-write or dry-run requests save nothing. Planning alone does not authorize

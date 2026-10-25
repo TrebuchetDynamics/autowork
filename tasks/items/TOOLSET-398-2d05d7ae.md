@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-398-2d05d7ae"
 title = "Add planning specimens for late decision and prerequisite stalls"
 short = "stall specimens"
-status = "open"
+status = "done"
 goal = "TASK-STORE-HARDENING"
 section = "Now"
 rank = 14000
@@ -16,6 +16,11 @@ scope = "Extend the existing disposable planning specimens and manual rubric wit
 acceptance = ["Existing specimen tests verify five synthetic stall cases for each native/portable entrypoint, valid native-store seeds and reuse/preservation of existing records; no private fleet data is introduced.", "Offline tests retain forbidden code/test/skill/receipt/Git-write and no-write protections; the README states these mechanics do not grade model decision quality.", "The manual rubric evaluates saved decisions/evidence, precise pending inputs, independent tasks, exact checks and builder-finding disposition from actual traces and source hashes; missing model runs remain unrun rather than scored passes."]
 checks = ["python3 scripts/check.py tests/test_planning_specimens.py", "python3 scripts/affected_tests.py --run"]
 exclusions = ["No runtime/schema/scheduler changes, new approval systems, live operations, installation or publication.", "Do not infer owner authorization, relax acceptance or change unrelated tasks/skills."]
+closure = "manual"
+closure_actor = "pi"
+closure_timestamp = "2026-10-25T20:59:28.214576+00:00"
+closure_reason = "Explicit later execution instruction; scoped implementation and independent review complete; composed 45-test offline check passed. Manual closure, not model/live qualification."
+closure_evidence = "docs/plans/planning-skills-current-autowork.md#explicit-execution-and-checked-implementation"
 +++
 - Sources: docs/plans/planning-skills-current-autowork.md#stall-focused-evaluation-specimens
 - Decisions and handoff: Independent lane: fixture specification is fixed in the cited plan and needs no implementation output from the instruction slices. Start with failing mechanics tests in tests/test_planning_specimens.py, then add seeds/rubric. Planner call: extend the existing builder, not a new automated semantic grader. No paid/live model run, installation or provider configuration is needed for offline completion.
