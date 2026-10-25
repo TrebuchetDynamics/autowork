@@ -20,6 +20,7 @@ import subprocess
 import time
 
 from pi_autowork.engine import parallel_plan
+from pi_autowork.engine import closed_requeue
 from pi_autowork.engine import task_queue
 from pi_autowork.engine import parallel_state as state
 from pi_autowork.engine import task_execution as execution
@@ -1087,6 +1088,21 @@ def dispatch_locked(args, repo, common, count, template, host):
     with execution.lock(common / 'writer.lock'):
         state.require_owner(common, args.owner_pid)
         current = state.recover_reports(common, current)
+    # The same lock order as supported set-aside; only the lease owner may retire.
+    requeue_waits = {}
+    reopened = [slot for slot in current if closed_requeue.evidence(repo, slot)]
+    if reopened:
+        try:
+            with execution.lock(common / 'integration.lock', wait=0), execution.lock(common / 'writer.lock'):
+                state.require_owner(common, args.owner_pid)
+                for slot in reopened:
+                    try:
+                        closed_requeue.retire(repo, common, args.owner_pid, slot)
+                    except (ValueError, OSError) as exc:
+                        requeue_waits[slot['task_id']] = 'closed-slot requeue held: ' + str(exc)
+        except execution.LockBusy:
+            requeue_waits.update({s['task_id']: 'closed-slot requeue waits for integration lock' for s in reopened})
+        current = state.slots(common)
     sweep_retired_tmp(common, current)
     everything = contracts(repo)
     context = task_context(repo)
@@ -1121,7 +1137,8 @@ def dispatch_locked(args, repo, common, count, template, host):
     used = {meta(common, s).get('slot_index') for s in live}
     baseline = execution.git(repo, 'rev-parse', 'HEAD')
     started, waiting = [], list(planned['waiting'])
-    waiting.extend({'id': t['id'], 'reason': 'merged; its record is not closed yet (the close commit has not landed)',
+    waiting.extend({'id': t['id'], 'reason': requeue_waits.get(t['id']) or
+                    'closed slot with open record; committed reopen evidence required before requeue',
                     'blocked_by': []} for t in unclosed)
     for task in planned['dispatch']:
         if len(live) + len(started) >= count:

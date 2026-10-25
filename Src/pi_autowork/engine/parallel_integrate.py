@@ -1379,6 +1379,8 @@ def set_aside(repo, owner_pid, task):
         slot = slot_for(common, task)
         if slot is None or state.worker_live(slot):
             raise ValueError('set-aside needs an existing slot with no live worker')
+        if slot['state'] == 'closed':
+            return dispatch.closed_requeue.retire(repo, common, owner_pid, slot)
         requeued = True
         if slot['state'] == 'integrated':
             current = task_queue.record(repo, task)

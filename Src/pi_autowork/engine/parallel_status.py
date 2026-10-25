@@ -209,7 +209,9 @@ def _snapshot(repo, common, now):
     active = 0
     for slot in state.slots(common):
         task = slot['task_id']
-        if slot['state'] in ('closed', 'integrated'):
+        record = snapshot.tasks.get(task) if snapshot is not None else None
+        reopened = slot['state'] == 'closed' and record is not None and record.status == 'open'
+        if slot['state'] in ('closed', 'integrated') and not reopened:
             settled.add(task)  # includes an integrated slot displayed as closing
         live = slot['state'] in ('running', 'dispatched') and state.worker_live(slot)
         active += live
@@ -232,6 +234,11 @@ def _snapshot(repo, common, now):
                          **(failure_fields(slot.get('cause'), slot.get('reason'),
                                            slot.get('report_resume_attempt') == slot['attempt'])
                             if slot.get('cause') or slot['state'] == 'held' else {})))
+        if reopened:
+            proof = dispatch.closed_requeue.evidence(repo, slot)
+            rows[-1].update(state='waiting', blocked_by=[task], root_kind='contract',
+                            reason=('committed reopen awaits owner-locked requeue' if proof else
+                                    'closed slot with open record; committed reopen evidence required before requeue'))
         if hold := state.quick_hold(common, slot):
             rows[-1]['quick_hold'] = hold
         if slot['state'] == 'held' and slot.get('cause') == 'conflict' and slot.get('commit'):

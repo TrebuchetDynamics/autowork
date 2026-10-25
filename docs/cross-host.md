@@ -516,6 +516,20 @@ resolved, `pi-autowork.sh --repo PATH --set-aside TASK` asks that repository's
 running runner to retire the slot: its earlier work stays on `-set-aside-N`
 branches and worktrees, and the task runs fresh.
 
+A closed execution slot is also requeued automatically when committed Git history
+proves that its matching coordinator-verified closure was reopened after either a
+runner regression rollback (including the inverse merge diff) or a stale verified
+contract. The same guarded recovery is available through `--set-aside TASK`; it
+never treats an open-looking working file, a manual close, or a still-pending close
+as permission to rerun. The owning runner serializes retirement, preserves attempt
+data and commits under `slot-history/TASK/N` and `-set-aside-N` refs, and replays an
+interrupted archive before admitting fresh work. A closed-slot/open-record mismatch
+is visible as a blocker until reconciled, not counted as completed. Unproven or
+modified evidence remains held for inspection; never delete/reset the slot files.
+After installing a corrected local release, `autowork restart REPOSITORY` requests
+the normal safe reload (keeps live workers); the next dispatch cycle reconciles it.
+No service restart, fleet activation or live qualification is implied by offline tests.
+
 How it works:
 
 - **Tasks and workers.** Each cycle the engine plans the queue: a task runs beside
