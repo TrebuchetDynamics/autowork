@@ -421,6 +421,8 @@ class MainCheckTests(unittest.TestCase):
             ('hold predates red', [failure], prefix + failure, 'validation', 5, 'green', False),
             ('hold follows green', [failure], prefix + failure, 'validation', 40, 'green', False),
             ('main still red', [failure], prefix + failure, 'validation', 20, 'red', False),
+            ('bounded current green', [failure], prefix + failure, 'validation', 20, 'green', False),
+            ('bounded historical red', [failure], prefix + failure, 'validation', 20, 'green', False),
         ]
         for label, failures, reason, cause, held_at, state, cleared in cases:
             with self.subTest(label=label), tempfile.TemporaryDirectory() as tmp:
@@ -440,6 +442,8 @@ class MainCheckTests(unittest.TestCase):
                                     ('green-revision', dict(state=state, finished=30))]:
                     bundle = evidence / rev
                     bundle.mkdir(parents=True)
+                    if label == 'bounded historical red' and rev == 'red-revision':
+                        record['policy'] = 'revision-barrier'
                     main_check.write(bundle, dict(record, rev=rev))
                 if label == 'intervening reused green':
                     runner.passed_on_tree = lambda *args: 'batch'
@@ -453,7 +457,10 @@ class MainCheckTests(unittest.TestCase):
                     log_path = root / 'validation.log'
                     log_path.write_text('AUTOWORK_HOLD_REASON: ' + verdict + '\n')
                     row['checks'] = {'command_receipt': {'log': str(log_path)}}
-                main_check.write(root, dict(state=state, rev='green-revision', finished=30))
+                current = dict(state=state, rev='green-revision', finished=30)
+                if label == 'bounded current green':
+                    current['policy'] = 'revision-barrier'
+                main_check.write(root, current)
                 calls = []
 
                 def engine(*argv):

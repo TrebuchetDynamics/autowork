@@ -8,8 +8,9 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 
-from .. import main_check, optimistic
+from .. import main_check, optimistic, post_merge_barrier
 from ..common import LOG
 from ..layout import LAYOUT
 
@@ -33,6 +34,7 @@ def check_main(owner, *, git):
         return
     record = main_check.read(owner.state)
     pid, started = owner.check_main_reap(record)
+    record = retry_repairs(owner, record)
     if record.get('state') == 'running':
         if main_check.exit_code(owner.state) is not None or not main_check.alive(pid, started):
             owner.finish_main_check(record)
@@ -42,13 +44,39 @@ def check_main(owner, *, git):
     if owner.check_main_revert_pending(record):
         return
     rev = git(owner.repo, 'rev-parse', owner.base)
-    if not rev or rev == record.get('rev'):
+    same_policy = (record.get('policy') == post_merge_barrier.POLICY
+                   and record.get('command') == cmd and record.get('timeout') == post_merge_barrier.timeout()) \
+        if post_merge_barrier.enabled() else not record.get('policy')
+    request = owner.state / 'requests/recheck-main'
+    retry = False
+    if post_merge_barrier.enabled() and request.exists():
+        try:
+            retry = request.read_text().strip() == rev
+        except OSError:
+            return
+        if not retry:
+            request.unlink(missing_ok=True)  # stale request; current main still needs its own check
+    if not rev or (rev == record.get('rev') and same_policy and not retry):
         return
     if owner.check_main_reuse_result(record, rev, cmd):
         return
     if owner.check_main_wait(record):
         return
     owner.check_main_start(record, rev, cmd)
+    if retry and main_check.read(owner.state).get('state') == 'running':
+        request.unlink(missing_ok=True)
+
+
+def retry_repairs(owner, record):
+    """Keep deferred red incidents in the existing receipt across checks and reloads."""
+    pending = list(record.get('repair_pending') or [])
+    if record.get('policy') == post_merge_barrier.POLICY and record.get('state') == 'red':
+        if not any(item['rev'] == record['rev'] for item in pending):
+            pending.append({key: record[key] for key in ('rev', 'command', 'timeout', 'failures', 'evidence') if key in record})
+    if not pending:
+        return record
+    remaining = [item for item in pending if not owner.post_merge_repair(item)]
+    return main_check.write(owner.state, dict(record, repair_pending=remaining))
 
 
 def check_main_reap(owner, record, *, git):
@@ -73,6 +101,8 @@ def check_main_reap(owner, record, *, git):
 
 def check_main_revert_pending(owner, record, *, git):
     """Retry an optimistic regression revert once the session is free."""
+    if post_merge_barrier.enabled():
+        return False
     if record.get('state') == 'red' and record.get('revert_pending') and optimistic.enabled():
         # A review was running when main went red: revert once the session is free.
         try:
@@ -88,6 +118,8 @@ def check_main_revert_pending(owner, record, *, git):
 
 def check_main_reuse_result(owner, record, rev, cmd, *, git, planning_path):
     """Carry green across planning-only changes or reuse a full check of this exact tree."""
+    if post_merge_barrier.enabled() or record.get('policy') == post_merge_barrier.POLICY:
+        return False  # bounded verdicts are never reusable full-suite receipts
     if record.get('state') == 'green' and record.get('rev'):
         # The runner's own questions and planning commits moved main: a full check for each
         # (8 of 39 in a day) took a host check slot that a waiting review needed.
@@ -103,7 +135,8 @@ def check_main_reuse_result(owner, record, rev, cmd, *, git, planning_path):
         owner.remember_reused_main_green(rev, finished)
         main_check.write(owner.state, dict(state='green', rev=rev, green=rev, finished=finished,
                                           checked_rev=rev, from_receipt=passed, flaky=[],
-                                          flaky_history=record.get('flaky_history') or {}))
+                                          flaky_history=record.get('flaky_history') or {},
+                                          repair_pending=record.get('repair_pending') or []))
         LOG.say(f'Main is green at {rev[:7]}: the full check already passed on its tree ({passed})')
         return True
     return False
@@ -134,6 +167,7 @@ def check_main_wait(owner, record, *, git):
 
 def check_main_start(owner, record, rev, cmd, *, git):
     """Launch the isolated background check and persist the receipt used after reloads."""
+    barrier = post_merge_barrier.enabled()
     path = owner.scratch_checkout('main-check', rev)
     if not path:
         return
@@ -148,14 +182,25 @@ def check_main_start(owner, record, rev, cmd, *, git):
     # and finish_main_check can then safely remove the shared scratch checkout.
     progress = owner.state / 'main-check-slot.json'
     progress.unlink(missing_ok=True)
-    run = shlex.join([sys.executable, str(LAYOUT.entrypoint('main_check')), '--run', cmd,
-                      os.environ.get('PI_AUTOWORK_VALIDATE_TIMEOUT') or '3600', str(progress)])
-    script = f'{run}\nresult=$?\nif [ "$result" -ne 0 ]; then {retry}; fi\necho "$result" > {shlex.quote(str(done))}'
+    limit = post_merge_barrier.timeout() if barrier else os.environ.get('PI_AUTOWORK_VALIDATE_TIMEOUT') or '3600'
+    run = shlex.join([sys.executable, str(LAYOUT.entrypoint('main_check')), '--run', cmd, str(limit), str(progress)])
+    retry_script = '' if barrier else f'if [ "$result" -ne 0 ]; then {retry}; fi\n'
+    script = f'{run}\nresult=$?\n{retry_script}echo "$result" > {shlex.quote(str(done))}'
+    metadata, check_env = dict(repair_pending=record.get('repair_pending') or []), {}
+    if barrier:
+        verdict = post_merge_barrier.verdict_path(owner.state).resolve()
+        verdict.unlink(missing_ok=True)
+        run_id = uuid.uuid4().hex
+        metadata.update(policy=post_merge_barrier.POLICY, command=cmd, timeout=limit,
+                        run_id=run_id, verdict_path=str(verdict))
+        check_env = dict(AUTOWORK_POST_MERGE_REVISION=rev, AUTOWORK_POST_MERGE_RUN_ID=run_id,
+                         AUTOWORK_POST_MERGE_VERDICT=str(verdict),
+                         AUTOWORK_POST_MERGE_BASE=record.get('green') or rev)
     lease = owner.main_check_port_lease()
     ports = {'AUTOWORK_PORT_BASE': str(lease[0])} if lease else {}
     with open(owner.state / 'main-check.log', 'w') as log:
         child = subprocess.Popen(['bash', '-c', script], cwd=path,
-                                 env=owner.job_environment(TMPDIR=tmp, **ports),
+                                 env=owner.job_environment(TMPDIR=tmp, **ports, **check_env),
                                  stdout=log, stderr=subprocess.STDOUT, pass_fds=[lease[1]] if lease else (),
                                  stdin=subprocess.DEVNULL, start_new_session=True)
     if lease:
@@ -165,7 +210,7 @@ def check_main_start(owner, record, rev, cmd, *, git):
                                       tmp=tmp, slot_status=str(progress), green=record.get('green'), failures=record.get('failures'),
                                       red_since=record.get('red_since'), gated=record.get('gated'),
                                       crashed=record.get('crashed'), flaky_history=record.get('flaky_history') or {},
-                                      last_finished=record.get('finished') or record.get('last_finished')))
+                                      last_finished=record.get('finished') or record.get('last_finished'), **metadata))
     LOG.say(f'Checking main at {rev[:7]} in the background: {cmd}')
 
 
@@ -203,7 +248,8 @@ def finish_main_check(owner, record, *, git):
     if code is None:  # the runner stopped under it: check this revision again
         main_check.write(owner.state, dict(state='aborted', rev='', green=green, failures=record.get('failures'),
                                           red_since=record.get('red_since'), flaky_history=history,
-                                          last_finished=record.get('last_finished'), **child))
+                                          last_finished=record.get('last_finished'),
+                                          repair_pending=record.get('repair_pending') or [], **child))
         return
     try:
         log_text = (owner.state / 'main-check.log').read_text(errors='replace')
@@ -241,11 +287,23 @@ def finish_main_check_result(owner, record, code, log_text, child, *, git):
 
     def finished(value):
         value.setdefault('result_class', main_check.result_class(log_text, code))
+        value.setdefault('repair_pending', record.get('repair_pending') or [])
         common = git(owner.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')
         if common and rev and code is not None:
             main_check.publish_evidence(owner.state, common, rev, value)
         return main_check.write(owner.state, value)
 
+    if record.get('policy') == post_merge_barrier.POLICY:
+        value = finished(post_merge_barrier.result(owner.state, record, code, child))
+        retry_repairs(owner, value)
+        LOG.say(f'Post-merge check at {rev[:12]}: {value["state"]}')
+        return
+    if post_merge_barrier.enabled():
+        # An asynchronous job adopted while enabling the barrier is not barrier evidence
+        # and must not execute the old policy's automatic regression revert.
+        main_check.write(owner.state, dict(state='aborted', rev='', green=green,
+                                          repair_pending=record.get('repair_pending') or [], **child))
+        return
     failures, named, flaky, incomplete, history = owner.finish_main_check_failures(record, code, log_text)
     if code and not failures and (not named or incomplete):
         # It crashed before naming a test, or was cut short with only flaky ones named

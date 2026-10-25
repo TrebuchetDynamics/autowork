@@ -25,7 +25,7 @@ import tempfile
 import time
 
 from . import (fleet_view, health, janitor, landing, main_check, maintainer, optimistic, pi_runtime, questions, release,
-               service, task_commands, telemetry, worker, workspaces)
+               post_merge_barrier, service, task_commands, telemetry, worker, workspaces)
 from .common import GIT, LOG, dirty, git, git_ok, lifecycle, open_for_writing, safe_name, summary_list
 from .processes import own_process, process_name, start_time
 from .supervision import main_checks
@@ -1481,6 +1481,13 @@ class Coordinator:
         old, new = git(self.repo, 'rev-parse', self.base), git(self.repo, 'rev-parse', self.integ_branch)
         if not old or not new or not git_ok(self.repo, 'merge-base', '--is-ancestor', old, new):
             return f'{self.integ_branch} is not a fast-forward of {self.base}'
+        if old == new:
+            return ''
+        if post_merge_barrier.enabled():
+            reason = post_merge_barrier.admission(self.state, old, main_check.read(self.state),
+                                                 main_check.command(repo=self.repo))
+            if reason:
+                return reason
         # Non-planning work belongs to its writer: even a cleanly mergeable edit waits
         # when the session touches that path. Only planning edits use the off-tree fallback.
         # Do not parse Git's localized "would be overwritten" message.
@@ -1508,6 +1515,16 @@ class Coordinator:
         held = open_for_writing([Path(self.repo) / p for p in changed if p])
         if held:
             return f'{os.path.relpath(sorted(held)[0], self.repo)} is open for writing'
+        if post_merge_barrier.enabled():
+            # Use the existing index lock and ref CAS even for clean files. Git merge's
+            # --ff-only alone could accept a concurrent intermediate main revision.
+            try:
+                reason = landing.land_around_edits(self.repo, self.base, old, new, require_clean=True)
+            except landing.LandingBroken as exc:
+                raise Finish(1, str(exc)) from exc
+            if not reason:
+                telemetry.observe(self.repo, self.base)
+            return reason
         result = subprocess.run(['git', '-C', str(self.repo), 'merge', '--ff-only', new],
                                 capture_output=True, text=True)
         if result.returncode == 0:
@@ -1557,7 +1574,7 @@ class Coordinator:
             return
         remote, branch = upstream.split('/', 1)
         source = self.base
-        if optimistic.enabled():
+        if post_merge_barrier.enabled() or optimistic.enabled():
             # Optimistic landing publishes only what main's full check passed: its last green
             # revision, when that is on main and ahead of the upstream.
             green = main_check.read(self.state).get('green')
@@ -1600,7 +1617,8 @@ class Coordinator:
         if not self.integ or self.in_flight() or not self.ahead():
             return
         seen = (git(self.integ, 'rev-parse', 'HEAD'), git(self.repo, 'rev-parse', self.base),
-                git(self.repo, 'status', '--porcelain', '--untracked-files=all'))
+                git(self.repo, 'status', '--porcelain', '--untracked-files=all'),
+                main_check.read(self.state) if post_merge_barrier.enabled() else None)
         if seen == self.waiting_merge:
             return
         self.waiting_merge = seen
@@ -1618,6 +1636,8 @@ class Coordinator:
         An unfinished Git operation is left alone. Returns '' when committed or no planning
         files were uncommitted, else why planning waited.
         """
+        if post_merge_barrier.enabled():
+            return 'revision-barrier leaves owner planning edits uncommitted; commit them explicitly'
         if git(self.repo, 'symbolic-ref', '--short', '-q', 'HEAD') != self.base:
             return f'the main checkout is not on {self.base}'
         reason = landing.checkout_operation(self.repo)
@@ -2290,10 +2310,11 @@ class Coordinator:
         """
         main = main_check.read(self.state)
         rev = main.get('rev')
-        if self.stop or main.get('state') != 'green' or not rev:
+        if self.stop or main.get('state') != 'green' or not rev or main.get('policy') == post_merge_barrier.POLICY:
             return set()
         common = Path(self.cfg['git_common']) / 'autowork-execution'
-        records = [main_check.read(path.parent) for path in (common / 'main-evidence').glob('*/main_check.json')]
+        records = [record for path in (common / 'main-evidence').glob('*/main_check.json')
+                   if (record := main_check.read(path.parent)).get('policy') != post_merge_barrier.POLICY]
         # Receipt reuse does not publish a full evidence bundle (its logs belong to another
         # run), but those green transitions still invalidate an earlier red verdict.
         reused = main_check.slot_status(self.state / 'main-green-history.json')
@@ -2469,6 +2490,54 @@ class Coordinator:
         """Publish the verdict, then trigger the same repair, revert or green-only push."""
         return main_checks.finish_main_check_result(self, record, code, log_text, child, git=git)
 
+    def post_merge_repair(self, record):
+        """Persist one revision-keyed repair through supported task writes, only in the session."""
+        if (not self.integ or self.session_busy() or getattr(self, 'child', None)
+                or getattr(self, 'resolvers', None)):
+            return False
+        import fcntl
+        common = git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+        lock_path = Path(common) / 'autowork-execution/writer.lock'
+        lock_path.parent.mkdir(exist_ok=True)
+        with open(lock_path, 'a') as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return False
+            return self.write_post_merge_repair(record)
+
+    def write_post_merge_repair(self, record):
+        """Under the session writer lease, recover even our own refused bookkeeping commit."""
+        revision = record['rev']
+        goal, tid = 'POST-MERGE', 'POST-MERGE-' + revision.upper()
+        paths = [f'tasks/goals/{goal}.md', f'tasks/items/{tid}.md']
+        pending = (git(self.integ, 'status', '--porcelain', '-z', '--untracked-files=all') or '').split('\0')
+        if any(entry and (entry[3:] not in paths or entry[:2].strip() not in ('??', 'A', 'AM')) for entry in pending):
+            return False  # never include another writer's staged or dirty work
+        try:
+            store = task_commands.worktree_store(self.integ)
+            if goal not in store.goals:
+                task_commands.cmd_goal(self.integ, goal, title='Post-merge check repairs', priority=1,
+                                       source='docs/cross-host.md#revision-bound-post-merge-barrier')
+            if tid not in store.tasks:
+                task_commands.cmd_add(
+                    self.integ, goal, f'Repair post-merge failure at {revision}', 'Repair exact main failure',
+                    task_id=tid, scope=f'Repair only the failures recorded for canonical revision {revision}.',
+                    acceptance=['The recorded failures pass; existing candidate, review and check gates remain intact.'],
+                    checks=[post_merge_barrier.repair_check(record)], touches=['**'], resources=['exclusive'],
+                    exclusions=['No automatic revert, publication, in-place canonical source repair or gate bypass.'],
+                    sources=f'Canonical revision {revision}; evidence {record.get("evidence", self.state)}',
+                    notes='\n- Failure evidence: ' + json.dumps(record.get('failures') or []) +
+                          '\n- Reason: Failure paths are command-defined; serialize the bounded repair.\n')
+            if not any(pending):
+                committed = task_commands.TaskStore.at(self.integ, 'HEAD')
+                if tid in committed.tasks:
+                    return True
+            return self.commit(paths, f'docs(tasks): repair post-merge check at {revision[:12]}')
+        except (task_commands.CommandError, StoreError, OSError) as exc:
+            LOG.say(f'Post-merge repair recording waits: {exc}')
+            return False
+
     def validate_ledger(self, reason=''):
         """The task store's errors at the session's HEAD (path:line), or [] when it validates."""
         dispatch = dispatch_module(self.toolset)
@@ -2525,7 +2594,7 @@ class Coordinator:
         findings = {r['task']: worker.review_findings(self.state, r['task']) for r in rows
                     if r.get('state') == 'held' and r.get('cause') in ('validation', 'reviewed_twice') and r.get('task')}
         dispatch = dispatch_module(self.toolset)
-        main = {} if ledger_edits_only else main_check.read(self.state)
+        main = {} if ledger_edits_only or post_merge_barrier.enabled() else main_check.read(self.state)
         found = (maintainer.overlaps(rows) if overlap and not self.ledger_errors else
                  maintainer.triggers(rows, main, findings, ledger_errors=self.ledger_errors, limit=None,
                                      reported_flakes=maintainer.last(self.state).get('flaky_tests', []),
@@ -3352,6 +3421,10 @@ class Coordinator:
         from pi_autowork import task_migrate
         self.conversion_blocker = None
         if not task_migrate.intent(self.repo):
+            return False
+        if post_merge_barrier.enabled():
+            self.conversion_blocker = ('revision-barrier refuses automatic canonical conversion; '
+                                       'run the supported explicit migration outside the runner first')
             return False
         # A helper, as every engine step: a coordinator lease names an ancestor of its writer.
         command = Layout(self.toolset).entrypoint('command')

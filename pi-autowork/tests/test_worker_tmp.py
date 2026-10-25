@@ -451,6 +451,9 @@ class WorkerTmpTests(unittest.TestCase):
         main_check.write(other, {'state': 'green', 'rev': green, 'green': green})
         with patch.dict(os.environ, PI_AUTOWORK_MAIN_CHECK='python3 other-check.py'):
             self.assertNotIn('from_main', worker.base_result(other, self.repo, command, base, 10))  # another command
+        main_check.write(other, dict(state='green', rev=base, green=base, policy='revision-barrier'))
+        with patch.dict(os.environ, PI_AUTOWORK_MAIN_CHECK=command):
+            self.assertIsNone(worker.main_green_base(other, self.repo, command, base, worker.base_tree(self.repo, base)))
         self.assertEqual(runs.read_text().count('ran'), 3)
 
     def test_failures_that_pass_alone_need_no_base_suite(self):

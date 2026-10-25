@@ -120,10 +120,10 @@ def land_around_edits(repo, base, old, new, *, require_clean=False):
             changed = sorted(p for p in before.keys() | after.keys() if before.get(p) != after.get(p))
             # Raw blobs are correct only without checkout conversions. Do not silently
             # drop CRLF, smudge filters, encodings or ident expansion in this fallback.
-            if (git(repo, 'config', '--get', 'core.autocrlf') not in (None, 'false')
-                    or git(repo, 'config', '--get', 'core.eol') == 'crlf'):
+            if changed and (git(repo, 'config', '--get', 'core.autocrlf') not in (None, 'false')
+                            or git(repo, 'config', '--get', 'core.eol') == 'crlf'):
                 return f'{changed[0]}: checkout conversion requires a normal Git landing'
-            if git(repo, 'config', '--get', 'core.sparseCheckout') == 'true':
+            if changed and git(repo, 'config', '--get', 'core.sparseCheckout') == 'true':
                 return f'{changed[0]}: sparse checkout requires a normal Git landing'
             staged = run('diff', '--cached', '--name-only', '-z', old, check=True).stdout.split(b'\0')
             result = run('read-tree', '-i', '-m', old, new)
@@ -131,7 +131,7 @@ def land_around_edits(repo, base, old, new, *, require_clean=False):
                 return 'the main index cannot take the landing: ' + result.stderr.decode(errors='replace').strip()
             # Check both the current working attributes and the destination's index:
             # the session may itself introduce a conversion in .gitattributes.
-            for source in ((), ('--cached',)):
+            for source in ((), ('--cached',)) if changed else ():
                 attrs = run('check-attr', *source, '-z', 'filter', 'working-tree-encoding', 'eol', 'text',
                             'ident', '--', *changed, check=True).stdout.split(b'\0')
                 for name, attr, value in zip(attrs[0::3], attrs[1::3], attrs[2::3]):

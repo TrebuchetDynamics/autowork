@@ -335,7 +335,7 @@ def main_green_base(state, checkout, command, rev, tree):
     base's failures, so they are not blamed on the candidate."""
     record = main_check.read(state)
     green = record.get('green') if record.get('state') == 'green' else None
-    if not green or main_check.command(repo=checkout) != command:
+    if record.get('policy') == 'revision-barrier' or not green or main_check.command(repo=checkout) != command:
         return None
     try:
         if green != rev and base_tree(checkout, green) != tree:
