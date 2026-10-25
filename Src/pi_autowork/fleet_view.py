@@ -1405,8 +1405,8 @@ def snapshot_for(runner, *, generation=0, last_good=None):
     return runner.snapshot
 
 
-def freshness(runner, now=None):
-    """Human-readable provenance, keeping inventory/runtime/pending ages separate."""
+def freshness(runner, now=None, *, detailed=False):
+    """Provenance preview, or full detail, with separate inventory/runtime/pending ages."""
     snap = snapshot_for(runner)
     now = time.time() if now is None else now
     text = (f'{snap.freshness} · revision {snap.revision or "unknown"} · generation {snap.generation}'
@@ -1424,7 +1424,24 @@ def freshness(runner, now=None):
         text += ' · deletion pending commit: ' + ', '.join(runner.display_deleted)
     if runner.display_recreated:
         text += ' · restored/recreated pending record (not committed inventory): ' + ', '.join(runner.display_recreated)
-    return ' · '.join((text, *snap.errors, *snap.annotations))
+    # Keep unmatched observations as evidence, not an unbounded wall above the tasks.
+    # Closed rows absent from the current inventory are especially common after migrations.
+    if detailed:
+        return ' · '.join((text, *snap.errors, *snap.annotations))
+    closed, warnings = 0, list(snap.errors)
+    for annotation in snap.annotations:
+        if annotation.endswith(': unmatched execution observation (closed)'):
+            closed += 1
+        else:
+            warnings.append(annotation)
+    notes = [' '.join(str(warning).split())[:240] for warning in warnings[:3]]
+    if len(warnings) > 3:
+        notes.append(f'+{len(warnings) - 3} source warnings')
+    if closed:
+        notes.append(f'{closed} unmatched closed execution observations (not inventory)')
+    if warnings or closed:
+        notes.append('full diagnostics: Blockers → Details')
+    return ' · '.join((text, *notes))
 
 
 def task_store(repo):

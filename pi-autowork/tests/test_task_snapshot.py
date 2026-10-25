@@ -94,6 +94,19 @@ class TaskSnapshotTests(unittest.TestCase):
                 self.assertEqual(result.counts[:2], (0, 0))
                 self.assertEqual(sum(result.counts[:5]), 4)
 
+    def test_freshness_bounds_historical_noise_without_hiding_current_mismatches(self):
+        obs = self.observation()
+        obs['tasks'].extend(dict(task=f'RETIRED-{i}', state='closed') for i in range(100))
+        obs['tasks'].append(dict(task='UNKNOWN-ACTIVE', state='running'))
+        snap = task_snapshot.capture(self.repo, engine_observation=obs, generation=1)
+        runner = fleet_view.Runner('fixture', repo=str(self.repo), snapshot=snap)
+        summary = fleet_view.freshness(runner)
+        self.assertLess(len(summary), 1500, 'history must not displace the task rows')
+        self.assertIn('UNKNOWN-ACTIVE', summary, 'current mismatches take priority over history')
+        self.assertIn('100 unmatched closed', summary)
+        self.assertEqual(len(snap.annotations), 101, 'full source diagnostics remain available')
+        self.assertEqual(snap.counts, (0, 0, 3, 0, 1, 4), 'annotations cannot change membership')
+
     def test_done_task_observations_are_history_not_inventory_annotations(self):
         store_fixture.write_todo(self.repo, '## Now\n- [ ] A — Alpha\n- [ ] OLD — Old closed task\n')
         path = self.repo / 'tasks/items/OLD.md'

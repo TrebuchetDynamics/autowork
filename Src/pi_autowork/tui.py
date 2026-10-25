@@ -657,7 +657,7 @@ class TasksScreen(ReadScreen, Screen):
             freshness.append(f'\nRestored/recreated pending record(s): {len(runner.display_recreated)} (not committed inventory)',
                              style='yellow')
         self.query_one('#task-freshness', Static).update(freshness)
-        provenance = fleet_view.freshness(runner) if runner else 'Runner unavailable.'
+        provenance = fleet_view.freshness(runner, detailed=True) if runner else 'Runner unavailable.'
         info = self.query_one('#task-provenance', TextArea)
         if info.text != provenance:
             info.load_text(provenance)
@@ -1673,7 +1673,7 @@ class FleetApp(App):
         else:
             active, mergeable, waiting, blocker, decision, total = vector
             detail_row(text, 'Tasks', f'{total} open · {active} active · {mergeable} mergeable · {waiting} waiting · {blocker} blocker'
-                       + f' · {decision} for your decision')
+                       + f' · {decision} in Needs decision')
         detail_row(text, 'Inventory', fleet_view.freshness(runner), 'dim')
         if runner.preparation is not None:
             audit = runner.preparation
