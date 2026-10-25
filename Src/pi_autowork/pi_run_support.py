@@ -25,7 +25,7 @@ def analyse(raw):
     Pi resumes context internally; session headers and RPC history/stat snapshots
     are not fresh usage. See pi_events for the installed-Pi surface inventory.
     """
-    projection = pi_events.EventProjection()
+    projection = pi_events.EventProjection(clock=None)
     result = projection.outcome()
     for line in raw.split('\n'):
         if not line.strip():

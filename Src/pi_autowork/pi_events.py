@@ -1,10 +1,17 @@
 """Bounded, synchronous projection of Pi 1.4 JSON/RPC session events.
 
-Only message_end (assistant/toolResult) and compaction_end.result are usage
-surfaces. Streaming snapshots, turn_end and agent_end are never accounting
-inputs. Missing optional tool/compaction usage is unknown, not zero. Coverage
-is conservative: interrupted work, unknown events and unreported summarization
-retry attempts prevent a complete total. No catalog prices are used.
+Installed-Pi usage inventory: message_end (assistant/toolResult) carries final
+model/nested-tool usage; compaction_end.result carries summary usage. Independent
+entry_appended entries carry cache-warming UsageEntry values (any kind) or
+extension-boundary compactions, which have no compaction_end. Nested execution
+results, streaming snapshots, turn_end and agent_end are alternate surfaces,
+never additional usage. Context summary messages and resumed history are not new
+work. Persisted branch-summary usage has no successful stdout event; neither
+session files nor cumulative session stats are invocation accounting inputs.
+
+Coverage is for observed invocation events, not every possible extension/provider
+call. Missing optional usage, interrupted work, unknown events and unreported
+summarization retry attempts prevent a complete total. No catalog prices are used.
 
 One instance covers one prompt through agent_settled, not a whole RPC session.
 The caller owns framing and transport errors. No raw events, arguments, tool
@@ -38,14 +45,16 @@ class EventProjection:
     startup_seconds: construction to first agent_start; first_tool_seconds:
     construction to first tool start; tool_seconds: sum of known completed
     execution durations (overlap is counted, not wall time), or None until one
-    is known. Observed start/end elapsed time is the fallback for durationMs.
-    Fixed bounds: 4096 tool IDs and response IDs each, 1024 UTF-8 bytes per ID,
+    is known. clock=None disables observation timings for offline replay; only
+    explicit native durationMs values remain measurable. Otherwise observed
+    start/end elapsed time is the fallback for durationMs.
+    Fixed bounds: 4096 tool, response and entry IDs each, 1024 UTF-8 bytes per ID,
     256 bytes per tool name, 4096 bytes per error. Unknown types use one counter,
     never a dictionary of attacker-controlled names.
     """
 
     _MAX_ITEMS = 4096
-    _IGNORED = frozenset(('session', 'turn_end', 'queue_update', 'entry_appended',
+    _IGNORED = frozenset(('session', 'turn_end', 'queue_update',
                           'session_info_changed', 'thinking_level_changed',
                           'bash_execution_update', 'extension_error', 'response',
                           'extension_ui_request'))
@@ -54,7 +63,7 @@ class EventProjection:
         if type(max_text_bytes) is not int or max_text_bytes < 0:
             raise ValueError('max_text_bytes must be a nonnegative integer')
         self._clock = clock
-        self._created = clock()
+        self._created = clock() if clock is not None else None
         self._max_text_bytes = max_text_bytes
         self._overflow = False
         self._phase = 'starting'
@@ -63,6 +72,7 @@ class EventProjection:
         self._startup = self._first_tool = self._tool_seconds = None
         self._tools = {}
         self._responses = set()
+        self._entries = set()
         self._tool_count = 0
         self._assistant_open = self._compaction_open = False
         self._text = ''
@@ -109,7 +119,7 @@ class EventProjection:
         return self._tools[identity]
 
     def _add_usage(self, surface, raw):
-        self._surfaces[surface] = self._increment(self._surfaces[surface])
+        self._surfaces[surface] = self._increment(self._surfaces.get(surface, 0))
         u = _mapping(raw)
         if u:
             self._reported = self._increment(self._reported)
@@ -173,7 +183,7 @@ class EventProjection:
     def consume(self, raw: dict):
         """Consume immediately, retaining only bounded scalar/accounting state."""
         self._check()
-        now = self._clock()
+        now = self._clock() if self._clock is not None else None
         self._last_event_at = now
         raw = _mapping(raw)
         kind = raw.get('type')
@@ -185,7 +195,7 @@ class EventProjection:
             self._aborted = raw.get('aborted') is True
             self._phase = 'settled'
         elif kind == 'agent_start':
-            if not self._started:
+            if not self._started and now is not None:
                 self._startup = max(0, now - self._created)
             self._started = True
             self._phase = 'model'
@@ -216,13 +226,13 @@ class EventProjection:
                 tool['name'] = name
             if kind == 'tool_execution_start' and tool['start'] is None and not tool['ended']:
                 tool['start'] = now
-                if self._first_tool is None:
+                if self._first_tool is None and now is not None:
                     self._first_tool = max(0, now - self._created)
             if kind == 'tool_execution_end' and not tool['ended']:
                 tool['ended'] = True
                 duration = _number(raw.get('durationMs'))
                 duration = (duration / 1000 if duration is not None else
-                            max(0, now - tool['start']) if tool['start'] is not None else None)
+                            max(0, now - tool['start']) if now is not None and tool['start'] is not None else None)
                 if duration is not None:
                     total = (self._tool_seconds or 0) + duration
                     if _number(total) is None:
@@ -230,6 +240,27 @@ class EventProjection:
                     self._tool_seconds = total
             self._phase = 'tool' if any(t['execution'] and not t['ended']
                                         for t in self._tools.values()) else 'model'
+        elif kind == 'entry_appended':
+            entry = _mapping(raw.get('entry'))
+            entry_type = entry.get('type')
+            if not isinstance(entry_type, str) or not entry_type:
+                self._malformed = self._increment(self._malformed)
+            elif entry_type in ('usage', 'compaction'):
+                identity = self._string(entry.get('id'), 1024)
+                if identity:
+                    if identity in self._entries:
+                        return
+                    if len(self._entries) >= self._MAX_ITEMS:
+                        self._fail()
+                    self._entries.add(identity)
+                else:
+                    self._malformed = self._increment(self._malformed)
+                self._add_usage('entry' if entry_type == 'usage' else 'compaction', entry.get('usage'))
+                if entry_type == 'compaction':
+                    self._compactions = self._increment(self._compactions)
+            elif entry_type not in ('custom', 'custom_message', 'context_edit', 'message',
+                                    'model_change', 'thinking_level_change', 'label', 'session_info'):
+                self._unknown = self._increment(self._unknown)
         elif kind == 'compaction_start':
             self._compactions = self._increment(self._compactions)
             self._compaction_open = True
@@ -279,7 +310,7 @@ class EventProjection:
         covered = bool(count and self._settled and not (
             pending or self._unknown or self._malformed or self._unreported_retries))
         complete = {field: covered and self._known[field] == count for field in self._sums}
-        coverage = dict(surfaces=dict(self._surfaces), reported=self._reported,
+        coverage = dict(scope='invocation_events', surfaces=dict(self._surfaces), reported=self._reported,
                         missing=self._missing, pending=pending,
                         unreported_retries=self._unreported_retries,
                         unknown_events=self._unknown, malformed_events=self._malformed,
