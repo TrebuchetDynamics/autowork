@@ -295,6 +295,10 @@ class StatusTests(unittest.TestCase):
 
     def test_fixed_journal_golden_and_json_details(self):
         with ABCWorkload() as fixture:
+            # A closed slot is settled only while its committed task record is closed.
+            record = fixture.repo / 'tasks/items/A.md'
+            record.write_text(record.read_text().replace('status = "open"', 'status = "done"'))
+            fixture.git('commit', '-qam', 'A closed')
             common = fixture.common
             (common / 'slots').mkdir(parents=True)
             events = [dict(timestamp=100, event='coordinator_claimed', coordinator=dict(max_workers=4))]
@@ -322,6 +326,10 @@ class StatusTests(unittest.TestCase):
             self.assertEqual(rendered, expected)
             self.assertLess(len(rendered.splitlines()), 25)
             cli_value = fixture.cli('--parallel-status', '--json')
+            self.assertEqual({row['task']: row['state'] for row in cli_value['tasks']},
+                             dict(A='closed', B='held', C='reported', D='integrated'))
+            self.assertEqual((cli_value['completed'], cli_value['failed'], cli_value['integration_queue']),
+                             (1, 1, 1))
             for row in cli_value['tasks']:
                 for field in ('worktree', 'checks', 'commit', 'integration'):
                     self.assertIsNotNone(row[field])
