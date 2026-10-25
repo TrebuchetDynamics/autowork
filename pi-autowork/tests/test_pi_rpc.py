@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import pi_runtime, pi_rpc, pi_run_support
@@ -55,7 +55,7 @@ for line in sys.stdin:
         response(req,dict(sessionId=session,isStreaming=active,isCompacting=False,pendingMessageCount=0))
     elif kind=='prompt':
         if os.environ.get('FAKE_LOG'):
-            with open(os.environ['FAKE_LOG'],'a') as f: f.write(json.dumps({'session':session,'prompt':req['message'],'args':args})+'\n')
+            with open(os.environ['FAKE_LOG'],'a') as f: f.write(json.dumps({'session':session,'prompt':req['message'],'args':args,'env_marker':os.environ.get('RPC_ENV_MARKER')})+'\n')
         if mode=='reject': response(req,success=False); continue
         if mode=='ack_timeout': continue
         if mode=='malformed': print('{bad',flush=True); continue
@@ -149,6 +149,91 @@ class SpecTests(unittest.TestCase):
                 pi_rpc.authorize_control(spec, {'kind':'steer','message':'pass it'})
 
 
+class CleanupProofTests(unittest.TestCase):
+    def invoke(self, receipt, *, started='123', returncode=0, raw=None):
+        with tempfile.TemporaryDirectory() as root:
+            settings = pi_runtime.Settings(Path(root)/'state', {})
+            child = Mock(pid=321, returncode=returncode)
+            def launch(argv, **kwargs):
+                path = Path(argv[argv.index('--identity') + 1])
+                if raw is not None:
+                    path.write_text(raw)
+                elif receipt is not None:
+                    path.write_text(json.dumps(receipt))
+                return child
+            child.communicate.return_value = (json.dumps(dict(
+                rc=0, retry_safe=True, host_pid=654, host_start_time='456')).encode(), None)
+            with patch.object(pi_rpc, 'readiness', return_value=''), \
+                    patch.object(pi_rpc.subprocess, 'Popen', side_effect=launch), \
+                    patch('pi_autowork.processes.start_time', return_value=started):
+                result = pi_rpc.run(settings, root, 'private prompt', 's', 'p/m', 5, [])
+            self.assertEqual(child.communicate.call_count, 1)
+            return result
+
+    def test_each_cleanup_predicate_retains_distinct_bounded_evidence(self):
+        good = dict(pid=321, start_time='123', pi_pid=654, pi_start_time='456',
+                    cleanup_complete=True, exit_code=0, reason='exit')
+        cases = [({}, None, ['wrapper_start_unavailable', 'wrapper_start_mismatch']),
+                 ({'pid':654}, '123', ['wrapper_pid_mismatch']),
+                 ({'start_time':'999'}, '123', ['wrapper_start_mismatch']),
+                 ({'cleanup_complete':False}, '123', ['guard_cleanup_incomplete']),
+                 ({'exit_code':None}, '123', ['guard_exit_missing'])]
+        for changes, started, failed in cases:
+            with self.subTest(changes=changes, started=started):
+                result = self.invoke(dict(good, **changes), started=started)
+                self.assertEqual(result['failure_kind'], 'cleanup_unproven')
+                self.assertFalse(result['cleanup_complete'])
+                self.assertFalse(result['retry_safe'])
+                proof = result.get('cleanup_proof', {})
+                self.assertEqual(proof.get('failed_conditions'), failed)
+                self.assertEqual(proof['expected_wrapper_pid'], 321)
+                self.assertEqual(proof['expected_wrapper_start_time'], started)
+                self.assertEqual(proof['observed_wrapper_pid'], changes.get('pid', 321))
+                self.assertEqual(proof['observed_wrapper_start_time'], changes.get('start_time', '123'))
+                self.assertEqual(proof['terminal_host_pid'], 654)
+                self.assertEqual(proof['terminal_host_start_time'], '456')
+                self.assertEqual(proof['observed_host_pid'], 654)
+                self.assertEqual(proof['observed_host_start_time'], '456')
+                self.assertIs(proof['guard_cleanup_complete'], changes.get('cleanup_complete', True))
+                self.assertEqual(proof['guard_exit_code'], changes.get('exit_code', 0))
+                self.assertEqual(proof['guard_reason'], 'exit')
+
+    def test_guard_returncode_is_distinct_from_receipt_exit(self):
+        receipt = dict(pid=321, start_time='123', cleanup_complete=True,
+                       exit_code=23, reason='exit')
+        result = self.invoke(receipt, returncode=124)
+        self.assertTrue(result['cleanup_complete'])
+        self.assertEqual(result['failure_kind'], 'timeout')
+        self.assertFalse(result['retry_safe'])
+        proof = result.get('cleanup_proof', {})
+        self.assertEqual(proof.get('guard_returncode'), 124)
+        self.assertEqual(proof.get('guard_exit_code'), 23)
+        self.assertEqual(proof.get('failed_conditions'), [])
+
+    def test_missing_invalid_and_oversized_receipts_fail_closed_with_evidence(self):
+        for raw, status in [(None, 'missing'), ('{bad', 'invalid'), ('[]', 'invalid'),
+                            ('x'*5000, 'oversized')]:
+            with self.subTest(status=status, raw_type=type(raw).__name__):
+                result = self.invoke(None, raw=raw)
+                self.assertEqual(result['failure_kind'], 'cleanup_unproven')
+                self.assertFalse(result['retry_safe'])
+                self.assertEqual(result.get('cleanup_proof', {}).get('receipt_status'), status)
+
+    def test_diagnostics_do_not_copy_arbitrary_receipt_values(self):
+        secret = 'private prompt / secret environment / raw argv '
+        receipt = dict(pid=secret*10, start_time=secret*10, pi_pid=['bad'],
+                       pi_start_time={'prompt':secret}, cleanup_complete=secret,
+                       exit_code=secret, reason=secret*10, environment=secret, argv=secret)
+        result = self.invoke(receipt)
+        proof = result.get('cleanup_proof', {})
+        self.assertIn('failed_conditions', proof)
+        self.assertNotIn(secret, json.dumps(proof))
+        self.assertLess(len(json.dumps(proof)), 1500)
+        for field in ('observed_wrapper_pid', 'observed_wrapper_start_time', 'observed_host_pid',
+                      'observed_host_start_time', 'guard_cleanup_complete', 'guard_exit_code', 'guard_reason'):
+            self.assertIsNone(proof[field])
+
+
 @unittest.skipUnless(importlib.util.find_spec('pi_agent'), 'install pi-autowork/requirements-rpc.txt in this Python')
 class SdkTests(unittest.TestCase):
     def setUp(self):
@@ -221,15 +306,60 @@ class SdkTests(unittest.TestCase):
         asyncio.run(scenario())
 
     def test_guarded_default_seam_finishes_and_removes_private_transport_scratch(self):
-        with patch.dict(os.environ,self.env,clear=True):
+        with patch.dict(os.environ,dict(self.env, RPC_ENV_MARKER='private-env-marker'),clear=True):
             result=pi_runtime.run_pi(self.settings,self.root,'exact input','guarded1','offline/fixture',5,[])
         self.assertEqual(result['rc'],0,result)
         self.assertTrue(result['cleanup_complete'])
         self.assertEqual(result['transport'],'rpc')
+        proof = result['cleanup_proof']
+        self.assertEqual(proof['failed_conditions'], [])
+        self.assertEqual(proof['expected_wrapper_pid'], proof['observed_wrapper_pid'])
+        self.assertNotEqual(proof['expected_wrapper_pid'], proof['observed_host_pid'])
+        self.assertEqual(proof['terminal_host_pid'], proof['observed_host_pid'])
+        calls = [json.loads(x) for x in (self.root/'calls').read_text().splitlines()]
+        self.assertEqual(calls[0]['env_marker'], 'private-env-marker')
+        self.assertNotIn('private-env-marker', json.dumps(proof))
         self.assertEqual(list((self.settings.state/'runs').iterdir()),[])
         progress=json.loads(pi_rpc.runtime_path(self.settings.state,'guarded1').read_text())
         self.assertFalse(progress['active'])
         self.assertNotIn('exact input',json.dumps(progress))
+
+    def test_real_guard_proof_failure_survives_private_job_telemetry_without_replay(self):
+        original = pi_rpc.subprocess.Popen
+        identities = []
+        def launch(argv, **kwargs):
+            child = original(argv, **kwargs)
+            if '--identity' not in argv:
+                return child
+            communicate = child.communicate
+            def tamper(*args, **kw):
+                output = communicate(*args, **kw)
+                path = Path(argv[argv.index('--identity') + 1])
+                proof = json.loads(path.read_text())
+                identities.append(dict(proof))
+                proof['pid'] = proof['pi_pid']  # SDK host is NOT the wrapper.
+                path.write_text(json.dumps(proof))
+                return output
+            child.communicate = tamper
+            return child
+        with patch.dict(os.environ, self.env, clear=True), \
+                patch.object(pi_rpc.subprocess, 'Popen', side_effect=launch):
+            result = pi_runtime.job(self.settings, 'worker', 'T-1', self.root,
+                                    'private accepted prompt', 'bad-proof', 5, [])
+        self.assertEqual(result['why'], 'cleanup_unproven')
+        rows = [json.loads(x) for x in (self.settings.state/'runs.jsonl').read_text().splitlines()]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(len((self.root/'calls').read_text().splitlines()), 1)
+        proof = rows[0].get('cleanup_proof', {})
+        self.assertEqual(proof.get('failed_conditions'), ['wrapper_pid_mismatch'])
+        self.assertEqual(proof['expected_wrapper_pid'], identities[0]['pid'])
+        self.assertEqual(proof['observed_wrapper_pid'], identities[0]['pi_pid'])
+        self.assertEqual(proof['terminal_host_pid'], identities[0]['pi_pid'])
+        self.assertEqual(proof['terminal_host_start_time'], identities[0]['pi_start_time'])
+        self.assertNotIn('private accepted prompt', json.dumps(rows))
+        self.assertNotIn('FAKE_LOG', json.dumps(proof))
+        self.assertEqual((self.settings.state/'runs.jsonl').stat().st_mode & 0o777, 0o600)
+        self.assertEqual(list((self.settings.state/'runs').iterdir()), [])
 
     def test_uncertain_default_job_is_not_replayed_or_fallen_back(self):
         with patch.dict(os.environ,dict(self.env,FAKE_BEHAVIOR='ack_timeout'),clear=True):

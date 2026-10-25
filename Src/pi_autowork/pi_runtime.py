@@ -259,7 +259,7 @@ def record(s, role, task, outcome, model, fallback, run, result='', *, directory
            'cost_source': run.get('cost_source', 'missing'), 'billing': run.get('billing'),
            'error': run.get('error') or None, 'result': result or None,
            **{key: run.get(key) for key in ('transport', 'sdk_version', 'pi_version', 'session_id',
-                                          'generation', 'prompt_digest', 'failure_kind', 'cleanup_complete',
+                                          'generation', 'prompt_digest', 'failure_kind', 'cleanup_complete', 'cleanup_proof',
                                           'startup_seconds', 'first_tool_seconds', 'tool_seconds',
                                           'compactions', 'command_interruptions', 'usage_coverage', 'known_usage')}}
     try:
