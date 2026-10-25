@@ -600,6 +600,16 @@ async def main():
             assert detail.lstrip().startswith('india  Blocker — 1: T-9 Blocker · Agent repair'), detail
             assert 'on you' not in detail and 'Model      gpt-6.1-sol' in detail, detail
             assert 'Waiting    2: 1 on dependencies · 1 wait for TASK-036 (overlapping files)' in detail, detail
+            # Needs-decision membership is not a count of unanswered owner questions.
+            # A recorded deferral must not be advertised as a fresh request for approval.
+            original_snapshot = app.current().snapshot
+            app.current().snapshot = replace(original_snapshot, counts=(0, 0, 2, 1, 1, 4))
+            app.show_detail()
+            decision_detail = str(app.query_one('#detail').render())
+            assert '1 in Needs decision' in decision_detail, decision_detail
+            assert 'for your decision' not in decision_detail, decision_detail
+            app.current().snapshot = original_snapshot
+            app.show_detail()
             runners = app.query_one('#runners')
             # TOOLSET-289-71 (test_runner_columns): the owner's four headlines.
             assert [str(c.label) for c in runners.columns.values()] == ['Runner', 'State', 'Active', 'Mergeable',

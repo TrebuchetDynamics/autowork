@@ -328,6 +328,7 @@ def build(runner):
         lines.append('Restart: ' + str(runner.restarting))
     if snapshot is not None:
         lines.append(f'Inventory revision: {snapshot.revision}; execution {snapshot.engine_freshness}')
+        lines.extend('Inventory annotation: ' + str(annotation) for annotation in snapshot.annotations)
     for error in dict.fromkeys(errors):
         lines.append('Fleet acquisition error / source warning: ' + str(error))
     if runner.main_check:

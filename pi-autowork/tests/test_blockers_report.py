@@ -57,6 +57,15 @@ class BlockersReportTests(unittest.TestCase):
         self.assertEqual(before, {p.relative_to(self.root): p.read_bytes()
                                   for p in self.root.rglob('*') if p.is_file()})
 
+    def test_inventory_join_annotations_remain_in_details_not_the_owner_summary(self):
+        from dataclasses import replace
+        snap = fleet_view.snapshot_for(self.runner)
+        warning = 'RETIRED-99: unmatched execution observation (closed)'
+        self.runner.snapshot = replace(snap, annotations=(warning,))
+        report = blockers_report.build(self.runner)
+        self.assertIn(warning, report)
+        self.assertNotIn(warning, blockers_report.summary(report))
+
     def test_committed_decisions_holds_and_dependencies_not_uncommitted_text(self):
         path = self.repo / 'tasks/items/T-1.md'
         path.write_text(path.read_text().replace('section = "Now"', 'section = "Needs decision"')
