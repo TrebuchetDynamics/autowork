@@ -357,6 +357,7 @@ class PiRpcRuntime:
                     failure_kind=failure, retry_safe=retry_safe,
                     transport='rpc', sdk_version=SDK_VERSION, pi_version=self.pi_version,
                     session_id=self.spec.session, generation=self.generation,
+                    host_pid=os.getpid(), host_start_time=self.host_start,
                     command_interruptions=len(self.stopping), prompt_digest=self.spec.prompt_digest)
 
 
@@ -389,6 +390,65 @@ def readiness(settings):
     return ''
 
 
+def _cleanup_proof(identity, pid, started, returncode, result):
+    """Bounded, allowlisted evidence, retained before private scratch is removed.
+
+    Receipt pi_* fields identify the SDK host, not the wrapper. Host identities
+    are diagnostic only; cleanup authority remains the matched wrapper receipt.
+    Never copy arbitrary receipt strings, arguments, environment or exceptions.
+    """
+    proof, status = {}, 'valid'
+    try:
+        with identity.open('rb') as stream:
+            raw = stream.read(4097)
+        if len(raw) > 4096:
+            status = 'oversized'
+        else:
+            proof = json.loads(raw)
+            if not isinstance(proof, dict):
+                proof, status = {}, 'invalid'
+    except FileNotFoundError:
+        status = 'missing'
+    except OSError:
+        status = 'unreadable'
+    except (ValueError, UnicodeError):
+        status = 'invalid'
+
+    def integer(value, minimum=-(2**31)):
+        return value if type(value) is int and minimum <= value < 2**31 else None
+
+    def ticks(value):
+        return value if (isinstance(value, str) and 0 < len(value) <= 20
+                         and value.isascii() and value.isdecimal()) else None
+
+    observed_pid = integer(proof.get('pid'), 1)
+    observed_start = ticks(proof.get('start_time'))
+    expected_start = ticks(started)
+    cleanup = proof.get('cleanup_complete')
+    cleanup = cleanup if type(cleanup) is bool else None
+    exit_code = integer(proof.get('exit_code'))
+    reason = proof.get('reason')
+    failed = [name for name, valid in (
+        ('wrapper_start_unavailable', bool(expected_start)),
+        ('wrapper_pid_mismatch', observed_pid == pid),
+        ('wrapper_start_mismatch', observed_start == expected_start and expected_start is not None),
+        ('guard_cleanup_incomplete', cleanup is True),
+        ('guard_exit_missing', exit_code is not None)) if not valid]
+    if status != 'valid':
+        failed.insert(0, 'receipt_' + status)
+    return dict(receipt_status=status, expected_wrapper_pid=integer(pid, 1),
+                expected_wrapper_start_time=expected_start,
+                observed_wrapper_pid=observed_pid, observed_wrapper_start_time=observed_start,
+                terminal_host_pid=integer(result.pop('host_pid', None), 1),
+                terminal_host_start_time=ticks(result.pop('host_start_time', None)),
+                observed_host_pid=integer(proof.get('pi_pid'), 1),
+                observed_host_start_time=ticks(proof.get('pi_start_time')),
+                guard_cleanup_complete=cleanup, guard_exit_code=exit_code,
+                guard_reason=reason if isinstance(reason, str) and reason in (
+                    'exit', 'signal', 'deadline', 'supervisor_error', 'cleanup_incomplete') else None,
+                guard_returncode=integer(returncode), failed_conditions=failed)
+
+
 def run(settings, directory, message, session, target, limit, extra, role=None, task='', *,
         stop_requested=lambda: False):
     """Synchronous engine seam; cancellation stays owned by the calling job runtime."""
@@ -411,6 +471,7 @@ def run(settings, directory, message, session, target, limit, extra, role=None, 
                 '--identity', str(identity), '--deadline', str(float(limit) + 10),
                 '--parent-pid', str(os.getpid()), '--parent-start', str(start_time(os.getpid())), '--',
                 sdk_python(settings), str(LAYOUT.entrypoint('pi_autowork.pi_rpc'))]
+        child, started = None, None
         try:
             child = subprocess.Popen(argv, cwd=directory, stdin=subprocess.PIPE,
                                      stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
@@ -423,7 +484,8 @@ def run(settings, directory, message, session, target, limit, extra, role=None, 
                         child.wait(timeout=2)
                     except subprocess.TimeoutExpired:
                         pass
-                    return dict(base, failure_kind='cleanup_unproven', error='Process guard exceeded cleanup deadline')
+                    return dict(base, failure_kind='cleanup_unproven', error='Process guard exceeded cleanup deadline',
+                                cleanup_proof=_cleanup_proof(identity, child.pid, started, child.returncode, {}))
                 try:
                     output, _ = child.communicate(payload, timeout=.5)
                     break
@@ -431,15 +493,14 @@ def run(settings, directory, message, session, target, limit, extra, role=None, 
                     payload = None
                     if stop_requested() or time.monotonic() - begin > float(limit) + 20:
                         child.terminate()  # Guard remains alive to reap its complete subtree.
-            proof = json.loads(identity.read_text())
             try:
                 result = json.loads(output)
                 if not isinstance(result, dict):
                     raise ValueError('result is not an object')
             except (ValueError, UnicodeError):
                 result = dict(base, failure_kind='transport', error='SDK host returned no valid terminal outcome')
-            clean = bool(started and proof.get('pid') == child.pid and proof.get('start_time') == started
-                         and proof.get('cleanup_complete') is True and proof.get('exit_code') is not None)
+            result['cleanup_proof'] = _cleanup_proof(identity, child.pid, started, child.returncode, result)
+            clean = not result['cleanup_proof']['failed_conditions']
             result['cleanup_complete'] = clean
             result['retry_safe'] = bool(clean and result.get('retry_safe'))
             if not clean:
@@ -452,6 +513,8 @@ def run(settings, directory, message, session, target, limit, extra, role=None, 
             return result
         except (OSError, ValueError):
             return dict(base, failure_kind='cleanup_unproven', error='RPC host or ownership proof unavailable',
+                        cleanup_proof=_cleanup_proof(identity, child.pid if child else None, started,
+                                                     child.returncode if child else None, {}),
                         seconds=time.monotonic()-begin)
 
 
