@@ -618,16 +618,20 @@ class DispatchTests(unittest.TestCase):
         self.assertEqual({s['slot'] for s in result['dispatched']}, set(range(1, 9)))
 
     def test_refill_starts_next_task_when_a_worker_finishes(self):
+        b_ready, b_release, e_ready = (self.root / name for name in ('b-ready', 'b-release', 'e-ready'))
         self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 0.2},
-                       'B': {'files': {'b.txt': 'b'}, 'sleep': 3.0},
-                       'E': {'files': {'e.txt': 'e'}, 'sleep': 0.2}})
+                       'B': {'files': {'b.txt': 'b'}, 'ready': str(b_ready), 'release': str(b_release)},
+                       'E': {'files': {'e.txt': 'e'}, 'ready': str(e_ready), 'sleep': 0.2}})
         self.apply()
+        self.await_file(b_ready)
         _, changed = self.wait(20)
         self.assertEqual([c['task'] for c in changed['changed']], ['A'])
         _, refill = self.apply()
-        # E takes the free slot; D still overlaps A's unintegrated commit.
+        # E takes the free slot while B remains active, regardless of parent scheduling.
         self.assertEqual([s['task'] for s in refill['dispatched']], ['E'])
         self.assertEqual(refill['dispatched'][0]['slot'], 1)
+        self.await_file(e_ready)
+        b_release.touch()
         self.wait_until_idle()
         times = {(e['task'], e['event']): e['time'] for e in self.events()}
         self.assertLess(times['E', 'start'], times['B', 'end'])

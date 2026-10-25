@@ -3945,6 +3945,47 @@ class ServiceTests(Fixture):
             self.assertEqual(check.returncode, 0, check.stdout + check.stderr)
             self.assertNotIn('bad unit file setting', check.stdout + check.stderr)
 
+    def test_observer_policy_survives_install_reinstall_and_fresh_start(self):
+        home = Path(self.env['PI_AUTOWORK_HERMES_HOME'])
+        store = home / 'cron/jobs.json'
+        store.parent.mkdir(parents=True)
+        observer = dict(id='observer', workdir=str(self.repo), enabled=True,
+                        prompt='Observe autowork progress; no repository or service changes.')
+        store.write_text(json.dumps({'jobs': [observer]}))
+        self.assertEqual(self.run_runner('--install-service').returncode, 4)
+        policy = self.root / 'observers.json'
+        digest = hashlib.sha256(json.dumps(observer, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        policy.write_text(json.dumps(dict(version=1, repo=str(self.repo), hermes_home=str(home),
+                                         observers=[dict(profile='default', id='observer', sha256=digest)])))
+        self.env.update(PI_AUTOWORK_HERMES_OBSERVERS=str(policy), PI_AUTOWORK_PUSH='0')
+        installed = self.run_runner('--install-service')
+        self.assertEqual(installed.returncode, 0, installed.stderr)
+        # A new shell has neither setting; the saved service policy must supply both.
+        self.env.pop('PI_AUTOWORK_HERMES_OBSERVERS')
+        self.env.pop('PI_AUTOWORK_HERMES_HOME')
+        reinstalled = self.run_runner('--install-service')
+        self.assertEqual(reinstalled.returncode, 0, reinstalled.stderr)
+        saved = (self.envs / 'project.env').read_text()
+        for line in [f'PI_AUTOWORK_HERMES_OBSERVERS={policy}', f'PI_AUTOWORK_HERMES_HOME={home}',
+                     'PI_AUTOWORK_PUSH=0', 'PI_AUTOWORK_TASK_TIMEOUT=600']:
+            self.assertIn(line + '\n', saved)
+        self.assertNotIn('PI_AUTOWORK_ALLOW_HERMES', saved)
+        started = self.run_runner('--once')
+        self.assertEqual(started.returncode, 0, started.stderr)
+        store.write_text(json.dumps({'jobs': [dict(observer, prompt='Changed autowork contract')]}))
+        for args in [('--once',), ('--install-service',)]:
+            with self.subTest(args=args):
+                self.assertEqual(self.run_runner(*args).returncode, 4)
+        # A deliberate empty override must not resurrect the saved grant on reinstall.
+        store.write_text(json.dumps({'jobs': [dict(observer, enabled=False)]}))
+        self.env['PI_AUTOWORK_HERMES_OBSERVERS'] = ''
+        self.assertEqual(self.run_runner('--install-service').returncode, 0)
+        saved = (self.envs / 'project.env').read_text()
+        self.assertIn('PI_AUTOWORK_HERMES_OBSERVERS=\n', saved)
+        self.env.pop('PI_AUTOWORK_HERMES_OBSERVERS')
+        store.write_text(json.dumps({'jobs': [observer]}))
+        self.assertEqual(self.run_runner('--once').returncode, 4)
+
     def test_the_service_path_leaves_out_uvs_temporary_environments(self):
         """Installed from the TUI (`uv run`), a service kept uv's deleted build environment first."""
         cache = self.root / 'uv-cache'

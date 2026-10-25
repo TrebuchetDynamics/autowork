@@ -26,6 +26,7 @@ ENV_NAMES = ('PI_AUTOWORK_PRIMARY', 'PI_AUTOWORK_FALLBACK', 'PI_AUTOWORK_TASK_TI
              'PI_AUTOWORK_MIN_FREE_MB', 'PI_AUTOWORK_STATE_DIR', 'PI_AUTOWORK_TOOLSET',
              'PI_AUTOWORK_UPDATE_INTERVAL', 'PI_AUTOWORK_UPDATE_WAIT', 'PI_AUTOWORK_PLANNING_QUIET',
              'PI_AUTOWORK_PLAN_SETTLE', 'PI_AUTOWORK_PUSH', 'PI_CODING_AGENT_DIR',
+             'PI_AUTOWORK_HERMES_HOME', 'PI_AUTOWORK_HERMES_OBSERVERS',
              'PI_AUTOWORK_POST_MERGE_POLICY', 'PI_AUTOWORK_POST_MERGE_TIMEOUT', 'PI_AUTOWORK_MAIN_CHECK',
              'PI_AUTOWORK_TRANSPORT', 'PI_AUTOWORK_RPC_PYTHON', 'PI_AUTOWORK_STEERING')
 # run() also accepts these through its workers argument and environment switches.
@@ -306,11 +307,14 @@ def run(action, *, repo, base, script, workers, state_root, hermes_jobs, argv0):
         lines.append('PI_AUTOWORK_NO_FALLBACK=1')
     if workers != 8:
         lines.append(f'PI_AUTOWORK_WORKERS={workers}')
-    lines += [f'{name}={env[name]}' for name in ENV_NAMES if env.get(name)]
+    lines += [f'{name}={env[name]}' for name in ENV_NAMES
+              if env.get(name) or (name == 'PI_AUTOWORK_HERMES_OBSERVERS' and name in env)]
+    written = {line.split('=', 1)[0] for line in lines}
     # A model chosen with `autowork model` survives a reinstall unless this one sets its own.
     try:
         kept = [line for line in env_file.read_text().splitlines()
                 if line.split('=', 1)[0] in SETTING_NAMES
+                and line.split('=', 1)[0] not in written
                 and not env.get(line.split('=', 1)[0])]
     except OSError:
         kept = []
