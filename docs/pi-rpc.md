@@ -6,7 +6,11 @@ not task authority: the existing engine still owns contracts, attempts, admissio
 worktrees, checks, independent review, integration and closure.
 
 Canonical implementations live in `Src/pi_autowork/`: `pi_runtime.py`, `pi_rpc.py`,
-`pi_process.py` and `pi_events.py`. The old package paths are compatibility
+`pi_process.py` and `pi_events.py`. Shared redaction and command-watchdog helpers
+live in `Src/pi_autowork/pi_run_support.py`, a dependency leaf used by both
+transports, not a second runtime owner. RPC must not import `pi_runtime` back:
+`pi_runtime.run_pi` supplies a live `stop_requested` callback so cancellation stays
+with the caller without an import cycle. The old package paths are compatibility
 entrypoints; both guard and SDK-host subprocesses launch through the selected
 release's `LAYOUT` adapters. The [planning console](planning-console.md) has a
 separate restricted RPC controller and explicit proposal Apply flow.
@@ -157,6 +161,14 @@ scratch, role-local uncertainty fences and semantic receipt deduplication; they 
 not qualify live provider or host-crash recovery.
 
 ## Verification and rollback
+
+The import guard includes deferred imports and checks the actual `Src` owners,
+not just compatibility adapters. Run it when changing runtime dependencies:
+
+```sh
+python3 scripts/check.py tests/test_task_prepare.py \
+  -k test_every_module_imports_in_isolation_and_all_import_edges_are_acyclic
+```
 
 ```sh
 # Safe focused tests. SDK-dependent classes require the interpreter above.
