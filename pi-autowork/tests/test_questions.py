@@ -83,6 +83,37 @@ class QuestionTests(unittest.TestCase):
         self.assertEqual(found[1]['task'], 'T-1 — Port the tuner')
         self.assertEqual(found[1]['needs'], 'worker reported a blocker: needs src/x.py outside Touches')
 
+    def test_external_input_answers_require_the_real_artifact_or_handoff(self):
+        reasons = ('needs an owner-supplied signed artifact and verification evidence',
+                   'needs an exclusive-access handoff from the current live owner')
+        for reason in reasons:
+            with self.subTest(reason=reason):
+                found = questions.build({'tasks': [dict(task='T-1', state='held', attempt=1,
+                                                       cause='blocker', reason=reason)]}, store())
+                self.assertEqual(len(found), 1)
+                self.assertEqual((found[0]['type'], found[0]['needs']), ('USER_INPUT', reason))
+                answer = found[0]['answer']
+                self.assertIn('missing input, handoff or evidence described in the failure reason', answer)
+                self.assertIn('preserve the acceptance criteria', answer)
+                self.assertIn('does not supply signatures or transfer live ownership', answer)
+                self.assertIn('Needs decision', answer)
+                self.assertNotIn('narrow the acceptance', answer)
+                self.assertNotIn('widen `touches`', answer)
+                self.assertNotIn('reruns it when the record changes', answer)
+
+    def test_scope_answers_limit_remedy_to_the_requested_scope_without_relaxing_gates(self):
+        for cause in ('scope_request', 'scope'):
+            with self.subTest(cause=cause):
+                found = questions.build({'tasks': [dict(task='T-1', state='held', attempt=1, cause=cause,
+                                                       reason='needs src/adapter.py outside Touches')]}, store())
+                self.assertEqual(len(found), 1)
+                answer = found[0]['answer']
+                self.assertIn('specific requested `touches` change', answer)
+                self.assertIn('preserve the acceptance criteria', answer)
+                self.assertIn('live authorization and ownership gates', answer)
+                self.assertNotIn('narrow the acceptance', answer)
+                self.assertNotIn('reruns it when the record changes', answer)
+
     def test_a_technical_hold_is_never_an_owner_question(self):
         """A conflict or validation/report hold the engine can re-offer is recovery, not a decision."""
         self.assertFalse(questions.exhausted(

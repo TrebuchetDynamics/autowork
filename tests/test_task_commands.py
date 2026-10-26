@@ -388,6 +388,67 @@ class TaskCommandTests(unittest.TestCase):
         self.commit()
         self.assertEqual(self.tasks('show', 'T-1', ok=False).returncode, 1)
 
+    def test_list_and_why_disclose_selection_only_even_for_a_runtime_hold(self):
+        from pi_autowork.engine import parallel_status
+        slots = self.repo / '.git/autowork-execution/slots'
+        slots.mkdir(parents=True)
+        held = dict(task_id='T-1', state='held', attempt=1, cause='blocker',
+                    reason='needs a signed artifact', started_at=1, worker=None,
+                    worktree=str(self.repo / '.worktrees/held'))
+        slot = slots / 'T-1.json'
+        slot.write_text(json.dumps(held))
+        self.assertEqual(parallel_status.snapshot(self.repo)['tasks'][0]['state'], 'held')
+        revision = self.git('rev-parse', 'HEAD').strip()
+        expected = dict(only=True, admission_evaluated=False, runtime_evaluated=False,
+                        source='committed', ref='HEAD', revision=revision, revision_ephemeral=False)
+        row, = json.loads(self.tasks('list').stdout)
+        why = json.loads(self.tasks('why', 'T-1').stdout)
+        self.assertEqual((row['position'], row['blocked_by'], why['eligible'], why['first']),
+                         (1, None, True, True))
+        for result in (row, why):
+            self.assertIn('selection', result)
+            self.assertEqual(result['selection'], expected)
+        self.assertEqual(json.loads(slot.read_text()), held, 'reading selection cannot clear a runtime hold')
+
+    def test_selection_metadata_pins_explicit_revision_and_does_not_imply_admission(self):
+        self.tasks('field', 'T-1', 'ownership', 'owner')
+        self.commit()
+        revision = self.git('rev-parse', 'HEAD').strip()
+        self.tasks('place', 'T-1', 'Needs decision')
+        self.commit()
+        row, = json.loads(self.tasks('list', '--rev', revision).stdout)
+        why = json.loads(self.tasks('why', 'T-1', '--rev', revision).stdout)
+        for result in (row, why):
+            self.assertIn('selection', result)
+            self.assertEqual(result['selection'], dict(
+                only=True, admission_evaluated=False, runtime_evaluated=False,
+                source='committed', ref=revision, revision=revision, revision_ephemeral=False))
+        self.assertEqual(row['position'], 1)
+        self.assertTrue(why['eligible'], 'selection eligibility is not worker authority')
+        self.assertEqual(json.loads(self.tasks('why', 'T-1').stdout)['reasons'][0]['code'], 'NEEDS_DECISION')
+        unknown = json.loads(self.tasks('why', 'T-404').stdout)
+        self.assertEqual(unknown['reasons'][0]['code'], 'UNKNOWN_TASK')
+        self.assertIn('selection', unknown)
+        self.assertEqual(unknown['selection']['revision'], self.git('rev-parse', 'HEAD').strip())
+
+    def test_worktree_list_identifies_its_ephemeral_proof_not_head(self):
+        revision = self.git('rev-parse', 'HEAD').strip()
+        self.tasks('field', 'T-1', 'title', 'Pending title')
+        row, = json.loads(self.tasks('list', '--worktree').stdout)
+        self.assertEqual(row['title'], 'Pending title')
+        self.assertIn('selection', row)
+        metadata = row['selection']
+        self.assertEqual({k: v for k, v in metadata.items() if k != 'revision'}, dict(
+            only=True, admission_evaluated=False, runtime_evaluated=False,
+            source='working-tree', ref=None, revision_ephemeral=True))
+        self.assertRegex(metadata['revision'], r'^[0-9a-f]{40,64}$')
+        self.assertNotEqual(metadata['revision'], revision)
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.git('cat-file', '-e', metadata['revision'])
+        committed, = json.loads(self.tasks('list').stdout)
+        self.assertEqual(committed['title'], 'Read tasks')
+        self.assertEqual(committed['selection']['revision'], revision)
+
     def test_why_and_list_name_their_reasons(self):
         before = self.git('status', '--porcelain', '--', 'tasks')
         for flags in (('--depends-on', 'T-404'), ('--depends-on', '["T-404"]')):

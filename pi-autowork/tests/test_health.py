@@ -352,6 +352,29 @@ class HealthTests(unittest.TestCase):
         health.job_finished(folder)
         self.assertFalse((folder / 'job.json').exists())
 
+    def test_stale_working_counts_are_not_current_work_without_a_verified_job(self):
+        folder = self.state / 'repo'
+        folder.mkdir()
+        runner = dict(repo='/x/repo', pid=os.getpid(), start_time=start_time(os.getpid()))
+        (folder / 'runner.json').write_text(json.dumps(runner))
+        source = dict(workspace='/session/repo', repository_identity='/repo/.git',
+                      revision='committed-source', observed_at=1000)
+        health.update(folder, dict(snapshot(workers=3, queue=2), task_source=source), now=1000, runner=runner)
+        before = (folder / 'status.json').read_bytes()
+        for age, expected in ((health.STALE_AFTER, 'working'), (health.STALE_AFTER + 1, 'not cycling')):
+            with self.subTest(age=age):
+                row, = health.fleet(self.state, now=1000 + age, service=lambda name: 'active')
+                self.assertEqual(row['state'], expected)
+                self.assertEqual((row['workers'], row['waiting'], row['updated_at']), (3, 1, 1000))
+                self.assertEqual((row['snapshot_at'], row['snapshot_age_seconds']), (1000, age))
+                self.assertEqual(row['task_source'], source)
+                self.assertIsNone(row['job'])
+        # Separately verified work still overrides an old working snapshot.
+        health.job_started(folder, 'maintainer', 'DOCS-MAINTAINER', now=1000)
+        row, = health.fleet(self.state, now=1000 + health.STALE_AFTER + 1, service=lambda name: 'active')
+        self.assertEqual((row['state'], row['job']['role']), ('working', 'maintainer'))
+        self.assertEqual((folder / 'status.json').read_bytes(), before)
+
     def test_fleet_flags_dead_and_silent_runners(self):
         def runner(key, repo, pid, updated, state='working', **identity):
             folder = self.state / key
