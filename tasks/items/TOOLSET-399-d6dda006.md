@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-399-d6dda006"
 title = "Harden browser-label reader isolation in the headless fleet pilot after its landed drain barriers"
 short = "Headless browser-label fixture hardening"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 5000
@@ -16,6 +16,8 @@ scope = "Harden test_fleet_view.FleetViewTests.test_the_tui_drives_the_same_acti
 acceptance = ["Record evidence distinguishing isolation, resource-load and fixture-timing hypotheses for the named test. Inspect the observed directory-labels reader and its readiness provider, capture active/pending reader and applied-generation state when relevant, and distinguish observations from causal hypotheses. Preserve TOOLSET-396's completed work and closure; historical isolated passes do not prove this later timeout repaired.", "Implement a test-owned fixture isolation, synchronization or cleanup improvement supported by that investigation. Preserve all existing action assertions, pinned offline Textual execution, real reader-lifetime coverage and failure detection. Release and join fixture readers/workers and restore patches and temporary state on assertion failure; do not mask the failure with new skips, expected failures, retries, inflated fixed sleeps/timeouts or production test hooks.", "Report at least three isolated executions of the named test and its complete test_fleet_view.py module on the changed tree, identifying whether the pilot actually ran, execution context and any remaining flakes. Require the full offline check on the integrated tree through the existing runner gate; the implementation worker supplies its own focused results, not a pre-existing coordinator receipt. No full-suite stability or live qualification claim follows from historical reruns."]
 checks = ["for run in 1 2 3; do python3 scripts/check.py pi-autowork/tests/test_fleet_view.py -k test_the_tui_drives_the_same_actions_headless || exit; done", "python3 scripts/check.py pi-autowork/tests/test_fleet_view.py", "python3 scripts/check.py", "git diff --check"]
 exclusions = ["No product-code repair, source relocation, runner/check classification changes, relaxed action coverage, live/model/service qualification, installation, publication, coordinator-owned record edits or runtime-state edits. Do not reopen TOOLSET-396-7dc85701, repin its receipt or copy runtime evidence into Git."]
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-399-d6dda006.toml"
 +++
 
 - Sources: DOCS-MAINTAINER MAIN (flaky test) instruction; [headless test](pi-autowork/tests/test_fleet_view.py); [pilot fixture](pi-autowork/tests/tui_pilot.py); [offline verification](docs/testing.md); [landed hardening contract](tasks/items/TOOLSET-396-7dc85701.md).
