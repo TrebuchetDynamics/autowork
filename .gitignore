@@ -11,3 +11,7 @@ __pycache__/
 
 # Task worktrees stay inside the canonical checkout.
 /.worktrees/
+
+# Local subagent runtime artifacts.
+/.pi-subagents/
+/parallel-0/
