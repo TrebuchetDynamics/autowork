@@ -915,6 +915,27 @@ Offline health and CLI fixtures cover matching, mismatched and missing identity;
 main-check and ancestry fixtures exercise the same shared process helper. These
 checks do not qualify recovery after a real host crash or live service restart.
 
+Fleet reads isolate malformed runtime files per runner. A non-object JSON record,
+unusable repository identity, or invalid consumed timestamp, count or container
+marks that observation `unavailable`, with its source path and error. Boolean and
+non-finite timestamps cannot establish current activity. Runtime counts from an
+invalid observation are unknown, not zero; independently readable committed task
+inventory remains available. The task snapshot's separate status reread applies
+the same validation. Healthy sibling runners keep their current observations.
+When multiple folders name one repository, collection prefers verified live runner
+identity, then valid observations and their update time; retained historical-folder
+errors remain visible without replacing the chosen current row.
+
+A valid runtime record or registered service supplies repository identity; a folder
+name alone never does. When neither runtime record supplies usable identity, health
+reports the folder/source error without assigning it to a service; CLI collection
+prints unassociated diagnostics to stderr and the TUI acquisition envelope retains
+them. Installed services remain visible, and service lifecycle (including explicit
+pause markers), confirmed Start readiness and PID/start-tick checks stay independent.
+Readers preserve malformed bytes rather than repairing or deleting files. Offline
+health/fleet fixtures cover isolation, unknown identity and retained task inventory;
+they do not prove that a live service has corrupt state or loaded this repair.
+
 An unusable repository (not Git, detached HEAD or a non-main branch), missing
 runner tools or invalid `--workers` stops startup with exit **4 (needs attention)**.
 The service does not restart this exit every minute. The reason is saved outside

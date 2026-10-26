@@ -107,9 +107,9 @@ class Runner:
     service: str = ''         # systemd sub-state, '' when there is no unit
     state: str = 'unknown'
     minutes: int | None = None
-    running: int = 0
-    waiting: int = 0
-    stopped: int = 0  # waiting tasks that cannot move until something is resolved: Blockers
+    running: int | None = 0
+    waiting: int | None = 0
+    stopped: int | None = 0  # waiting tasks that cannot move until something is resolved: Blockers
     stopped_groups: list = field(default_factory=list)  # [{label, count, tasks}] by what stops them
     held: list = field(default_factory=list)
     roots: list = field(default_factory=list)
@@ -507,6 +507,8 @@ def _service_verdict(runner: Runner) -> Verdict | None:
         return 'Paused — p resumes it', 'bold yellow'
     if runner.state == 'not running':
         return 'Not running — a starts its service', 'bold red'
+    if runner.state == 'unavailable':
+        return 'Runtime unavailable — ' + (runner.blocker or 'see acquisition errors'), 'bold red'
     return None
 
 
@@ -1073,42 +1075,38 @@ def _service_runner(name: str, sub: str, env_dir, systemctl: str, errors=None) -
                   toolset=settings.get('PI_AUTOWORK_TOOLSET', '').strip(), enabled=enabled)
 
 
-def _state_folders(state_root) -> dict[str, str]:
-    folders = {}
-    for folder in Path(state_root).glob('*/'):
-        for record in ('runner.json', 'status.json'):
-            try:
-                repo = json.loads((folder / record).read_text()).get('repo')
-            except (OSError, ValueError, AttributeError):
-                continue
-            if repo:
-                folders.setdefault(repo, str(folder))
-    return folders
-
-
-def _health_runner(found: dict[str, Runner], row: dict, folders: dict[str, str], now: float) -> Runner | None:
+def _health_runner(found: dict[str, Runner], row: dict, now: float) -> Runner | None:
     """Merge a health row into its installed service; orphaned state is only history."""
+    if not row.get('repo'):
+        return None  # a state-folder basename is not repository/service identity
     # systemd escapes instance names; health records the repository basename.
     runner = next((r for r in found.values() if r.repo and Path(r.repo) == Path(row['repo'])),
                   found.get(row['name']))
     if runner is None or (runner.repo and Path(runner.repo) != Path(row['repo'])):
         return None
     repo = runner.repo or row['repo']
-    state_dir = folders.get(row['repo'], '')
-    minutes = int((now - row['since']) // 60) if row.get('since') and row['state'] != 'not running' else None
-    job = row.get('job')
-    if job and job.get('started'):
-        minutes = int((now - job['started']) // 60)
-    # status.json deliberately omits the PID and may outlive a stopped runner.
-    check = main_check.read(state_dir, repo, fallback=row.get('main_check'))
-    return replace(runner, repo=repo, state_dir=state_dir, state=row['state'], minutes=minutes,
-                   running=row.get('workers', 0), waiting=row.get('waiting', 0),
-                   stopped=row.get('stopped', 0), stopped_groups=row.get('stopped_groups') or [],
-                   held=[(h.get('task', '?'), h.get('cause')) for h in row.get('held', [])],
-                   roots=[r for r in row.get('roots', []) if health.needs_person(r)],
-                   waiting_groups=row.get('waiting_groups') or [], blocker=row.get('blocker') or '',
-                   stop_reason=row.get('stop_reason') or '', max_workers=row.get('max_workers'),
-                   maintainer=row.get('maintainer') or {}, main_check=check, job=job)
+    state_dir = row['state_dir']
+    try:
+        minutes = int((now - row['since']) // 60) if row.get('since') and row['state'] != 'not running' else None
+        job = row.get('job')
+        if job and job.get('started'):
+            minutes = int((now - job['started']) // 60)
+        # status.json deliberately omits the PID and may outlive a stopped runner.
+        check = main_check.read(state_dir, repo, fallback=row.get('main_check'))
+        return replace(runner, repo=repo, state_dir=state_dir, state=row['state'], minutes=minutes,
+                       running=row.get('workers', 0), waiting=row.get('waiting', 0),
+                       stopped=row.get('stopped', 0), stopped_groups=row.get('stopped_groups') or [],
+                       held=[(h.get('task', '?'), h.get('cause')) for h in row.get('held', [])],
+                       roots=[r for r in row.get('roots', []) if health.needs_person(r)],
+                       waiting_groups=row.get('waiting_groups') or [], blocker=row.get('blocker') or '',
+                       stop_reason=row.get('stop_reason') or '', max_workers=row.get('max_workers'),
+                       maintainer=row.get('maintainer') or {}, main_check=check, job=job,
+                       acquisition_errors=list(row.get('errors') or []))
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError) as exc:
+        error = f'{state_dir}: runtime projection unavailable: {exc}'
+        return replace(runner, repo=repo, state_dir=state_dir, state='unavailable',
+                       running=None, waiting=None, stopped=None, blocker=error,
+                       acquisition_errors=[*row.get('errors', []), error])
 
 
 def _prepared_runner(runner: Runner) -> Runner:
@@ -1130,7 +1128,7 @@ def _active_runner(runner: Runner, now: float) -> Runner:
     provenance, errors = {}, []
     questions = read_questions(runner.repo, runner.state_dir, provenance=provenance, errors=errors) if runner.repo else []
     return replace(runner, restarting=restarting, gate=gate, questions=questions,
-                   question_provenance=provenance, acquisition_errors=errors)
+                   question_provenance=provenance, acquisition_errors=[*runner.acquisition_errors, *errors])
 
 
 def _service_lifecycle(runner: Runner, env_dir) -> Runner:
@@ -1153,11 +1151,28 @@ def collect(state_root, env_dir, *, systemctl='systemctl', now=None, strict=Fals
     now = time.time() if now is None else now
     services = _service_states(env_dir, systemctl, strict, _errors)
     found = {name: _service_runner(name, sub, env_dir, systemctl, _errors) for name, sub in services.items()}
-    folders = _state_folders(state_root)
-    for row in health.fleet(state_root, now=now, service=lambda name: services.get(name, '-')):
-        runner = _health_runner(found, row, folders, now)
+    rows = health.fleet(state_root, now=now, service=lambda name: services.get(name, '-'))
+    # Historical duplicate folders must not overwrite independently verified live data.
+    rows.sort(key=lambda row: (row['runner_alive'], not row.get('errors'),
+                               row.get('updated_at') or 0), reverse=True)
+    associated = set()
+    for row in rows:
+        if _errors is not None:
+            _errors.extend(row.get('errors') or [])
+        runner = _health_runner(found, row, now)
         if runner is not None:
-            found[runner.name] = runner
+            if runner.name in associated:
+                retained = found[runner.name]
+                error = f'{row["state_dir"]}: duplicate runtime identity; retained {retained.state_dir}'
+                retained.acquisition_errors.extend([*row.get('errors', []), error])
+                if _errors is not None:
+                    _errors.append(error)
+            else:
+                found[runner.name] = runner
+                associated.add(runner.name)
+        elif _errors is None:
+            for error in row.get('errors') or []:
+                print(f'pi-autowork: {error}', file=sys.stderr)
     retained = _last_good or _cached
     previous = {s.workspace: s for s in retained.snapshots} if retained else {}
     audits = {p.workspace: p for p in _cached.preparation} if _cached else {}
@@ -1397,21 +1412,42 @@ TASK_VIEWS = ('all', 'working', 'held', 'waiting', 'questions', 'closed')
 TaskRow = task_snapshot.TaskRow
 
 
+def _invalidate_runtime(runner, error):
+    """Quarantine display data without changing service lifecycle or admission."""
+    if runner.state not in ('paused', 'not running', 'restarting'):
+        runner.state = 'unavailable'
+    runner.blocker, runner.minutes, runner.job = error, None, None
+    runner.running = runner.waiting = runner.stopped = runner.max_workers = None
+    runner.held, runner.roots, runner.waiting_groups, runner.stopped_groups = [], [], [], []
+    runner.maintainer = {}
+
+
 def snapshot_for(runner, *, generation=0, last_good=None):
     """The attached capture is shared by every renderer; direct API callers capture once."""
     if runner.snapshot is None:
         observation = {}
         if runner.state_dir:
-            try:
-                observation = json.loads(Path(runner.state_dir, 'status.json').read_text())
-                if not isinstance(observation, dict):
-                    raise ValueError('status is not an object')
-            except (OSError, ValueError) as exc:
-                observation = {'errors': ['engine observation: ' + str(exc)]}
+            observation, errors = health.read_observation(Path(runner.state_dir, 'status.json'))
+            identity, problems = health.read_observation(Path(runner.state_dir, 'runner.json'))
+            errors.extend(problems)
+            for source, record in (('status.json', observation), ('runner.json', identity)):
+                if record.get('repo') and Path(record['repo']) != Path(runner.repo):
+                    errors.append(f'{Path(runner.state_dir, source)}: repo does not match registered service')
+            if errors:
+                _invalidate_runtime(runner, '; '.join(errors))
+            if errors or runner.state == 'unavailable':
+                observation = {'errors': errors}
         observation.update(lanes=runner.lanes, questions=runner.questions, **runner.question_provenance)
         observation['errors'] = [*(observation.get('errors') or []), *runner.acquisition_errors]
-        runner.snapshot = task_snapshot.capture(runner.repo, engine_observation=observation,
-                                               generation=generation, last_good=last_good)
+        try:
+            runner.snapshot = task_snapshot.capture(runner.repo, engine_observation=observation,
+                                                   generation=generation, last_good=last_good)
+        except (ValueError, TypeError, KeyError, AttributeError, OverflowError) as exc:
+            # Quarantine this runner's projection, never the fleet or canonical inventory.
+            error = f'{runner.state_dir}/status.json: runtime projection unavailable: {exc}'
+            _invalidate_runtime(runner, error)
+            runner.snapshot = task_snapshot.capture(runner.repo, engine_observation={
+                'errors': [*observation.get('errors', []), error]}, generation=generation, last_good=last_good)
     return runner.snapshot
 
 

@@ -10,6 +10,7 @@ of polling quietly (four runners idled for seven hours on 2026-10-16).
 """
 import hashlib
 import json
+import math
 import os
 import re
 from pathlib import Path
@@ -342,13 +343,120 @@ def job_finished(state_dir):
     (Path(state_dir) / 'job.json').unlink(missing_ok=True)
 
 
-def current_job(folder):
-    """The runner's own job while its process lives, else None."""
+def _repo(value):
+    return isinstance(value, str) and bool(value.strip()) and '\0' not in value
+
+
+def _time(value):
+    # updated_at historically accepted numeric strings; never accept bool or NaN.
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise ValueError('expected finite timestamp')
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError('expected finite timestamp')
+    return number if isinstance(value, str) else value
+
+
+def _validate_observation(record, *, members=False, runner_record=False):
+    """Validate only display-consumed fields, not the persisted writer schema."""
+    if 'status_unavailable_since' in record and not isinstance(record.get('status_reason'), str):
+        raise ValueError('invalid status_unavailable_since: missing status_reason')
+    if 'pid' in record and record['pid'] is not None:
+        pid = record['pid']
+        if isinstance(pid, bool) or not (type(pid) is int or isinstance(pid, str) and pid.isdecimal()):
+            raise ValueError('invalid pid: expected integer process identity')
+    for key in ('updated_at', 'snapshot_at', 'since', 'status_unavailable_since', 'started', 'at',
+                'observed_at', 'started_at', 'phase_at', 'timeout'):
+        if key == 'started' and runner_record:
+            continue  # cli.acquire writes an ISO label, not a consumed job timestamp
+        if key in record and record[key] is None and key in ('updated_at', 'status_unavailable_since', 'started', 'timeout'):
+            raise ValueError(f'invalid {key}: expected finite timestamp')
+        if record.get(key) is not None:
+            try:
+                record[key] = _time(record[key])
+            except (ValueError, OverflowError) as exc:
+                raise ValueError(f'invalid {key}: {exc}') from exc
+    for key in ('active_workers', 'waiting', 'stopped', 'in_flight', 'max_workers', 'count', 'blocks', 'attempt'):
+        if key in record and not (key == 'max_workers' and record[key] is None):
+            if type(record[key]) is not int or record[key] < 0:
+                raise ValueError(f'invalid {key}: expected nonnegative integer')
+    for key in ('state', 'blocker', 'stop_reason', 'status_reason', 'role', 'task', 'id', 'kind',
+                'cause', 'reason', 'label', 'workspace', 'repository_identity', 'revision',
+                'rev', 'main_head', 'crashed', 'gated', 'slot_status'):
+        required = key in ('state', 'blocker', 'stop_reason', 'status_reason', 'role', 'label',
+                           'rev', 'crashed', 'gated')
+        if key in record and (required or record[key] is not None) and not isinstance(record[key], str):
+            raise ValueError(f'invalid {key}: expected string')
+    for key in ('task_source', 'maintainer', 'main_check', 'check_slot'):
+        if key in record and record[key] is not None:
+            if not isinstance(record[key], dict):
+                raise ValueError(f'invalid {key}: expected object')
+            try:
+                _validate_observation(record[key])
+            except ValueError as exc:
+                raise ValueError(f'{key}: {exc}') from exc
+    for key in ('roots', 'held', 'waiting_groups', 'stopped_groups', 'task_observations', 'tasks'):
+        if key not in record:
+            continue
+        if not isinstance(record[key], list):
+            raise ValueError(f'invalid {key}: expected array')
+        if key == 'tasks' and members:
+            if not all(isinstance(item, str) for item in record[key]):
+                raise ValueError('invalid tasks: expected string member IDs')
+            continue
+        for item in record[key]:
+            # Legacy compact task rows carry no execution identity.
+            if key == 'tasks' and isinstance(item, list) and all(isinstance(v, str) for v in item):
+                continue
+            if key in ('tasks',) and isinstance(item, str):  # root/group member IDs
+                continue
+            if not isinstance(item, dict):
+                raise ValueError(f'invalid {key}: expected object rows')
+            required = ('id', 'kind', 'blocks') if key == 'roots' else (
+                ('label', 'count') if key in ('waiting_groups', 'stopped_groups') else ())
+            if any(field not in item for field in required):
+                raise ValueError(f'invalid {key}: missing {required}')
+            try:
+                _validate_observation(item, members=key in ('roots', 'waiting_groups', 'stopped_groups'))
+            except ValueError as exc:
+                raise ValueError(f'{key}: {exc}') from exc
+    for key in ('failures', 'flaky'):
+        if key in record and not isinstance(record[key], list):
+            raise ValueError(f'invalid {key}: expected array')
+    for key in ('errors', 'changed', 'triggers'):
+        if key in record and not (isinstance(record[key], list)
+                                 and all(isinstance(item, str) for item in record[key])):
+            raise ValueError(f'invalid {key}: expected string array')
+
+
+def read_observation(path):
+    """Read a runtime object; quarantine bad values, retaining only valid repo identity.
+
+    Missing files retain historical startup behavior. Errors are display-only and
+    include the source path; no reader repairs or rewrites the underlying bytes.
+    """
+    record = {}
     try:
-        job = json.loads((Path(folder) / 'job.json').read_text())
-    except (OSError, ValueError):
-        return None
-    return job if running(job) else None
+        record = json.loads(Path(path).read_text())
+        if not isinstance(record, dict):
+            raise ValueError('expected an object')
+        if 'repo' in record and not _repo(record['repo']):
+            raise ValueError('invalid repo: expected nonempty path string')
+        _validate_observation(record, runner_record=Path(path).name == 'runner.json')
+    except FileNotFoundError:
+        return {}, []
+    except (OSError, UnicodeError, ValueError, OverflowError, RecursionError) as exc:
+        identity = record.get('repo') if isinstance(record, dict) else None
+        return ({'repo': identity} if _repo(identity) else {}), [f'{path}: {exc}']
+    return record, []
+
+
+def current_job(folder, *, errors=None):
+    """The runner's own job while its process lives, else None."""
+    job, problems = read_observation(Path(folder) / 'job.json')
+    if errors is not None:
+        errors.extend(problems)
+    return job if not problems and running(job) else None
 
 
 def fleet(state_root, *, now=None, service=_service):
@@ -356,21 +464,23 @@ def fleet(state_root, *, now=None, service=_service):
     now = time.time() if now is None else now
     rows = []
     for folder in sorted(Path(state_root).glob('*/')):
-        try:
-            status = json.loads((folder / 'status.json').read_text())
-        except (OSError, ValueError):
-            status = {}
-        try:
-            runner = json.loads((folder / 'runner.json').read_text())
-        except (OSError, ValueError):
-            runner = {}
-        repo = status.get('repo') or runner.get('repo')
-        if not repo:
+        status, errors = read_observation(folder / 'status.json')
+        runner, problems = read_observation(folder / 'runner.json')
+        alive = not problems and running(runner)
+        errors.extend(problems)
+        repo = runner.get('repo') or status.get('repo')
+        if runner.get('repo') and status.get('repo') and Path(runner['repo']) != Path(status['repo']):
+            errors.append(f'{folder / "status.json"}: repo does not match runner.json')
+        if not repo and not errors:
             continue
-        name = Path(repo).name
+        if not repo:
+            errors.append(f'{folder}: repo identity unavailable')
+        name = Path(repo).name if repo else folder.name
         state = status.get('state', 'unknown')
-        job = current_job(folder)
-        if not running(runner):
+        job = current_job(folder, errors=errors)
+        if errors:
+            status, job, state = {}, None, 'unavailable'
+        elif not alive:
             state = 'not running'
         elif job:
             state = 'working'  # busy with its own job: the status is old because the loop waits on it
@@ -379,13 +489,16 @@ def fleet(state_root, *, now=None, service=_service):
         elif now - float(status.get('updated_at', 0)) > STALE_AFTER:
             state = 'not cycling'
         error = status_error(status, now) if 'status_unavailable_since' in status else ''
-        rows.append(dict(name=name, repo=repo, service=service(name), state=state,
+        rows.append(dict(name=name, repo=repo, service=service(name) if repo else '-', state=state,
+                         state_dir=str(folder), runner_alive=alive,
+                         **(dict(errors=errors) if errors else {}),
                          since=status.get('snapshot_at') if error else status.get('since'),
-                         workers=status.get('active_workers', 0),
-                         waiting=status.get('waiting', 0), roots=status.get('roots', []),
-                         stopped=status.get('stopped', 0), stopped_groups=status.get('stopped_groups', []),
+                         workers=status.get('active_workers', None if errors else 0),
+                         waiting=status.get('waiting', None if errors else 0), roots=status.get('roots', []),
+                         stopped=status.get('stopped', None if errors else 0), stopped_groups=status.get('stopped_groups', []),
                          held=status.get('held', []), waiting_groups=status.get('waiting_groups', []),
-                         blocker=error or status.get('blocker', ''), stop_reason=status.get('stop_reason', ''),
+                         blocker='; '.join(errors) or error or status.get('blocker', ''),
+                         stop_reason=status.get('stop_reason', ''),
                          updated_at=status.get('updated_at'),
                          task_source=status.get('task_source') or dict(
                              workspace=None, repository_identity=None, revision=None, observed_at=None),
@@ -409,7 +522,7 @@ def render(rows, *, now=None):
         lines.append(f"{row['name']:<24} service {row['service']:<9} {word}{since}; "
                      f"{row['workers']} running, {row['waiting']} waiting"
                      + (f", {row['stopped']} stopped by a blocker" if row.get('stopped') else ''))
-        if row.get('blocker', '').startswith('status unavailable since '):
+        if row.get('errors') or row.get('blocker', '').startswith('status unavailable since '):
             lines.append('    ' + row['blocker'])
         if row['state'] in ('stalled', 'blocked', 'not running', 'not cycling'):
             for root in [r for r in row['roots'] if needs_person(r)][:3]:

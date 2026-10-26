@@ -375,6 +375,72 @@ class HealthTests(unittest.TestCase):
         self.assertEqual((row['state'], row['job']['role']), ('working', 'maintainer'))
         self.assertEqual((folder / 'status.json').read_bytes(), before)
 
+    def test_malformed_runner_observation_is_isolated(self):
+        healthy, bad = self.state / 'a-good', self.state / 'b-bad'
+        healthy.mkdir()
+        bad.mkdir()
+        live = dict(pid=os.getpid(), start_time=start_time(os.getpid()),
+                    started='2026-01-01T00:00:00+00:00')  # cli.acquire writer format
+        good_status = dict(repo='/x/good', state='working', updated_at=1000, active_workers=2)
+        (healthy / 'runner.json').write_text(json.dumps(dict(live, repo='/x/good')))
+        (healthy / 'status.json').write_text(json.dumps(good_status))
+        for source in ('status.json', 'runner.json'):
+            for value in ([], 7, 'broken', None):
+                with self.subTest(source=source, value=value):
+                    (bad / 'runner.json').write_text(json.dumps(dict(live, repo='/x/bad')))
+                    (bad / 'status.json').write_text(json.dumps(dict(good_status, repo='/x/bad')))
+                    (bad / source).write_text(json.dumps(value))
+                    before = {p: p.read_bytes() for p in bad.iterdir()}
+                    rows = {r['name']: r for r in health.fleet(self.state, now=1000, service=lambda _: 'active')}
+                    self.assertEqual((rows['good']['state'], rows['good']['workers']), ('working', 2))
+                    self.assertEqual(rows['bad']['state'], 'unavailable')
+                    self.assertIsNone(rows['bad']['workers'])
+                    self.assertIn(source, ' '.join(rows['bad']['errors']))
+                    self.assertIn(source, health.render(list(rows.values()), now=1000))
+                    self.assertEqual({p: p.read_bytes() for p in bad.iterdir()}, before)
+
+        (bad / 'status.json').write_text(json.dumps(dict(good_status, repo='/x/bad')))
+        (bad / 'runner.json').write_text(json.dumps(dict(live, repo='/x/./bad/')))
+        rows = {r['name']: r for r in health.fleet(self.state, now=1000, service=lambda _: 'active')}
+        self.assertEqual(rows['bad']['state'], 'working')  # equivalent path spellings retain identity
+
+    def test_invalid_observation_values_do_not_prove_current_activity(self):
+        folder = self.state / 'runner'
+        folder.mkdir()
+        (folder / 'runner.json').write_text(json.dumps(dict(repo='/x/runner', pid=os.getpid(),
+                                                          start_time=start_time(os.getpid()))))
+        cases = [(key, value) for key in ('updated_at', 'snapshot_at', 'since')
+                 for value in ('not-a-time', 'NaN', float('inf'), float('nan'), {}, True)]
+        cases += [('updated_at', None), ('status_unavailable_since', None),
+                  ('status_unavailable_since', 900), ('state', None), ('blocker', None),
+                  ('active_workers', '2'), ('waiting', False), ('stopped', -1),
+                  ('roots', [None]), ('roots', [dict(id='T-1', kind='held', blocks=1, tasks=[{}])]),
+                  ('held', {}), ('waiting_groups', [{'count': '2'}]),
+                  ('task_source', []), ('maintainer', []), ('main_check', []),
+                  ('main_check', {'state': 'green', 'rev': None}),
+                  ('main_check', {'state': 'running', 'started': None}),
+                  ('tasks', 3), ('task_observations', [{'task': []}]), ('errors', 4)]
+        for key, value in cases:
+            with self.subTest(key=key, value=value):
+                status = dict(repo='/x/runner', state='working', updated_at=1000, active_workers=2)
+                status[key] = value
+                (folder / 'status.json').write_text(json.dumps(status))
+                row, = health.fleet(self.state, now=1000, service=lambda _: 'active')
+                self.assertEqual(row['state'], 'unavailable')
+                self.assertIsNone(row['workers'])
+                self.assertIsNone(row['since'])
+                self.assertIn(key, ' '.join(row['errors']))
+
+        (folder / 'status.json').write_text(json.dumps(dict(repo='/x/runner', state='working', updated_at=1000)))
+        for source in ('runner.json', 'job.json'):
+            with self.subTest(source=source, pid='Infinity'):
+                live = dict(repo='/x/runner', pid=os.getpid(), start_time=start_time(os.getpid()))
+                (folder / 'runner.json').write_text(json.dumps(live))
+                (folder / source).write_text(json.dumps(dict(live, pid=float('inf'))))
+                row, = health.fleet(self.state, now=1000, service=lambda _: 'active')
+                self.assertEqual(row['state'], 'unavailable')
+                self.assertIn(source, ' '.join(row['errors']))
+
     def test_fleet_flags_dead_and_silent_runners(self):
         def runner(key, repo, pid, updated, state='working', **identity):
             folder = self.state / key
