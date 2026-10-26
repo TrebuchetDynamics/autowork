@@ -321,6 +321,85 @@ class FleetViewTests(unittest.TestCase):
         empty = fleet_view.collect_for_tui(self.state, empty_env, systemctl=self.systemctl, generation=3)
         self.assertEqual((empty.runners, empty.errors), ((), ()))
 
+    def test_one_bad_runtime_source_preserves_healthy_fleet(self):
+        repos = {name: self.base / name for name in ('good', 'bad')}
+        for name, repo in repos.items():
+            repo.mkdir()
+            store_fixture.write_todo(repo, '- [ ] A — Alpha\n')
+            (self.env / f'{name}.env').write_text(f'PI_AUTOWORK_REPO={repo}\n')
+            self.runner_state(str(repo), state='working', active_workers=2)
+        units = ''.join(f'pi-autowork@{name}.service loaded active running fixture\n' for name in repos)
+        cases = [('status.json', []), ('runner.json', 7),
+                 ('status.json', dict(repo=str(repos['bad']), state='working', updated_at='NaN')),
+                 ('status.json', dict(repo=str(repos['bad']), roots=[None]))]
+        original = {p: p.read_bytes() for p in (self.state / 'bad').iterdir()}
+        ready = fleet_view.readiness(repos['bad'])
+        for source, value in cases:
+            with self.subTest(source=source, value=value):
+                for path, data in original.items():
+                    path.write_bytes(data)
+                (self.state / 'bad' / source).write_text(json.dumps(value))
+                before = {p: p.read_bytes() for p in (self.state / 'bad').iterdir()}
+                cli = self.collect(units)
+                tui = fleet_view.collect_for_tui(self.state, self.env, systemctl=self.systemctl, generation=1)
+                for found in (cli, {r.name: r for r in tui.runners}):
+                    self.assertEqual(found['good'].state, 'working')
+                    self.assertEqual(found['bad'].state, 'unavailable')
+                    self.assertIsNone(found['bad'].running)
+                    self.assertEqual(fleet_view.task_counts(found['bad'])[-1], 1)
+                    self.assertIn(source, ' '.join(found['bad'].snapshot.errors))
+                    self.assertEqual(found['bad'].snapshot.engine_freshness, 'unknown')
+                    self.assertIn('unavailable', fleet_view.verdict(found['bad'])[0].lower())
+                    self.assertFalse(any('start' in a.argv for a in fleet_view.actions(
+                        found['bad'], command='aw', script='unused')))
+                self.assertIn(source, ' '.join(tui.errors))
+                self.assertEqual({p: p.read_bytes() for p in before}, before)
+        # Old folders advertising the same repository cannot replace verified live data.
+        history = self.state / 'z-history'
+        history.mkdir()
+        (history / 'runner.json').write_text(json.dumps(dict(repo=str(repos['good']), pid=99999999)))
+        (history / 'status.json').write_text('[]')
+        found = self.collect(units)
+        self.assertEqual((found['good'].state, found['good'].running), ('working', 2))
+        self.assertIn('z-history/status.json', ' '.join(found['good'].snapshot.errors))
+        # The independent snapshot reread must reject a value changed after acquisition.
+        direct = fleet_view.Runner('bad', repo=str(repos['bad']), state='working', running=2,
+                                   state_dir=str(self.state / 'bad'))
+        (self.state / 'bad' / 'status.json').write_text(json.dumps(dict(tasks=4)))
+        snap = fleet_view.snapshot_for(direct)
+        self.assertEqual(snap.counts[-1], 1)
+        self.assertIn('status.json', ' '.join(snap.errors))
+        self.assertEqual(direct.state, 'unavailable')
+        self.assertIsNone(direct.running)
+        self.assertEqual(fleet_view.readiness(repos['bad']), ready)
+        marker = fleet_view.paused_marker(self.env, 'bad')
+        marker.write_text('paused\n')
+        paused = self.collect('pi-autowork@good.service loaded active running fixture\n')['bad']
+        self.assertEqual(paused.state, 'paused')
+        self.assertTrue(marker.exists())
+        self.assertIn('status.json', ' '.join(paused.snapshot.errors))
+
+    def test_unknown_runtime_identity_is_diagnosed_without_guessing(self):
+        self.runner_state('/git/unknown', state='working')
+        (self.env / 'unknown.env').write_text('PI_AUTOWORK_REPO=/git/registered\n')
+        for repo in ([], {}, 7, True, '', '   '):
+            with self.subTest(repo=repo):
+                for source in ('runner.json', 'status.json'):
+                    (self.state / 'unknown' / source).write_text(json.dumps(dict(repo=repo)))
+                result = fleet_view.collect_for_tui(self.state, self.env, systemctl=self.systemctl, generation=1)
+                runner, = result.runners
+                self.assertEqual(runner.repo, '/git/registered')
+                self.assertEqual(runner.state_dir, '')
+                self.assertNotEqual(runner.state, 'working')
+                self.assertIn(str(self.state / 'unknown'), ' '.join(result.errors))
+                self.assertIn('repo', ' '.join(result.errors))
+                stderr = io.StringIO()
+                with contextlib.redirect_stderr(stderr):
+                    cli = self.collect()
+                self.assertEqual(cli['unknown'].repo, '/git/registered')
+                self.assertEqual(cli['unknown'].state_dir, '')
+                self.assertIn(str(self.state / 'unknown'), stderr.getvalue())
+
     def test_state_without_a_service_is_history_not_a_runner(self):
         self.runner_state('/git/gone', state='working', since=time.time())
         self.assertEqual(self.collect(), {})
