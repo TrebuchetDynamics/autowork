@@ -1,6 +1,6 @@
 """Headless TUI pilot, run by test_fleet_view under `uv run --with textual==8.2.8`."""
 import asyncio
-from contextlib import asynccontextmanager, ExitStack
+from contextlib import asynccontextmanager, contextmanager, ExitStack
 from dataclasses import replace
 import json
 import os
@@ -95,6 +95,27 @@ async def patched_reads(app, *patches):
             yield
         finally:
             await drain_reads(app)
+
+
+@contextmanager
+def browser_readiness(root):
+    """Serve detached real fixture facts; no preparation subprocess batch in UI readers.
+
+    Reopening Browse otherwise probes every repository again. Capture before any
+    reader starts, and recapture after fixture commands mutate a repository. The
+    real ReadCoordinator and blocked-provider cases still own physical lifetimes.
+    """
+    original = fleet_view.readiness
+    snapshots = {}
+    def capture(path):
+        snapshots[str(path)] = original(path)
+    for path in (root, *sorted(root.iterdir())):
+        capture(path)
+    def read(path):
+        ready = snapshots[str(path)]  # unexpected paths fail, never inspect the host
+        return replace(ready, problems=list(ready.problems))
+    with mock.patch.object(fleet_view, 'readiness', new=read):
+        yield capture
 
 
 async def refresh(app, pilot):
@@ -485,7 +506,8 @@ async def main():
     assert FleetApp.fit('reviewer: committed as abc', 16) == 'reviewer: commi…', FleetApp.fit('reviewer: committed as abc', 16)
     assert FleetApp.fit('one two three four', 15) == 'one two three…'
     with tempfile.TemporaryDirectory() as folder, \
-            mock.patch.dict(os.environ, PI_CODING_AGENT_DIR=str(Path(folder) / 'agent')):
+            mock.patch.dict(os.environ, PI_CODING_AGENT_DIR=str(Path(folder) / 'agent')), \
+            ExitStack() as fixtures:
         base = Path(folder)
         state, env = base / 'state' / 'india', base / 'env'
         state.mkdir(parents=True)
@@ -552,6 +574,7 @@ async def main():
         slots = tree / 'busy/.git/autowork-execution/slots'
         slots.mkdir(parents=True)
         (slots / 'T-001.json').write_text(json.dumps({'task_id': 'T-001', 'state': 'running', 'attempt': 1}))
+        capture_readiness = fixtures.enter_context(browser_readiness(tree))
         calls, slow = [], {'seconds': 0}
 
         def run(argv, **kwargs):
@@ -569,11 +592,14 @@ async def main():
                 if '--force' in argv:
                     # Exercise real conversion without contacting services or ending host workers.
                     result = subprocess.run([sys.executable, str(command), 'tasks', 'prepare', argv[-1]], **kwargs)
+                    capture_readiness(argv[-1])
                     report = json.loads(result.stdout)
                     report['forced'] = dict(step=dict(stopped=['T-001'], set_aside=['T-002'],
                                                       landed=False, committed=True, commit='abc123'))
                     return subprocess.CompletedProcess(argv, result.returncode, json.dumps(report), result.stderr)
-                return subprocess.run([sys.executable, str(command), *argv[1:]], **kwargs)
+                result = subprocess.run([sys.executable, str(command), *argv[1:]], **kwargs)
+                capture_readiness(argv[-1])
+                return result
             return Result()
 
         app = FleetApp(command='aw', script='pa.sh', state_root=base / 'state', env_dir=env,
@@ -621,6 +647,27 @@ async def main():
             assert 'revision ' + store.rev in detail and 'execution fresh' in detail, detail
             assert 'Push       disabled' in detail, detail  # no saved grant: local only
             await blocked_readers(app, pilot)
+            # Label readers use real fixture snapshots, not repeated live preparation
+            # probes whose subprocess cost depends on the rest of the offline suite.
+            async with patched_reads(app, mock.patch.object(fleet_view.task_prepare, 'prepare',
+                    side_effect=AssertionError('live preparation leaked into browser labels'))):
+                await pilot.press('n')
+                await pilot.pause()
+                browser = app.screen
+                assert isinstance(browser, BrowseScreen), browser
+                labels = browser.query_one('#tree').readiness_cache
+                async def labels_loaded():
+                    # DirectoryTree's worker may not have submitted the label read
+                    # yet: an empty physical queue alone is not label readiness.
+                    while tree / 'ready' not in labels and not browser.__dict__.get('_read_errors'):
+                        await asyncio.sleep(0.01)
+                await asyncio.wait_for(labels_loaded(), 10)
+                await drain_reads(app)
+                errors = browser.__dict__.get('_read_errors', {})
+                assert not errors, errors
+                assert labels[tree / 'ready'].ready, labels
+                assert labels[tree / 'legacy'].problems == ['legacy planning'], labels
+                await pilot.press('escape')
             # Blockers must accept a real immutable committed snapshot, while detaching
             # mutable runner data for its background report read.
             source = app.current()
