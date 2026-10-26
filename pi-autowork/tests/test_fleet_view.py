@@ -607,6 +607,39 @@ class FleetViewTests(unittest.TestCase):
                 self.assertIn(f'{len(expected)} question', output.getvalue())
                 self.assertEqual([(folder / 'BLOCKERS.md').read_bytes() for folder in (repo, session)], before)
 
+    def test_wrapped_planning_fields_keep_choices_and_owner_context_without_granting_authority(self):
+        repo = self.base / 'wrapped-planning'
+        repo.mkdir()
+        store_fixture.write_todo(repo, '## Now\n\n- [x] PLAN-1 — Plan the batch\n')
+        text = ('# BLOCKERS\n\n## Active\n\n### Q-PLAN-1 — Planning stopped\n\n'
+                '- Task: PLAN-1 — Plan the batch and\n'
+                '  choose its continuation\n'
+                '- Question: Supply the signed artifact,\n'
+                '  arrange an exclusive-access handoff, or\n'
+                '  defer the live qualification?\n'
+                '- Owner decision: The earlier planning choice is resolved;\n'
+                '  this does not authorize live work.\n'
+                '- Evidence: unrelated field\n'
+                '  must not leak into the question\n'
+                '#### Details\n'
+                '- Question: This detail is not another planning field\n'
+                '  heading content must not leak either\n'
+                '### Q-PLAN-2 — Planning stopped\n'
+                '- Question: Which input?\n'
+                '  - Another bullet is not a continuation\n'
+                '    nor is its wrapped content\n')
+        (repo / 'BLOCKERS.md').write_text(text)
+        found = fleet_view.read_questions(repo)
+        self.assertEqual([q.id for q in found], ['PLAN-1', 'PLAN-2'])
+        self.assertEqual(found[0].needs,
+                         'Task: PLAN-1 — Plan the batch and choose its continuation '
+                         'Question: Supply the signed artifact, arrange an exclusive-access handoff, or '
+                         'defer the live qualification? Owner decision: The earlier planning choice is resolved; '
+                         'this does not authorize live work.')
+        self.assertEqual(found[1].needs, 'Question: Which input?')
+        self.assertEqual(found[0].kind, 'decision')
+        self.assertEqual((repo / 'BLOCKERS.md').read_text(), text)
+
     def test_resolved_planning_stops_do_not_become_questions_for_the_owner(self):
         repo = self.base / 'resolved-planning'
         repo.mkdir()

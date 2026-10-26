@@ -418,6 +418,13 @@ def _read(repo, rev='HEAD', worktree=False):
     return worktree_store(repo) if worktree else TaskStore.at(repo, rev)
 
 
+def _selection_source(store, rev='HEAD', worktree=False):
+    """Selection explains a snapshot, never worker admission or current runtime state."""
+    return dict(only=True, admission_evaluated=False, runtime_evaluated=False,
+                source='working-tree' if worktree else 'committed', ref=None if worktree else rev,
+                revision=store.rev, revision_ephemeral=worktree)
+
+
 def cmd_list(repo, rev='HEAD', worktree=False):
     store = _read(repo, rev, worktree)
     ready = {t.id: n + 1 for n, t in enumerate(task_select.order(store))}
@@ -426,7 +433,7 @@ def cmd_list(repo, rev='HEAD', worktree=False):
         blocked = task_select.blocking(store, t)
         rows.append(dict(id=t.id, title=t.title, section=t.section, rank=t.rank, status=t.status, goal=t.goal,
                          position=ready.get(t.id), blocked_by=blocked.code if blocked else None,
-                         closure=t.closure_info))
+                         closure=t.closure_info, selection=_selection_source(store, rev, worktree)))
     return rows
 
 
@@ -447,7 +454,8 @@ def cmd_why(repo, tid, rev='HEAD'):
     first, reasons = task_select.why(store, tid)
     return dict(task=tid, eligible=bool(reasons) and reasons[0].code == 'POSITION', first=first,
                 reasons=[dict(code=r.code, detail=r.detail) for r in reasons],
-                closure=store.tasks[tid].closure_info if tid in store.tasks else None)
+                closure=store.tasks[tid].closure_info if tid in store.tasks else None,
+                selection=_selection_source(store, rev))
 
 
 def cmd_validate(repo, rev='HEAD', worktree=False):

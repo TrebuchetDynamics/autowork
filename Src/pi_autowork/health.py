@@ -376,7 +376,7 @@ def fleet(state_root, *, now=None, service=_service):
             state = 'working'  # busy with its own job: the status is old because the loop waits on it
         elif status.get('state') == 'unavailable':
             state = 'unavailable'
-        elif now - float(status.get('updated_at', 0)) > STALE_AFTER and state != 'working':
+        elif now - float(status.get('updated_at', 0)) > STALE_AFTER:
             state = 'not cycling'
         error = status_error(status, now) if 'status_unavailable_since' in status else ''
         rows.append(dict(name=name, repo=repo, service=service(name), state=state,

@@ -154,9 +154,16 @@ def build(snapshot, repo, repairs=(), resolving=(), *, now=None):
                 'Inspect the prerequisite tasks and resolve their holds or close them with verified evidence. '
                 'The runner resumes this task on the same attempt when all prerequisites close.', line, blocks)
         elif row.get('cause') in INPUT_CAUSES:
+            remedy = ('Review the specific requested `touches` change against the worker report; approve only '
+                      'that file scope if appropriate, otherwise split or defer the task. '
+                      if row.get('cause') in ('scope_request', 'scope') else
+                      'Supply the actual missing input, handoff or evidence described in the failure reason; '
+                      'add a producer task and dependency if needed. ')
             add(task, 'held', 'input', row.get('reason') or 'the worker stopped and asked for input', (
-                f"Answer in tasks/items/{task}.md: widen `touches`, supply the input, narrow the acceptance, "
-                "or add a dated `Owner decision:` note. The runner reruns it when the record changes."), line, blocks)
+                f"Answer in tasks/items/{task}.md with the evidence or a dated `Owner decision:` deferral. "
+                + remedy + "Keep the task in Needs decision if the input is unavailable; preserve the acceptance "
+                "criteria, live authorization and ownership gates. A record edit does not supply signatures or "
+                "transfer live ownership, and does not by itself establish that the blocker is resolved."), line, blocks)
         else:
             add(task, 'held', 'investigate', row.get('reason') or 'held with no attempt left', (
                 f"Read the evidence (the worker's report and validation log under .git/autowork-execution/"

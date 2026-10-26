@@ -843,14 +843,24 @@ def _planning_questions(text):
     text = re.sub(r'^##[ \t]+Resolved[ \t]*\n.*?(?=^#{1,2}[ \t]|\Z)', '', text,
                   flags=re.M | re.S | re.I)
     found = []
-    for section in re.finditer(r'^### Q-(\S+) — Planning stopped[ \t]*\n(.*?)(?=^#{1,3} |\Z)',
+    for section in re.finditer(r'^### Q-(\S+) — Planning stopped[ \t]*\n(.*?)(?=^#{1,6}[ \t]|\Z)',
                                text, re.M | re.S):
         body = section[2]
         statuses = re.findall(r'^- Status:[ \t]*(.*)$', body, re.M | re.I)
         if statuses and re.match(r'RESOLVED\b', statuses[-1].strip(), re.I):
             continue
-        fields = re.findall(r'^- ((?:Task|Question): .+)$', body, re.M)
-        need = ' '.join(fields) if fields else ' '.join(body.split())
+        fields, current = [], None
+        for line in body.splitlines():
+            field = re.match(r'^- ((?:Task|Question|Owner decision):[ \t]*.*)$', line)
+            if field:
+                current = [field[1].strip()]
+                fields.append(current)
+            elif (current is not None and line[:1].isspace() and line.strip()
+                  and not re.match(r'(?:[-*+]|\d+[.)]|#+)(?:\s|$)', line.lstrip())):
+                current.append(line.strip())
+            else:
+                current = None  # another field, bullet or unindented prose ends the logical field
+        need = ' '.join(' '.join(field) for field in fields) if fields else ' '.join(body.split())
         found.append(Question(section[1], 'decision', 1, need, kind='decision'))
     return found
 

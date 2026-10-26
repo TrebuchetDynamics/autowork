@@ -128,6 +128,25 @@ goal, section, rank, goal priority, goal status (`unverified`, `partial`, `unmet
 (`AFTER_FOCUS`, `AFTER_SECTION`, `AFTER_RANK`, …) that put the task ahead of it there.
 Authority is not a selection rule; admission applies it afterwards.
 
+`autowork tasks list` remains an array of task rows; `autowork tasks why ID`
+remains an object. Every row and every why result (including unknown IDs) adds a
+`selection` object without removing existing fields:
+
+- `only: true`, `admission_evaluated: false`, `runtime_evaluated: false` identify
+  selection-only results. `position`, `blocked_by`, `eligible`, `first` and `reasons`
+  explain TaskStore selection, not dispatch permission or current worker activity.
+  A selectable task can still lack worker/live authority or have a runtime hold,
+  occupied resource or lease. These commands neither inspect nor clear those gates.
+  Committed `Held by:` notes remain a selection rule (`HELD`).
+- `source: "committed"`, `ref` (normally `"HEAD"`, or the requested `--rev`) and
+  `revision` (the resolved commit SHA) identify the exact snapshot read;
+  `revision_ephemeral: false` means it is a durable Git revision. Pending task edits
+  do not change this result.
+- For `list --worktree`, `source: "working-tree"`, `ref: null` and
+  `revision_ephemeral: true` identify uncommitted content. `revision` is TaskStore's
+  temporary proof commit ID, **not** HEAD or a durable revision that can be read
+  again after cleanup. `why` has no `--worktree` option.
+
 A dependency in `verified_depends_on` additionally needs a done prerequisite with an
 explicit coordinator-verified closure and a matching passing receipt, or a recorded
 `owner_waiver`/`owner_qualification`. Otherwise `why` returns `DEPENDENCY_UNVERIFIED`.
