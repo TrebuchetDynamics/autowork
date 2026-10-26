@@ -57,6 +57,7 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Isolate malformed runner observations in fleet reads with source diagnostics and unknown runtime counts, preserving healthy runners, committed inventory and service lifecycle. (TOOLSET-399-1f9c37c3)
 - Isolate headless fleet browser labels with detached real readiness snapshots, recaptured after fixture preparation, while retaining physical-reader barriers and action coverage. (TOOLSET-399-d6dda006)
 - Add opt-in revision-bound post-merge admission with bounded command verdicts, durable deduplicated repair tasks and explicit safe recheck recovery; preserve the asynchronous default. (POSTMERGE-VERDICT-01)
 - Repair the fixed-journal status golden by committing its closed task record and checking exact JSON states/counts without weakening closed-slot requeue safety. (TOOLSET-397-a1af30c9)
