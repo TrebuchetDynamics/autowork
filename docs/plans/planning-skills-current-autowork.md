@@ -377,3 +377,16 @@ was executed. Main retains its separate full gate. Final whitespace/scope checks
 passed, with no staged files at worker handoff. The reviewed source is prepared
 in the isolated branch; canonical integration must preserve the concurrent writer's
 staged and in-progress changes. Source completion is not publication or installation.
+
+## Verified local integration of both planning modes
+
+Both reviewed slices reached canonical `main` at `ae4db256` after the other writer
+committed its changes and the canonical checkout/index became clean. The supported
+writer lock, fresh ancestor/cleanliness checks, nine-path allowlist and fast-forward
+preserved that writer's history rather than incorporating unrelated staged work.
+Exact merged-tree CLI/discovery checks passed 15 tests; task validation passed with
+177 tasks, 18 goals and no drafts or pending records. Whitespace checks passed and
+the canonical checkout was clean. Together with the 30-test source/fixture run and
+fresh independent reviews, this completes the local instruction-correction scope.
+No full-main qualification, model-adherence improvement, publication, installation,
+runtime recovery or live adoption is claimed by this work.
