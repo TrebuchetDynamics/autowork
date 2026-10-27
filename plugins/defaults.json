@@ -1,7 +1,6 @@
 {
   "imported_plugins": [
     "omh",
-    "ponytail",
     "hermes-speech"
   ],
   "hermes": {

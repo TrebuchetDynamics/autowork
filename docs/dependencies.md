@@ -2,8 +2,9 @@
 
 The command bridge and the full setup are different layers. The bridge registers
 bundled skills; individual workflows need execution tools and may use other skills.
-The Hermes manifest declares OMH, Ponytail and Hermes Speech as stack dependencies.
-[Codex/Pi packages](cross-host.md) use portable adapters and do not install these integrations.
+The Hermes manifest declares OMH and Hermes Speech as stack dependencies.
+[Portable packages](cross-host.md) do not install those integrations. Ponytail is
+now pinned and bundled for every host, not an external plugin prerequisite.
 `--bundle-only` skips the external-source setup stage; it is not a separately
 packaged minimal plugin and does not disable runtime policy writes.
 
@@ -15,20 +16,24 @@ Sources: [plugin manifest](../plugin.yaml), [installation inventory](../plugins/
 | Component | Selection | Reproducibility limit |
 | --- | --- | --- |
 | Bundled workflows | This repository revision | Pin the checkout revision to reproduce these files. |
+| pi-toolset specialists | Four pinned instruction-only workflows; [selection and hashes](#bundled-pi-toolset-specialists) | Local adapters preserve Autowork authority; no upstream runtime, scripts or installer dependency. |
+| Ponytail 5.3.2 | Six protocols, benchmark attribution and optional map script at [pinned revision and hashes](../skills/ponytail/UPSTREAM.json) | Offline on all hosts; local adapters scope upstream behavior. No upstream hooks, installers, persistent modes or telemetry are activated. |
 | Autoresearch 2.2.2 | Vendored revision and file hashes in [UPSTREAM.json](../skills/autoresearch/UPSTREAM.json) | Reviewed updates require refreshing the pinned subtree and tests. |
 | UI Taste 0.2.0 (Uizze) | Vendored from a pinned Uizze commit, [pin and hashes](../skills/ui-taste/UPSTREAM.json) | Plain Markdown playbooks copied unchanged under `upstream/`; the toolset adapter sets host rules; works offline. Its optional paid Uizze MCP is never configured by Toolset. |
 | Impeccable 4.5.2 | Vendored official Hermes package, [pin and hashes](../skills/impeccable/UPSTREAM.json) | All references and scripts ship with the plugin; Apache-2.0 license and notices retained. |
 | Beautify GitHub README | Vendored revision and file hashes in [UPSTREAM.json](../skills/beautify-github-readme/UPSTREAM.json) | Upstream skill byte-exact under `upstream/`; the toolset adapter sets host rules and adds a README audit that reuses the upstream SVG checks; MIT license retained. |
 | Grill Me 2.1.0 | Bundled [SKILL.md](../skills/grill-me/SKILL.md) | Its checked-in bytes are fixed by this repository revision. |
 | OMH setup CLI | Git revision pinned in defaults.json | The Hermes plugin source is separately resolved through the source inventory/catalog. |
-| OMH plugin, Ponytail, Hermes Speech | Native Hermes installs from declared sources | No unified bundle lockfile pins their installed revisions. |
+| OMH plugin, Hermes Speech | Native Hermes installs from declared sources | No unified bundle lockfile pins their installed revisions. |
 | Toolset engineering protocols (`skills/engineering/local/`) | Written and versioned in this repository; no upstream pin | `test-suite-optimization` adapts two criteria from Matt Pocock's MIT `tdd` skill in its own words; no text is copied. |
 | Addy agent-skills (25 protocols) | Vendored commit and hashes in [UPSTREAM.json](../skills/engineering/UPSTREAM.json) | Updated only through a reviewed Toolset change; shared references included. Two defensive examples are paraphrased, with original and adapted hashes recorded; a refresh restores upstream bytes, so re-apply them by hand. |
 | Graphify | Dedicated setup helper | Not covered by a unified bundle lockfile. |
 | textual-serve 1.1.3 (MIT), `autowork web` only | Pinned in [`command.py`](../pi-autowork/pi_autowork/command.py) (`AUTOWORK_TEXTUAL_SERVE`), fetched by `uv run --with` like Textual | Not a runner dependency; only the browser view uses it. |
 | Textual 8.2.8 (MIT), the `autowork` TUI only | Pinned in [`command.py`](../pi-autowork/pi_autowork/command.py) (`AUTOWORK_TEXTUAL`); fetched by `uv run --with` into uv's cache on first use | Not a runner dependency: pi-autowork itself stays standard-library Python, and every other `autowork` command works without it. |
 
-Ordinary installation skips existing resources. `/autowork update` synchronizes
+Ordinary installation preserves existing resources, adding only missing Markdown
+files in the bundled `shared/` support directory (without overwriting local edits).
+`/autowork update` synchronizes
 bundled content, including the pinned engineering pack, to the release bytes.
 Edited native copies are reset or removed when their release file is removed;
 their original bytes remain in the update backup and the action is reported.
@@ -63,7 +68,8 @@ Autowork is licensed under the [MIT License](../LICENSE), copyright
 2026 TrebuchetDynamics. Third-party components retain their respective licenses
 and copyright notices.
 
-- Vendored Impeccable retains its [Apache-2.0 license](../skills/impeccable/LICENSE) and [notices](../skills/impeccable/NOTICE.md). Its official Hermes package is copied unchanged, with supplemental [modern-screenshot](../skills/impeccable/licenses/modern-screenshot-MIT.txt) and [platform-design-skills](../skills/impeccable/licenses/platform-design-skills-MIT.txt) MIT notices.
+- Vendored Ponytail retains its [MIT license and attribution](../skills/ponytail/upstream/LICENSE); pinned protocol bytes are unchanged behind local adapters, and its optional map helper is renamed `.cjs` for Autowork's ESM package with a documented bounded-read safety fix.
+- Vendored Impeccable retains its [Apache-2.0 license](../skills/impeccable/LICENSE) and [notices](../skills/impeccable/NOTICE.md). Its official Hermes files are copied unchanged, with upstream SKILL.md stored as PROTOCOL.md behind the local Ponytail-aware adapter, and supplemental [modern-screenshot](../skills/impeccable/licenses/modern-screenshot-MIT.txt) and [platform-design-skills](../skills/impeccable/licenses/platform-design-skills-MIT.txt) MIT notices.
 - Vendored UI Taste retains its [Apache-2.0 license](../skills/ui-taste/upstream/LICENSE), [notice](../skills/ui-taste/upstream/NOTICE) (Impeccable 4.4.0 by Paul Bakaus and ehmo's MIT platform-design-skills) and Uizze's [modifications notice](../skills/ui-taste/upstream/MODIFICATIONS.md). Its SKILL.md is stored as PROTOCOL.md so only the toolset adapter registers; it is otherwise an unmodified copy, not an endorsement by Uizze or the Impeccable author.
 - Vendored Addy agent-skills retains its [MIT license and attribution](../skills/engineering/upstream/LICENSE). Two defensive examples have documented paraphrases with original/adapted hashes; other pinned protocol bytes are preserved. SKILL.md filenames become PROTOCOL.md to avoid duplicate host discovery.
 - Vendored Autoresearch retains its [MIT license and attribution](../skills/autoresearch/upstream/LICENSE).
@@ -72,6 +78,91 @@ and copyright notices.
 - Other bundled files may carry individual notices. Retain those notices.
 - External integrations remain subject to their upstream licenses. A complete
   version-bound third-party license inventory has not been established here.
+
+## Bundled pi-toolset specialists
+
+Source: [TrebuchetDynamics/pi-toolset](https://github.com/TrebuchetDynamics/pi-toolset/tree/5e9aa8398adb6812fb816bf887d1ad10f12c55db),
+commit `5e9aa8398adb6812fb816bf887d1ad10f12c55db`. Selected paths are local
+Trebuchet Dynamics MIT content under upstream's root license and
+[third-party notices](https://github.com/TrebuchetDynamics/pi-toolset/blob/5e9aa8398adb6812fb816bf887d1ad10f12c55db/THIRD_PARTY_NOTICES.md).
+Each skill carries its unchanged license, protocol and per-file SHA-256 mapping:
+
+- [Bug Harvest](../skills/bug-harvest/UPSTREAM.json): evidence-backed one-defect-at-a-time campaigns.
+- [Autonomous Codebase Improver](../skills/autonomous-codebase-improver/UPSTREAM.json):
+  cross-lane discovery, coverage and recoverable reviewed slices; includes its four
+  supporting reference documents. Its historical evaluation receipt is **upstream
+  evidence**, not an Autowork run or a claim of adapted campaign reliability.
+- [Skill Folder Refactor](../skills/skill-folder-refactor/UPSTREAM.json):
+  move/extract/cleanup phases and exact remaining-root-file classification.
+- [Unused Code](../skills/unused-code/UPSTREAM.json):
+  static, dynamic and external-consumer proof before deletion.
+
+SKILL.md becomes `upstream/PROTOCOL.md` to avoid nested discovery. Upstream bytes
+are unchanged; the original shared-contract link now resolves to Autowork's
+existing shared contract. Local adapters and [PI-TOOLSET.md](../skills/shared/PI-TOOLSET.md)
+override upstream lifecycle and host assumptions, retaining explicit limits,
+required review and the one task store. No pi-toolset hooks, package manifests,
+extensions, controller scripts, installers or personal/global skill edits ship.
+
+Selection deliberately excludes:
+- `candidates-folder-refactor`: its scanner writes logs and its optional shell
+  controller includes restore/clean and delivery operations; native discovery is enough here.
+- `share-code`: overlaps existing simplification/Ponytail and the folder-refactor
+  extraction gate; its testing preference is not imported.
+- `technical-auditor` and `improve-codebase-architecture`: general audit overlaps
+  existing protocols; the latter is a compatibility shim, not a distinct method.
+- Existing planning, delivery, UI and Ponytail entries: retain current ownership
+  instead of importing duplicates or a competing global workflow.
+
+For refresh, inspect an exact reviewed commit and copy only each manifest's listed
+source files to their mapped destinations, using Git-object bytes rather than
+uncommitted checkout content. Recompute hashes, review new references and
+licensing, and review local adapters separately; never replace them with upstream
+SKILL.md. Run affected offline tests and `node --test tests/portable_pi.test.mjs`.
+No upstream source or installer is fetched during normal installation.
+
+## Bundled Ponytail
+
+[UPSTREAM.json](../skills/ponytail/UPSTREAM.json) pins commit
+`09c434ab73ca43761c5d8b0c5d341926c2fba710` (declared version 5.3.2), the MIT license
+and SHA-256 of every imported file. Six upstream SKILL.md files are stored as
+PROTOCOL.md to avoid recursive skill discovery. Local native and portable entry
+skills apply [Autowork's scope rules](../skills/shared/PONYTAIL.md); the upstream
+help card is provenance only because it advertises unsupported global/plugin UI.
+
+The only executable imported is `hooks/ponytail-map.js`, stored as
+`upstream/scripts/ponytail-map.cjs` with one local fix: actual source reads are capped
+at 64 KiB rather than reading the entire file and slicing afterwards. The manifest
+retains both upstream and adapted hashes. It is invoked manually, never registered
+as a hook. It uses Node built-ins and Git to print a bounded regex-based reuse index;
+without tracked files (or if Git fails), it falls back to a directory walk that does
+not fully honor ignore rules. Use normal search for correctness and sensitive trees.
+The six skills need no Node dependency themselves. Debt uses native search/Git;
+gain labels its bundled benchmark report as upstream-reported, not Autowork savings.
+Upstream installers, publishers, uninstallers, lifecycle hooks, UI/band code and
+benchmark execution are excluded.
+
+To refresh, inspect an exact upstream commit in a scratch clone. For each original
+path in the manifest's `files` mapping, copy `git show FULL_SHA:ORIGINAL_PATH` bytes
+to the mapped local path, recompute its SHA-256, and update revision/version after
+reviewing the diff. Keep the allowlist: do not copy root manifests or activate the
+upstream plugin. Reapply or re-evaluate the bounded-read fix and retain the original
+upstream hash as well as the adapted hash; a blind refresh must not restore the
+unbounded read. Review new script dependencies and adapters together. Impeccable's
+upstream SKILL.md similarly stays byte-exact under PROTOCOL.md; refreshing must not
+overwrite its local entry adapter. Run:
+
+```sh
+python3 scripts/affected_tests.py --run
+node --test tests/portable_pi.test.mjs
+```
+
+The tests check hashes, all entry links, isolated native provisioning, literal Pi
+command dispatch and an unpacked npm archive including execution of the `.cjs` map.
+They do not prove live model adherence or installation into real host profiles.
+Normal installation/update uses these committed resources without fetching Ponytail.
+Existing separately installed Ponytail plugins are left unchanged; their commands
+may retain ownership, so resolve the bundled skill explicitly when needed.
 
 ## Refresh the pinned engineering pack
 

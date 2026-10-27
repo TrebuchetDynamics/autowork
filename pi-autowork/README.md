@@ -149,7 +149,8 @@ Source: `Src/pi_autowork/hermes_observers.py`, `cli.py`, and `service.py`.
 ## Blockers report
 
 Select a runner and press **b** or click **Blockers** in mouse/browser mode.
-The read-only summary puts recorded decisions and required inputs first, links
+The read-only summary separates runtime/source health from recorded decisions,
+required inputs, and dependency waits. Decisions precede other task holds; it links
 planning questions to their committed decision task while retaining who raised
 them, and warns when selectable metadata conflicts with an explicit execution
 restriction in an owner note. These warnings do not change admission or authorize
@@ -305,7 +306,18 @@ or other value means disabled. Like status, these are read-only settings display
 not probes of an unreloaded process's environment. Offline command tests and the
 headless TUI pilot cover these displays; they do not qualify live publication.
 
-In the TUI each key is the first letter of its word, highlighted in the detail pane:
+The fleet defaults to a bounded summary, leaving space for worker rows and the
+journal. **i Details** replaces that summary with a keyboard-scrollable diagnostics
+pane (End/Page Down scroll; **i** returns to the fleet). It retains paths, revisions,
+source warnings, model/fallback and push settings. Runtime observation failures
+remain visible in the summary; a short viewport prioritizes the main-check result
+over the generic explanation. This changes presentation, not health or admission.
+Below 120 columns the fleet shows Runner, State and Total; selecting a runner shows
+its complete task-count breakdown. Below 100 columns the repository browser stacks
+readiness below the directory tree. Source: `Src/pi_autowork/tui.py` (`FleetApp`,
+`BrowseScreen`); fixture coverage: `pi-autowork/tests/test_tui_layout.py`.
+
+Keys are highlighted in the top menu, which wraps on narrow terminals:
 `l` (or Enter) **L**og, `p` **P**lay/**P**ause (starts a stopped service, resumes a
 paused one, pauses a running one), `s` **S**top, `r` **R**estart, `m` **M**odel
 (from Pi's list, type to filter), `t` **T**asks, `g` **Plan**, `u` **U**ninstall the

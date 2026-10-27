@@ -47,6 +47,28 @@ Cross-check what the user says against the code. When they disagree, surface it:
 right?" Decide internal naming, test seams and equivalent engineering options
 yourself.
 
+## Source-backed task scope
+
+Every task includes a compact **Repo obligations triggered:** note in its existing
+body: the normative doc owner and section for each changed observable contract,
+required updates, generated outputs, guards and fixtures. State `none` with evidence
+for categories that do not apply. Include every planned write in `touches` and its
+validation in `checks`; docs are part of the deliverable, not a later worker's scope
+violation. This is a prose content requirement, not a new task-store schema field.
+
+Before saving, search specs/tests for assertions encoding the behavior being
+replaced, including integration/browser consumers. Record file:line, keep or
+re-baseline, and replacement intent; changed assertion files belong in `touches`
+and `checks`. Quote the source expression or exact text for existing numeric and
+contract invariants: minimum versus maximum, units, defaults, caps and clamping
+precedence. Label new thresholds as planner decisions, not existing facts.
+Preserve required caveat copy verbatim and independent invariants explicitly.
+
+For interaction work, inventory current event owners before designing capture:
+handlers, nested interactive elements, delegation, propagation and passive/default
+behavior. Name the existing click, tap and keyboard activation paths to preserve.
+For noninteraction work, omit this inventory rather than invent event requirements.
+
 ## Cover the ground, not a script
 
 Territory to cover, never read out as a questionnaire: what it is and what makes it
@@ -165,6 +187,12 @@ minute. Split a larger task along file ownership, each piece owning its code, te
 and docs, not by layer (model, then API, then UI): a layer split chains every piece
 to the one before it and leaves none testable alone.
 
+When several feature tiers repeatedly rewrite one component and its tests/docs,
+prefer one cohesive task with internal milestones. If separate reviewable outcomes
+justify multiple tasks, declare shared paths in every record and describe the
+actual scheduling constraints below. Rank alone is not mutual exclusion; do not
+promise independent execution or add fictitious dependency/resource gates.
+
 ## Disjoint write sets
 
 `touches` is the task's expected write set. Prefer disjoint writes, but report
@@ -214,6 +242,13 @@ it, new or existing (`tests/test_feed.py::test_skips_blank_rows`), which fails o
 today's code. `checks` runs those tests directly. A criterion no test can check
 here is a live check, not acceptance. The task's next action starts with the failing
 test named in its acceptance.
+
+Name the measurement seam for each criterion: observable output/value/element,
+setup and owning test. Numeric measurements specify the defining rect/value, units
+and tolerance; temporal behavior specifies the observation window; write budgets
+identify the instrumented API, exact filter and reset point. Static string or
+configuration checks need no invented timers or counters. A threshold without its
+measurement seam leaves the worker to choose what counts as a pass.
 
 Prefer extending an existing public test seam: add or extend at most one focused
 test per behavior changed, without duplicating existing cases. A new focused file
@@ -280,11 +315,18 @@ against unknown failures, and grants no implementation or external authority.
 
 ## Builder check before handoff
 
-Before reporting a written plan as ready, have it read as the builder who cannot ask
-questions. Dispatch a fresh subagent (`delegate_task`, or the host's equivalent) with:
+For plans requiring the builder check below, run it before committing the batch or
+making it runnable, not after an authorized runner can select it. Have it read as
+the builder who cannot ask questions. Dispatch a fresh read-only subagent
+(`delegate_task`, or the host's equivalent) with:
 
 > You are the engineer who will implement task(s) IDS in REPO. You cannot talk
-> to the planner. Read the task records (`tasks/items/<ID>.md`) and the plan section they cite. Report only
+> to the planner. Read the task records (`tasks/items/<ID>.md`), their cited plan,
+> repository instructions, implementation, existing tests and normative docs.
+> Check required docs missing from `touches`, stale contradictory assertions,
+> numeric bounds, event ownership and measurement seams against those sources;
+> cite file:line and the proving expression/assertion for each material finding.
+> Mark unavailable evidence unverified. Report only material contract gaps and
 > the questions you would still need answered before you could implement well:
 > places where you would have to guess and a wrong guess would matter. For each,
 > give the question and why the answer changes the work, ranked by importance. Skip

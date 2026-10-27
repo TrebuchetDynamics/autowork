@@ -19,7 +19,8 @@ class DoctorModes(unittest.TestCase):
         names = [p.parent.name for p in (ROOT / 'skills').glob('*/SKILL.md')]
         self.report = {
             'plugins': [{'name': 'autowork', 'enabled': True, 'error': None}],
-            'plugin_skills': ['autowork:' + name for name in ('autowork', 'cron-autowork', 'docs-sync', 'plan-with-me', 'blockers', 'plan-for-me', 'autoresearch', 'engineering', 'git-commit-push', 'impeccable', 'lgtm', 'profile-create', 'ui-taste', 'beautify-github-readme', 'pending')],
+            'plugin_skills': ['autowork:' + name for name in ('autowork', 'cron-autowork', 'docs-sync', 'plan-with-me', 'blockers', 'plan-for-me', 'autoresearch', 'engineering', 'git-commit-push', 'impeccable', 'lgtm', 'profile-create', 'ui-taste', 'beautify-github-readme', 'pending',
+                'ponytail', 'ponytail-review', 'ponytail-audit', 'ponytail-debt', 'ponytail-gain', 'ponytail-help')],
             'commands': [{'command': name.replace('_', '-'), 'source': 'autowork', 'kind': 'plugin'}
                          for name in names],
             'missing_plugins': ['omh'], 'missing_skills': ['graphify'],
@@ -73,6 +74,17 @@ class DoctorModes(unittest.TestCase):
         data = json.loads(output)
         self.assertEqual(data['core_status'], 'ready')
         self.assertEqual(data['status'], 'incomplete')
+
+    def test_existing_ponytail_command_uses_verified_bundled_skill_fallback(self):
+        row = next(row for row in self.report['commands'] if row['command'] == 'ponytail-review')
+        row['source'] = 'ponytail'
+        code, output = self.run_doctor('--core', '--json')
+        self.assertEqual(code, 0, output)
+        self.assertEqual(json.loads(output)['bundled_skill_fallbacks'], ['autowork:ponytail-review'])
+        code, output = self.run_doctor('--core')
+        self.assertIn('autowork:ponytail-review', output)
+        self.report['plugin_skills'].remove('autowork:ponytail-review')
+        self.assertEqual(self.run_doctor('--core', '--json')[0], 1)
 
     def test_foreign_command_cannot_certify_core(self):
         self.report['commands'][0]['source'] = 'another-plugin'

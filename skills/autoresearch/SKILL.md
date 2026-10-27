@@ -7,6 +7,10 @@ license: MIT
 
 # Autoresearch
 
+Apply the [shared Ponytail method](../shared/PONYTAIL.md) within this workflow's scope.
+
+Use the [ASD-STE100 and project language rules](../shared/COMMUNICATION.md) for user-facing text.
+
 Without an explicit subcommand, use the upstream router to select a protocol
 from the user's goal. Explicit Autoresearch subcommands select their own protocol.
 

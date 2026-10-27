@@ -10,6 +10,10 @@ metadata:
 
 # Plan For Me
 
+Apply the [shared Ponytail method](../shared/PONYTAIL.md) within this workflow's scope.
+
+Use the [ASD-STE100 and project language rules](../shared/COMMUNICATION.md) for user-facing text.
+
 `/plan_for_me` (also `/plan-for-me`) investigates the repository, decides an
 approach within the user's scope, and saves the plan and tasks. With a concrete
 objective it determines how to achieve it; with little or none it discovers which

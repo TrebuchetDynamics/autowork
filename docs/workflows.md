@@ -25,6 +25,17 @@ and a saved answer is not proof that a held task advanced. Static skill tests an
 offline command-routing fixtures verify these instructions and routing, not live
 model adherence, successful recovery or service delivery.
 
+## Bundled Ponytail
+
+All workflows apply the [shared Ponytail method](../skills/shared/PONYTAIL.md)
+within their existing authority. `/ponytail [lite|full|ultra|off]` reports or changes
+only the conversation's Autowork preference. `/ponytail-review`, `/ponytail-audit`,
+`/ponytail-debt`, `/ponytail-gain` and `/ponytail-help` are one-shot reports;
+they do not implement, publish, start an extra reviewer or change persistent modes.
+See [portable host invocations](cross-host.md#bundled-ponytail-on-every-host).
+Existing external command owners keep their handlers; the bundled skills remain
+available as `autowork:ponytail` and `autowork:ponytail-review` (and the other names).
+
 ## Commands
 
 Use `/autowork status` for the read-only runner fleet and `/autowork status NAME`
@@ -211,6 +222,34 @@ the adapter. Claude-only hooks are not installed.
 `/autowork` is the repository development command. Its helpers and profile-local
 state live under `autowork/`; upgrades preserve existing work through migration.
 
+## Test optimizer
+
+`/test-optimizer` finds the smallest sufficient test suite, not the smallest test
+count. It reuses the existing [test-suite optimization protocol](../skills/engineering/local/test-suite-optimization/PROTOCOL.md).
+Use it for repeated setup, duplicate assertions, equivalent case families and
+contrived scenarios with no supported path. Rare security, data-loss and named
+regression cases are not expendable merely because they rarely fail.
+
+A bare invocation audits; `read-only` writes nothing. Explicit `apply`, a request
+to reduce/optimize the suite, or an existing authorized implementation task permits
+one supported batch without another approval ceremony. It preserves distinct
+behavioral oracles, maps deletions to retained checks or retired obligations,
+then validates and reports real reductions and unknowns. It never optimizes by
+silently skipping tests or weakening CI. This is an agent-guided skill, not an
+automatic test-deletion script.
+
+Examples (Hermes CLI; Pi uses `/test_optimizer`, Claude Code
+`/autowork:test-optimizer`, Codex `$autowork:test-optimizer`):
+
+```text
+/test-optimizer tests/parser; read-only
+/test-optimizer tests/parser; apply one batch; no commit or push
+```
+
+The [skill](../skills/test-optimizer/SKILL.md) defines the rare-scenario evidence
+gate and before/after receipt. Offline packaging and decision probes do not
+establish a measured suite speedup or live host effectiveness.
+
 ## Pinned engineering protocols
 
 `/engineering` (the same spelling in Telegram) selects a technique for a specific
@@ -312,6 +351,23 @@ Autowork consumes the saved decisions and check results, then verifies current
 source and actual process/workspace ownership before implementation. No changes means no repeat documentation
 pass. An optional unanswered question holds its dependent tasks only. Standalone
 planning still does not authorize implementation.
+
+Each task now carries a **Repo obligations triggered:** body note naming normative
+doc sections, generated outputs, guards and fixtures; required writes and checks
+belong in the same task's `touches` and `checks`. This adds no task-store schema
+field. The [source-backed scope](../skills/shared/PLANNING-CRAFT.md#source-backed-task-scope)
+requires quoted file:line evidence for existing bounds/contracts, an inventory of
+old assertions to preserve or re-baseline, and current event owners for interaction
+work. Acceptance names its actual measurement seam, not just a tolerance or budget.
+
+For plans requiring builder review, the reviewer reads implementation, tests and
+normative docs before the planning commit or runnable publication. Handoffs state
+queue disposition and expected implementation merge/review counts separately from
+the planning commit; `Next` can be selected by an already authorized runner, and
+"no code this pass" does not reserve work. Shared-file decomposition retains the
+existing admission/ranking rules, not invented dependency locks. Planning commits
+include only attributable changes and never amend another session's runner merge.
+These instruction contracts do not prove live model adherence or queue delivery.
 
 ### Planning-only bulk handoff and skill recommendations
 
@@ -512,7 +568,7 @@ Examples:
 | Task evidence | Recommendation and contribution | Limit/fallback |
 | --- | --- | --- |
 | Web/mobile hierarchy and interaction need design work | `autowork:ui-taste`, design/review; follow the host adapter and produce relevant rendered/UI evidence | Confirm platform fit; a terminal status-label correction does not justify a browser/UI design workflow. Use the project's existing design method if more appropriate. |
-| Repeated test setup and duplicate behavioral assertions | `autowork:test-optimization-suite`, test cleanup; risk matrix, retained-test mapping and measured candidate evidence | Still planned under TOOLSET-133-f5/134-ab: currently use Engineering's existing `test-suite-optimization` protocol. Do not claim the new skill is installed or block independent cleanup on its packaging. |
+| Repeated test setup and duplicate behavioral assertions | `autowork:test-optimizer`, test cleanup; risk matrix, retained-test mapping and measured candidate evidence | Bare invocation audits; explicit reduction/apply or existing implementation authority permits one verified batch. Uses Engineering's existing `test-suite-optimization` protocol; rare but consequential risks stay protected. |
 | A small local parser fix with established tests | No additional skill required beyond the repository's applicable workflow | Do not add a method tour, UI skill or suite-wide audit. |
 
 Autowork reads the task's recommendations before the relevant step, resolves the

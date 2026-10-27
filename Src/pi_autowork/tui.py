@@ -29,6 +29,7 @@ from pi_autowork.planning_ui import PlanScreen, DecisionPrompt, QuestionPicker  
 from pi_autowork.tui_dialogs import Confirm  # noqa: E402
 
 from rich.text import Text  # noqa: E402  (installed with textual)
+from rich.cells import cell_len, set_cell_size  # noqa: E402
 from rich.style import Style  # noqa: E402
 from textual.app import App, ComposeResult  # noqa: E402
 from textual.binding import Binding  # noqa: E402
@@ -80,12 +81,11 @@ def hotkeys(text, keys, click_actions=None):
 
 
 class MenuBar(Static):
-    """A screen's keys on one line at the very top, under the title, as a GUI app's menu bar
-    ("File Edit View"), each word's key letter highlighted; every screen has one."""
-    DEFAULT_CSS = 'MenuBar { dock: top; height: 1; background: $boost; padding: 0 1; }'
+    """A screen's keys under its title, wrapping rather than hiding narrow-screen actions."""
+    DEFAULT_CSS = 'MenuBar { dock: top; height: auto; max-height: 3; background: $boost; padding: 0 1; }'
 
     def show(self, keys, prefix='', click_actions=None):
-        text = Text(no_wrap=True, overflow='ellipsis')
+        text = Text(overflow='fold')
         if prefix:
             text.append(prefix + '  ', style='dim')
         hotkeys(text, keys, click_actions)
@@ -94,7 +94,7 @@ class MenuBar(Static):
 
 def detail_row(text, label, value, style=''):
     """One 'Label      value' line of a detail pane: the label dim in a fixed column."""
-    text.append(f' {label:<11}', style='dim')
+    text.append(f' {label:<11}' + (' ' if len(label) >= 11 else ''), style='dim')
     text.append(value + '\n', style=style)
 
 
@@ -1017,8 +1017,13 @@ class BrowseScreen(ReadScreen, Screen):
     BINDINGS = [Binding('p', 'start', 'Play'), Binding('g', 'plan_selected', 'Plan'),
                 Binding('escape,q', 'app.pop_screen', 'back')]
     CSS = '''
+    #browser-body { height: 1fr; }
     #tree, #info-scroll { width: 1fr; }
-    #info { padding: 0 1; }
+    #info-scroll { border-left: solid $panel; }
+    #info { height: auto; padding: 0 1; }
+    BrowseScreen.compact #browser-body { layout: vertical; }
+    BrowseScreen.compact #tree, BrowseScreen.compact #info-scroll { width: 100%; height: 1fr; }
+    BrowseScreen.compact #info-scroll { border-left: none; border-top: solid $panel; }
     '''
 
     def __init__(self, root, start):
@@ -1033,12 +1038,13 @@ class BrowseScreen(ReadScreen, Screen):
     def compose(self) -> ComposeResult:
         yield Header()
         yield MenuBar(id='menubar')
-        with Horizontal():
+        with Horizontal(id='browser-body'):
             yield RepoTree(self.root or str(Path.home()), id='tree')
             with VerticalScroll(id='info-scroll'):
                 yield Static('Move to a repository; ready ones have a committed tasks/ store.', id='info')
 
     def on_mount(self):
+        self.set_class(self.size.width < 100, 'compact')
         self.title = f'start a runner: {self.root or Path.home()}'
         self.query_one('#menubar', MenuBar).show([('p', 'Play'), ('g', 'Plan'), ('esc', 'Back')])
         if self.root is None:
@@ -1048,6 +1054,9 @@ class BrowseScreen(ReadScreen, Screen):
                 self.query_one('#tree', RepoTree).path = root
                 self.title = f'start a runner: {root}'
             self.read('browse-root', str(home), lambda: home / 'git' if (home / 'git').is_dir() else home, loaded)
+
+    def on_resize(self, event):
+        self.set_class(event.size.width < 100, 'compact')
 
     def read_labels(self, paths):
         def load():
@@ -1329,10 +1338,15 @@ class FleetApp(App):
     # Stacked, each part full width: a side-by-side split left a ~30-column pane on an
     # 80-column terminal, which wrapped the detail and cut the log.
     CSS = '''
-    #runners { height: auto; max-height: 40%; }
-    #detail { height: auto; max-height: 50%; padding: 0 1; border-top: solid $panel; }
-    #lanes { height: auto; max-height: 12; border-top: solid $panel; }
+    #runners { height: auto; min-height: 3; max-height: 25%; }
+    #overview { height: auto; max-height: 6; padding: 0 1; background: $boost; }
+    #detail-scroll { display: none; height: 6; border-top: solid $panel; }
+    #detail { height: auto; padding: 0 1; }
+    #lanes { height: auto; max-height: 20%; border-top: solid $panel; }
     #log { height: 1fr; min-height: 4; border-top: solid $panel; }
+    .short #runners { max-height: 20%; }
+    .short #overview { max-height: 5; }
+    .short #detail-scroll { height: 5; }
     '''
     BINDINGS = [
         # One key per action, the first letter of its word, shown highlighted in the detail
@@ -1347,6 +1361,7 @@ class FleetApp(App):
         Binding('t', 'run("t")', 'Tasks', show=False),
         Binding('e', 'answer_question', 'Answer', show=False),
         Binding('b', 'show_blockers', 'Blockers', show=False),
+        Binding('i', 'toggle_details', 'Details', show=False),
         Binding('g', 'run("g")', 'Plan', show=False),
         Binding('u', 'run("u")', 'Uninstall', show=False),
         Binding('n', 'browse', 'New', show=False),
@@ -1376,10 +1391,11 @@ class FleetApp(App):
         self.completed_deletions = {}  # retain action objects: duplicate callbacks are harmless
         self._report_busy = False
         self._report_pending = None
+        self.details_open = False
 
     def check_action(self, action, parameters):
         """View-only (for example served to a browser on a shared network): no control keys."""
-        if action == 'show_blockers':
+        if action in ('show_blockers', 'toggle_details'):
             return len(self.screen_stack) == 1 and self.current() is not None
         if self.view_only and action in self.CONTROL and parameters not in (('l',), ('t',)):  # read-only views
             return False
@@ -1394,14 +1410,16 @@ class FleetApp(App):
         yield Header()
         yield MenuBar(id='menubar')
         yield DataTable(id='runners', cursor_type='row', zebra_stripes=True)
-        yield Static(id='detail')
+        yield Static(id='overview')
+        with VerticalScroll(id='detail-scroll'):
+            yield Static(id='detail')
         yield DataTable(id='lanes', cursor_type='row', zebra_stripes=True)
         yield RichLog(id='log', wrap=True, highlight=False, markup=False)
 
-    # The counts come right after the name, as narrow columns that always show: after a
-    # 44-column Needs they scrolled off an 80-column terminal. Needs and Now share the rest.
-    # Every open task is in one count column, so they add up to Total; Decision is the
-    # Needs-decision tasks, which wait for the owner.
+    # Wide terminals show each count; narrow ones keep Runner/State/Total and put
+    # the breakdown in the selected summary. Needs and Now share spare width.
+    # Every open task is in one count bucket. Decision is Needs-decision membership,
+    # not necessarily an unanswered owner question.
     RUNNER_COLUMNS = ('Runner', 'State', 'Active', 'Mergeable', 'Waiting', 'Blocker', 'Decision', 'Total')
     RUNNER_TEXT = ('Needs', 'Now')
     LANE_COLUMNS = ('Task', 'Status', 'Try', 'For', 'Quiet')
@@ -1490,38 +1508,46 @@ class FleetApp(App):
         return runner is not None and task in runner.display_deleted
 
     def on_resize(self, event):
+        self.screen_stack[0].set_class(event.size.height < 22, 'short')
         self._shown = {}  # the columns fit the new width
         if self.query_one('#runners', DataTable).columns:  # the first resize comes before on_mount
-            self.render_fleet()  # cached layout only; resize never recollects
+            # App.size may still be the previous viewport during the resize event.
+            self.call_after_refresh(self.render_fleet)  # cached only; never recollect
 
     @staticmethod
     def fit(text, room):
         """``text`` in ``room`` columns: cut at a word, or mid-word when that keeps far more."""
-        if len(text) <= room:
+        if cell_len(text) <= room:
             return text
-        cut = text[:room - 1]
+        if room <= 1:
+            return '…' if room else ''
+        cut = set_cell_size(text, room - 1).rstrip()
         words = cut.rsplit(' ', 1)[0]
         return (words if len(words) > room * 2 // 3 else cut).rstrip(' ,;:·') + '…'
 
-    def fill(self, table, rows, fixed, text, minimum=16):
+    def fill(self, table, rows, fixed, text, minimum=16, limits=None):
         """Show ``rows`` ({column: (text, style)}) in ``table``. The fixed columns always show,
         whole; the text columns share what the terminal has left, each cut to fit, and the last
         named goes first when fewer than ``minimum`` columns would be left for each. Redrawn only
         when something changed, since a clear-and-rewrite every refresh made the panes flicker."""
-        width = lambda column: max([len(column), *(len(row[column][0]) for row in rows)]) + 2  # padding
+        limits = limits or {}
+        width = lambda column: min(limits.get(column, self.size.width),
+                                   max([cell_len(column), *(cell_len(row[column][0]) for row in rows)])) + 2
         left = self.size.width - sum(width(c) for c in fixed) - 4  # border and scrollbar
         shown = list(text)
         while shown and left // len(shown) - 2 < minimum:
             shown.pop()
         room = left // max(1, len(shown)) - 2
         columns = (*fixed, *shown)
-        cells = [tuple((self.fit(row[c][0], room) if c in shown else row[c][0], row[c][1]) for c in columns)
+        cells = [tuple((self.fit(row[c][0], room if c in shown else limits[c])
+                        if c in shown or c in limits else row[c][0], row[c][1]) for c in columns)
                  for row in rows]
         shown_before = self.__dict__.setdefault('_shown', {})
         if shown_before.get(table.id) == (columns, cells):
             return False
         shown_before[table.id] = (columns, cells)
-        table.clear(columns=tuple(str(c.label) for c in table.columns.values()) != columns)
+        # Auto-sized columns otherwise retain a previous, wider content width.
+        table.clear(columns=bool(limits) or tuple(str(c.label) for c in table.columns.values()) != columns)
         if not table.columns:
             table.add_columns(*columns)
         for row, values in zip(rows, cells):
@@ -1601,7 +1627,17 @@ class FleetApp(App):
     def render_fleet(self):
         table = self.query_one('#runners', DataTable)
         keep = self.selected
-        self.fill(table, fleet_view.runner_rows(self.runners), self.RUNNER_COLUMNS, self.RUNNER_TEXT)
+        # At narrow widths the selected summary carries the full count breakdown.
+        # Bound identity/state cells, rather than letting a long name widen every row.
+        compact = self.size.width < 120
+        rows = fleet_view.runner_rows(self.runners)
+        total_width = max([len('Total'), *(cell_len(row['Total'][0]) for row in rows)])
+        # State + Total + three cell paddings + scrollbar/slack share one budget.
+        name_room = min(32, max(8, self.size.width - 20 - total_width - 10))
+        self.fill(table, rows,
+                  ('Runner', 'State', 'Total') if compact else self.RUNNER_COLUMNS,
+                  () if compact else self.RUNNER_TEXT,
+                  limits={'Runner': name_room, 'State': 20})
         names = [r.name for r in self.runners]
         if names:
             row = names.index(keep) if keep in names else 0
@@ -1635,10 +1671,62 @@ class FleetApp(App):
         elif event.data_table.id == 'lanes' and event.row_key is not None and self.current() is not None:
             self.push_screen(WorkerScreen(self.current(), event.row_key.value))
 
+    def action_toggle_details(self):
+        self.details_open = not self.details_open
+        pane = self.query_one('#detail-scroll', VerticalScroll)
+        pane.display = self.details_open
+        self.query_one('#overview').display = not self.details_open
+        (pane if self.details_open else self.query_one('#runners')).focus()
+        self.show_detail()
+
+    def show_overview(self, runner):
+        """Six bounded lines; full evidence stays in the scrollable Details pane."""
+        room = max(1, self.size.width - 2)
+        text = Text()
+        def line(value, style=''):
+            text.append(self.fit(value, room) + '\n', style)
+        if runner is None:
+            # Reuse the truthful loading/empty/discovery-failure message below.
+            return
+        verdict, style = fleet_view.verdict(runner)
+        headline, _, reason = verdict.partition(' — ')
+        line(f'{runner.name} · {headline}', style)
+        counts = fleet_view.task_counts(runner)
+        if counts is None:
+            line('Tasks unknown / unavailable', 'yellow')
+        else:
+            active, mergeable, waiting, blocker, decision, total = counts
+            line(f'{total} open · {active} active · {mergeable} mergeable')
+            line(f'{waiting} waiting · {blocker} blocker · {decision} in Needs decision')
+        snap = fleet_view.snapshot_for(runner)
+        warnings = len(set((*snap.errors, *runner.acquisition_errors)))
+        observation = f'Inventory {snap.freshness} · execution {snap.engine_freshness}'
+        if warnings or snap.annotations:
+            observation += f' · {warnings + len(snap.annotations)} warnings'
+        line(observation, 'yellow' if warnings or snap.engine_freshness != 'fresh' else 'dim')
+        check = fleet_view.main_check.line(runner.main_check)
+        short_check = bool(check) and self.size.height < 22
+        check_style = 'bold red' if runner.main_check.get('state') in ('red', 'broken') else ''
+        if short_check:
+            line('Main: ' + check, check_style)
+        elif runner.questions:
+            line(f'{len(runner.questions)} recorded questions · b Blockers (read only)', 'yellow')
+        elif 'unavailable' in headline.lower():
+            line('Observation unavailable; inspect source errors with i Details.', 'yellow')
+        elif reason:
+            line('Why: ' + ' '.join(reason.split()))
+        else:
+            line('i Details · b Blockers · Enter Log', 'dim')
+        if check and not short_check:
+            line('Main: ' + check, check_style)
+        text.rstrip()
+        self.query_one('#overview', Static).update(text)
+
     def show_detail(self):
         detail = self.query_one('#detail', Static)
         runner = self.current()
         menubar = self.query_one('#menubar', MenuBar)
+        self.show_overview(runner)
         if runner is None:
             errors = (*(self.fleet_snapshot.errors if self.fleet_snapshot else ()),
                       *(f'{kind}: stale / unavailable: {message}'
@@ -1649,18 +1737,21 @@ class FleetApp(App):
                 detail.update('Loading pi-autowork runners…')
             else:
                 detail.update('No pi-autowork runners yet. Press n for a new one: choose a repository and play its service.')
+            self.query_one('#overview', Static).update(detail.render())
             self.query_one('#lanes', DataTable).display = False
             menubar.show([] if self.view_only else [('g', 'Plan'), ('n', 'New'), ('q', 'Quit')],
                          click_actions={'g': 'app.run("g")'})
             return
         # The keys go in the menu bar at the top, like a GUI app's menu; the pane holds the facts.
         if self.view_only:
-            menubar.show([('l', 'Log'), ('b', 'Blockers'), ('q', 'Quit')], prefix='view only',
-                         click_actions={'b': 'app.show_blockers'})
+            menubar.show([('l', 'Log'), ('i', 'Summary' if self.details_open else 'Details'),
+                          ('b', 'Blockers'), ('q', 'Quit')], prefix='view only',
+                         click_actions={'b': 'app.show_blockers', 'i': 'app.toggle_details'})
         else:
             menubar.show([(a.key, a.label) for a in self.available(runner)]
-                         + [('b', 'Blockers'), ('n', 'New'), ('q', 'Quit')],
-                         click_actions={'b': 'app.show_blockers', 'g': 'app.run("g")',
+                         + [('i', 'Summary' if self.details_open else 'Details'),
+                            ('b', 'Blockers'), ('n', 'New'), ('q', 'Quit')],
+                         click_actions={'b': 'app.show_blockers', 'i': 'app.toggle_details', 'g': 'app.run("g")',
                                         'e': 'app.answer_question'})
         text = Text()
         # First the answer to "is it stuck, and why": one sentence, wrapped, never cut.
@@ -1723,7 +1814,16 @@ class FleetApp(App):
                  'Quiet': (fleet_view.quiet(lane).removeprefix('quiet '), 'bold yellow'),
                  'Doing': (doing(lane), fleet_view.action_style(doing(lane)))} for i, lane in enumerate(runner.lanes)]
         keep = table.cursor_row
-        if self.fill(table, rows, self.LANE_COLUMNS, self.LANE_TEXT) and rows:
+        compact = self.size.width < 120
+        if compact:
+            for row in rows:
+                status, style = row['Status']
+                if status.startswith('Annotation · '):
+                    row['Status'] = ('Unmatched · ' + status.removeprefix('Annotation · ').removesuffix(' (unmatched execution)'), style)
+        if self.fill(table, rows, ('Task', 'Status', 'For') if compact else self.LANE_COLUMNS,
+                     self.LANE_TEXT,
+                     limits={'Task': min(32, max(22, self.size.width // 3)),
+                             'Status': min(44, max(18, self.size.width // 3))}) and rows:
             table.move_cursor(row=min(keep, len(rows) - 1))
         table.display = bool(runner.lanes)
 

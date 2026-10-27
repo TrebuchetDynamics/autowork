@@ -1,0 +1,57 @@
+{
+  "repository": "https://github.com/DietrichGebert/ponytail",
+  "revision": "09c434ab73ca43761c5d8b0c5d341926c2fba710",
+  "version": "5.3.2",
+  "license": "MIT",
+  "skills": [
+    "ponytail",
+    "ponytail-review",
+    "ponytail-audit",
+    "ponytail-debt",
+    "ponytail-gain",
+    "ponytail-help"
+  ],
+  "files": {
+    "skills/ponytail/SKILL.md": {
+      "path": "upstream/skills/ponytail/PROTOCOL.md",
+      "sha256": "9badd22a32e19cb884e46dfa8d3aae82bb81dfa5484105b8b4f0262df823a509"
+    },
+    "skills/ponytail-review/SKILL.md": {
+      "path": "upstream/skills/ponytail-review/PROTOCOL.md",
+      "sha256": "33fe4ebe22a460924e5d4a261e223df22e409cc94ab76182bee9fb91a3ef022e"
+    },
+    "skills/ponytail-audit/SKILL.md": {
+      "path": "upstream/skills/ponytail-audit/PROTOCOL.md",
+      "sha256": "2b3223a02c386d1263e1b08343cb8eb3a53e444cdafb1d79e26c8ec2a8fcad28"
+    },
+    "skills/ponytail-debt/SKILL.md": {
+      "path": "upstream/skills/ponytail-debt/PROTOCOL.md",
+      "sha256": "b5ec2762f6ba8c4af9ea7173aa6c9f91b88655a25e43f9de0264f6ce8722b25f"
+    },
+    "skills/ponytail-gain/SKILL.md": {
+      "path": "upstream/skills/ponytail-gain/PROTOCOL.md",
+      "sha256": "231034a896d6762e4b5c8468287083422c56b499119976ec9f76821f7d083090"
+    },
+    "skills/ponytail-help/SKILL.md": {
+      "path": "upstream/skills/ponytail-help/PROTOCOL.md",
+      "sha256": "86ab0ce0af70cbeeeef499d5c884873b393f87f86401dcc45553662ce2c1eff9"
+    },
+    "LICENSE": {
+      "path": "upstream/LICENSE",
+      "sha256": "fb1bc6909ac3ef82d5c22106e32ef682b0cff66788fa915fb9b53b15c9d2f3ab"
+    },
+    "hooks/ponytail-map.js": {
+      "path": "upstream/scripts/ponytail-map.cjs",
+      "sha256": "df473b463bb0f258874b32baf5c8edc3533bc6f87542f3508b1c5fbdc264af4f",
+      "upstream_sha256": "c876b087accb6655d04f7f48bda85d8304941d0ac0fb78c0c164eb9ec7d35e69",
+      "adaptation": "Bound each actual source-file read to 65536 bytes; preserve close-on-error."
+    },
+    "benchmarks/results/2026-10-07-agentic.md": {
+      "path": "upstream/benchmarks/results/2026-10-07-agentic.md",
+      "sha256": "a985555ce1835e82c17aa425f2d3743e0373345c8e73ad761923a700dcc341e0"
+    }
+  },
+  "transform": "Protocol and license bytes unchanged. SKILL.md becomes PROTOCOL.md to avoid nested discovery; ponytail-map.js becomes .cjs for the ESM package, with a documented bounded-read fix.",
+  "excluded": "Upstream plugin/extension registration, hooks other than the manually invoked map helper, global mode/config writes, band/telemetry, installers, publishers and benchmark execution.",
+  "adaptations": "Autowork entry skills and shared/PONYTAIL.md own scope, commands and precedence. Upstream help is retained as source only, not displayed; gain is attributed to upstream, not measured here."
+}

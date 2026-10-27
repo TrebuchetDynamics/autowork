@@ -6,6 +6,10 @@ disable-model-invocation: true
 
 # Cron Autowork
 
+Apply the [shared Ponytail method](../../../skills/shared/PONYTAIL.md) within this workflow's scope.
+
+Use the [ASD-STE100 and project language rules](../../../skills/shared/COMMUNICATION.md) for user-facing text.
+
 Read the [host contract](../COMMON.md) and the shared
 [scheduling workflow](../../../skills/cron-autowork/SKILL.md).
 Apply its repository/scope binding, duplicate detection, paused-state preservation,

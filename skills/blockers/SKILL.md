@@ -10,6 +10,10 @@ metadata:
 
 # Blockers
 
+Apply the [shared Ponytail method](../shared/PONYTAIL.md) within this workflow's scope.
+
+Use the [ASD-STE100 and project language rules](../shared/COMMUNICATION.md) for user-facing text.
+
 `/blockers [repo|runner name]` resolves held tasks and owner questions together.
 Apply established answers, repair authorized technical causes and verify progress,
 then ask only for unresolved owner

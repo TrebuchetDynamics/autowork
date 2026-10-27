@@ -368,23 +368,56 @@ class BundleTests(unittest.TestCase):
             self.assertIn('symlinked update state directory', self.bundle.start_update())
         self.assertFalse((elsewhere / 'request.json').exists())
 
+    def test_inventory_keeps_optional_ponytail_handlers_for_upgrade_readiness(self):
+        names = {p.parent.name for p in (ROOT / 'skills').glob('*/SKILL.md')}
+        self.commands = {name: {'plugin': 'autowork', 'handler': object()} for name in names}
+        self.commands['ponytail-review']['plugin'] = 'ponytail'
+        self.skills = ['autowork:' + name for name in names]
+        self.manager.home_path = Path(self.tmp.name)
+        self.manager.discover_and_load = lambda: None
+        plugins = [{'name': 'autowork', 'enabled': True}, {'name': 'ponytail', 'enabled': True}]
+        self.manager.list_plugins = lambda: plugins
+        stubs = {
+            'hermes_cli.commands_platforms': types.SimpleNamespace(
+                telegram_menu_commands=lambda **_: ([], []), telegram_menu_max_commands=lambda: 100),
+            'agent.skill_commands': types.SimpleNamespace(get_skill_commands=lambda: {}),
+        }
+        spec = importlib.util.spec_from_file_location('ponytail_setup_inventory', ROOT / 'setup_runtime.py')
+        runtime = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runtime)
+        with patch.dict('sys.modules', stubs):
+            report = self.bundle.inventory()
+            self.assertIn('ponytail-review', [r['command'] for r in report['commands'] if r['source'] == 'ponytail'])
+            diagnosed = self.bundle.diagnose(report, core_only=True)
+            self.assertEqual(diagnosed['status'], 'ready', diagnosed)
+            self.assertEqual(diagnosed['bundled_skill_fallbacks'], ['autowork:ponytail-review'])
+            installed, code = runtime.finish_profile(ROOT, Path(self.tmp.name), Path(self.tmp.name),
+                                                      report, bundle_only=True, no_reload=True)
+            self.assertEqual(code, 0, installed)
+            self.assertNotIn('ponytail', report['missing_plugins'])
+            plugins.pop()
+            self.commands['ponytail-review']['plugin'] = 'autowork'
+            report = self.bundle.inventory()
+            self.assertNotIn('ponytail', report['missing_plugins'])
+            self.assertEqual(self.bundle.diagnose(report, core_only=True)['status'], 'ready')
+
     def test_imported_skills_get_commands_without_overwriting_native_handlers(self):
         native = self.commands['ponytail-review']['handler']
         self.bundle.register_imported_skills(self.ctx, self.invoke)
         self.assertIs(self.commands['ponytail-review']['handler'], native)
-        self.commands['ponytail']['handler']('full')
-        self.assertEqual(self.messages, [('ponytail', 'ponytail', 'full')])
-        self.assertIn('configure-allmodels-speech', self.commands)
+        self.commands['configure-allmodels-speech']['handler']('full')
+        self.assertEqual(self.messages, [('hermes-speech', 'configure-allmodels-speech', 'full')])
+        self.assertNotIn('ponytail', self.commands, 'Ponytail is bundled, not an imported alias')
 
     def test_builtin_collision_uses_plugin_prefix(self):
-        self.skills = ['ponytail:help']
+        self.skills = ['hermes-speech:help']
         self.bundle.register_imported_skills(self.ctx, self.invoke)
         self.assertNotIn('help', self.commands)
-        self.commands['ponytail-help']['handler']('details')
-        self.assertEqual(self.messages, [('ponytail', 'help', 'details')])
+        self.commands['hermes-speech-help']['handler']('details')
+        self.assertEqual(self.messages, [('hermes-speech', 'help', 'details')])
 
     def test_long_imported_skill_names_have_stable_telegram_safe_alias(self):
-        self.skills = ['ponytail:' + 'long-name-' * 6]
+        self.skills = ['hermes-speech:' + 'long-name-' * 6]
         first = self.bundle.register_imported_skills(self.ctx, self.invoke)
         name = next(iter(first))
         self.assertLessEqual(len(name), 32)

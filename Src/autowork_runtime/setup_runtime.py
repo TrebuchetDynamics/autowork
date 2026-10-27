@@ -2,13 +2,24 @@
 from pathlib import Path
 
 
+def ponytail_skill_fallbacks(inventory):
+    """Old external Ponytail commands stay owned; only a registered local skill substitutes."""
+    suite = {'ponytail', 'ponytail-review', 'ponytail-audit', 'ponytail-debt',
+             'ponytail-gain', 'ponytail-help'}
+    registered = set(inventory.get('plugin_skills', []))
+    return {row['command'] for row in inventory['commands']
+            if row.get('kind') == 'plugin' and row.get('source') == 'ponytail'
+            and row['command'] in suite and 'autowork:' + row['command'] in registered}
+
+
 def finish_profile(bundle, home, root, inventory, *, bundle_only=False, no_reload=False, verify_settings=None):
     errors = []
     bundled = {p.parent.name for p in (bundle / 'skills').glob('*/SKILL.md')
                if p.parent.name not in {'repo-docs', 'repo-interview'}}
     commands = {r['command'] for r in inventory['commands']
                 if r.get('kind') == 'plugin' and r.get('source') == 'autowork'}
-    missing = sorted(bundled - commands)
+    fallbacks = ponytail_skill_fallbacks(inventory) & bundled
+    missing = sorted(bundled - commands - fallbacks)
     if missing: errors.append('Unavailable bundled commands: ' + ', '.join(missing))
     own = next((p for p in inventory['plugins'] if p['name'] == 'autowork'), {})
     if not own.get('enabled') or own.get('error'):
@@ -20,11 +31,14 @@ def finish_profile(bundle, home, root, inventory, *, bundle_only=False, no_reloa
     drift = verify_settings() if verify_settings else []
     if drift:
         errors.append('Profile settings not healed: ' + ', '.join(drift))
-    result = {'home': str(home), 'bundled_commands': sorted(bundled - set(missing)),
+    result = {'home': str(home), 'bundled_commands': sorted(bundled & commands),
+              'bundled_skill_fallbacks': sorted('autowork:' + name for name in fallbacks),
               'settings': 'drift' if drift else 'current',
               'gateway': 'not_checked', 'errors': errors,
               'note': 'Command registration is verified, not a Telegram message or model invocation. '
                       'Existing sessions may retain their previous tools, prompts and memory provider.'}
+    if fallbacks:
+        result['note'] += ' Existing Ponytail commands are unchanged; invoke bundled skills: ' + ', '.join(result['bundled_skill_fallbacks']) + '.'
     if no_reload:
         result['gateway'] = 'deferred_by_request'
     else:

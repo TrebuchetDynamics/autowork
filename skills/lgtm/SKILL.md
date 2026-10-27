@@ -9,6 +9,10 @@ metadata:
 
 # LGTM — resolve and continue
 
+Apply the [shared Ponytail method](../shared/PONYTAIL.md) within this workflow's scope.
+
+Use the [ASD-STE100 and project language rules](../shared/COMMUNICATION.md) for user-facing text.
+
 Treat the user's approval as permission to carry out the understood next step.
 Start work promptly; no classification ceremony, mandatory acknowledgment, new plan,
 extra review or second approval round. Applies to every profile and channel.

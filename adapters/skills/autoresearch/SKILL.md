@@ -6,6 +6,10 @@ disable-model-invocation: true
 
 # Autoresearch
 
+Apply the [shared Ponytail method](../../../skills/shared/PONYTAIL.md) within this workflow's scope.
+
+Use the [ASD-STE100 and project language rules](../../../skills/shared/COMMUNICATION.md) for user-facing text.
+
 Read the [host contract](../COMMON.md). Use the vendored
 [protocols](../../../skills/autoresearch/upstream/) only for the selected research
 question. A selected subcommand NAME loads upstream/NAME.md; bare research uses

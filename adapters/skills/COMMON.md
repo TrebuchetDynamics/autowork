@@ -1,8 +1,14 @@
 # Claude Code, Codex and Pi host contract
 
+Use the [ASD-STE100 and project language rules](../../skills/shared/COMMUNICATION.md)
+for user-facing text. Read the target project's glossary map and glossary when available.
+
 These adapters run repository workflows in the current Claude Code, Codex or Pi session.
 Use this host's actual file, terminal, search, question and delegation tools.
 Read repository instructions and user scope first; preserve unrelated work.
+Every bundled workflow applies the [shared Ponytail method](../../skills/shared/PONYTAIL.md)
+within its own authority. The pinned suite is included on all hosts; no external
+Ponytail plugin or persistent activation is required.
 Do not require Hermes CLI, profiles, gateways, Kanban cards, native origin injection,
 worker manifests, cron jobs, OMH, speech or another agent runtime. Those integrations
 belong to the Hermes distribution, not portable prerequisites.

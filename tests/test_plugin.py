@@ -127,6 +127,21 @@ class PluginTests(unittest.TestCase):
                 else:
                     self.assertNotIn('central work queue', message)
 
+    def test_repository_specialists_dispatch_namespaced_skills_without_interpreting_args(self):
+        self.plugin.SKILLS_DIR = ROOT / 'skills'
+        self.plugin.register(self.ctx)
+        args = 'one slice; no push\n$(literal)'
+        for name in ('bug-harvest', 'autonomous-codebase-improver',
+                     'skill-folder-refactor', 'unused-code', 'test-optimizer'):
+            with self.subTest(skill=name):
+                self.assertIn(name, self.ctx.commands)
+                self.assertEqual(self.ctx.skills[name], ROOT / f'skills/{name}/SKILL.md')
+                self.ctx.commands[name](args)
+                message, target = self.ctx.messages[-1]
+                self.assertIn(f'skill_view(name="autowork:{name}")', message)
+                self.assertTrue(message.endswith('User arguments:\n' + args))
+                self.assertEqual(target, {})
+
     def test_gateway_routes_first_command_to_origin_including_topic_and_user(self):
         self.skill("git-commit-push")
         self.plugin.register(self.ctx)

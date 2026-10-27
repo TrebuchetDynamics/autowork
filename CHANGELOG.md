@@ -7,6 +7,36 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- Shared ASD-STE100 and project glossary rules for all 52 native and portable skill
+  entries. The existing Docs Sync writing profile now has one shared owner.
+  Skills must select the target project's glossary, keep exact literals and output
+  formats, explain unclear results, and separate changes from checks and delivery.
+  The rule applies with Ponytail off. Tests check resource links and installation
+  files; they do not prove formal STE compliance or live model behavior.
+
+- `test-optimizer`: a four-host, Ponytail-aware skill for reducing redundant test
+  code and cases using the existing local test-suite optimization protocol. Requires
+  retained-oracle evidence for deletions, preserves rare consequential regressions,
+  honors read-only/batch limits and separates code-size, execution-count and measured
+  runtime changes. Adds Pi's `/test_optimizer`; no automatic deletion script or
+  external dependency. Packaging and decision probes are not measured suite savings.
+
+- Four pinned, instruction-only pi-toolset specialists: Bug Harvest, Autonomous
+  Codebase Improver, Skill Folder Refactor and Unused Code. Hermes discovery,
+  explicit-only Claude Code/Codex/Pi adapters and Pi command aliases share local
+  Ponytail-aware scope, task-store, limit, recovery and review rules. MIT licenses
+  and byte-exact protocols/references are preserved; no upstream runtime, shell
+  controller, scanner, installer or global skill activation is imported. Offline
+  resource checks and decision probes are not live campaign qualification.
+
+- Bundle Ponytail 5.3.2's six skills, MIT provenance and optional read-only codebase
+  map at commit `09c434ab73ca43761c5d8b0c5d341926c2fba710` for Hermes, Pi, Claude Code
+  and Codex. Every Autowork skill links the shared method; installers carry the
+  suite without a separate Ponytail plugin or startup/UI/telemetry hooks. Existing
+  external installations are preserved. Native provisioning adds missing shared
+  support without replacing edits; the map's actual file reads are bounded to 64 KiB.
+  Offline checks are not live qualification.
+
 - `autowork plan [target]` and the TUI's **Plan** (the browser's not-ready dialog, next to
   Prepare) and **b Backlog** (a listed runner whose store needs setup): `/plan_for_me` in
   the owner's agent (`AUTOWORK_AGENT`, else `claude`, else `pi`), asked to prepare the

@@ -2,10 +2,12 @@
 
 Autowork provides native packages for four hosts. Claude Code, Codex and Pi
 use the portable adapters, not the Hermes plugin loader. None requires Hermes installed.
-These adapters expose 12 skills: Plan With Me, Plan For Me, Docs Sync, Autowork,
+These adapters expose 25 skills: Plan With Me, Plan For Me, Docs Sync, Autowork,
 Cron Autowork, Autoresearch, Engineering, Impeccable, UI Taste, Beautify GitHub README,
-LGTM and Git Commit Push, which also pulls and merges. Grill Me is Plan With Me's
-challenge mode, not a thirteenth skill.
+LGTM, Git Commit Push, Blockers, Pending, the six bundled Ponytail skills,
+and Bug Harvest, Autonomous Codebase Improver, Skill Folder Refactor, Unused Code
+and Test Optimizer.
+Grill Me is Plan With Me's challenge mode, not a separate skill.
 Every adapter is explicit-only: Claude Code and Pi read `disable-model-invocation: true`
 in its frontmatter and Codex reads `agents/openai.yaml`, so the model never starts a
 workflow on its own.
@@ -14,6 +16,112 @@ outcome keeps focused planning, and `read-only` saves nothing.
 Supporting protocols are bundled and loaded only when needed. Hermes profile
 creation, Telegram routing,
 Kanban workers, fleet setup, memory and speech integrations remain Hermes-only.
+
+## Bundled Ponytail on every host
+
+Every Autowork skill applies the [shared Ponytail method](../skills/shared/PONYTAIL.md)
+within its own scope: smallest complete result, reuse first, no weakened safety or
+verification. Planning remains planning; read-only stays read-only. Detailed
+protocols load once when relevant; there is no extra review loop or global activation.
+
+`install.sh` includes the pinned six-skill suite and optional read-only map helper
+in each host's existing Autowork package, not a second plugin install. The method
+needs only host tools; the map helper needs Node and is optional on non-Pi hosts.
+No hooks, telemetry, transcript import, UI band or global mode config are enabled.
+Existing external Ponytail installations are left alone; check command collisions.
+
+| Host | Example review invocation |
+| --- | --- |
+| Hermes | `/ponytail-review` (or bundled `autowork:ponytail-review` via skill tools if another plugin owns the command) |
+| Claude Code | `/autowork:ponytail-review` |
+| Codex | `$autowork:ponytail-review` |
+| Pi | `/ponytail_review` or `/skill:ponytail-review` |
+
+The suite also includes `ponytail`, `ponytail-audit`, `ponytail-debt`, `ponytail-gain`
+and `ponytail-help`; Pi command aliases replace hyphens with underscores.
+`ponytail lite|full|ultra|off` changes the conversation's Autowork preference only;
+no argument reports it (default `full`). The other commands report without edits.
+Gain displays attributed upstream benchmarks, never inferred local savings.
+See [provenance and refresh](dependencies.md#bundled-ponytail) and
+[the bundled help](../skills/ponytail-help/SKILL.md).
+
+## Shared response language
+
+Every native and portable skill entry links to the
+[shared writing rules](../skills/shared/COMMUNICATION.md). Use ASD-STE100
+Simplified Technical English for user-facing English. Keep enough context to
+explain the result and the next action. The rule also applies when Ponytail is off.
+
+Read the target project's `GLOSSARY-MAP.md` first, when present. Follow it to the
+glossary for the task's area. If no map exists, use the glossary that governs that
+area. If no glossary exists, use terms from the current project documentation.
+Do not borrow unrelated terms from the package that stores the skill.
+
+Keep code, commands, exact errors and required output formats unchanged.
+A request to explain a result does not permit new work. Reports must keep local
+changes, passing checks, review, commits, merge, push and installation separate.
+
+The existing Docs Sync language profile now points to the shared rules.
+Source changes require the normal host update before installed skills use them.
+Offline tests check the links and packaged files. They do not prove formal
+ASD-STE100 compliance or that every live model response follows the rules.
+
+## Test optimizer
+
+The locally authored [Test Optimizer](../skills/test-optimizer/SKILL.md) reuses
+Engineering's existing test-suite optimization protocol. Bare invocation audits;
+explicit reduction/apply permits a bounded verified batch. It removes only
+evidence-backed redundancy or obsolete/unsupported scenarios, not rare consequential
+coverage. No new executable helper or external dependency is installed.
+
+| Host | Example |
+| --- | --- |
+| Hermes | `/test-optimizer tests/parser; apply one batch; no push` |
+| Claude Code | `/autowork:test-optimizer tests/parser; apply one batch; no push` |
+| Codex | `$autowork:test-optimizer tests/parser; apply one batch; no push` |
+| Pi | `/test_optimizer tests/parser; apply one batch; no push` |
+
+Portable invocation is explicit-only; `read-only` changes nothing. See
+[workflow and evidence requirements](workflows.md#test-optimizer).
+This skill is local Autowork content, not an imported pi-toolset protocol.
+
+## pi-toolset specialists
+
+Four instruction-only specialists from [pi-toolset](https://github.com/TrebuchetDynamics/pi-toolset)
+extend the suite without installing that package or its extensions:
+
+| Skill | Use it for | Boundary |
+| --- | --- | --- |
+| `bug-harvest` | Continuing hunts for unknown, reproducible defects | One active bug; explicit bug/slice limits win |
+| `autonomous-codebase-improver` | Evidence-ranked improvement across applicable work lanes | Current session, one writer, independent review; not a new runner |
+| `skill-folder-refactor` | Splitting one named folder by responsibility | Move-only → validate → proven extraction → cleanup |
+| `unused-code` | Removing proven unreachable code | Dynamic/public consumers must be checked; retain uncertain code |
+
+Invoke with the existing host prefix:
+
+| Host | Example |
+| --- | --- |
+| Hermes | `/bug-harvest one bug in the parser; no push` |
+| Claude Code | `/autowork:bug-harvest one bug in the parser; no push` |
+| Codex | `$autowork:bug-harvest one bug in the parser; no push` |
+| Pi | `/bug_harvest one bug in the parser; no push` |
+
+Pi also exposes `/autonomous_codebase_improver`, `/skill_folder_refactor` and
+`/unused_code`; native `/skill:<hyphenated-name>` invocation remains available.
+Portable entries are explicit-only. Existing bare command/skill collisions are
+not overwritten: select the verified Autowork namespace or installed adapter path,
+not an unrelated same-named personal skill.
+
+[Autowork adaptations](../skills/shared/PI-TOOLSET.md) govern upstream scope,
+task state, tools and delivery. Missing Pi-specific tools do not require installing
+extensions; missing required independent review blocks implementation. Explicit
+read-only, pause, time/budget and one-slice limits win. All four use Ponytail and the
+existing task store; no shell controller, scanner, service, hooks or global
+activation is imported. Normal package installation includes the new files;
+no installer changes or personal-skill updates are needed.
+
+See [selection, source pins and licensing](dependencies.md#bundled-pi-toolset-specialists).
+Offline packaging and decision probes do not prove live host/model behavior.
 
 ## Full-suite partial failures
 

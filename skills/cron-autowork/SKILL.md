@@ -6,6 +6,10 @@ license: MIT
 
 # Cron Autowork
 
+Apply the [shared Ponytail method](../shared/PONYTAIL.md) within this workflow's scope.
+
+Use the [ASD-STE100 and project language rules](../shared/COMMUNICATION.md) for user-facing text.
+
 `/cron_autowork` (CLI also `/cron-autowork`) sets up recurring Autowork execution.
 Use the current scheduler's supported tools; this skill is not a second scheduler.
 Creating this skill or installing the plugin never creates a job automatically.

@@ -260,7 +260,7 @@ SETUP_ONLY = ('--bundle-only', '--no-reload', '--yes-deps')
 
 
 def hermes_item(hermes_args):
-    label = 'Hermes plugin (sets up every live profile)'
+    label = 'Hermes plugin + bundled Ponytail (every live profile)'
     home = hermes_installed(hermes_args)
     if home:
         argv = [sys.executable, str(ROOT / 'update_bundle.py'), '--hermes-home', str(home)]
@@ -302,7 +302,7 @@ def drop_codex_plugin():
 
 def items(hermes_args):
     package = pi_package()
-    pi = Item('pi', 'Pi package', needs='pi', note='needs Node 22+')
+    pi = Item('pi', 'Pi package + bundled Ponytail', needs='pi', note='needs Node 22+')
     if package:
         # Brought to the latest release here; the runners move onto it at their next safe point.
         # Leaving it to them kept this host's command and skills a release behind for hours.
@@ -323,13 +323,13 @@ def items(hermes_args):
         Item('tx', 'tx tmux session launcher', note='keeps your existing ~/.tmux.conf',
              steps=[Step(f'install {BIN}/tx and completions', run=install_tx)]),
         hermes_item(hermes_args),
-        Item('claude', 'Claude Code plugin and full portable skill suite', needs='claude',
+        Item('claude', 'Claude Code plugin and full suite + bundled Ponytail', needs='claude',
              steps=[Step(f'claude plugin marketplace add {SOURCE}', ['claude', 'plugin', 'marketplace', 'add', SOURCE]),
                     Step('claude plugin marketplace update autowork',
                          ['claude', 'plugin', 'marketplace', 'update', 'autowork']),
                     Step('drop the cached plugin, keeping its data', run=drop_claude_plugin),
                     Step('claude plugin install autowork@autowork', ['claude', 'plugin', 'install', 'autowork@autowork'])]),
-        Item('codex', 'Codex plugin and full portable skill suite', needs='codex',
+        Item('codex', 'Codex plugin and full suite + bundled Ponytail', needs='codex',
              steps=[Step(f'codex plugin marketplace add {SOURCE} --ref main',
                          ['codex', 'plugin', 'marketplace', 'add', SOURCE, '--ref', 'main']),
                     Step('codex plugin marketplace upgrade autowork-marketplace',
@@ -476,7 +476,9 @@ def install(all_items, chosen, dry_run=False, output=None, mode='install'):
                     detail.append(str(exc))
                     output.line(f'  FAILED: {exc}', 'failed')
                     break
-            if output.verbosity and outcome == 'installed':
+            if outcome == 'failed':
+                break  # skip this component's dependent steps, not independent items
+            if output.verbosity:
                 output.line(f'  Done in {time.monotonic() - step_started:.1f}s', 'installed')
         record(item.key, 'planned' if dry_run else outcome, '; '.join(d for d in detail if d),
                None if dry_run else exit_code)

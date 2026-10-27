@@ -3,6 +3,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -121,7 +122,19 @@ class EngineeringVendorTests(unittest.TestCase):
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
         with tempfile.TemporaryDirectory() as td:
             home=Path(td)
-            self.assertEqual(module.install(ROOT/'skills',[('fixture',home)],skills=[PACK],report=lambda _:None),0)
+            selected = [PACK, ROOT/'skills/test-optimizer', ROOT/'skills/shared']
+            self.assertTrue(all(p.is_dir() for p in selected))
+            self.assertEqual(module.install(ROOT/'skills',[('fixture',home)],skills=selected,report=lambda _:None),0)
+            optimizer = home/'skills/test-optimizer/SKILL.md'
+            self.assertEqual(optimizer.read_bytes(), (ROOT/'skills/test-optimizer/SKILL.md').read_bytes())
+            # Follow the installed entry's actual links, not paths assumed by the test.
+            targets = {(optimizer.parent/link.split('#')[0]).resolve()
+                       for link in re.findall(r'\[[^\]]*\]\(([^)]+)\)', optimizer.read_text())
+                       if '://' not in link and not link.startswith('#')}
+            self.assertTrue(all(p.is_file() for p in targets))
+            method = home/'skills/engineering/local/test-suite-optimization/PROTOCOL.md'
+            self.assertIn(method.resolve(), targets)
+            self.assertEqual(method.read_bytes(), (PACK/'local/test-suite-optimization/PROTOCOL.md').read_bytes())
             self.assertTrue((home/'skills/engineering/upstream/references/security-checklist.md').is_file())
             self.assertEqual((home/'skills/engineering/UPSTREAM.json').read_bytes(),(PACK/'UPSTREAM.json').read_bytes())
 

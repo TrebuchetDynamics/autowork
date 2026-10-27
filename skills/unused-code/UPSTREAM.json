@@ -1,0 +1,21 @@
+{
+  "repository": "https://github.com/TrebuchetDynamics/pi-toolset",
+  "revision": "5e9aa8398adb6812fb816bf887d1ad10f12c55db",
+  "license": "MIT",
+  "files": {
+    "skills/engineering/unused-code/SKILL.md": {
+      "path": "upstream/PROTOCOL.md",
+      "sha256": "ec091c99c0925d1b8d0c22ee417c677a111af6f9ae3f0d4289d58e403104ea51"
+    },
+    "LICENSE": {
+      "path": "upstream/LICENSE",
+      "sha256": "253addc1071d8066355aa13a02b0fc73b248a5446d60eb4df8b6e8d528b536f2"
+    }
+  },
+  "adaptations": [
+    "Upstream bytes unchanged; SKILL.md relocated to upstream/PROTOCOL.md to prevent duplicate discovery.",
+    "Local SKILL.md and shared/PI-TOOLSET.md own scope, task state, host translation, limits and delivery.",
+    "The upstream ../../shared/COMMON-CONTRACT.md link resolves to Autoworks existing shared contract in the installed layout.",
+    "No upstream extensions, installers, controllers or global skills are imported."
+  ]
+}

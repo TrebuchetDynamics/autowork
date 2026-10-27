@@ -946,8 +946,8 @@ review leaves canonical task status in_progress after worker review handoff.
 Apply [Ponytail](ponytail.md) before material implementation choices and within
 the existing review lane. Native-tool handoffs carry the same method, skill
 resolution, fallback and receipt requirements as the generated CLI worker body.
-Resolve the installed version: review may be a separate `ponytail:ponytail-review`
-skill or integrated guidance. Loading those criteria does not create another
+Use the bundled pinned `autowork:ponytail-review` criteria, preserving an explicit
+level or opt-out from the caller. Loading those criteria does not create another
 reviewer or substitute for required independent review. Preserve regression
 coverage, acceptance and required checks. Reuse prior source-bound decisions.
 Prompt selection is not observed worker adoption or measured time/token savings.

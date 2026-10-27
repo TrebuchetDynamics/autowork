@@ -69,6 +69,35 @@ class PlanningDecisionClosureTests(unittest.TestCase):
         research = section('skills/shared/RESEARCH-PLAN.md', 'Research and persistence method')
         self.assertIn('PLANNING-CRAFT.md#decision-closure', research)
 
+    def test_task_scope_closes_repository_obligations_from_source(self):
+        evidence = section('skills/shared/PLANNING-CRAFT.md', 'Source-backed task scope')
+        for rule in ('Repo obligations triggered:', 'normative doc owner and section',
+                     'generated outputs, guards and fixtures',
+                     'every planned write in `touches`', 'validation in `checks`',
+                     'file:line', 'keep or re-baseline', 'minimum versus maximum',
+                     'current event owners', 'nested interactive elements',
+                     'Preserve required caveat copy verbatim'):
+            self.assertIn(rule, evidence)
+        acceptance = section('skills/shared/PLANNING-CRAFT.md', 'Executable acceptance')
+        for rule in ('measurement seam', 'units and tolerance', 'observation window',
+                     'instrumented API, exact filter and reset point'):
+            self.assertIn(rule, acceptance)
+
+    def test_builder_reads_sources_before_runnable_publication(self):
+        builder = section('skills/shared/PLANNING-CRAFT.md', 'Builder check before handoff')
+        for rule in ('before committing the batch or making it runnable',
+                     'implementation, existing tests and normative docs',
+                     'cite file:line', 'required docs missing from `touches`'):
+            self.assertIn(rule, builder)
+
+    def test_handoff_makes_queue_and_commit_disposition_explicit(self):
+        handoff = section('skills/shared/PLAN-HANDOFF.md', 'One planning pass, one handoff')
+        for rule in ('Queue disposition:', 'Next', 'No code this pass',
+                     'expected implementation merge count', 'review-gate count',
+                     'dedicated plan file', 'owned hunks', 'new scoped commit',
+                     'never amend a runner-created merge'):
+            self.assertIn(rule, handoff)
+
     def test_closure_does_not_widen_planning_writes_or_execution_authority(self):
         contract = section('skills/shared/RESEARCH-PLAN.md', 'Planning artifact and authority contract')
         for rule in ('Save the requested plan/batch, then stop', 'same coordinator',

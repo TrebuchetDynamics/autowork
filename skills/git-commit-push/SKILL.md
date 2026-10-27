@@ -11,6 +11,10 @@ metadata:
 
 # Git Commit Push
 
+Apply the [shared Ponytail method](../shared/PONYTAIL.md) within this workflow's scope.
+
+Use the [ASD-STE100 and project language rules](../shared/COMMUNICATION.md) for user-facing text.
+
 Adapted from an earlier TrebuchetDynamics delivery workflow.
 Merged with the fleet's shared-worktree rules and autowork's local agent-branch helper, and,
 since 2.0.0, with the former `git-pull-merge` skill: one skill delivers changes out
