@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-403-1128bef9"
 title = "Harden the long-review engine fixture against suite-only timing failures"
 short = "Harden long-review concurrency test"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Next"
 rank = 5000
@@ -16,6 +16,8 @@ scope = "Harden test_pi_autowork.EngineTests.test_a_long_review_runs_beside_the_
 acceptance = ["Characterize the failure boundary with stage/fixture evidence from isolated and module/load contexts. Distinguish status-update observation while review is active from later integration/completion delay; compare isolation, resource load and fixture timing without claiming that the listed revisions prove a product cause.", "Implement a bounded test-owned hardening supported by that evidence. Preserve status advancement before A integrates, independent-work progress and eventual A/B/C completion and integration checks. Keep a real held-open review/worker scenario and bounded failure detection; do not replace it with fabricated production success, new skips, expected failures, retries or inflated fixed sleeps/timeouts. Reap/join the fixture runner and its fake children and restore temporary/patch state even on assertion failure. Do not modify production code or scheduler policy.", "Report at least three isolated executions of the named test plus its complete tests/test_pi_autowork.py module on the changed tree, with interpreter/environment, actual commands/results and remaining flakes. Require the full offline gate on the integrated tree; historical isolated passes do not prove the hardening. The worker produces its own report, not a pre-existing coordinator receipt."]
 checks = ["for run in 1 2 3; do python3 scripts/check.py tests/test_pi_autowork.py -k test_a_long_review_runs_beside_the_loop_so_other_work_starts || exit; done", "python3 scripts/check.py tests/test_pi_autowork.py", "python3 scripts/check.py", "git diff --check"]
 exclusions = ["No product-code repair, runner/check classification changes, scheduler or timeout policy changes, blanket fixture rewrite, weakening regression guarantees, live/model/service execution, remote publication, task/goal edits or runtime-state edits. The stuck-command flake and reproducible bundled-link main-red failure have separate contracts."]
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-403-1128bef9.toml"
 +++
 
 - Sources: DOCS-MAINTAINER MAIN (flaky test) instruction; [engine fixture](tests/test_pi_autowork.py) at FAKE_PI slow_review :197, Fixture.setUp :462, start_runner :608 and named test :1175-1199; [offline checks](docs/testing.md#verify).
