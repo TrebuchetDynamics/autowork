@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-402-d72ea0aa"
 title = "Repair active bundled link validation for pinned Ponytail benchmark provenance"
 short = "Repair bundled benchmark link classification"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Now"
 rank = -1000
@@ -16,6 +16,8 @@ scope = "Repair test_workflow_contract.WorkflowContractTests.test_active_bundled
 acceptance = ["Reproduce the named link failure, trace the imported report to its UPSTREAM.json mapping and docs/dependencies.md#bundled-ponytail, and implement the smallest source-backed distinction for this source-only benchmark provenance. The named test passes without editing the pinned report, changing hashes or adding the excluded benchmark harness.", "Regression coverage proves that the documented upstream-only benchmark reference does not require an excluded local harness, while missing links in active Ponytail entry skills, executable protocols and shared references still fail. Preserve existing engineering and accepted-plan provenance behavior and all other active-link checks; no blanket Ponytail/upstream skip or weakened assertion.", "Run the focused workflow-contract and Ponytail bundle modules and report actual results. Require python3 scripts/check.py through the existing integrated-tree gate; the implementation worker supplies its own checks/report, not an unavailable pre-existing coordinator receipt. Keep upstream benchmark claims attributed, not local qualification."]
 checks = ["python3 scripts/check.py tests/test_workflow_contract.py tests/test_ponytail_bundle.py", "python3 scripts/check.py", "git diff --check"]
 exclusions = ["No pinned vendor-byte/hash changes, benchmark harness import/execution, product repair, installer/host changes, live/model qualification, remote publication, runtime-state edits or task/goal edits. The two historical engine flakes are separate test-hardening tasks, not main-red repair targets."]
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-402-d72ea0aa.toml"
 +++
 
 - Sources: DOCS-MAINTAINER MAIN (main red) instruction; [link contract](tests/test_workflow_contract.py):10-30; [Ponytail bundle/hash tests](tests/test_ponytail_bundle.py); [accepted bundle allowlist and refresh](docs/dependencies.md#bundled-ponytail); [pin](skills/ponytail/UPSTREAM.json); [upstream benchmark evidence](skills/ponytail/upstream/benchmarks/results/2026-10-07-agentic.md); [offline checks](docs/testing.md#verify).
