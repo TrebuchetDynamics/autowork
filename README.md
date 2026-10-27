@@ -1,62 +1,65 @@
 # Autowork
 
-<p align="center">
-  <img src="assets/readme/hero.svg" width="100%" alt="Autowork: your repository is the workspace. tasks/ holds the work queue; /autowork implements eligible tasks and checks each change. Conceptual workflow, not a run receipt.">
-</p>
+### Plan in Git. Build with agents. Verify each change.
 
-**Plan with an agent. Keep the decisions in Git. Pick up the next ready task.**
+Autowork connects your project's decisions, work queue and coding agents.
+Plan together, save accepted tasks in `tasks/`, and execute the next eligible task
+with checks and a clear delivery report.
 
-Autowork connects planning, documentation and verified repository work around
-one shared queue: the repository's `tasks/` store. Use it in **Hermes, Claude Code, Codex or Pi**.
+**Use the workflows in Hermes, Claude Code, Codex or Pi.**
+Start the Linux Pi runner separately when you want it to continue through the queue.
 
-[Why Autowork](#why-autowork) · [Install](#install) · [First use](#first-use-in-your-project) ·
-[Pi pipeline](#pi-autowork-pipeline) · [Commands](#what-you-can-do) · [Safety](#read-before-installing) ·
-[Status](#project-status) · [Documentation](#documentation)
+[Get started](#install) · [Choose a workflow](#what-you-can-do) ·
+[Run continuously](#pi-autowork-pipeline) · [Safety](#read-before-installing) ·
+[Evidence and limits](#what-verification-proves) · [Docs](#documentation)
 
-**Hermes CLI**, after installation (illustrative, not a run receipt):
+| Your host | Install | Start planning |
+| --- | --- | --- |
+| **Hermes** | [Native plugin](#try-the-native-plugin-in-one-profile) | `/plan-with-me` |
+| **Claude Code** | [Marketplace plugin](#claude-code) | `/autowork:plan-with-me` |
+| **Codex** | [Marketplace plugin](#codex) | `$autowork:plan-with-me` |
+| **Pi** | [Git package](#pi) | `/plan_with_me` |
+
+For example, in **Hermes CLI** after installation (illustrative, not a run receipt):
 
 ```text
-/plan-with-me Design a caching layer for this repository
+/plan-with-me questions only: help me clarify a caching improvement; ask one question, then stop
 /autowork Implement the next ready task; commit locally, no push
 ```
 
-| Host | Installation | Planning invocation |
-| --- | --- | --- |
-| Hermes | [Native plugin](#try-the-native-plugin-in-one-profile) | `/plan-with-me` |
-| Claude Code | [Plugin marketplace](#install) | `/autowork:plan-with-me` |
-| Codex | [Plugin marketplace](#install) | `$autowork:plan-with-me` |
-| Pi | [Git package](#install) | `/plan_with_me` |
+<p align="center">
+  <img src="assets/readme/workflow.svg" width="100%" alt="Plan accepted work, queue it in tasks/, execute an eligible task, and report checks and delivery. Further work requires the caller's authority; this diagram does not promise a background scheduler.">
+</p>
 
-All skills use the [shared writing rules](skills/shared/COMMUNICATION.md).
-They use ASD-STE100 as the writing standard and the target project's glossary for
-technical terms. Reports must state what changed, what passed, and what is still
-pending. These instructions are not proof of full ASD-STE100 compliance.
+**A skill invocation is not a background service.** Hermes profile management and
+Hermes scheduler integration are native-only. Portable adapters use their host's
+scheduling facilities and do not guarantee execution after a session ends.
 
-**Fleet management and the Hermes scheduler integration are Hermes-only.** Portable
-adapters use their host's scheduling facilities; they install no Hermes scheduler
-and do not guarantee background execution after a session ends.
+---
 
 ## Why Autowork
 
-Many tools can start several coding agents. Autowork is a persistent development
-control loop: **you define intent, Autowork coordinates execution, agents implement
-and review, and verified changes reach Git**, followed by the next ready task.
+**The plan, the queue and the result belong in the same repository.**
 
-- **Intent lives in your repository.** Goals and tasks are files in `tasks/`,
-  reviewed and versioned like code, not rows in an external service.
-- **One workflow, four hosts.** Hermes, Claude Code, Codex and Pi run the same
-  planning, documentation and execution skills.
-- **Execution discipline.** Only typed fields grant authority; dependency, file-scope
-  and resource gates decide what runs in parallel; a task closes only with checked
-  evidence; a restarted runner adopts its live workers instead of starting duplicates.
-- **Documentation drives the queue.** `/docs_sync` keeps requirements and tasks in
-  step, and prepares the task store itself: it converts an old `TODO.md` queue,
-  starts a new one from accepted plans, and reports what needs repair.
-- **Unattended, and idle for free.** Runners keep working while you do something else;
-  an empty queue waits without a model call.
+| You need to… | Autowork provides… |
+| --- | --- |
+| Turn an idea into accepted work | Guided planning, documented decisions and task records |
+| Keep agents working from the same plan | A Git-versioned `tasks/` store with scope, dependencies and checks |
+| Implement without losing the boundaries | Scope and resource gates, verification and separate delivery authority |
+| Continue through the queue | Explicitly started runners with parallel workers and recovery controls |
 
-How it compares with established orchestrators is not yet benchmarked. See
-[project status](#project-status).
+Hermes, Claude Code, Codex and Pi share the planning, documentation and execution
+skills. The Linux Pi runner adds a persistent execution loop. It admits independent
+tasks in parallel, requires checked evidence before closure, and adopts live workers
+after a restart instead of starting duplicates. An empty runner queue waits without
+a model call. Only typed fields grant authority. Dependency, file-scope and resource
+gates decide what runs in parallel.
+
+Docs Sync keeps requirements and tasks in step. It can convert an old `TODO.md`
+queue, prepare a new store from accepted plans, and report what needs repair.
+
+How Autowork compares with established orchestrators is not yet benchmarked.
+Sustained live reliability is not yet proven. See [project status](#project-status).
 
 ## Read before installing
 
@@ -90,18 +93,97 @@ before enabling memory capture.
 
 ## Install
 
-Start with a configured host and model; portable adapters need no Hermes installation.
+Choose one host below and configure its model. Portable adapters need no
+Hermes installation. For all available hosts at once, use the
+[full-suite installer](#everything-at-once) after reviewing the warnings above.
+
+### Try the native plugin in one profile
+
+Default-profile commands below; add `-p work` after `hermes` for a named profile.
+Advisory dependencies are not installed; missing ones warn rather than block loading.
+Native security scanning still applies. A successful download is not scan approval;
+CAUTION requires review and acceptance, and a dangerous verdict blocks installation.
+
+**Keep your approval settings?** Before enabling, run
+`hermes config set plugins.entries.autowork.settings.apply_runtime_defaults false`
+([opt-out details](docs/installation.md#install)). Otherwise, accept the defaults with:
+
+```sh
+hermes plugins install TrebuchetDynamics/autowork
+hermes plugins enable autowork
+hermes autowork doctor --core
+```
+
+The opt-out does not undo prior changes or prevent full setup from configuring
+memory and external integrations. Without it, loading applies the policy above.
+Native install stays in one profile; full setup expands to **every live profile**.
+
+### Claude Code
+
+Install the marketplace and plugin:
+
+```sh
+claude plugin marketplace add TrebuchetDynamics/autowork
+claude plugin install autowork@autowork
+```
+
+### Codex
+
+Requires a CLI with plugin support:
+
+```sh
+codex plugin marketplace add TrebuchetDynamics/autowork --ref main
+codex plugin add autowork@autowork-marketplace
+```
+
+### Pi
+
+Requires Node 22 or later:
+
+```sh
+pi install git:github.com/TrebuchetDynamics/autowork
+```
+
+Restart your host session to discover the installed skills. See the
+[cross-host guide](docs/cross-host.md) for reload commands, updates and removal.
+
+## First use in your project
+
+Open **your project**, not the Autowork checkout. Start your configured host there
+(`hermes`, `claude`, `codex` or `pi`); keep `-p PROFILE` for a named Hermes profile.
+Use the planning invocation in the host table at the top with this request:
+
+```text
+questions only: help me clarify a caching improvement; ask one question, then stop
+```
+
+For example, in **Hermes CLI**:
+
+```text
+/plan-with-me questions only: help me clarify a caching improvement; ask one question, then stop
+```
+
+Expected first success: one relevant question and no file changes. This is a live
+smoke check **you perform**, not an outcome established by automated tests. Hermes'
+`doctor --core` checks registrations, not a model or live messaging. Continue with the
+[core-only interview](docs/onboarding.md#core-only-requirements-interview) or
+[full-workflow exercise](docs/onboarding.md#optional-see-decisions-become-a-task).
+See [onboarding](docs/onboarding.md) for Telegram and project binding; a profile is
+not a filesystem sandbox.
+
+<details>
+<summary><strong>Install every available host and CLI component</strong></summary>
 
 ### Everything at once
 
 From a checkout, `install.sh` installs every available component with verbose output:
 the Pi package, the `autowork` command and TUI, the `tx` tmux launcher, the Hermes
 plugin (every live profile), the Claude Code plugin and the Codex plugin, including
-their complete portable skill suites, including pinned Ponytail skills and its optional
+their complete portable skill suites. These include pinned Ponytail skills and an optional
 read-only codebase-map script. Every Autowork skill applies the shared smallest-complete-change
 method within its existing scope; no separate Ponytail plugin or startup hooks are installed.
 A host whose CLI is missing is skipped and explained. Each item runs that host's own install
-command, listed below; `tx` keeps an existing `~/.tmux.conf`.
+command, listed above; `tx` keeps an existing `~/.tmux.conf`.
 
 ```sh
 git clone https://github.com/TrebuchetDynamics/autowork && cd autowork
@@ -126,73 +208,8 @@ components continue. Preview mode installs nothing. Hermes still uses its comple
 fleet setup and its normal dependency/security prompts; use `--yes-deps` only when
 you intend to consent to its declared dependencies.
 
-Each host can also be installed on its own:
 
-### Try the native plugin in one profile
-
-Default-profile commands below; add `-p work` after `hermes` for a named profile.
-Advisory dependencies are not installed; missing ones warn rather than block loading.
-
-**Keep your approval settings?** Before enabling, run
-`hermes config set plugins.entries.autowork.settings.apply_runtime_defaults false`
-([opt-out details](docs/installation.md#install)). Otherwise, accept the defaults with:
-
-```sh
-hermes plugins install TrebuchetDynamics/autowork
-hermes plugins enable autowork
-hermes autowork doctor --core
-```
-
-The opt-out does not undo prior changes or prevent full setup from configuring
-memory and external integrations. Without it, loading applies the policy above.
-Native install stays in one profile; full setup expands to **every live profile**.
-
-**Claude Code** — install the marketplace and plugin:
-
-```sh
-claude plugin marketplace add TrebuchetDynamics/autowork
-claude plugin install autowork@autowork
-```
-
-**Codex** — requires a CLI with plugin support:
-
-```sh
-codex plugin marketplace add TrebuchetDynamics/autowork --ref main
-codex plugin add autowork@autowork-marketplace
-```
-
-**Pi** — requires Node 22 or later:
-
-```sh
-pi install git:github.com/TrebuchetDynamics/autowork
-```
-
-Restart your host session to discover the installed skills. See the
-[cross-host guide](docs/cross-host.md) for reload commands, updates and removal.
-
-## First use in your project
-
-Open **your project**, not the Toolset checkout. Start your configured host there
-(`hermes`, `claude`, `codex` or `pi`); keep `-p PROFILE` for a named Hermes profile.
-Use the planning invocation in the host table above with this request:
-
-```text
-questions only: help me clarify a caching improvement; ask one question, then stop
-```
-
-For example, in **Hermes CLI**:
-
-```text
-/plan-with-me questions only: help me clarify a caching improvement; ask one question, then stop
-```
-
-Expected first success: one relevant question and no file changes. This is a live
-smoke check **you perform**, not an outcome established by automated tests. Hermes'
-`doctor --core` checks registrations, not a model or live messaging. Continue with the
-[core-only interview](docs/onboarding.md#core-only-requirements-interview) or
-[full-workflow exercise](docs/onboarding.md#optional-see-decisions-become-a-task).
-See [onboarding](docs/onboarding.md) for Telegram and project binding; a profile is
-not a filesystem sandbox.
+</details>
 
 <details>
 <summary><strong>Compare installation paths and profile scope</strong></summary>
@@ -226,10 +243,6 @@ with `--dry-run`;** the shell preview above does not boot Hermes. See
 
 ## How it works
 
-<p align="center">
-  <img src="assets/readme/workflow.svg" width="100%" alt="Plan accepted work, queue it in tasks/, execute an eligible task, and report checks and delivery. Further work requires the caller's authority; this diagram does not promise a background scheduler.">
-</p>
-
 1. **Plan and queue.** Planning saves decisions to the docs and tasks to `tasks/`
    with `autowork tasks`; Docs Sync keeps the documents consistent and prepares the
    store (`autowork tasks prepare`) before it reconciles tasks. Planning alone
@@ -244,6 +257,94 @@ with `--dry-run`;** the shell preview above does not boot Hermes. See
 may discover useful work, record a justified task **and implement it in the same
 invocation**. With task-limited authority, it must stay in that scope. It does not
 invent busywork or treat an empty queue as permission to expand its authority.
+
+## What you can do
+
+Examples use **Hermes CLI**. Portable workflows use the host-specific prefixes above.
+
+### Plan and document
+
+- **Plan together:** `/plan-with-me Design a caching layer` asks focused questions,
+  then saves decisions and tasks. Add `questions only` to write nothing.
+- **Challenge assumptions:** `/plan-with-me Challenge this cache design` tests the
+  plan before implementation.
+- **Delegate planning:** `/plan-for-me Reduce cache latency` investigates, chooses
+  an approach and saves tasks; it does not implement. Bare `/plan-for-me` (or a
+  vague direction such as *make it better*) first discovers the project's
+  evidence-backed gaps, then saves the highest-value executable frontier without
+  asking you for a goal. `read-only` saves nothing.
+- **Answer blockers:** `/blockers [repo|runner]` (also `/autowork blockers`,
+  `/plan_with_me blockers`) reconciles routine planning issues first, then asks
+  only for missing owner decisions or inputs, easiest first. Resolutions become
+  task-record edits for the runners; an idle reviewed candidate needs no new
+  ownership choice when local integration is already authorized.
+- **Keep the repository coherent:** `/docs-sync Record the accepted cache design`
+  maintains docs and tasks with acceptance criteria and dependencies.
+
+### Execute and deliver
+
+- **Develop:** `/autowork Implement the accepted cache spec` executes and verifies
+  one useful slice. No push or deployment is implied.
+- **Run in parallel:** `/autowork --parallel 2` runs independent tasks in separate
+  worker sessions and worktrees, then merges and checks them one at a time. It is
+  opt-in; tasks declare the files they change so overlapping work never runs
+  together. See [parallel workers](skills/autowork/references/parallel-workers.md).
+- **Continue:** `/lgtm` proceeds with the agreed next step under existing limits,
+  including `no push`.
+- **Deliver:** `/git-commit-push only src/cache` validates, commits, pulls and merges
+  upstream, then pushes. Add `no push` or `no pull` to narrow it.
+- **Integrate only:** `/git-commit-push pull` or `merge <branch>` integrates without
+  rebasing or discarding local work.
+
+<details>
+<summary><strong>Specialist skills: bug hunting, refactoring and test optimization</strong></summary>
+
+### Hunt bugs and refactor
+
+The [pi-toolset specialists](docs/cross-host.md#pi-toolset-specialists) are bundled
+for all four hosts, with Ponytail guidance and Autowork's existing scope/review rules:
+
+- `/bug-harvest one bug in the parser; no push` — discover and verify unknown defects.
+- `/autonomous-codebase-improver one improvement; no push` — select an evidenced
+  improvement across applicable work lanes, then implement and review it.
+- `/skill-folder-refactor src/parser; one move-only slice` — reorganize one folder
+  without mixing moves with behavioral changes.
+- `/unused-code src/parser; read-only` — inspect liveness before proposing deletion.
+
+The locally authored [Test Optimizer](docs/workflows.md#test-optimizer) adds
+`/test-optimizer tests/parser; apply one batch; no push`: reduce duplicate tests,
+repeated setup and unsupported scenarios while retaining distinct regression and
+safety protection. Bare invocation audits; `read-only` writes nothing.
+
+These are current-session skills, not new services. Pi uses underscores; Claude
+Code and Codex use the same namespaced prefixes as other skills. No upstream
+controllers, installers or global activation are imported.
+
+</details>
+
+<details>
+<summary><strong>Hermes scheduling, profiles and command aliases</strong></summary>
+
+### Operate
+
+Hermes-only scheduler, profiles and fleet management:
+
+- **Schedule:** `/cron-autowork every 30 minutes for this repo; no push` creates or
+  updates a matching job and verifies it. **With a cadence, a paused job resumes.**
+- **Set up a profile:** `/profile-create` guides repository-bound profile setup.
+- **Update:** `/autowork update` updates every live profile; see [updating](#updating).
+- **Inspect:** `/autowork list` lists registered commands and their owners.
+
+| Interface | Plan | Docs Sync | Schedule |
+| --- | --- | --- | --- |
+| Hermes CLI | `/plan-with-me` | `/docs-sync` | `/cron-autowork 15m` |
+| Hermes Telegram | `/plan_with_me` | `/docs_sync` | `/cron_autowork 15m` |
+
+See [commands and workflows](docs/workflows.md) for the full reference, aliases and
+[portable invocations](docs/cross-host.md). Supporting design skills and engineering
+protocols load only when needed; registration is not proof a technique was applied.
+
+</details>
 
 ## Pi Autowork pipeline
 
@@ -297,6 +398,9 @@ checks and cost/runtime limits before unattended use. See the
 continuous/service mode, model fallback, status, stop and recovery controls, and the
 [Pi component](pi-autowork/README.md) for code ownership and migration status.
 
+<details>
+<summary><strong>Runner commands, TUI and service controls</strong></summary>
+
 ### Run and watch runners
 
 Each repository's runner is a **systemd user service**, managed with the `autowork`
@@ -324,89 +428,18 @@ the same attempt whenever a runner stops. See the
 and the [service setup](docs/cross-host.md#run-autowork-continuously) for logout
 behavior and settings.
 
-## What you can do
-
-Examples use **Hermes CLI**. Portable workflows use the host-specific prefixes above.
-
-### Plan and document
-
-- **Plan together:** `/plan-with-me Design a caching layer` asks focused questions,
-  then saves decisions and tasks. Add `questions only` to write nothing.
-- **Challenge assumptions:** `/plan-with-me Challenge this cache design` tests the
-  plan before implementation.
-- **Delegate planning:** `/plan-for-me Reduce cache latency` investigates, chooses
-  an approach and saves tasks; it does not implement. Bare `/plan-for-me` (or a
-  vague direction such as *make it better*) first discovers the project's
-  evidence-backed gaps, then saves the highest-value executable frontier without
-  asking you for a goal. `read-only` saves nothing.
-- **Answer blockers:** `/blockers [repo|runner]` (also `/autowork blockers`,
-  `/plan_with_me blockers`) reconciles routine planning issues first, then asks
-  only for missing owner decisions or inputs, easiest first. Resolutions become
-  task-record edits for the runners; an idle reviewed candidate needs no new
-  ownership choice when local integration is already authorized.
-- **Keep the repository coherent:** `/docs-sync Record the accepted cache design`
-  maintains docs and tasks with acceptance criteria and dependencies.
-
-### Execute and deliver
-
-- **Develop:** `/autowork Implement the accepted cache spec` executes and verifies
-  one useful slice. No push or deployment is implied.
-- **Run in parallel:** `/autowork --parallel 2` runs independent tasks in separate
-  worker sessions and worktrees, then merges and checks them one at a time. It is
-  opt-in; tasks declare the files they change so overlapping work never runs
-  together. See [parallel workers](skills/autowork/references/parallel-workers.md).
-- **Continue:** `/lgtm` proceeds with the agreed next step under existing limits,
-  including `no push`.
-- **Deliver:** `/git-commit-push only src/cache` validates, commits, pulls and merges
-  upstream, then pushes. Add `no push` or `no pull` to narrow it.
-- **Integrate only:** `/git-commit-push pull` or `merge <branch>` integrates without
-  rebasing or discarding local work.
-
-### Hunt bugs and refactor
-
-The [pi-toolset specialists](docs/cross-host.md#pi-toolset-specialists) are bundled
-for all four hosts, with Ponytail guidance and Autowork's existing scope/review rules:
-
-- `/bug-harvest one bug in the parser; no push` — discover and verify unknown defects.
-- `/autonomous-codebase-improver one improvement; no push` — select an evidenced
-  improvement across applicable work lanes, then implement and review it.
-- `/skill-folder-refactor src/parser; one move-only slice` — reorganize one folder
-  without mixing moves with behavioral changes.
-- `/unused-code src/parser; read-only` — inspect liveness before proposing deletion.
-
-The locally authored [Test Optimizer](docs/workflows.md#test-optimizer) adds
-`/test-optimizer tests/parser; apply one batch; no push`: reduce duplicate tests,
-repeated setup and unsupported scenarios while retaining distinct regression and
-safety protection. Bare invocation audits; `read-only` writes nothing.
-
-These are current-session skills, not new services. Pi uses underscores; Claude
-Code and Codex use the same namespaced prefixes as other skills. No upstream
-controllers, installers or global activation are imported.
-
-### Operate
-
-Hermes-only scheduler, profiles and fleet management:
-
-- **Schedule:** `/cron-autowork every 30 minutes for this repo; no push` creates or
-  updates a matching job and verifies it. **With a cadence, a paused job resumes.**
-- **Set up a profile:** `/profile-create` guides repository-bound profile setup.
-- **Update:** `/autowork update` updates every live profile; see [updating](#updating).
-- **Inspect:** `/autowork list` lists registered commands and their owners.
-
-| Interface | Plan | Docs Sync | Schedule |
-| --- | --- | --- | --- |
-| Hermes CLI | `/plan-with-me` | `/docs-sync` | `/cron-autowork 15m` |
-| Hermes Telegram | `/plan_with_me` | `/docs_sync` | `/cron_autowork 15m` |
-
-See [commands and workflows](docs/workflows.md) for the full reference, aliases and
-[portable invocations](docs/cross-host.md). Supporting design skills and engineering
-protocols load only when needed; registration is not proof a technique was applied.
+</details>
 
 ## Your work queue
 
 `tasks/` holds accepted scope, task priority, checks and progress: one file per task
 (`tasks/items/<ID>.md`) and per goal (`tasks/goals/<ID>.md`). Edit them with
 `autowork tasks` (`list`, `show`, `add`, `field`, `move`, `place`, `done`, ...).
+
+
+<details>
+<summary><strong>Task-store lifecycle and illustrative records</strong></summary>
+
 Task-editing verbs validate the whole store and never commit; commit their result
 like any change. The `prepare` conversion lifecycle is the exception described below.
 You never set the store up by hand: `/docs_sync` runs `autowork tasks prepare` first,
@@ -431,8 +464,7 @@ Next: CACHE-02 — Verify eviction behavior [eligible, not started].
 Delivery: local commit <SHA>; not pushed, as requested.
 ```
 
-<details>
-<summary><strong>Complete illustrative task record</strong></summary>
+### Complete illustrative task record
 
 This is a consumer-project example, not a task to run in Toolset. Replace the goal,
 accepted source, paths and check with your project's actual values. The fields are the
@@ -487,6 +519,9 @@ result. Profile-dedicated gateways need their own restart. See
 [update behavior and recovery](docs/installation.md#update-all-profiles);
 portable hosts use their [own package update commands](docs/cross-host.md).
 
+<details>
+<summary><strong>Migrating from hermes-toolset</strong></summary>
+
 ### Renamed from hermes-toolset
 
 This project was called hermes-toolset before 0.3.0. The rename has no compatibility
@@ -496,6 +531,8 @@ chat/terminal maintenance commands (`/autowork update|status|list`,
 [install](#install) `autowork` again in each host; in Hermes, move any settings you set
 under `plugins.entries.hermes-toolset` and rewire existing cron jobs with
 `scripts/wire-owner-cron.py --apply`.
+
+</details>
 
 ## What verification proves
 
@@ -529,17 +566,26 @@ still to instrument.
 
 ## Documentation
 
-- [Product scope and architecture](docs/project.md) · [Work queue](tasks/) · [Changelog](CHANGELOG.md)
-- [Is Autowork worth it? Assessment and 30-day evaluation](docs/evaluation.md)
-- [Installation, profile scope and policy opt-out](docs/installation.md)
-- [Commands, Autoresearch and the engineering workflow](docs/workflows.md)
-- [Command and configuration reference](docs/reference.md) · [Troubleshooting](docs/troubleshooting.md)
-- [Memory capture, inspection and existing stores](docs/memory.md)
-- [Speech-to-text: faster-whisper medium setup notes](docs/FASTER-WHISPER-MEDIUM-SETUP.md)
-- [`autowork`: run and watch pi-autowork runners](pi-autowork/README.md#the-autowork-command) · [`tx`: tmux sessions](tmux/README.md)
-- [Removal and recovery](docs/uninstall.md)
-- [Dependencies, reproducibility and licensing](docs/dependencies.md)
-- [Adding skills](docs/contributing.md) · [Testing and compatibility](docs/testing.md)
+| Start here | Go deeper |
+| --- | --- |
+| [Installation and policy opt-out](docs/installation.md) | [Command and configuration reference](docs/reference.md) |
+| [Onboarding and first-use checks](docs/onboarding.md) | [Architecture and product scope](docs/project.md) |
+| [Commands and workflows](docs/workflows.md) | [Cross-host behavior and verification](docs/cross-host.md) |
+| [Troubleshooting](docs/troubleshooting.md) | [Testing and compatibility](docs/testing.md) |
+| [Removal and recovery](docs/uninstall.md) | [Dependencies, reproducibility and licensing](docs/dependencies.md) |
+
+**Run and inspect:** [`autowork` runner controls](pi-autowork/README.md#the-autowork-command) ·
+[`tx` tmux sessions](tmux/README.md) · [Work queue](tasks/) · [Changelog](CHANGELOG.md)
+
+**Configure and contribute:** [Memory and retained data](docs/memory.md) ·
+[Speech-to-text setup](docs/FASTER-WHISPER-MEDIUM-SETUP.md) ·
+[Adding skills and contributing](docs/contributing.md) ·
+[Assessment and 30-day evaluation](docs/evaluation.md)
+
+All skills use the [shared writing rules](skills/shared/COMMUNICATION.md).
+They use ASD-STE100 as the writing standard and the target project's glossary for
+technical terms. Reports must state what changed, what passed, and what is still
+pending. These instructions are not proof of full ASD-STE100 compliance.
 
 Licensed under the [MIT License](LICENSE). Bundled third-party components keep their
-own licenses and attribution; see [licensing details](docs/dependencies.md#licensing).
+own licenses and attribution. See [licensing details](docs/dependencies.md#licensing).
