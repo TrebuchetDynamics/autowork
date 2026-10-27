@@ -2148,3 +2148,137 @@ Offline proof owns real committed-store/read-only/error fixtures and a pinned
 Textual pilot at 80/120 columns for keyboard/click/copy, view-only, empty fleet,
 control denial and an Event-barrier stalled-reader/closed-screen/runner-identity
 regression. Actual remote SSH clipboard transport is not offline acceptance.
+
+## Runner observation resilience
+
+Status: Accepted scope for planning; implementation and live qualification unstarted.
+
+### Working brief and boundaries
+
+For repository owners monitoring Autowork, make runner diagnostics usable when a
+valid main-check record contains absent optional values or journal wall-clock
+ordering is unreliable. Keep coordinator activity, successful task observation and
+current owned jobs distinct. The requested batch covers nullable check records,
+journal timing fault isolation, and truthful fleet/idle reporting; it changes
+Autowork only. The engineering choices below are planner calls, not new owner
+attestations. No new product direction or execution authority is inferred.
+
+Do not edit other repositories, their tasks/configuration, or upstream Hermes;
+do not operate project services, restart runners, install packages, call models,
+rewrite runtime records/journals, or change scheduling, admission, ownership,
+verification, publication or live-operation gates. This standalone planning pass
+writes only this plan and task records and makes one local planning commit. It
+starts no implementation or workflow. Existing separately authorized runners are
+not granted new authority by saving this batch.
+
+### Evidence and inventory
+
+Historical audit at source revision `77e01425e21f404e681cac060d05c2baa1655070`:
+nine Autowork services were running on that release. Five lacked usable current
+task observations. Four displayed journal timestamp-order errors; the fifth
+reported a nullable check-field error and its raw status also retained the journal
+error. The remaining four reported three idle runners and one working runner.
+These are past observations, not a new fleet health check or project qualification.
+Continuing coordinator logs did not prove healthy scheduling or current task counts.
+The earlier supported reload affected only this repository's runner and did not
+establish recovery. No services are operated in this planning pass.
+
+Source evidence:
+
+- `Src/pi_autowork/supervision/main_checks.py::check_main_start` persists optional
+  `crashed`/`gated` values; `Coordinator.health_update` copies check fields to status.
+  `Src/pi_autowork/health.py::_validate_observation` requires these present fields
+  to be strings, including nulls. The preceding in-memory audit reproduced
+  rejection of `crashed=None`; no new implementation test was run here.
+- `Src/pi_autowork/engine/execution_journal.py::append` timestamps with wall time;
+  `read(ordered=True)` rejects decreasing timestamps. Both `parallel_status.journal`
+  and `_snapshot` use ordered reads. This blocks the whole observation rather than
+  only duration metrics. The cause of the actual clock reversals remains unknown;
+  do not assert NTP, corruption or another writer without evidence.
+- `health.update` already separates `updated_at` from `snapshot_at` and preserves
+  failed-read provenance. `health.fleet` can verify runner/job process identity.
+  `fleet_view._health_runner` does not expose that full separation in runner JSON.
+  `Coordinator.finish_cycle` can log Queue empty even after its status read failed.
+- Existing guards: `pi-autowork/tests/test_health.py`, `test_status_provenance.py`,
+  `test_supervision_main_checks.py`, `test_fleet_view.py`, engine
+  `test_parallel_status.py`/`test_parallel_e2e.py`, and
+  `tests/test_pi_autowork.py`. Use stable public import adapters: direct import of
+  the engine with only `PYTHONPATH=Src` failed on the compatibility-owned
+  `worktree_paths` module during the audit; that probe was not a journal repro.
+
+Completed TOOLSET-399-1f9c37c3 supplies malformed-observation isolation, not nullable
+writer compatibility. Preserve its closure and guards. Existing completed
+TOOLSET-378-faaf7ed8 and LIST-READ-01 supply source provenance/stale-working rules.
+The only pre-existing open tasks are the deferred installed pilot
+TOOLSET-389-6dedfd8c and its dependent controls task TOOLSET-390-e1c2afa6; neither
+covers this batch. Leave their gates, ordering, goal focus and contracts unchanged.
+Reuse RELIABILITY-2026-10 without changing its status, priority or focus.
+
+### Decisions and complete batch
+
+1. **TOOLSET-400-6453fbbd — nullable writer/reader compatibility.** Permit null only
+   for actually optional check fields such as `crashed` and `gated`; required fields
+   and wrong non-null types still fail. Exercise actual writer-to-health-to-fleet
+   round trips, including a healthy sibling. Reject blanket validation weakening.
+2. **TOOLSET-400-7469b318 — journal timing fault isolation.** Preserve physical append
+   order and existing event deduplication; do not sort or rewrite historical bytes.
+   Keep strict ordered reads available to other callers. Status reads tolerate
+   timestamp inversions with explicit diagnostics. For any timing-anomalous
+   history (including observation time before its latest event), report the four
+   duration metrics and journal-derived row elapsed durations as null/unknown;
+   retain replayable event counts and current task/slot state. Add display-only
+   `journal_timing` diagnostics with `reliable` boolean, `backwards` count and
+   `observation_before_latest` boolean. Numeric output stays unchanged on ordered
+   histories. Render null timings as unknown in text. Reject silent clamping,
+   fabricated zero durations and changing lifecycle/scorecard authority.
+3. **TOOLSET-400-75c00b1d — truthful activity versus task-state reporting.** Derive an
+   additive display-only `observation` object for fleet JSON and shared CLI/TUI
+   verdicts: `runner_alive` (verified identity), `health_written_at`,
+   `snapshot_at`, `snapshot_age_seconds`, `task_state` (current/stale/unavailable/
+   unknown), and `error` (string or null); keep existing `job` separately verified.
+   Use existing freshness threshold and failure-grace rules, not a new timer or
+   claimed uptime. A fresh health write plus verified runner can be described as
+   cycling, never proof of successful task reconciliation. Never derive current
+   worker counts from stale rows. Canonical inventory remains independently
+   available. On a failed task observation, say task state unavailable instead of
+   Queue empty; preserve ordinary idle behavior on a successful empty observation.
+   Legacy absent provenance stays unknown, and malformed source bytes remain intact.
+
+The three tasks have no product dependencies; listed order is preferred repair
+priority. They can be attempted independently in isolated worktrees, but nullable
+and reporting changes overlap health/fleet tests and reporting/documentation;
+merge conflicts are possible. Journal ownership is a separate lane. No `exclusive`
+resource or fabricated dependency is needed. Do not promise simultaneous admission.
+
+### Verification, pre-mortem and handoff
+
+All proposed regressions and implementation checks are **unrun** in planning.
+Each task names its focused fixture and executable checks. Start with its failing
+regression on the implementation baseline; use disposable repositories/fake service
+collectors and no real fleet mutation. Run affected checks for implementation;
+full main checks and independent review remain owned by the normal runner path.
+No numeric performance target or fabricated zero baseline is used.
+
+Invariants: display changes never grant execution authority; invalid or absent
+observations never establish current activity; journal bytes and lifecycle identity
+are preserved; completed history and unrelated goals/tasks remain unchanged.
+
+Pre-mortem: accepting null everywhere hides corruption -> field-specific round-trip
+and malformed controls; sorting/clamping clocks invents timing and lifecycle order
+-> append-order/state fixture plus null-duration render checks; a fresh health write
+hides an old task snapshot -> failed-read/stale/job/dead-identity controls and a
+non-empty cached snapshot in the idle-log regression.
+
+Offline completion cannot establish installed adoption or live runner recovery.
+Those remain explicitly unqualified. Any later live verification requires its own
+owner-authorized scope, restricted to Autowork; no operation on another project's
+runner is supplied by these tasks. The next action after planning is a later
+explicit implementation instruction or existing separately authorized coordinator
+selection, not execution by this planner.
+
+Builder check: a fresh read-only reviewer found nothing important left. The saved
+contracts already resolve actual writer optional fields, append-order/null-timing
+behavior, JSON/shared verdict consumers and diagnostic-only idle logging. Test
+inputs are task-owned fixtures; no external input or live operation is needed.
+All three are independently implementable with the overlap noted above. These
+findings are recorded in each task; no new product choice or scope change arose.
