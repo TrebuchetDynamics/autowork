@@ -476,7 +476,9 @@ def install(all_items, chosen, dry_run=False, output=None, mode='install'):
                     detail.append(str(exc))
                     output.line(f'  FAILED: {exc}', 'failed')
                     break
-            if output.verbosity and outcome == 'installed':
+            if outcome == 'failed':
+                break  # skip this component's dependent steps, not independent items
+            if output.verbosity:
                 output.line(f'  Done in {time.monotonic() - step_started:.1f}s', 'installed')
         record(item.key, 'planned' if dry_run else outcome, '; '.join(d for d in detail if d),
                None if dry_run else exit_code)
