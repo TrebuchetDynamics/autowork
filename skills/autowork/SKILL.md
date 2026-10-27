@@ -13,6 +13,8 @@ metadata:
 
 Apply the [shared Ponytail method](../shared/PONYTAIL.md) within this workflow's scope.
 
+Use the [ASD-STE100 and project language rules](../shared/COMMUNICATION.md) for user-facing text.
+
 Execute a bounded useful slice in the current agent session. `tasks/` is the one
 task store: `tasks/items/<ID>.md` owns each task's intent, scope, acceptance,
 dependencies, section, rank and status; `tasks/goals/<ID>.md` owns goals; and

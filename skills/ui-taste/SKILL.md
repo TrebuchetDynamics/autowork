@@ -9,6 +9,8 @@ license: Apache-2.0
 
 Apply the [shared Ponytail method](../shared/PONYTAIL.md) within this workflow's scope.
 
+Use the [ASD-STE100 and project language rules](../shared/COMMUNICATION.md) for user-facing text.
+
 `/ui-taste` (Telegram `/ui_taste`) applies Uizze's pinned
 [UI Taste protocol](upstream/PROTOCOL.md), Apache-2.0 licensed
 ([licence](upstream/LICENSE), [notice](upstream/NOTICE),

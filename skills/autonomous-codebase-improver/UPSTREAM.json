@@ -1,0 +1,37 @@
+{
+  "repository": "https://github.com/TrebuchetDynamics/pi-toolset",
+  "revision": "5e9aa8398adb6812fb816bf887d1ad10f12c55db",
+  "license": "MIT",
+  "files": {
+    "skills/engineering/autonomous-codebase-improver/SKILL.md": {
+      "path": "upstream/PROTOCOL.md",
+      "sha256": "2b2245d3dd34eac1f2e5c96d56aaf705876f0ddbbb6e32ca70b64ad984b357da"
+    },
+    "LICENSE": {
+      "path": "upstream/LICENSE",
+      "sha256": "253addc1071d8066355aa13a02b0fc73b248a5446d60eb4df8b6e8d528b536f2"
+    },
+    "skills/engineering/autonomous-codebase-improver/references/campaign.md": {
+      "path": "upstream/references/campaign.md",
+      "sha256": "b8d60e9fd115653060d2f87c9c51affeb15f599380069fbbd5db02df58a63d3e"
+    },
+    "skills/engineering/autonomous-codebase-improver/references/delegation-and-recovery.md": {
+      "path": "upstream/references/delegation-and-recovery.md",
+      "sha256": "d70140b3cc997dc3b49e5f26c33419558197ec79c00e2b600186ca70e921e5ae"
+    },
+    "skills/engineering/autonomous-codebase-improver/references/evaluation-receipt.md": {
+      "path": "upstream/references/evaluation-receipt.md",
+      "sha256": "5d650263944f0a489aecf98b973e55391d11629db323ce3f3922fd5183f1075d"
+    },
+    "skills/engineering/autonomous-codebase-improver/references/pressure-scenarios.md": {
+      "path": "upstream/references/pressure-scenarios.md",
+      "sha256": "8ea636eb3c86d6f58dc41f26b303cb151eb018b1ded8fd7a0abdd105f7a409bf"
+    }
+  },
+  "adaptations": [
+    "Upstream bytes unchanged; SKILL.md relocated to upstream/PROTOCOL.md to prevent duplicate discovery.",
+    "Local SKILL.md and shared/PI-TOOLSET.md own scope, task state, host translation, limits and delivery.",
+    "The upstream ../../shared/COMMON-CONTRACT.md link resolves to Autoworks existing shared contract in the installed layout.",
+    "No upstream extensions, installers, controllers or global skills are imported."
+  ]
+}

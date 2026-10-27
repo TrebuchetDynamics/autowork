@@ -27,6 +27,11 @@ one shared queue: the repository's `tasks/` store. Use it in **Hermes, Claude Co
 | Codex | [Plugin marketplace](#install) | `$autowork:plan-with-me` |
 | Pi | [Git package](#install) | `/plan_with_me` |
 
+All skills use the [shared writing rules](skills/shared/COMMUNICATION.md).
+They use ASD-STE100 as the writing standard and the target project's glossary for
+technical terms. Reports must state what changed, what passed, and what is still
+pending. These instructions are not proof of full ASD-STE100 compliance.
+
 **Fleet management and the Hermes scheduler integration are Hermes-only.** Portable
 adapters use their host's scheduling facilities; they install no Hermes scheduler
 and do not guarantee background execution after a session ends.
@@ -356,6 +361,27 @@ Examples use **Hermes CLI**. Portable workflows use the host-specific prefixes a
   upstream, then pushes. Add `no push` or `no pull` to narrow it.
 - **Integrate only:** `/git-commit-push pull` or `merge <branch>` integrates without
   rebasing or discarding local work.
+
+### Hunt bugs and refactor
+
+The [pi-toolset specialists](docs/cross-host.md#pi-toolset-specialists) are bundled
+for all four hosts, with Ponytail guidance and Autowork's existing scope/review rules:
+
+- `/bug-harvest one bug in the parser; no push` — discover and verify unknown defects.
+- `/autonomous-codebase-improver one improvement; no push` — select an evidenced
+  improvement across applicable work lanes, then implement and review it.
+- `/skill-folder-refactor src/parser; one move-only slice` — reorganize one folder
+  without mixing moves with behavioral changes.
+- `/unused-code src/parser; read-only` — inspect liveness before proposing deletion.
+
+The locally authored [Test Optimizer](docs/workflows.md#test-optimizer) adds
+`/test-optimizer tests/parser; apply one batch; no push`: reduce duplicate tests,
+repeated setup and unsupported scenarios while retaining distinct regression and
+safety protection. Bare invocation audits; `read-only` writes nothing.
+
+These are current-session skills, not new services. Pi uses underscores; Claude
+Code and Codex use the same namespaced prefixes as other skills. No upstream
+controllers, installers or global activation are imported.
 
 ### Operate
 

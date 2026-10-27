@@ -15,6 +15,8 @@ metadata:
 
 Apply the [shared Ponytail method](../shared/PONYTAIL.md) within this workflow's scope.
 
+Use the [ASD-STE100 and project language rules](../shared/COMMUNICATION.md) for user-facing text.
+
 Stress-tests a plan through structured adversarial questioning before any
 code is written. Models the plan as a **design tree** — every decision
 branches into the decisions that hang off it — and interviews the user in

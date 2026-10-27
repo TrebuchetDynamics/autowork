@@ -16,6 +16,7 @@ Sources: [plugin manifest](../plugin.yaml), [installation inventory](../plugins/
 | Component | Selection | Reproducibility limit |
 | --- | --- | --- |
 | Bundled workflows | This repository revision | Pin the checkout revision to reproduce these files. |
+| pi-toolset specialists | Four pinned instruction-only workflows; [selection and hashes](#bundled-pi-toolset-specialists) | Local adapters preserve Autowork authority; no upstream runtime, scripts or installer dependency. |
 | Ponytail 5.3.2 | Six protocols, benchmark attribution and optional map script at [pinned revision and hashes](../skills/ponytail/UPSTREAM.json) | Offline on all hosts; local adapters scope upstream behavior. No upstream hooks, installers, persistent modes or telemetry are activated. |
 | Autoresearch 2.2.2 | Vendored revision and file hashes in [UPSTREAM.json](../skills/autoresearch/UPSTREAM.json) | Reviewed updates require refreshing the pinned subtree and tests. |
 | UI Taste 0.2.0 (Uizze) | Vendored from a pinned Uizze commit, [pin and hashes](../skills/ui-taste/UPSTREAM.json) | Plain Markdown playbooks copied unchanged under `upstream/`; the toolset adapter sets host rules; works offline. Its optional paid Uizze MCP is never configured by Toolset. |
@@ -77,6 +78,48 @@ and copyright notices.
 - Other bundled files may carry individual notices. Retain those notices.
 - External integrations remain subject to their upstream licenses. A complete
   version-bound third-party license inventory has not been established here.
+
+## Bundled pi-toolset specialists
+
+Source: [TrebuchetDynamics/pi-toolset](https://github.com/TrebuchetDynamics/pi-toolset/tree/5e9aa8398adb6812fb816bf887d1ad10f12c55db),
+commit `5e9aa8398adb6812fb816bf887d1ad10f12c55db`. Selected paths are local
+Trebuchet Dynamics MIT content under upstream's root license and
+[third-party notices](https://github.com/TrebuchetDynamics/pi-toolset/blob/5e9aa8398adb6812fb816bf887d1ad10f12c55db/THIRD_PARTY_NOTICES.md).
+Each skill carries its unchanged license, protocol and per-file SHA-256 mapping:
+
+- [Bug Harvest](../skills/bug-harvest/UPSTREAM.json): evidence-backed one-defect-at-a-time campaigns.
+- [Autonomous Codebase Improver](../skills/autonomous-codebase-improver/UPSTREAM.json):
+  cross-lane discovery, coverage and recoverable reviewed slices; includes its four
+  supporting reference documents. Its historical evaluation receipt is **upstream
+  evidence**, not an Autowork run or a claim of adapted campaign reliability.
+- [Skill Folder Refactor](../skills/skill-folder-refactor/UPSTREAM.json):
+  move/extract/cleanup phases and exact remaining-root-file classification.
+- [Unused Code](../skills/unused-code/UPSTREAM.json):
+  static, dynamic and external-consumer proof before deletion.
+
+SKILL.md becomes `upstream/PROTOCOL.md` to avoid nested discovery. Upstream bytes
+are unchanged; the original shared-contract link now resolves to Autowork's
+existing shared contract. Local adapters and [PI-TOOLSET.md](../skills/shared/PI-TOOLSET.md)
+override upstream lifecycle and host assumptions, retaining explicit limits,
+required review and the one task store. No pi-toolset hooks, package manifests,
+extensions, controller scripts, installers or personal/global skill edits ship.
+
+Selection deliberately excludes:
+- `candidates-folder-refactor`: its scanner writes logs and its optional shell
+  controller includes restore/clean and delivery operations; native discovery is enough here.
+- `share-code`: overlaps existing simplification/Ponytail and the folder-refactor
+  extraction gate; its testing preference is not imported.
+- `technical-auditor` and `improve-codebase-architecture`: general audit overlaps
+  existing protocols; the latter is a compatibility shim, not a distinct method.
+- Existing planning, delivery, UI and Ponytail entries: retain current ownership
+  instead of importing duplicates or a competing global workflow.
+
+For refresh, inspect an exact reviewed commit and copy only each manifest's listed
+source files to their mapped destinations, using Git-object bytes rather than
+uncommitted checkout content. Recompute hashes, review new references and
+licensing, and review local adapters separately; never replace them with upstream
+SKILL.md. Run affected offline tests and `node --test tests/portable_pi.test.mjs`.
+No upstream source or installer is fetched during normal installation.
 
 ## Bundled Ponytail
 

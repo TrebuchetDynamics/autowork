@@ -15,6 +15,7 @@ PACK = ROOT / 'skills/ponytail'
 NAMES = {'ponytail', 'ponytail-review', 'ponytail-audit', 'ponytail-debt',
          'ponytail-gain', 'ponytail-help'}
 METHOD = ROOT / 'skills/shared/PONYTAIL.md'
+COMMUNICATION = ROOT / 'skills/shared/COMMUNICATION.md'
 
 
 class PonytailBundleTests(unittest.TestCase):
@@ -36,7 +37,7 @@ class PonytailBundleTests(unittest.TestCase):
             self.assertTrue((ROOT / f'skills/{name}/SKILL.md').is_file())
             self.assertTrue((ROOT / f'adapters/skills/{name}/SKILL.md').is_file())
 
-    def test_every_entry_reaches_the_shared_method_without_optional_routing(self):
+    def test_every_entry_reaches_shared_method_and_language_without_optional_routing(self):
         # Direct links keep standalone and native skill invocation covered too.
         for folder in (ROOT / 'skills', ROOT / 'adapters/skills'):
             for skill in folder.glob('*/SKILL.md'):
@@ -44,6 +45,8 @@ class PonytailBundleTests(unittest.TestCase):
                 targets = {(skill.parent / link).resolve() for link in links if '://' not in link}
                 with self.subTest(skill=skill.relative_to(ROOT)):
                     self.assertIn(METHOD, targets)
+                    self.assertIn(COMMUNICATION, targets)
+                    self.assertTrue(COMMUNICATION.is_file())
 
     def test_hermes_setup_no_longer_requires_an_external_ponytail_plugin(self):
         manifest = yaml.safe_load((ROOT / 'plugin.yaml').read_text())
@@ -67,11 +70,12 @@ class PonytailBundleTests(unittest.TestCase):
                 self.assertEqual(installer.install(ROOT / 'skills', [('fixture', home)],
                                                   skills=selected, dry_run=preview, report=lambda _: None), 0)
                 self.assertEqual((shared / 'COMMON-CONTRACT.md').read_text(), 'existing local edit\n')
-                if preview:
-                    self.assertFalse((shared / 'PONYTAIL.md').exists())
-                else:
-                    self.assertTrue((shared / 'PONYTAIL.md').is_file(), 'missing shared method after upgrade')
-                    self.assertEqual((shared / 'PONYTAIL.md').read_bytes(), METHOD.read_bytes())
+                for source in (METHOD, COMMUNICATION):
+                    if preview:
+                        self.assertFalse((shared / source.name).exists())
+                    else:
+                        self.assertTrue((shared / source.name).is_file(), 'missing shared support after upgrade')
+                        self.assertEqual((shared / source.name).read_bytes(), source.read_bytes())
             # An existing shared directory alias is not a destination we own.
             other = home / 'linked/skills'
             other.mkdir(parents=True)

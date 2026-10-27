@@ -29,7 +29,9 @@ class PortablePackageTests(unittest.TestCase):
             'cron-autowork', 'autoresearch', 'engineering', 'impeccable', 'lgtm',
             'git-commit-push', 'ui-taste', 'beautify-github-readme', 'pending',
             'ponytail', 'ponytail-review', 'ponytail-audit', 'ponytail-debt',
-            'ponytail-gain', 'ponytail-help'})
+            'ponytail-gain', 'ponytail-help', 'bug-harvest',
+            'autonomous-codebase-improver', 'skill-folder-refactor', 'unused-code',
+            'test-optimizer'})
         for source in folder.rglob('*.md'):
             text = source.read_text()
             if source.name == 'SKILL.md':

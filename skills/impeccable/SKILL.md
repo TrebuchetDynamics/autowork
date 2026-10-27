@@ -8,6 +8,8 @@ license: Apache 2.0
 # Impeccable
 
 Apply the [shared Ponytail method](../shared/PONYTAIL.md) within this workflow's scope.
+
+Use the [ASD-STE100 and project language rules](../shared/COMMUNICATION.md) for user-facing text.
 Read the [upstream Impeccable protocol](PROTOCOL.md) and follow its playbooks.
 Its skill base directory remains this directory. Preserve the requested visual
 quality, accessibility and accepted behavior; simplicity does not mean generic design.

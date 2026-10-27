@@ -8,6 +8,8 @@ disable-model-invocation: true
 
 Apply the [shared Ponytail method](../../../skills/shared/PONYTAIL.md) within this workflow's scope.
 
+Use the [ASD-STE100 and project language rules](../../../skills/shared/COMMUNICATION.md) for user-facing text.
+
 First read the [planning artifact and authority contract](../../../skills/shared/RESEARCH-PLAN.md),
 then the [host contract](../COMMON.md) and
 [planning craft](../../../skills/shared/PLANNING-CRAFT.md). Size the work first;

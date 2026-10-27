@@ -7,7 +7,7 @@ test('Pi registers workflows and all 13 research commands; routes literal argume
   const messages = [];
   register({registerCommand: (name, handler) => commands.set(name, handler),
     sendUserMessage: (...args) => messages.push(args)});
-  assert.equal(commands.size, 33);
+  assert.equal(commands.size, 38);
   assert.equal(commands.has('autogoal'), false);
   assert.equal(commands.has('cron_autowork'), true);
   const {readFile} = await import('node:fs/promises');
@@ -71,6 +71,9 @@ test('Pi registers workflows and all 13 research commands; routes literal argume
     lgtm: 'lgtm', blockers: 'blockers', git_commit_push: 'git-commit-push',
     ponytail: 'ponytail', ponytail_review: 'ponytail-review', ponytail_audit: 'ponytail-audit',
     ponytail_debt: 'ponytail-debt', ponytail_gain: 'ponytail-gain', ponytail_help: 'ponytail-help',
+    bug_harvest: 'bug-harvest', autonomous_codebase_improver: 'autonomous-codebase-improver',
+    skill_folder_refactor: 'skill-folder-refactor', unused_code: 'unused-code',
+    test_optimizer: 'test-optimizer',
     ...Object.fromEntries(selectors.map(selector => [`autoresearch_${selector}`, 'autoresearch'])),
   })) {
     await commands.get(name).handler('questions only', {isIdle: () => true});
@@ -90,6 +93,8 @@ test('npm package excludes local bytecode and keeps portable support files', asy
   assert.equal([...paths].some(p => p.startsWith('Src/autowork_runtime/')), false);
   for (const path of ['adapters/pi.mjs', 'adapters/skills/COMMON.md',
     'skills/docs-sync/scripts/docs.py', 'skills/autoresearch/upstream/plan.md', 'skills/impeccable/LICENSE',
+    'skills/test-optimizer/SKILL.md', 'skills/engineering/local/test-suite-optimization/PROTOCOL.md',
+    'skills/shared/COMMUNICATION.md',
     'autowork_bootstrap.py', 'Src/autowork_bootstrap.py', 'Src/pi_autowork/__init__.py']) {
     assert.equal(paths.has(path), true, path);
   }
@@ -156,21 +161,24 @@ test('installed archive resolves portable references and commands without checko
       }
     };
     await walk(join(installed, 'adapters/skills'));
-    assert.equal(skillCount, 20);
+    assert.equal(skillCount, 25);
     // Execute the packaged CommonJS helper under Autowork's ESM package boundary.
     const mapScript = join(installed, 'skills/ponytail/upstream/scripts/ponytail-map.cjs');
     const map = execFileSync('node', [mapScript, installed], {encoding: 'utf8'});
     assert.match(map, /Codebase map/);
-    const pin = JSON.parse(await readFile(join(installed, 'skills/ponytail/UPSTREAM.json')));
-    for (const resource of Object.values(pin.files)) {
-      await stat(join(installed, 'skills/ponytail', resource.path));
+    for (const skill of ['ponytail', 'bug-harvest', 'autonomous-codebase-improver',
+      'skill-folder-refactor', 'unused-code']) {
+      const pin = JSON.parse(await readFile(join(installed, `skills/${skill}/UPSTREAM.json`)));
+      for (const resource of Object.values(pin.files)) {
+        await stat(join(installed, `skills/${skill}`, resource.path));
+      }
     }
     const commands = new Map();
     const messages = [];
     const {default: installedRegister} = await import(pathToFileURL(join(installed, 'adapters/pi.mjs')));
     installedRegister({registerCommand: (name, handler) => commands.set(name, handler),
       sendUserMessage: (...args) => messages.push(args)});
-    assert.equal(commands.size, 33);
+    assert.equal(commands.size, 38);
     for (const [name, handler] of commands) {
       await handler.handler('read-only; $(literal)\nno push', {isIdle: () => false});
       assert.equal(messages.at(-1)[0].endsWith('read-only; $(literal)\nno push'), true, name);

@@ -222,6 +222,34 @@ the adapter. Claude-only hooks are not installed.
 `/autowork` is the repository development command. Its helpers and profile-local
 state live under `autowork/`; upgrades preserve existing work through migration.
 
+## Test optimizer
+
+`/test-optimizer` finds the smallest sufficient test suite, not the smallest test
+count. It reuses the existing [test-suite optimization protocol](../skills/engineering/local/test-suite-optimization/PROTOCOL.md).
+Use it for repeated setup, duplicate assertions, equivalent case families and
+contrived scenarios with no supported path. Rare security, data-loss and named
+regression cases are not expendable merely because they rarely fail.
+
+A bare invocation audits; `read-only` writes nothing. Explicit `apply`, a request
+to reduce/optimize the suite, or an existing authorized implementation task permits
+one supported batch without another approval ceremony. It preserves distinct
+behavioral oracles, maps deletions to retained checks or retired obligations,
+then validates and reports real reductions and unknowns. It never optimizes by
+silently skipping tests or weakening CI. This is an agent-guided skill, not an
+automatic test-deletion script.
+
+Examples (Hermes CLI; Pi uses `/test_optimizer`, Claude Code
+`/autowork:test-optimizer`, Codex `$autowork:test-optimizer`):
+
+```text
+/test-optimizer tests/parser; read-only
+/test-optimizer tests/parser; apply one batch; no commit or push
+```
+
+The [skill](../skills/test-optimizer/SKILL.md) defines the rare-scenario evidence
+gate and before/after receipt. Offline packaging and decision probes do not
+establish a measured suite speedup or live host effectiveness.
+
 ## Pinned engineering protocols
 
 `/engineering` (the same spelling in Telegram) selects a technique for a specific
@@ -523,7 +551,7 @@ Examples:
 | Task evidence | Recommendation and contribution | Limit/fallback |
 | --- | --- | --- |
 | Web/mobile hierarchy and interaction need design work | `autowork:ui-taste`, design/review; follow the host adapter and produce relevant rendered/UI evidence | Confirm platform fit; a terminal status-label correction does not justify a browser/UI design workflow. Use the project's existing design method if more appropriate. |
-| Repeated test setup and duplicate behavioral assertions | `autowork:test-optimization-suite`, test cleanup; risk matrix, retained-test mapping and measured candidate evidence | Still planned under TOOLSET-133-f5/134-ab: currently use Engineering's existing `test-suite-optimization` protocol. Do not claim the new skill is installed or block independent cleanup on its packaging. |
+| Repeated test setup and duplicate behavioral assertions | `autowork:test-optimizer`, test cleanup; risk matrix, retained-test mapping and measured candidate evidence | Bare invocation audits; explicit reduction/apply or existing implementation authority permits one verified batch. Uses Engineering's existing `test-suite-optimization` protocol; rare but consequential risks stay protected. |
 | A small local parser fix with established tests | No additional skill required beyond the repository's applicable workflow | Do not add a method tour, UI skill or suite-wide audit. |
 
 Autowork reads the task's recommendations before the relevant step, resolves the

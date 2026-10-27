@@ -1,5 +1,8 @@
 # Shared skill contract
 
+Use the [ASD-STE100 and project language rules](COMMUNICATION.md) for user-facing text.
+Read the target project's glossary map and glossary when available.
+
 Apply the [shared Ponytail method](PONYTAIL.md) within each workflow's authority.
 Reuse existing code and artifact owners; choose the smallest complete result,
 without weakening accepted behavior, safety or verification.

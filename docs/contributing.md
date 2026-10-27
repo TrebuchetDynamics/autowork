@@ -36,8 +36,9 @@ skills/
 ```
 
 Every public skill entry must directly link to the
-[shared Ponytail method](../skills/shared/PONYTAIL.md), applying it within that
-workflow's scope. Keep vendored protocols byte-exact behind local adapters, as in
+[shared Ponytail method](../skills/shared/PONYTAIL.md) and the
+[shared writing rules](../skills/shared/COMMUNICATION.md). Apply both within the
+skill's scope. Keep vendored protocols byte-exact behind local adapters, as in
 [Impeccable](../skills/impeccable/SKILL.md); do not rewrite upstream pins to add policy.
 `tests/test_ponytail_bundle.py` checks coverage, provenance and native provisioning.
 

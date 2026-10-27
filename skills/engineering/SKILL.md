@@ -9,6 +9,8 @@ license: MIT
 
 Apply the [shared Ponytail method](../shared/PONYTAIL.md) within this workflow's scope.
 
+Use the [ASD-STE100 and project language rules](../shared/COMMUNICATION.md) for user-facing text.
+
 Apply the pinned Addy Osmani protocols to the current repository task. This adapter
 controls host integration; upstream files retain their MIT license, with two
 documented defensive-example adaptations. Read [provenance](UPSTREAM.json) for the exact revision and file hashes.
