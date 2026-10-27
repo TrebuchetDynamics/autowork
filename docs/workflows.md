@@ -352,6 +352,23 @@ source and actual process/workspace ownership before implementation. No changes 
 pass. An optional unanswered question holds its dependent tasks only. Standalone
 planning still does not authorize implementation.
 
+Each task now carries a **Repo obligations triggered:** body note naming normative
+doc sections, generated outputs, guards and fixtures; required writes and checks
+belong in the same task's `touches` and `checks`. This adds no task-store schema
+field. The [source-backed scope](../skills/shared/PLANNING-CRAFT.md#source-backed-task-scope)
+requires quoted file:line evidence for existing bounds/contracts, an inventory of
+old assertions to preserve or re-baseline, and current event owners for interaction
+work. Acceptance names its actual measurement seam, not just a tolerance or budget.
+
+For plans requiring builder review, the reviewer reads implementation, tests and
+normative docs before the planning commit or runnable publication. Handoffs state
+queue disposition and expected implementation merge/review counts separately from
+the planning commit; `Next` can be selected by an already authorized runner, and
+"no code this pass" does not reserve work. Shared-file decomposition retains the
+existing admission/ranking rules, not invented dependency locks. Planning commits
+include only attributable changes and never amend another session's runner merge.
+These instruction contracts do not prove live model adherence or queue delivery.
+
 ### Planning-only bulk handoff and skill recommendations
 
 Status: Accepted
