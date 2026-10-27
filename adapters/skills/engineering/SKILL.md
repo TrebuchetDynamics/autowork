@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # Engineering
 
+Apply the [shared Ponytail method](../../../skills/shared/PONYTAIL.md) within this workflow's scope.
+
 Read the [host contract](../COMMON.md).
 
 Consult the pinned [engineering protocols](../../../skills/engineering/upstream/skills/)

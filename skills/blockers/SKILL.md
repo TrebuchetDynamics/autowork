@@ -10,6 +10,8 @@ metadata:
 
 # Blockers
 
+Apply the [shared Ponytail method](../shared/PONYTAIL.md) within this workflow's scope.
+
 `/blockers [repo|runner name]` resolves held tasks and owner questions together.
 Apply established answers, repair authorized technical causes and verify progress,
 then ask only for unresolved owner

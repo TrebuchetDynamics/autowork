@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # Git Commit Push
 
+Apply the [shared Ponytail method](../../../skills/shared/PONYTAIL.md) within this workflow's scope.
+
 Read the [host contract](../COMMON.md).
 
 Inspect status, diff, untracked files and upstream. Preserve unrelated edits and secrets. Run appropriate checks, stage explicit owned paths, inspect staged diff and commit coherent work. Before pushing, sync by default: fetch and merge the upstream (fast-forward, else a merge commit; never rebase or stash) and re-run checks on the merged tree, unless the request says no pull, no sync or ff-only. Push the configured upstream when authorized by this invocation; honor no-push/local-only. No force push, history rewriting, auto-stash or guessed merge resolution. Verify status and report exact commit/push and remaining paths. Use native Git, not Hermes worker commit helpers.

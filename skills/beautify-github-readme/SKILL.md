@@ -7,6 +7,8 @@ license: MIT
 
 # Beautify GitHub README
 
+Apply the [shared Ponytail method](../shared/PONYTAIL.md) within this workflow's scope.
+
 `/beautify-github-readme` (Telegram `/beautify_github_readme`) applies the pinned
 [Beautify GitHub README protocol](upstream/PROTOCOL.md) by oil-oil, MIT licensed
 ([licence](upstream/LICENSE), [provenance](UPSTREAM.json)). This adapter controls

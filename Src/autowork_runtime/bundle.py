@@ -88,7 +88,9 @@ def inventory():
     manager = get_plugin_manager()
     manager.discover_and_load()
     plugins = manager.list_plugins()
-    wanted = set(defaults()['imported_plugins']) | {'autowork'}
+    required = set(defaults()['imported_plugins']) | {'autowork'}
+    # Older installs can still own Ponytail commands; report them, never require them.
+    wanted = required | {'ponytail'}
     rows = []
     for name, item in sorted(get_plugin_commands().items()):
         if item.get('plugin') in wanted:
@@ -105,7 +107,6 @@ def inventory():
         row['in_telegram_menu'] = row['telegram'] in menu_names
     selected = [dict(p) for p in plugins if p['name'] in wanted]
     loaded = {p['name'] for p in selected if p.get('enabled') and not p.get('error')}
-    required = wanted
     missing_skills, unchecked_sources = missing_skill_imports(
         manager.home_path, {row['command'] for row in rows})
     return {'plugins': selected, 'missing_plugins': sorted(required - loaded),
@@ -590,8 +591,9 @@ def diagnose(report, *, core_only=False):
              if p.parent.name not in {'repo-docs', 'repo-interview'}}
     commands = {r['command'] for r in report['commands']
                 if r.get('kind') == 'plugin' and r.get('source') == 'autowork'}
+    fallbacks = _AUTOWORK_COMPAT.peer(globals(), 'setup_runtime').ponytail_skill_fallbacks(report) & names
     missing_commands = sorted(n.replace('_', '-') for n in names
-                              if n.replace('_', '-') not in commands)
+                              if n.replace('_', '-') not in commands | fallbacks)
     public_names = set()
     for name in names:
         if name == 'grill-me' and 'plan-with-me' in names:
@@ -614,6 +616,7 @@ def diagnose(report, *, core_only=False):
     return {**report, 'scope': 'core' if core_only else 'full',
             'status': 'ready' if ready else 'incomplete',
             'core_status': 'incomplete' if errors else 'ready', 'core_errors': errors,
+            'bundled_skill_fallbacks': sorted('autowork:' + name for name in fallbacks),
             'integrations_status': 'ready' if integrations_ready else 'unavailable',
             'integration_gaps': gaps,
             'readiness_note': 'Skill and command registration only. Model execution, workflow-specific '
@@ -625,6 +628,9 @@ def format_diagnosis(report):
              f"Core: {report['core_status']} (bundled skill and command registration)",
              f"Integrations: {report['integrations_status']}"]
     lines.extend('  ' + error for error in report['core_errors'])
+    if report.get('bundled_skill_fallbacks'):
+        lines.append('Existing Ponytail commands are unchanged; invoke bundled skills: ' +
+                     ', '.join(report['bundled_skill_fallbacks']))
     for field, names in report['integration_gaps'].items():
         if names:
             lines.append('  ' + field.replace('_', ' ') + ': ' + ', '.join(names))

@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # Blockers
 
+Apply the [shared Ponytail method](../../../skills/shared/PONYTAIL.md) within this workflow's scope.
+
 For a profile-bound invocation, use the active profile's configured repository by
 default. Never ask which runner to unblock when the profile already owns one; only an
 explicitly fleet-wide request may name another target.

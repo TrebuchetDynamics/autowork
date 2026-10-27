@@ -12,6 +12,8 @@ metadata:
 
 # Profile Create
 
+Apply the [shared Ponytail method](../shared/PONYTAIL.md) within this workflow's scope.
+
 `/profile-create <name> <repository> [instructions]` creates one repository-bound
 Hermes profile. Telegram uses `/profile_create`. A repository-only argument uses
 its basename when it satisfies the native profile naming rules. Ask for a missing

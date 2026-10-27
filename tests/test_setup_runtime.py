@@ -73,6 +73,19 @@ class RuntimeSetupTests(unittest.TestCase):
         self.report['commands']=[]
         self.assertEqual(self.finish(bundle_only=True)[1],1)
 
+    def test_existing_ponytail_plugin_does_not_block_verified_skill_install(self):
+        skill = self.bundle / 'skills/ponytail-review/SKILL.md'
+        skill.parent.mkdir()
+        skill.write_text('fixture')
+        self.report['commands'].append({'command': 'ponytail-review', 'kind': 'plugin', 'source': 'ponytail'})
+        self.report['plugin_skills'] = ['autowork:ponytail-review']
+        report, code = self.finish(bundle_only=True, no_reload=True)
+        self.assertEqual(code, 0, report)
+        self.assertNotIn('ponytail-review', report['bundled_commands'])
+        self.assertEqual(report['bundled_skill_fallbacks'], ['autowork:ponytail-review'])
+        self.report['plugin_skills'] = []
+        self.assertEqual(self.finish(bundle_only=True, no_reload=True)[1], 1)
+
     def test_foreign_command_cannot_satisfy_bundle_registration(self):
         self.report['commands']=[{'command':'grill-me','kind':'skill','source':'unrelated'}]
         self.reload.return_value['activations']=[]

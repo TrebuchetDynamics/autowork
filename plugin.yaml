@@ -8,6 +8,4 @@ kind: standalone
 
 requires_plugins:
   - omh
-
-  - ponytail
   - hermes-speech

@@ -28,7 +28,9 @@ An empty queue alone calls for bounded inspection, not mandatory Autoresearch.
 Autowork is the default coordinator for authorized repository development. It owns
 selection, execution handoff, reconciliation and closeout. An explicitly requested
 specialist command stays within its own scope; it does not secretly start Autowork.
-Installation makes skills available, not mandatory to load or invoke.
+Installation makes skills available, not mandatory to invoke. Every workflow
+applies the [shared Ponytail method](PONYTAIL.md) as its baseline, not an extra
+workflow or review loop; load detailed protocols only for the relevant choice.
 
 | Current need | Smallest workflow |
 | --- | --- |
@@ -40,7 +42,7 @@ Installation makes skills available, not mandatory to load or invoke.
 | Specific engineering method gap | Engineering reference adapter and the relevant protocol only. |
 | Slow, redundant or low-signal tests, or a suite past the [test budget](#test-budget) | Engineering `--protocol test-suite-optimization`: audit by default; authorized apply verifies one bounded batch. |
 | Material implementation or simplification choice | [Ponytail](../autowork/references/ponytail.md): smallest complete change, with concrete reuse and verification evidence. |
-| Review of that implementation | Ponytail review criteria in the existing required review lane; resolve separate versus integrated guidance from the installed version. |
+| Review of that implementation | Pinned Ponytail review criteria in the existing required review lane; no external plugin or extra reviewer. |
 | UI/design work | Impeccable when relevant; no design pass for unrelated changes. |
 
 Zero supporting skills is valid when the task and repository checks suffice. Load

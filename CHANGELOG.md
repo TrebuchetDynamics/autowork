@@ -7,6 +7,14 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- Bundle Ponytail 5.3.2's six skills, MIT provenance and optional read-only codebase
+  map at commit `09c434ab73ca43761c5d8b0c5d341926c2fba710` for Hermes, Pi, Claude Code
+  and Codex. Every Autowork skill links the shared method; installers carry the
+  suite without a separate Ponytail plugin or startup/UI/telemetry hooks. Existing
+  external installations are preserved. Native provisioning adds missing shared
+  support without replacing edits; the map's actual file reads are bounded to 64 KiB.
+  Offline checks are not live qualification.
+
 - `autowork plan [target]` and the TUI's **Plan** (the browser's not-ready dialog, next to
   Prepare) and **b Backlog** (a listed runner whose store needs setup): `/plan_for_me` in
   the owner's agent (`AUTOWORK_AGENT`, else `claude`, else `pi`), asked to prepare the

@@ -2,10 +2,10 @@
 
 Autowork provides native packages for four hosts. Claude Code, Codex and Pi
 use the portable adapters, not the Hermes plugin loader. None requires Hermes installed.
-These adapters expose 12 skills: Plan With Me, Plan For Me, Docs Sync, Autowork,
+These adapters expose 20 skills: Plan With Me, Plan For Me, Docs Sync, Autowork,
 Cron Autowork, Autoresearch, Engineering, Impeccable, UI Taste, Beautify GitHub README,
-LGTM and Git Commit Push, which also pulls and merges. Grill Me is Plan With Me's
-challenge mode, not a thirteenth skill.
+LGTM, Git Commit Push, Blockers, Pending, and the six bundled Ponytail skills.
+Grill Me is Plan With Me's challenge mode, not a separate skill.
 Every adapter is explicit-only: Claude Code and Pi read `disable-model-invocation: true`
 in its frontmatter and Codex reads `agents/openai.yaml`, so the model never starts a
 workflow on its own.
@@ -14,6 +14,34 @@ outcome keeps focused planning, and `read-only` saves nothing.
 Supporting protocols are bundled and loaded only when needed. Hermes profile
 creation, Telegram routing,
 Kanban workers, fleet setup, memory and speech integrations remain Hermes-only.
+
+## Bundled Ponytail on every host
+
+Every Autowork skill applies the [shared Ponytail method](../skills/shared/PONYTAIL.md)
+within its own scope: smallest complete result, reuse first, no weakened safety or
+verification. Planning remains planning; read-only stays read-only. Detailed
+protocols load once when relevant; there is no extra review loop or global activation.
+
+`install.sh` includes the pinned six-skill suite and optional read-only map helper
+in each host's existing Autowork package, not a second plugin install. The method
+needs only host tools; the map helper needs Node and is optional on non-Pi hosts.
+No hooks, telemetry, transcript import, UI band or global mode config are enabled.
+Existing external Ponytail installations are left alone; check command collisions.
+
+| Host | Example review invocation |
+| --- | --- |
+| Hermes | `/ponytail-review` (or bundled `autowork:ponytail-review` via skill tools if another plugin owns the command) |
+| Claude Code | `/autowork:ponytail-review` |
+| Codex | `$autowork:ponytail-review` |
+| Pi | `/ponytail_review` or `/skill:ponytail-review` |
+
+The suite also includes `ponytail`, `ponytail-audit`, `ponytail-debt`, `ponytail-gain`
+and `ponytail-help`; Pi command aliases replace hyphens with underscores.
+`ponytail lite|full|ultra|off` changes the conversation's Autowork preference only;
+no argument reports it (default `full`). The other commands report without edits.
+Gain displays attributed upstream benchmarks, never inferred local savings.
+See [provenance and refresh](dependencies.md#bundled-ponytail) and
+[the bundled help](../skills/ponytail-help/SKILL.md).
 
 ## Full-suite partial failures
 

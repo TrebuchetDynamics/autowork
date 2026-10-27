@@ -1,12 +1,13 @@
 {
   "license": "Apache-2.0",
+  "transform": "Upstream SKILL.md is stored byte-exact as PROTOCOL.md; the local SKILL.md adapter adds the shared Ponytail method.",
   "official_identifier": "official/creative/impeccable",
   "repository": "https://github.com/pbakaus/impeccable",
   "revision": "245ad82def45831dc56a21b683c7a1ff530b06cc",
   "sha256": {
     "LICENSE": "02bb8c3b4e70190e3986c0404ad2fd8d639b4f534252d82379cc1b502b6d1812",
     "NOTICE.md": "c60a093c2845fd9fb82f9c6f742ece31f379f8190b535309d32d66c45ccffdcb",
-    "SKILL.md": "3b79c63a67a468dee428ac931f3ab07ec44e8134a2556496997f3c4c83559a9d",
+    "PROTOCOL.md": "3b79c63a67a468dee428ac931f3ab07ec44e8134a2556496997f3c4c83559a9d",
     "reference/adapt.md": "0648e4e06d01cabc91fa7dc19256ceedeeeea213b9265e9d36b0918370e16fb2",
     "reference/adapt.native.md": "17c583cf8ad41266ea1e787b666b9d91fe13469d3d0f6af57c08e0146f9b17ac",
     "reference/android.md": "058f81f256134841875fd3183e06b37a023de0c877fd2b9eecd97011640791fe",

@@ -7,6 +7,8 @@ license: MIT
 
 # Engineering protocols for Hermes
 
+Apply the [shared Ponytail method](../shared/PONYTAIL.md) within this workflow's scope.
+
 Apply the pinned Addy Osmani protocols to the current repository task. This adapter
 controls host integration; upstream files retain their MIT license, with two
 documented defensive-example adaptations. Read [provenance](UPSTREAM.json) for the exact revision and file hashes.

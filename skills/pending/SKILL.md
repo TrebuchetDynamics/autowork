@@ -10,6 +10,8 @@ metadata:
 
 # Pending
 
+Apply the [shared Ponytail method](../shared/PONYTAIL.md) within this workflow's scope.
+
 Answer "what is left, what is next, what was done" from the repository's task store
 (`tasks/`) without changing it. Use the read-only `autowork tasks` queries, which read
 the store at a commit (HEAD by default), and report the outcome in the user's language,
