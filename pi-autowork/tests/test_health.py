@@ -239,6 +239,8 @@ class HealthTests(unittest.TestCase):
                 self.assertEqual(record.get('status_unavailable_since'), failed_since)
                 row, = health.fleet(self.state, now=now, service=lambda name: 'active')
                 self.assertEqual(row['state'], expected)
+                self.assertEqual(row['observation']['task_state'], 'unavailable' if failed_since is not None else 'unknown')
+                self.assertIsNone(row['workers'])  # these legacy observations have no trustworthy source
                 if failed_since is not None:
                     self.assertLess(record['snapshot_at'], now)
                     self.assertIn('last snapshot', row['blocker'])
@@ -366,7 +368,10 @@ class HealthTests(unittest.TestCase):
             with self.subTest(age=age):
                 row, = health.fleet(self.state, now=1000 + age, service=lambda name: 'active')
                 self.assertEqual(row['state'], expected)
-                self.assertEqual((row['workers'], row['waiting'], row['updated_at']), (3, 1, 1000))
+                current = age <= health.STALE_AFTER
+                self.assertEqual((row['workers'], row['waiting'], row['updated_at']),
+                                 (3 if current else None, 1 if current else None, 1000))
+                self.assertEqual(row['observation']['task_state'], 'current' if current else 'stale')
                 self.assertEqual((row['snapshot_at'], row['snapshot_age_seconds']), (1000, age))
                 self.assertEqual(row['task_source'], source)
                 self.assertIsNone(row['job'])
@@ -382,7 +387,9 @@ class HealthTests(unittest.TestCase):
         bad.mkdir()
         live = dict(pid=os.getpid(), start_time=start_time(os.getpid()),
                     started='2026-01-01T00:00:00+00:00')  # cli.acquire writer format
-        good_status = dict(repo='/x/good', state='working', updated_at=1000, active_workers=2)
+        source = dict(workspace='/x/good', repository_identity='/x/good/.git', revision='fixture', observed_at=1000)
+        good_status = dict(repo='/x/good', state='working', updated_at=1000, active_workers=2,
+                           snapshot_at=1000, task_source=source)
         (healthy / 'runner.json').write_text(json.dumps(dict(live, repo='/x/good')))
         (healthy / 'status.json').write_text(json.dumps(good_status))
         for source in ('status.json', 'runner.json'):
@@ -421,7 +428,9 @@ class HealthTests(unittest.TestCase):
         live = dict(pid=os.getpid(), start_time=start_time(os.getpid()))
         for path, identity in ((folder, str(repo)), (sibling, '/x/sibling')):
             (path / 'runner.json').write_text(json.dumps(dict(live, repo=identity)))
-        health.update(sibling, dict(snapshot(workers=2), tasks=[], roots=[]), now=1000,
+        source = dict(workspace='/x/sibling', repository_identity='/x/sibling/.git',
+                      revision='fixture', observed_at=1000)
+        health.update(sibling, dict(snapshot(workers=2), tasks=[], roots=[], task_source=source), now=1000,
                       runner=dict(repo='/x/sibling'))
         owner = Coordinator.__new__(Coordinator)
         owner.state, owner.repo, owner.integ = folder, repo, None
@@ -453,7 +462,9 @@ class HealthTests(unittest.TestCase):
                 for key in ('crashed', 'gated', 'failures'):
                     self.assertEqual(written[key], history.get(key))
                 with patch.object(health.time, 'time', return_value=1000):
-                    owner.health_update(dict(snapshot(workers=1), tasks=[], roots=[]))
+                    owner.health_update(dict(snapshot(workers=1), tasks=[], roots=[],
+                                             task_source=dict(source, workspace=str(repo),
+                                                              repository_identity=str(repo / '.git'))))
                 self.assertEqual(json.loads((folder / 'status.json').read_text())['main_check'],
                                  {k: v for k, v in written.items() if k not in ('pid', 'path', 'tmp')})
                 before = {p: p.read_bytes() for p in root.rglob('*') if p.is_file()}

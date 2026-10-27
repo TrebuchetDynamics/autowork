@@ -3759,7 +3759,13 @@ class Coordinator:
         """Settle finished work, then wait, dispatch again, or end a finite run."""
         self.settle()
         self.handle_requests()
-        self.health_update()
+        observed = self.status()
+        self.health_update(observed)
+        if observed.get('outcome') != 'PARALLEL_STATUS' or not isinstance(observed.get('tasks'), list):
+            idle_diagnostic = 'Task state unavailable: ' + ' '.join(str(
+                observed.get('reason') or observed.get('outcome') or 'no answer from the engine').split())
+        else:
+            idle_diagnostic = 'Queue empty'
         if self.settled:
             return  # closing work can make dependents runnable: dispatch again first
         if self.in_flight():
@@ -3783,9 +3789,9 @@ class Coordinator:
         # Nothing running, nothing to integrate and nothing waiting: finite runs end here.
         if self.draining or self.mode != 'continuous':
             if self.mode == 'once' and not self.once_task and outcome == 'IDLE':
-                self.finish(0, 'Queue empty')
+                self.finish(0, idle_diagnostic)
             if outcome == 'IDLE' and self.mode == 'until-empty':
-                self.finish(0, 'Queue empty')
+                self.finish(0, idle_diagnostic)
             if self.mode == 'once':
                 if self.once_done:
                     self.finish(0, f'Done (--once): {self.once_task}')
@@ -3800,7 +3806,7 @@ class Coordinator:
                 # work between intervals. Only a day-old, fully landed session rotates.
                 if self.integ and self.session_expired() and self.ahead() == 0:
                     self.end_session()
-            LOG.say(f'Queue empty; checking again in {self.interval}s')
+            LOG.say(f'{idle_diagnostic}; checking again in {self.interval}s')
             self.pause(self.interval)
 
     def run(self):

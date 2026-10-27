@@ -1003,6 +1003,34 @@ when absent, rather than borrowing a new write time. Offline producer/cache/heal
 fixtures cover these contracts; they do not prove a deployed runner loaded this
 source or qualify SSH responsiveness.
 
+Fleet health rows and `autowork ls --json` add a display-only `observation`
+object. It separates coordinator activity from successful task reads:
+
+| Field | Meaning |
+| --- | --- |
+| `runner_alive` | PID and process start ticks match; a service PID or fresh file alone is not enough. |
+| `health_written_at` | Finite health-file write timestamp, or `null`. |
+| `snapshot_at` | Finite successful task-observation timestamp, or `null`. |
+| `snapshot_age_seconds` | Nonnegative snapshot age, or `null` when unknown. |
+| `task_state` | `current` for trustworthy provenance within the existing 600-second bound; `stale` for valid older evidence; `unavailable` for a failed read or invalid source; `unknown` without trustworthy provenance. |
+| `error` | Read/source error, or `null`. |
+
+A verified runner with a fresh health write can be **cycling** while task state
+is stale or unavailable. Even the first failed read is unavailable in this display
+object; the existing one-read grace for the execution-state label is unchanged.
+Shared CLI/TUI verdicts and fleet logs show the distinction and snapshot age/error.
+Runtime worker, waiting and stopped counts are `null` unless the observation is
+current and the runner identity is alive; text lists use `?` for unknown counts.
+Committed task inventory remains independently available. A separately verified
+`job` can still show work in progress, but does not clear task-read errors or
+refresh the snapshot. Paused and stopped service labels retain precedence.
+
+An IDLE cycle with a failed task-status read reports **Task state unavailable**
+with the reason, not **Queue empty**. This changes only the diagnostic: dispatch,
+integration, waits, finite-run exit codes and zero-model empty-queue behavior stay
+unchanged. Offline health/fleet and coordinator fixtures cover these cases;
+installed adoption and live recovery still require separate qualification.
+
 Status replays journal events in physical append order, not wall-clock order.
 A decreasing event timestamp or an observation time before the latest event no
 longer hides valid task/slot state. The JSON response adds `journal_timing` when
