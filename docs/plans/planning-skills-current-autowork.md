@@ -337,3 +337,43 @@ contract tests successfully. The reviewer confirmed that all five archived basel
 files match `c7873c8f` and link targets are unchanged. Exact-wording guards are source
 contracts, not model-behavior proof. Source delivery and installation remain separate;
 no runtime, service, installer or publication operation is part of this correction.
+
+## PLANNING-AUTONOMOUS-01: checked source correction
+
+Implemented only the bounded Plan For Me alignment against clean `cf2aefe6`;
+Plan With Me, shared contracts and task metadata remain unchanged. Native and
+portable entrypoints now classify the observed source/phase: resolve in-scope
+engineering choices, return existing failed-operation/task/attempt/candidate
+source evidence to the same coordinator for supported recovery, or retain genuinely
+unavailable owner/external/physical-access inputs on affected tasks. Runtime failure
+alone does not justify acceptance splitting; evidence-backed authorized decomposition
+remains available without losing original contracts, acceptance or history.
+
+Both entrypoints limit `tasks why` to committed selection, distinguish branch-local
+commits from canonical-consumer inclusion/selection, and disclose runtime/ownership
+as unassessed unless observed. Portable preparation reuses Docs Sync's existing flow
+without updates, installation or worker interruption. Existing discovery, decision
+closure, full-batch, JSON/CAS, live and standalone/no-execution boundaries remain.
+
+Focused source-contract TDD extended the existing CLI seam and retained Plan With Me
+coverage: RED ran 8 tests with 30 expected assertion/subtest failures before skill
+edits (`/tmp/autowork-plan-for-me-red.log`). The requested five-module GREEN ran
+30 tests (8 CLI, 6 closure, 4 decomposition, 7 discovery, 5 specimen mechanics), all
+passing (`/tmp/autowork-plan-for-me-green.log`); no attempt timed out. These checks
+prove instruction-source and existing fixture mechanics only. No new model samples,
+measured adherence/performance, runtime recovery, installation, delivery or live
+qualification is claimed. At worker handoff no commit, push, service or
+canonical-checkout operation had been performed. Subsequent fresh independent
+review found no blockers, verified all 31 local links/anchors, reproduced the
+30 baseline assertion/subtest failures versus zero on corrected instructions,
+and reran 25 CLI/closure/decomposition/discovery tests successfully.
+
+Task validation passed (176 tasks, 18 goals, no drafts/pending paths). All four
+handoff archive files match `cf2aefe6`. Changed-link inspection validated the sole
+new target, portable Docs Sync; other link targets are unchanged. Affected-selector
+preview against `cf2aefe6` selects all 159 modules because this plan owner has no
+resolved mapping (`/tmp/autowork-plan-for-me-affected.json`); no full-suite fallback
+was executed. Main retains its separate full gate. Final whitespace/scope checks
+passed, with no staged files at worker handoff. The reviewed source is prepared
+in the isolated branch; canonical integration must preserve the concurrent writer's
+staged and in-progress changes. Source completion is not publication or installation.
