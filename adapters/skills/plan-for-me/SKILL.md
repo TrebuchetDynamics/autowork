@@ -30,10 +30,35 @@ product directions as proposals until the owner accepts them; a project with no
 accepted objective or meaningful source gets the missing decision reported, not an
 invented roadmap.
 
+For held or blocked work, read the existing task, latest runs and retained candidate
+evidence; classify the observed source and phase:
+
+- Resolve engineering planning choices within delegated scope, recording the
+  supported approach and checks as the planner's call, not an owner question.
+- If an existing task or candidate has a runtime, transport, gate or continuation
+  failure without new product uncertainty, return the exact failed operation,
+  task ID, attempt evidence and source-bound candidate evidence to the same
+  coordinator for supported recovery. Report missing evidence as unassessed, never
+  invented. Reuse the existing task and candidate: no new interview, replacement
+  task or acceptance split just to get moving. Save new findings in the existing
+  task; do not implement recovery or redispatch inside planning.
+- Keep genuinely unavailable external, owner or physical-access inputs pending
+  only on affected tasks, with the exact missing input and resume condition;
+  continue independent authorized planning. Do not invent access or authority.
+
+Split only when authorized scope and evidence justify decomposition, not merely
+because runtime failed; preserve existing task IDs, contracts, acceptance and
+history, and never silently waive acceptance.
+
 Read the pinned [Autoresearch plan protocol](../../../skills/autoresearch/upstream/plan.md)
 and apply the [planning adaptations](../../../skills/shared/RESEARCH-PLAN.md).
 Use that protocol directly; do not route back through the Autoresearch adapter.
-Research relevant code and evidence; routine planning needs no experiment. Save accepted plans in their document owners and
+Research relevant code and evidence; routine planning needs no experiment.
+Use [Docs Sync](../docs-sync/SKILL.md)'s existing capability/prepare flow on the
+actual consumer before reconciling tasks; reuse its result while inputs are unchanged.
+Do not call deferred conversion or activation-pending consumers ready; do not install
+updates or interrupt workers to complete planning, or duplicate the conversion matrix.
+Save accepted plans in their document owners and
 complete task records with `autowork tasks add`/`goal`
 ([work center](../../../skills/shared/TODO-WORKCENTER.md)), including acceptance,
 checks, dependencies, `touches` and Now/Next placement. A planning task the runner
@@ -54,7 +79,15 @@ planner's calls and the next executable task, distinguishing proposals from read
 Use the [single-pass handoff](../../../skills/shared/PLAN-HANDOFF.md#one-planning-pass-one-handoff):
 resume accepted decisions and existing task IDs, investigate only missing evidence,
 persist one affected batch, and reuse input-bound checks. Unchanged findings need
-no new docs pass. Standalone planning stops here despite earlier unrelated
+no new docs pass. After the commit, `autowork tasks why ID` reports committed-store
+selection eligibility and position only, not resource/ownership admission, capacity
+or dispatch. Report the actual selection result, or say selection was not assessed.
+Distinguish a branch-local commit from delivery to the actual canonical consumer:
+disclose whether that consumer includes the commit and whether selection was checked
+there. Report runtime and ownership unassessed unless observed.
+A saved plan is not dispatch, delivery or completed work.
+
+Standalone planning stops here despite earlier unrelated
 implementation permission. An Autowork-owned substep returns to that same
 coordinator; no competing worker or execution inside planning. A later explicit
 implementation instruction enters the execution workflow. The shared contract

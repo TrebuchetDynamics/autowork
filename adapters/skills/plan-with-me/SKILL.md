@@ -46,7 +46,7 @@ stop/finish; otherwise leave that intent open without another question. Reconcil
 accepted decisions into their document owners and complete task records with `autowork tasks
 add`/`goal` ([work center](../../../skills/shared/TODO-WORKCENTER.md)): placement, dependencies,
 checks and `touches`. Run the planning craft's builder check on the saved tasks, then run
-`autowork tasks validate --worktree .` and commit the batch once before reporting it ready.
+`autowork tasks validate --worktree .` and commit the batch once before reporting selection.
 Bring only unanswered consequential builder questions back to the user; settle
 repository facts and routine details yourself, without reopening accepted answers.
 Do not start implementation merely because a plan exists.
@@ -56,8 +56,19 @@ resume accepted decisions and existing task IDs, investigate only missing eviden
 persist one affected batch, and reuse input-bound checks. Unchanged findings need
 no new docs pass. Finish every requested outcome in the batch, not just the first
 clear task; preserve independent ready lanes and keep open choices scoped.
+After the commit, `autowork tasks why ID` reports committed-store selection eligibility
+and position only, not resource/ownership admission, capacity or dispatch. Report the
+actual selection result, or say selection was not assessed. Distinguish a branch-local
+commit from delivery to the actual canonical consumer: disclose whether that consumer
+includes the commit and whether selection was checked there. Report runtime and
+ownership unassessed unless observed.
+
 Standalone planning stops despite earlier unrelated implementation permission.
 An Autowork-owned substep returns to that same coordinator without execution inside
-planning or competing workers. A later explicit implementation instruction enters
+planning or competing workers, without asking again for settled authorization.
+When existing execution fails without new product uncertainty, return the exact task
+ID, attempt evidence and failed operation to the same coordinator for supported
+recovery; do not reopen the product interview or create duplicate tasks.
+A later explicit implementation instruction enters
 the execution workflow. The shared contract requires neither Hermes-native tooling
 nor a claimed hard sandbox on this host.

@@ -88,13 +88,25 @@ For a concrete method gap or explicit protocol request, select one technique thr
 Routine planning needs no experiment loop.
 
 When called by Autowork, investigate its named uncertainty and return to the
-current task. For a held or blocked task, return a **fix or skip** decision, never a
-restated blocker: describe the smallest reversible fix inside the delegated scope
-(for example a verified alternative state for a broken external link, or the
-in-scope part of a remediation), recorded as the planner's call; or skip by splitting
-the blocked acceptance into its own task that names the exact missing input, keeping
-it open, so Autowork continues with the next ready task. Only credentials, money,
-deployment, legal or explicit owner approval remain user inputs. For backlog recovery, follow the
+current task. For held or blocked work, read the existing task, latest runs and
+retained candidate evidence; classify the observed source and phase:
+
+- Resolve engineering planning choices within delegated scope, recording the
+  supported approach and checks as the planner's call, not an owner question.
+- If an existing task or candidate has a runtime, transport, gate or continuation
+  failure without new product uncertainty, return the exact failed operation,
+  task ID, attempt evidence and source-bound candidate evidence to the same
+  coordinator for supported recovery. Report missing evidence as unassessed, never
+  invented. Reuse the existing task and candidate: no new interview, replacement
+  task or acceptance split just to get moving. Save new findings in the existing
+  task; do not implement recovery or redispatch inside planning.
+- Keep genuinely unavailable external, owner or physical-access inputs pending
+  only on affected tasks, with the exact missing input and resume condition;
+  continue independent authorized planning. Do not invent access or authority.
+
+Split only when authorized scope and evidence justify decomposition, not merely
+because runtime failed; preserve existing task IDs, contracts, acceptance and
+history, and never silently waive acceptance. For backlog recovery, follow the
 [bounded planning fallback](../autowork/references/backlog-planning.md).
 
 ## Save the plan and hand off
@@ -123,9 +135,10 @@ work center). Cut and write the tasks by the [planning craft](../shared/PLANNING
 small tasks with disjoint write sets, acceptance that names a failing test, and a
 pre-mortem whose guards land in the owning tasks. A record missing contract fields
 is a draft the runner never selects: `autowork tasks validate --worktree .` lists
-drafts, and after the commit `autowork tasks why ID` shows committed-store selection
-eligibility and position. Check both before calling a handoff selection-ready;
-capacity, resource/ownership admission and actual dispatch require separate evidence. Do not claim a task or launch execution just to validate a
+drafts, and after the commit `autowork tasks why ID` reports committed-store selection
+eligibility and position only, not resource/ownership admission, capacity or dispatch.
+Check both before calling a handoff selection-ready; report the actual selection
+result, or say selection was not assessed. Do not claim a task or launch execution just to validate a
 planning handoff. Reconcile one affected batch and reuse input-bound checks when
 the evidence is unchanged. For a discovery batch, save only the evidenced frontier:
 reuse an existing backlog that already covers the gaps, and add no duplicate or
@@ -176,6 +189,7 @@ finished plan.
 
 Finish with the chosen approach, supporting evidence, the planner's calls, changed
 document paths, task IDs, unresolved questions and the next executable task. Report
-branch-local saving/checks separately from inclusion in the actual consumer and its
-selection result; report consumer readiness only when that check actually ran.
+a branch-local commit and checks separately from delivery to the actual canonical
+consumer: disclose whether that consumer includes the commit and whether selection
+was checked there. Report runtime and ownership unassessed unless observed.
 A saved plan is not dispatch, delivery or completed work.

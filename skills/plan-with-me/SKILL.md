@@ -209,14 +209,18 @@ saved tasks and fold its answers in. Validate changed docs and run `autowork tas
 validate --worktree .`: fix every error and every draft you did not mean
 ([plan handoff](../shared/PLAN-HANDOFF.md)), then commit the batch once. Put the
 accepted-plan anchor in each affected task's `Sources:` note and its goal's
-`source`. After the commit, `autowork tasks why ID` shows whether each task can run.
-Report the ready first task separately from a dependent successor: a successor
-waiting on its dependency is normal ordering, not a blocker.
+`source`. After the commit, `autowork tasks why ID` reports committed-store selection
+eligibility and position only, not resource/ownership admission, capacity or dispatch.
+Report the selection-ready first task separately from a dependent successor: a
+successor waiting on its dependency is normal ordering, not a blocker.
 
 Finish with changed document paths, decisions captured, the planner's calls, open
-questions and the actual readiness result when `autowork tasks why` ran; otherwise
-state that readiness was not assessed. Questions-only/read-only
-mode finishes with a conversational summary, no Maintain pass and no writes.
+questions and the actual selection result when `autowork tasks why` ran; otherwise
+state that selection was not assessed. Distinguish a branch-local commit from delivery
+to the actual canonical consumer: disclose whether that consumer includes the commit
+and whether selection was checked there. Report runtime and ownership unassessed
+unless observed. Questions-only/read-only mode finishes with a conversational summary,
+no Maintain pass and no writes.
 For a rolling plan, the final report says the chain will continue on its own under
 an already running, authorized Autowork runner, gives its round limit (10 by default),
 and explains how to stop it: move the planning task to `Needs decision`
@@ -226,6 +230,9 @@ Docs-only scope leaves the full requested batch undispatched. A later explicit
 instruction to implement enters the execution workflow. An Autowork-owned planning
 substep returns the batch to its same coordinator without another permission
 question; preserve its review and owned-commit requirements.
+When existing execution fails without new product uncertainty, return the exact task
+ID, attempt evidence and failed operation to the same coordinator for supported
+recovery; do not reopen the product interview or create duplicate tasks.
 
 Example: for "interview me about onboarding", inspect the current setup docs, play
 back what they cover and ask them to walk you through the last time someone got

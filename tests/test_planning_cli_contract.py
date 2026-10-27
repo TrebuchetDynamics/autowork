@@ -14,6 +14,9 @@ COMMAND = ROOT / 'pi-autowork/pi_autowork/command.py'
 WORKCENTER = 'skills/shared/TODO-WORKCENTER.md'
 PLANNER = 'skills/plan-for-me/SKILL.md'
 HANDOFF = 'skills/shared/PLAN-HANDOFF.md'
+INTERACTIVE = ('skills/plan-with-me/SKILL.md', 'adapters/skills/plan-with-me/SKILL.md')
+AUTONOMOUS = (PLANNER, 'adapters/skills/plan-for-me/SKILL.md')
+SPECIAL_CASES = 'skills/plan-with-me/references/special-cases.md'
 
 
 def prose(path):
@@ -123,6 +126,80 @@ class PlanningCliContractTests(unittest.TestCase):
         planner = prose(PLANNER)
         self.assertIn('prepare_api', planner)
         self.assertIn('same coordinator', planner)
+        portable = prose(AUTONOMOUS[1])
+        for required in ('[Docs Sync](../docs-sync/SKILL.md)', 'capability/prepare flow',
+                         'actual consumer', 'reuse its result while inputs are unchanged',
+                         'do not install updates or interrupt workers'):
+            with self.subTest(portable_prepare=required):
+                self.assertIn(required, portable)
+
+    def test_planning_handoffs_limit_selection_claims_and_disclose_delivery(self):
+        # Entrypoints must not turn a branch's selection result into runtime readiness.
+        for path in (*INTERACTIVE, *AUTONOMOUS):
+            text = prose(path)
+            marker = ('## Save answers and finish the plan' if path == INTERACTIVE[0]
+                      else '## Save the plan and hand off' if path == PLANNER
+                      else 'Use the [single-pass handoff]')
+            handoff = text.split(marker, 1)[1]
+            with self.subTest(path=path):
+                self.assertIn('autowork tasks why ID', handoff)
+                self.assertIn('committed-store selection eligibility and position only', handoff)
+                self.assertIn('not resource/ownership admission, capacity or dispatch', handoff)
+                self.assertIn('branch-local commit', handoff)
+                self.assertIn('actual canonical consumer', handoff)
+                self.assertIn('whether that consumer includes the commit', handoff)
+                self.assertIn('whether selection was checked there', handoff)
+                self.assertIn('runtime and ownership unassessed unless observed', handoff)
+                self.assertNotIn('shows whether each task can run', handoff)
+                self.assertNotIn('actual readiness result', handoff)
+
+    def test_interactive_runtime_failure_reuses_task_and_coordinator(self):
+        # A known failed attempt is recovery evidence, not a new product interview.
+        for path in INTERACTIVE:
+            with self.subTest(path=path):
+                text = prose(path)
+                self.assertIn('When existing execution fails without new product uncertainty', text)
+                self.assertIn('exact task ID, attempt evidence and failed operation', text)
+                self.assertIn('same coordinator for supported recovery', text)
+                self.assertIn('do not reopen the product interview or create duplicate tasks', text)
+                self.assertIn('single-pass handoff', text)
+                self.assertIn('builder check', text)
+
+    def test_autonomous_blocker_routing_preserves_existing_contract_and_recovery(self):
+        # Runtime trouble must not trigger blanket fix/skip or forced acceptance splitting.
+        for path in AUTONOMOUS:
+            text = prose(path)
+            with self.subTest(path=path, rule='no blanket fix or split'):
+                self.assertNotIn('return a **fix or skip** decision', text)
+                self.assertNotIn('skip by splitting the blocked acceptance', text)
+            for required in (
+                    'classify the observed source and phase',
+                    'Resolve engineering planning choices within delegated scope',
+                    'existing task or candidate has a runtime, transport, gate or continuation failure',
+                    'exact failed operation, task ID, attempt evidence and source-bound candidate evidence',
+                    'same coordinator for supported recovery',
+                    'no new interview, replacement task or acceptance split just to get moving',
+                    'genuinely unavailable external, owner or physical-access inputs pending',
+                    'only on affected tasks, with the exact missing input and resume condition',
+                    'Split only when authorized scope and evidence justify decomposition',
+                    'preserve existing task IDs, contracts, acceptance and history',
+                    'never silently waive acceptance',
+                    'single-pass handoff', 'builder check'):
+                with self.subTest(path=path, rule=required):
+                    self.assertIn(required, text)
+
+    def test_ready_continuation_returns_without_executing_inside_planning(self):
+        continuation = prose(SPECIAL_CASES).split('## Continuations and live gates', 1)[1]
+        for rule in ("recheck that worker's terminal state",
+                     'return the ready continuation to the existing authorized coordinator',
+                     'execution outside standalone planning under existing scope and limits',
+                     'otherwise keep one pending request',
+                     'Do not ask again for settled authorization',
+                     'explicit current no-execution limit',
+                     'preserves existing pauses'):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, continuation)
+        self.assertNotIn('execute the continuation now', continuation)
 
 
 if __name__ == '__main__':

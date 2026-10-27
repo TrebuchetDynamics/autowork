@@ -294,3 +294,86 @@ The three records are manually closed with this evidence, not assigned fabricate
 coordinator-verification receipts or used to mark the broader goal met. Local
 integration, upstream publication and installed-runtime adoption are separately
 verified delivery stages; these offline results alone claim none of them.
+
+## PLANNING-INTERACTIVE-01: checked source correction
+
+Implemented against clean source `c7873c8f`, under the later bounded implementation
+request, not the historical standalone-planning authority above. Native Plan With
+Me's “Save answers and finish the plan” overstated `tasks why` as “can run”; shared
+`PLAN-HANDOFF.md` already limits it to committed-store selection. Shared
+`RESEARCH-PLAN.md` already returns execution failures to the same coordinator.
+The native continuation reference also said “execute the continuation now” without
+locating execution outside standalone planning.
+
+Both entrypoints now separate selection from admission/dispatch, disclose branch-local
+versus actual canonical-consumer delivery and unassessed runtime/ownership, and return
+existing task/attempt/failed-operation evidence for same-coordinator recovery rather
+than duplicate tasks or another product interview. The continuation reference returns
+ready work to the existing authorized coordinator outside standalone planning,
+preserving settled authorization, current no-execution limits and live gates. Existing
+interview, stop/resume, delegation, read-only, builder and single-pass rules remain.
+
+Three focused instruction-contract tests extend the existing CLI seam. Before skill
+edits, RED ran 7 tests with 9 expected failures/subtest failures, captured in
+`/tmp/autowork-plan-with-me-red.log`. The final four-module GREEN ran 22 tests
+(7 CLI, 6 closure, 4 decomposition, 5 specimen mechanics), all passing, captured in
+`/tmp/autowork-plan-with-me-green.log`. The first composed attempt exceeded the
+120-second tool limit after three modules passed; it is not a passing check. Its
+remaining specimen process exited before cleanup; the complete rerun passed.
+Affected selection preview against `c7873c8f` selects all 159 modules because this
+plan has no resolved test mapping; no full suite was run. Main retains its separate
+full gate. Task validation passed (172 tasks, 18 goals, no drafts or pending paths).
+Changed-link inspection found zero added/changed targets; existing targets are
+unchanged. Final `git diff --check` passed and the index has no staged files.
+
+The supplied five baseline and five no-guidance fresh micro-samples already made safe
+no-execution/branch-selection handoffs (run IDs remain in the task record). No new
+samples/model calls were run. Static RED/GREEN proves source correction only: no
+measured model improvement, compliance qualification, installed adoption or consumer
+delivery is claimed by those checks. At worker handoff the changes were uncommitted
+and unintegrated. Subsequent independent review found no blockers and reran 17 CLI,
+closure and decomposition tests successfully; the parent then reran all seven CLI
+contract tests successfully. The reviewer confirmed that all five archived baseline
+files match `c7873c8f` and link targets are unchanged. Exact-wording guards are source
+contracts, not model-behavior proof. Source delivery and installation remain separate;
+no runtime, service, installer or publication operation is part of this correction.
+
+## PLANNING-AUTONOMOUS-01: checked source correction
+
+Implemented only the bounded Plan For Me alignment against clean `cf2aefe6`;
+Plan With Me, shared contracts and task metadata remain unchanged. Native and
+portable entrypoints now classify the observed source/phase: resolve in-scope
+engineering choices, return existing failed-operation/task/attempt/candidate
+source evidence to the same coordinator for supported recovery, or retain genuinely
+unavailable owner/external/physical-access inputs on affected tasks. Runtime failure
+alone does not justify acceptance splitting; evidence-backed authorized decomposition
+remains available without losing original contracts, acceptance or history.
+
+Both entrypoints limit `tasks why` to committed selection, distinguish branch-local
+commits from canonical-consumer inclusion/selection, and disclose runtime/ownership
+as unassessed unless observed. Portable preparation reuses Docs Sync's existing flow
+without updates, installation or worker interruption. Existing discovery, decision
+closure, full-batch, JSON/CAS, live and standalone/no-execution boundaries remain.
+
+Focused source-contract TDD extended the existing CLI seam and retained Plan With Me
+coverage: RED ran 8 tests with 30 expected assertion/subtest failures before skill
+edits (`/tmp/autowork-plan-for-me-red.log`). The requested five-module GREEN ran
+30 tests (8 CLI, 6 closure, 4 decomposition, 7 discovery, 5 specimen mechanics), all
+passing (`/tmp/autowork-plan-for-me-green.log`); no attempt timed out. These checks
+prove instruction-source and existing fixture mechanics only. No new model samples,
+measured adherence/performance, runtime recovery, installation, delivery or live
+qualification is claimed. At worker handoff no commit, push, service or
+canonical-checkout operation had been performed. Subsequent fresh independent
+review found no blockers, verified all 31 local links/anchors, reproduced the
+30 baseline assertion/subtest failures versus zero on corrected instructions,
+and reran 25 CLI/closure/decomposition/discovery tests successfully.
+
+Task validation passed (176 tasks, 18 goals, no drafts/pending paths). All four
+handoff archive files match `cf2aefe6`. Changed-link inspection validated the sole
+new target, portable Docs Sync; other link targets are unchanged. Affected-selector
+preview against `cf2aefe6` selects all 159 modules because this plan owner has no
+resolved mapping (`/tmp/autowork-plan-for-me-affected.json`); no full-suite fallback
+was executed. Main retains its separate full gate. Final whitespace/scope checks
+passed, with no staged files at worker handoff. The reviewed source is prepared
+in the isolated branch; canonical integration must preserve the concurrent writer's
+staged and in-progress changes. Source completion is not publication or installation.
