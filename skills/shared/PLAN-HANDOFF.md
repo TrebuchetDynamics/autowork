@@ -59,7 +59,13 @@ Use the existing task record or planning receipt for a compact continuation:
 - decided scope/exclusions, remaining material questions and their affected tasks;
 - evidence paths and source revision/file fingerprints where available;
 - changed documents, exact checks/results and their input bindings;
-- next executable action and any genuine retry condition.
+- next executable action and any genuine retry condition;
+- **Queue disposition:** draft/pending, left in `Next` for the authorized runner,
+  or held for this session through the existing supported mechanism; say who may
+  start and when. "No code this pass" is not a reservation;
+- expected implementation merge count and review-gate count, separate from the
+  planning commit; name the execution-method assumption or give conditional counts.
+  These are estimates under the actual execution contract, not new mandatory gates.
 No new mandatory file, duplicate tracker or ceremonial approval form. Explicit
 answers and delegated engineering choices carry forward. Proposals remain proposed;
 never infer acceptance from silence or label an entire draft accepted from one answer.
@@ -69,6 +75,15 @@ supports a choice within authorized scope and observable acceptance/checks can b
 written. Do not run experiments, interview the user or compare more alternatives
 when conventions and current evidence already answer the question. Preserve a
 material unknown only on its dependent tasks; independent accepted work stays ready.
+
+Inspect current writers and dirty files before choosing where to save. Prefer a
+dedicated plan file over appending to another session's dirty shared plan. If the
+existing owner must be updated, coordinate the write and stage only attributable
+owned hunks; do not absorb unrelated lines. Keep unreviewed scope outside runnable
+publication through the repository's existing draft/hold flow, not a filename
+convention. Before later implementation, recheck actual ownership; if a runner
+already owns the task, preserve attributable scratch and coordinate rather than
+implementing the same task in parallel.
 
 Persist one coherent batch, not a pass per finding or skill transition. During a
 long interview, save meaningful decisions for continuity without validating and
@@ -101,7 +116,9 @@ blindly retry with a new digest. See [Edit records](TODO-WORKCENTER.md#edit-reco
 
 Then run `autowork tasks validate --worktree .` before reporting it saved: fix every
 error. It lists drafts: a record missing contract fields is never selected. Commit
-the batch once. After the commit, `autowork tasks why ID` reports committed-store
+the batch once as a new scoped commit: inspect current HEAD and the entire staged
+diff, include only the reviewed batch, and never amend a runner-created merge or
+another session's commit. After the commit, `autowork tasks why ID` reports committed-store
 selection eligibility and position, not resource/ownership admission, capacity or
 dispatch. Report each task as selection-ready, waiting (and on what) or draft;
 readiness is not execution authorization or a live ownership check. A branch-local
