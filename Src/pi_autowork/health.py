@@ -357,8 +357,12 @@ def _time(value):
     return number if isinstance(value, str) else value
 
 
-def _validate_observation(record, *, members=False, runner_record=False):
+def _validate_observation(record, *, members=False, runner_record=False, main_check_record=False):
     """Validate only display-consumed fields, not the persisted writer schema."""
+    if main_check_record and record:
+        for key in ('state', 'rev'):
+            if not isinstance(record.get(key), str):
+                raise ValueError(f'invalid {key}: expected string')
     if 'status_unavailable_since' in record and not isinstance(record.get('status_reason'), str):
         raise ValueError('invalid status_unavailable_since: missing status_reason')
     if 'pid' in record and record['pid'] is not None:
@@ -385,6 +389,8 @@ def _validate_observation(record, *, members=False, runner_record=False):
                 'rev', 'main_head', 'crashed', 'gated', 'slot_status'):
         required = key in ('state', 'blocker', 'stop_reason', 'status_reason', 'role', 'label',
                            'rev', 'crashed', 'gated')
+        if main_check_record and key in ('crashed', 'gated') and record.get(key) is None:
+            continue  # check_main_start carries absent crash/gate history as null
         if key in record and (required or record[key] is not None) and not isinstance(record[key], str):
             raise ValueError(f'invalid {key}: expected string')
     for key in ('task_source', 'maintainer', 'main_check', 'check_slot'):
@@ -392,7 +398,7 @@ def _validate_observation(record, *, members=False, runner_record=False):
             if not isinstance(record[key], dict):
                 raise ValueError(f'invalid {key}: expected object')
             try:
-                _validate_observation(record[key])
+                _validate_observation(record[key], main_check_record=key == 'main_check')
             except ValueError as exc:
                 raise ValueError(f'{key}: {exc}') from exc
     for key in ('roots', 'held', 'waiting_groups', 'stopped_groups', 'task_observations', 'tasks'):
@@ -421,6 +427,8 @@ def _validate_observation(record, *, members=False, runner_record=False):
             except ValueError as exc:
                 raise ValueError(f'{key}: {exc}') from exc
     for key in ('failures', 'flaky'):
+        if main_check_record and key == 'failures' and record.get(key) is None:
+            continue  # no previous failing check; consumers use failures or []
         if key in record and not isinstance(record[key], list):
             raise ValueError(f'invalid {key}: expected array')
     for key in ('errors', 'changed', 'triggers'):
