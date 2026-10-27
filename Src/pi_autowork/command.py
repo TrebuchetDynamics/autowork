@@ -62,7 +62,7 @@ import subprocess
 import sys
 import time
 
-from pi_autowork import accounting, fleet_view, planning_commands, portal, scorecard, service, task_commands, task_migrate, task_prepare  # noqa: E402
+from pi_autowork import accounting, fleet_view, health, planning_commands, portal, scorecard, service, task_commands, task_migrate, task_prepare  # noqa: E402
 
 COMPONENT = LAYOUT.component
 TOOLSET = COMPONENT.parent
@@ -402,13 +402,21 @@ def cmd_ls(args, paths):
     name_w = max(len(r.name) for r in found)
     for r in found:
         label = f'{r.state} {fleet_view.duration(r.minutes)}'.strip()
-        counts = f'{r.running} running, {r.waiting} waiting' + (f', {len(r.held)} held' if r.held else '')
+        counts = (f'{r.running if r.running is not None else "?"} running, '
+                  f'{r.waiting if r.waiting is not None else "?"} waiting'
+                  + (f', {len(r.held)} held' if r.held else ''))
+        observation = (health.observation_text(r.observation)
+                       if r.observation and r.observation['task_state'] != 'current' else '')
         if not args.long:
             row = fit(f'  {r.name:<{name_w}}  {r.mode or "-":<8}  {label:<14}  {counts}')
             print(row.replace(f'{label:<14}', paint(f'{label:<14}', r.color, color), 1))
+            if observation:
+                print('    ' + observation)
             continue
         print(f'\n{r.name}  {r.mode or "-"}  {paint(label, r.color, color)}')
         print(fit(f'  {counts}  {r.repo}'))
+        if observation:
+            print('  ' + observation)
         if r.model:
             print(fit(f'  model {r.model}, fallback {r.fallback}'))
         for lane in r.lanes:

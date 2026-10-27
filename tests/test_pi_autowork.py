@@ -2133,6 +2133,51 @@ sys.exit(result.returncode)
         self.assertNotIn('external writer', result.stdout)
         self.assertTrue(self.done('A', 'B', 'C'))
 
+    def test_failed_status_does_not_log_empty_queue(self):
+        from unittest import mock
+        sys.path.insert(0, str(ROOT / 'pi-autowork'))
+        from pi_autowork import health
+        from pi_autowork.coordinator import Coordinator, Finish, LOG
+        runner = Coordinator.__new__(Coordinator)
+        runner.state, runner.repo, runner.integ = self.state, self.repo, None
+        runner.pause_until, runner.seen, runner.ledger_errors = 0, {}, []
+        runner.runner_blocker = runner.merge_blocker = ''
+        runner.toolset_rev, runner.mode, runner.stall_after = 'fixture', 'continuous', 1800
+        runner.settled, runner.draining, runner.interval, runner.workers = False, False, 300, 2
+        self.state.mkdir(exist_ok=True)
+        retained = dict(outcome='PARALLEL_STATUS', tasks=[dict(task='A', state='waiting')],
+                        task_source=dict(observed_at=time.time() - 30))
+        health.update(self.state, retained)
+        failed = dict(outcome='ERROR', reason='writer lock held')
+        empty = dict(outcome='PARALLEL_STATUS', tasks=[])
+        for mode in ('continuous', 'until-empty', 'once'):
+            runner.mode, runner.once_task = mode, None
+            for answer in (failed, empty):
+                with self.subTest(mode=mode, failed=answer is failed), \
+                        mock.patch.object(runner, 'status', return_value=answer), \
+                        mock.patch.object(runner, 'settle'), mock.patch.object(runner, 'handle_requests'), \
+                        mock.patch.object(runner, 'update_questions'), mock.patch.object(runner, 'merge_main', return_value=False), \
+                        mock.patch.object(runner, 'pause') as pause, mock.patch.object(runner, 'engine') as engine, \
+                        mock.patch.object(runner, 'finish', side_effect=lambda code, text: (_ for _ in ()).throw(Finish(code, text))), \
+                        mock.patch.object(LOG, 'say') as say:
+                    try:
+                        runner.finish_cycle('IDLE')
+                    except Finish as done:
+                        self.assertEqual(done.code, 0)
+                        text = done.text
+                    else:
+                        text = ' '.join(str(call.args[0]) for call in say.call_args_list)
+                    if answer is failed:
+                        self.assertNotIn('Queue empty', text)
+                        self.assertIn('Task state unavailable', text)
+                        self.assertIn('writer lock held', text)
+                    else:
+                        self.assertIn('Queue empty', text)
+                    self.assertEqual(pause.call_args_list, [mock.call(300)] if mode == 'continuous' else [])
+                    engine.assert_not_called()
+                    self.assertIsNone(runner.integ)
+        self.assertEqual(self.runs(), [])
+
     def test_blocked_tasks_are_not_reported_as_an_empty_queue(self):
         """IDLE with tasks waiting is not an empty queue. A held task (A) is never dispatched
         and blocks its dependent (C) but not unrelated work (B)."""

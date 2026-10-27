@@ -467,6 +467,40 @@ def current_job(folder, *, errors=None):
     return job if not problems and running(job) else None
 
 
+def observation(status, *, alive=False, now=None, errors=()):
+    """Display provenance from validated records, independent of execution state."""
+    now = time.time() if now is None else now
+    source = status.get('task_source') or {}
+    stamp = status.get('snapshot_at', source.get('observed_at'))
+    error = '; '.join(errors) or (status_error(status, now) if 'status_unavailable_since' in status else None)
+    if not error and status.get('state') == 'unavailable':
+        error = status.get('blocker') or 'task observation unavailable'
+    if not error and stamp is not None:
+        if source.get('observed_at') not in (None, stamp):
+            error = 'task source observation time does not match snapshot_at'
+        elif stamp > now:
+            error = 'task observation time is in the future'
+    known = (stamp is not None and source.get('observed_at') == stamp
+             and all(source.get(key) for key in ('workspace', 'repository_identity', 'revision')))
+    state = ('unavailable' if error else 'unknown' if not known else
+             'current' if now - stamp <= STALE_AFTER else 'stale')
+    return dict(runner_alive=bool(alive), health_written_at=status.get('updated_at'),
+                snapshot_at=stamp, snapshot_age_seconds=max(0, now - stamp) if stamp is not None else None,
+                task_state=state, error=error)
+
+
+def observation_text(value, *, now=None):
+    """A health write proves loop activity, not successful task reconciliation."""
+    now = time.time() if now is None else now
+    written = value.get('health_written_at')
+    activity = 'cycling' if written is not None and 0 <= now - written <= STALE_AFTER else 'not cycling'
+    if not value['runner_alive']:
+        activity = 'not running'
+    age = value.get('snapshot_age_seconds')
+    detail = value.get('error') or (f'last snapshot {int(age)}s old' if age is not None else 'no successful snapshot')
+    return f'Coordinator {activity}; task state {value["task_state"]}; {detail}'
+
+
 def fleet(state_root, *, now=None, service=_service):
     """Rows for every runner state directory that has a status or runner record."""
     now = time.time() if now is None else now
@@ -497,13 +531,15 @@ def fleet(state_root, *, now=None, service=_service):
         elif now - float(status.get('updated_at', 0)) > STALE_AFTER:
             state = 'not cycling'
         error = status_error(status, now) if 'status_unavailable_since' in status else ''
+        observed = observation(status, alive=alive, now=now, errors=errors)
+        current = observed['task_state'] == 'current' and alive
         rows.append(dict(name=name, repo=repo, service=service(name) if repo else '-', state=state,
-                         state_dir=str(folder), runner_alive=alive,
+                         observation=observed, state_dir=str(folder), runner_alive=alive,
                          **(dict(errors=errors) if errors else {}),
                          since=status.get('snapshot_at') if error else status.get('since'),
-                         workers=status.get('active_workers', None if errors else 0),
-                         waiting=status.get('waiting', None if errors else 0), roots=status.get('roots', []),
-                         stopped=status.get('stopped', None if errors else 0), stopped_groups=status.get('stopped_groups', []),
+                         workers=status.get('active_workers', 0) if current else None,
+                         waiting=status.get('waiting', 0) if current else None, roots=status.get('roots', []),
+                         stopped=status.get('stopped', 0) if current else None, stopped_groups=status.get('stopped_groups', []),
                          held=status.get('held', []), waiting_groups=status.get('waiting_groups', []),
                          blocker='; '.join(errors) or error or status.get('blocker', ''),
                          stop_reason=status.get('stop_reason', ''),
@@ -528,9 +564,12 @@ def render(rows, *, now=None):
         word = (row['waiting_groups'][0]['label']
                 if row['state'] == HOST_WAIT and row.get('waiting_groups') else row['state'])
         lines.append(f"{row['name']:<24} service {row['service']:<9} {word}{since}; "
-                     f"{row['workers']} running, {row['waiting']} waiting"
+                     f"{row['workers'] if row['workers'] is not None else '?'} running, "
+                     f"{row['waiting'] if row['waiting'] is not None else '?'} waiting"
                      + (f", {row['stopped']} stopped by a blocker" if row.get('stopped') else ''))
-        if row.get('errors') or row.get('blocker', '').startswith('status unavailable since '):
+        if row.get('observation'):
+            lines.append('    ' + observation_text(row['observation'], now=now))
+        elif row.get('errors') or row.get('blocker', '').startswith('status unavailable since '):
             lines.append('    ' + row['blocker'])
         if row['state'] in ('stalled', 'blocked', 'not running', 'not cycling'):
             for root in [r for r in row['roots'] if needs_person(r)][:3]:

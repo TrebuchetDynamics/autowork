@@ -97,6 +97,7 @@ class MaintainerTests(unittest.TestCase):
             runner.in_flight = runner.session_busy = lambda: False
             rows = [row] + [dict(row, task=f'Z{i:02}') for i in range(maintainer.LIMIT)]
             runner.tasks = lambda: rows
+            runner.status = lambda: dict(outcome='PARALLEL_STATUS', tasks=rows)
             runner.scratch_checkout, runner.drop_scratch = lambda _: state, lambda _: None
             prompts = []
             runner.pi_job = lambda *args: (prompts.append(args[3]) or True, '')
@@ -105,7 +106,7 @@ class MaintainerTests(unittest.TestCase):
             runner.plan_signature, runner.planning_ready = lambda: '', lambda: True
             for method in ('restart_checkpoint', 'restart_if_updated', 'ensure_session', 'follow_base', 'sweep_tmp', 'check_main',
                            'land_planning', 'settle', 'handle_requests', 'health_update'):
-                setattr(runner, method, lambda: None)  # external lifecycle, not the handoff
+                setattr(runner, method, lambda *args: None)  # external lifecycle, not the handoff
             def finish(code, text):
                 raise Finish(code, text)
             runner.finish = finish

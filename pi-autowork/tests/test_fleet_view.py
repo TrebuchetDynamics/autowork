@@ -109,6 +109,9 @@ class FleetViewTests(unittest.TestCase):
         self.assertEqual(record['name'], 'copy')
 
     def runner_state(self, repo, **status):
+        source = status.setdefault('task_source', dict(workspace=repo, repository_identity=repo + '/.git',
+                                                      revision='fixture', observed_at=time.time()))
+        status.setdefault('snapshot_at', source.get('observed_at'))
         folder = self.state / Path(repo).name
         folder.mkdir(parents=True)
         (folder / 'runner.json').write_text(json.dumps(
@@ -157,7 +160,7 @@ class FleetViewTests(unittest.TestCase):
         self.assertEqual(fleet_view.summary(found.values()), [('working', 1), ('stalled', 1)])
 
     def test_ls_json_matches_the_pre_refactor_recorded_fleet(self):
-        """Keep health, settings, questions and main-check merging byte-identical."""
+        """Keep legacy merging stable except unknown counts and additive provenance."""
         from pi_autowork import command
         fixture = Path(__file__).with_name('fixtures') / 'fleet'
         for folder in ('state', 'env', 'session'):
@@ -175,7 +178,11 @@ class FleetViewTests(unittest.TestCase):
             result = command.cmd_ls(type('Args', (), {'json': True})(), dict(
                 state_root=self.state, env_dir=self.env, systemctl=self.systemctl))
         self.assertEqual(result, 0)
-        self.assertEqual(output.getvalue().replace(str(self.base), '$BASE'), (fixture / 'ls.json').read_text())
+        expected = json.loads((fixture / 'ls.json').read_text())
+        expected['runners'][0].update(running=None, waiting=None, stopped=None, observation=dict(
+            runner_alive=True, health_written_at=2000000000, snapshot_at=None, snapshot_age_seconds=None,
+            task_state='unknown', error=None))
+        self.assertEqual(json.loads(output.getvalue().replace(str(self.base), '$BASE')), expected)
 
     def test_a_dead_main_check_is_interrupted_even_when_the_health_snapshot_says_running(self):
         self.runner_state('/git/india', main_check={'state': 'running', 'rev': 'old'})
@@ -311,15 +318,103 @@ class FleetViewTests(unittest.TestCase):
         failed = self.fake('broken-systemctl', 'exit 2')
         unavailable = fleet_view.collect_for_tui(self.state, self.env, systemctl=failed, generation=2)
         self.assertTrue(unavailable.errors)
-        retained = fleet_view.collect_for_tui(self.state, self.env, systemctl=failed, generation=3, last_good=result)
+        later = result.runners[0].observation['snapshot_at'] + 601
+        retained = fleet_view.collect_for_tui(self.state, self.env, systemctl=failed, generation=3,
+                                             last_good=result, now=later)
         self.assertEqual((retained.snapshots[0].revision, retained.snapshots[0].captured_at),
                          (result.snapshots[0].revision, result.snapshots[0].captured_at))
         self.assertEqual(retained.snapshots[0].freshness, 'stale')
         self.assertNotEqual(retained.snapshots[0].engine_freshness, 'fresh')
+        runner = retained.runners[0]
+        self.assertEqual((runner.observation['task_state'], runner.observation['snapshot_age_seconds']),
+                         ('unavailable', 601))
+        self.assertTrue(runner.observation['runner_alive'])
+        self.assertIsNone(runner.running)
+        self.assertIn('service query', fleet_view.verdict(runner)[0])
+        self.assertIn('task state unavailable', fleet_view.verdict(runner)[0])
         empty_env = self.base / 'empty-env'
         empty_env.mkdir()
         empty = fleet_view.collect_for_tui(self.state, empty_env, systemctl=self.systemctl, generation=3)
         self.assertEqual((empty.runners, empty.errors), ((), ()))
+
+    def test_activity_does_not_freshen_task_observations(self):
+        from pi_autowork import command, health
+        import task_queue
+        now = 2000000000
+        for name in ('good', 'bad'):
+            repo = self.base / name
+            repo.mkdir()
+            store_fixture.write_todo(repo, '- [ ] A — Alpha\n')
+            source = dict(workspace=str(repo), repository_identity=str(repo / '.git'),
+                          revision=task_queue.store(repo).rev, observed_at=now)
+            self.runner_state(str(repo), state='working', updated_at=now, snapshot_at=now,
+                              task_source=source, active_workers=2)
+            (self.env / f'{name}.env').write_text(f'PI_AUTOWORK_REPO={repo}\n')
+        folder = self.state / 'bad'
+        status = json.loads((folder / 'status.json').read_text())
+        identity = json.loads((folder / 'runner.json').read_text())
+        units = ''.join(f'pi-autowork@{name}.service loaded active running fixture\n' for name in ('good', 'bad'))
+        cases = [('current', 0, True, None, None),
+                 ('stale', 601, True, None, None),
+                 ('unavailable', 30, True, 'writer lock held', None),
+                 ('unknown', None, True, None, None),
+                 ('current', 0, False, None, None),
+                 ('stale', 601, True, None, 'job'),
+                 ('unavailable', 30, True, 'writer lock held', 'paused')]
+        for expected, age, alive, error, special in cases:
+            with self.subTest(expected=expected, alive=alive, special=special):
+                value = dict(status, snapshot_at=now - age if age is not None else None,
+                             task_source=dict(status['task_source'], observed_at=now - age) if age is not None else {})
+                if error:
+                    value.update(status_unavailable_since=now, status_reason=error)
+                if special == 'job':
+                    value['updated_at'] = now - 601
+                    (folder / 'job.json').write_text(json.dumps(dict(identity, role='maintainer',
+                                                                    task='DOCS-MAINTAINER', started=now - 10)))
+                else:
+                    (folder / 'job.json').unlink(missing_ok=True)
+                (folder / 'status.json').write_text(json.dumps(value))
+                (folder / 'runner.json').write_text(json.dumps(dict(identity, start_time=identity['start_time'] if alive else 'reused')))
+                if special == 'paused':
+                    fleet_view.paused_marker(self.env, 'bad').write_text('paused\n')
+                before = {p: p.read_bytes() for p in self.state.rglob('*.json')}
+                with mock.patch.dict(os.environ, FAKE_UNITS=units if special != 'paused' else units.splitlines(True)[0]), \
+                        mock.patch.object(fleet_view.time, 'time', return_value=now):
+                    cli = fleet_view.collect(self.state, self.env, systemctl=self.systemctl)
+                    tui = fleet_view.collect_for_tui(self.state, self.env, systemctl=self.systemctl, generation=1)
+                    paths = dict(state_root=self.state, env_dir=self.env, systemctl=self.systemctl)
+                    with contextlib.redirect_stdout(io.StringIO()) as output:
+                        command.cmd_ls(type('Args', (), {'json': True})(), paths)
+                    with contextlib.redirect_stdout(io.StringIO()) as plain:
+                        command.cmd_ls(type('Args', (), {'json': False, 'long': False})(), paths)
+                record = next(r for r in json.loads(output.getvalue())['runners'] if r['name'] == 'bad')
+                self.assertIn('observation', record)
+                self.assertEqual(record['observation']['task_state'], expected)
+                if expected != 'current':
+                    self.assertIn('task state ' + expected, plain.getvalue())
+                    self.assertIn('? running', plain.getvalue())
+                for runners in (cli, tui.runners):
+                    bad = next(r for r in runners if r.name == 'bad')
+                    good = next(r for r in runners if r.name == 'good')
+                    self.assertEqual(good.observation['task_state'], 'current')
+                    self.assertEqual(good.running, 2)
+                    self.assertEqual(bad.observation, record['observation'])
+                    self.assertEqual(bad.observation['runner_alive'], alive)
+                    self.assertEqual(bad.observation['snapshot_age_seconds'], age)
+                    self.assertEqual(bad.running, 2 if expected == 'current' and alive else None)
+                    self.assertEqual(fleet_view.task_counts(bad)[-1], 1)  # independent committed inventory
+                    text = fleet_view.verdict(bad)[0]
+                    if expected != 'current' and special != 'paused':
+                        self.assertIn('task state ' + expected, text)
+                    if error and special != 'paused':
+                        self.assertIn(error, text)
+                    if special == 'job':
+                        self.assertEqual((bad.state, bad.job['role']), ('working', 'maintainer'))
+                    if special == 'paused':
+                        self.assertEqual(bad.state, 'paused')
+                    if not alive:
+                        self.assertEqual(bad.state, 'not running')
+                self.assertEqual({p: p.read_bytes() for p in before}, before)
 
     def test_one_bad_runtime_source_preserves_healthy_fleet(self):
         repos = {name: self.base / name for name in ('good', 'bad')}

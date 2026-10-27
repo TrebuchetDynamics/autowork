@@ -131,6 +131,7 @@ class Runner:
     maintainer: dict = field(default_factory=dict)  # the DOCS-MAINTAINER's last run (TOOLSET-164-f1)
     main_check: dict = field(default_factory=dict)  # main's full offline check (TOOLSET-176-98)
     job: dict | None = None   # the runner's own Pi job running now (TOOLSET-177-d0)
+    observation: dict = field(default_factory=dict)  # additive ls JSON diagnostics
 
     prepare_state: str | None = None  # one read-only preparation probe per fleet refresh
 
@@ -519,7 +520,7 @@ def _question_count(runner: Runner) -> str:
 
 def _working_verdict(runner: Runner) -> Verdict:
     """Live jobs and worker lanes, rather than every commit still in flight."""
-    if runner.job and not runner.lanes:
+    if runner.job and (not runner.lanes or runner.observation.get('task_state', 'current') != 'current'):
         return f"Working — {job_text(runner.job)} ({duration(runner.minutes) or '0m'})", 'bold green'
     # Fifteen finished commits waiting to merge must not read as "16 of 1 workers busy".
     heads = ([row.bucket for row in inventory_rows(runner)] if runner.snapshot is not None else
@@ -577,8 +578,16 @@ def _blocked_verdict(runner: Runner) -> Verdict:
 def verdict(runner: Runner) -> Verdict:
     """(sentence, style): whether this runner is stuck, and why, in one line."""
     service = _service_verdict(runner)
+    observed = runner.observation
+    degraded = bool(observed) and observed['task_state'] != 'current'
+    detail = health.observation_text(observed) if degraded else ''
     if service is not None:
-        return service
+        return (service[0] + '; ' + detail, service[1]) if detail else service
+    if degraded:
+        if runner.job:
+            text, style = _working_verdict(runner)
+            return text + '; ' + detail, style
+        return detail, 'bold yellow'
     if runner.snapshot is not None:
         counts = task_counts(runner)
         if counts is None:
@@ -1072,7 +1081,8 @@ def _service_runner(name: str, sub: str, env_dir, systemctl: str, errors=None) -
                   model=settings.get('PI_AUTOWORK_PRIMARY') or DEFAULT_MODEL,
                   fallback=settings.get('PI_AUTOWORK_FALLBACK') or DEFAULT_FALLBACK,
                   push=settings.get('PI_AUTOWORK_PUSH', '0') == '1',
-                  toolset=settings.get('PI_AUTOWORK_TOOLSET', '').strip(), enabled=enabled)
+                  toolset=settings.get('PI_AUTOWORK_TOOLSET', '').strip(), enabled=enabled,
+                  observation=health.observation({}))
 
 
 def _health_runner(found: dict[str, Runner], row: dict, now: float) -> Runner | None:
@@ -1101,11 +1111,13 @@ def _health_runner(found: dict[str, Runner], row: dict, now: float) -> Runner | 
                        waiting_groups=row.get('waiting_groups') or [], blocker=row.get('blocker') or '',
                        stop_reason=row.get('stop_reason') or '', max_workers=row.get('max_workers'),
                        maintainer=row.get('maintainer') or {}, main_check=check, job=job,
+                       observation=row.get('observation') or health.observation({}),
                        acquisition_errors=list(row.get('errors') or []))
     except (OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError) as exc:
         error = f'{state_dir}: runtime projection unavailable: {exc}'
         return replace(runner, repo=repo, state_dir=state_dir, state='unavailable',
                        running=None, waiting=None, stopped=None, blocker=error,
+                       observation=health.observation({}, alive=row.get('runner_alive', False), errors=[error]),
                        acquisition_errors=[*row.get('errors', []), error])
 
 
@@ -1288,6 +1300,13 @@ def collect_for_tui(state_root, env_dir, *, generation, cached_preparation=None,
             retained = []
             for old in previous.runners:
                 runner = replace(old)
+                identity, problems = health.read_observation(Path(old.state_dir) / 'runner.json') if old.state_dir else ({}, [])
+                observed = old.observation or health.observation({})
+                stamp = observed.get('snapshot_at')
+                runner.observation = dict(observed,
+                    runner_alive=not problems and health.running(identity),
+                    snapshot_age_seconds=max(0, now - stamp) if stamp is not None else None)
+                _invalidate_runtime(runner, '; '.join([*errors, *problems]))
                 runner.snapshot = replace(old.snapshot, generation=generation, freshness='stale',
                                           errors=old.snapshot.errors + tuple(errors),
                                           engine_freshness='stale' if old.snapshot.engine_source.observed_at is not None else 'unknown')
@@ -1420,6 +1439,7 @@ def _invalidate_runtime(runner, error):
     runner.running = runner.waiting = runner.stopped = runner.max_workers = None
     runner.held, runner.roots, runner.waiting_groups, runner.stopped_groups = [], [], [], []
     runner.maintainer = {}
+    runner.observation = dict(runner.observation or health.observation({}), task_state='unavailable', error=error)
 
 
 def snapshot_for(runner, *, generation=0, last_good=None):

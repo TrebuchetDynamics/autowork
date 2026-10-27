@@ -693,8 +693,12 @@ class AutoworkCommandTests(unittest.TestCase):
         folder.mkdir()
         (folder / 'runner.json').write_text(json.dumps(
             {'pid': os.getpid(), 'start_time': start_time(os.getpid()), 'repo': str(self.repo)}))
-        (folder / 'status.json').write_text(json.dumps({'repo': str(self.repo), 'state': 'working', 'since': time.time() - 300,
-                                                        'updated_at': time.time(), 'active_workers': 1, 'waiting': 4}))
+        now = time.time()
+        source = dict(workspace=str(self.repo), repository_identity=str(self.repo / '.git'),
+                      revision='fixture', observed_at=now)
+        (folder / 'status.json').write_text(json.dumps({'repo': str(self.repo), 'state': 'working', 'since': now - 300,
+                                                        'updated_at': now, 'active_workers': 1, 'waiting': 4,
+                                                        'snapshot_at': now, 'task_source': source}))
         brief = self.aw('ls').stdout
         self.assertIn('autowork runners: 1 (1 working)', brief)
         self.assertRegex(brief, r'india\s+service\s+working [45]m\s+1 running, 4 waiting')
