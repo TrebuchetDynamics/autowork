@@ -10,6 +10,8 @@ metadata:
 
 # Plan With Me
 
+Apply the [shared Ponytail method](../shared/PONYTAIL.md) within this workflow's scope.
+
 The interactive counterpart to Plan For Me: research the repository, find out what
 the user actually wants and why through focused questions, and save the plan and
 tasks. First read the [planning artifact and authority contract](../shared/RESEARCH-PLAN.md)

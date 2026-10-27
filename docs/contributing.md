@@ -35,6 +35,12 @@ skills/
     scripts/      # optional
 ```
 
+Every public skill entry must directly link to the
+[shared Ponytail method](../skills/shared/PONYTAIL.md), applying it within that
+workflow's scope. Keep vendored protocols byte-exact behind local adapters, as in
+[Impeccable](../skills/impeccable/SKILL.md); do not rewrite upstream pins to add policy.
+`tests/test_ponytail_bundle.py` checks coverage, provenance and native provisioning.
+
 Use a folder name of 1–32 lowercase letters, digits, hyphens, or underscores,
 starting with a letter or digit. The folder determines the command name; keep
 the skill's frontmatter `name` consistent with it (enforced only for portable

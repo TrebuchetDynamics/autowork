@@ -26,6 +26,10 @@ ran, a worker is available or a Telegram message was delivered.
 - **Name owned by another plugin:** an existing command keeps its name. The
   bundle logs `Skipping /NAME: command already exists` (with a `skill_view` hint
   for most skills) and the skill stays available as `autowork:NAME`; see [workflows](workflows.md#commands).
+  Previously installed Ponytail commands are preserved. Setup/doctor report verified
+  bundled alternatives in `bundled_skill_fallbacks`; use those qualified skill names.
+  This exception requires each local skill registration and does not certify the
+  external plugin's command behavior.
 - **Running gateway predates the update:** updating source does not refresh a
   running gateway's registry. Reload the plugin or restart the gateway, then
   open a new conversation.
@@ -59,7 +63,7 @@ conversation.
 
 ### `doctor --core` passes but plain `doctor` fails
 
-Plain `doctor` also requires the external integrations (OMH, Ponytail, speech,
+Plain `doctor` also requires the external integrations (OMH, speech,
 imported skills). The `integration_gaps` field names them. Run full setup to add
 them, or keep using the core workflows; see [installation](installation.md#install).
 

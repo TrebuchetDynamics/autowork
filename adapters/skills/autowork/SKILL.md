@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # Autowork
 
+Apply the [shared Ponytail method](../../../skills/shared/PONYTAIL.md) within this workflow's scope.
+
 Read the [host contract](../COMMON.md). Use this host's native tools for execution.
 Do not launch Hermes workers (opt-in parallel workers below use this host's own
 CLI), require Hermes profiles, or depend on a native Kanban card. Run in the current session; delegate only when available and appropriate under

@@ -10,6 +10,8 @@ metadata:
 
 # Docs Sync
 
+Apply the [shared Ponytail method](../shared/PONYTAIL.md) within this workflow's scope.
+
 Keep docs accurate and distinguish intent from implementation. Reuse owners.
 The public skill ID is `docs-sync`; invoke it with `/docs_sync` or `/docs-sync`.
 Follow [the shared skill contract](../shared/COMMON-CONTRACT.md) for study, hygiene,

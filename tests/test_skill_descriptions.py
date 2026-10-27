@@ -12,9 +12,6 @@ class SkillDescriptionTests(unittest.TestCase):
         skills = sorted((ROOT / 'skills').glob('*/SKILL.md'))
         self.assertTrue(skills)
         for path in skills:
-            # Impeccable is a byte-exact vendored skill, not an owned adapter.
-            if path.parent.name == 'impeccable':
-                continue
             with self.subTest(skill=path.parent.name):
                 text = path.read_text()
                 self.assertTrue(text.startswith('---\n'))

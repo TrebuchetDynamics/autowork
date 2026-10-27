@@ -67,6 +67,17 @@ class InstallMenuTests(unittest.TestCase):
     def calls(self, prefix=''):
         return [c for c in self.log.read_text().splitlines() if c.startswith(prefix)]
 
+    def test_every_host_includes_bundled_ponytail_without_a_second_plugin(self):
+        self.fake('hermes', LOGGING)
+        result = self.install('--only', 'pi,claude,codex,hermes', '--dry-run',
+                              '--hermes-home', str(self.home))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout.count('bundled Ponytail'), 4)
+        self.assertNotIn('DietrichGebert/ponytail', result.stdout)
+        self.assertFalse(self.calls('pi install'))
+        self.assertFalse(self.calls('claude plugin install'))
+        self.assertFalse(self.calls('codex plugin add'))
+
     def test_list_marks_missing_hosts(self):
         out = self.install('--list').stdout
         for key in ('pi', 'autowork', 'tx', 'claude', 'codex'):

@@ -20,7 +20,6 @@ per line; blank lines and lines beginning with `#` are ignored:
 ```text
 https://hermes-agent.nousresearch.com/docs/plugins/omh all profiles
 
-https://github.com/dietrichgebert/ponytail all profiles
 skills https://github.com/example/optional-skills all profiles
 ```
 
@@ -79,3 +78,6 @@ Native command reference: [Hermes plugins](https://hermes-agent.nousresearch.com
 
 Addy engineering protocols are pinned under `skills/engineering/` and distributed
 with the bundle; they no longer require an external skill-source entry.
+Ponytail is likewise pinned and bundled on all four hosts. Its six skills and optional
+read-only map script use Autowork's existing installer; no external Ponytail plugin,
+mode hooks, band UI or telemetry is installed. Existing external installs are preserved.

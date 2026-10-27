@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # Docs Sync
 
+Apply the [shared Ponytail method](../../../skills/shared/PONYTAIL.md) within this workflow's scope.
+
 Read the [host contract](../COMMON.md) and use the shared
 [document scaffold](../../../skills/docs-sync/references/document-scaffold.md).
 Bare invocation bootstraps missing applicable roles and updates supported drift;

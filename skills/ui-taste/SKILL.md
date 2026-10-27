@@ -7,6 +7,8 @@ license: Apache-2.0
 
 # UI Taste
 
+Apply the [shared Ponytail method](../shared/PONYTAIL.md) within this workflow's scope.
+
 `/ui-taste` (Telegram `/ui_taste`) applies Uizze's pinned
 [UI Taste protocol](upstream/PROTOCOL.md), Apache-2.0 licensed
 ([licence](upstream/LICENSE), [notice](upstream/NOTICE),

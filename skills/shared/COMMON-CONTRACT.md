@@ -1,5 +1,9 @@
 # Shared skill contract
 
+Apply the [shared Ponytail method](PONYTAIL.md) within each workflow's authority.
+Reuse existing code and artifact owners; choose the smallest complete result,
+without weakening accepted behavior, safety or verification.
+
 User instructions and repository rules define the authorized scope. Read the
 relevant instructions, current source, tests and existing documentation before
 changing their owners. Keep proposals distinct from accepted requirements and

@@ -67,7 +67,9 @@ PROFILE config unset KEY`) when that was the prior state; do not replace an enti
   same-name skills were preserved. There is no per-file ownership journal that can
   prove a current copy belongs exclusively to this installer. Compare against your
   inventory and inspect local edits before removing any skill or shared support files.
-- OMH, Ponytail, speech, Graphify and external skills are separate installations.
+- OMH, speech, Graphify and external skills are separate installations. A previously
+  installed external Ponytail plugin also remains separate; the current pinned
+  Ponytail skill suite is bundled with Autowork.
   Do not remove one merely because Toolset is gone; other workflows may use it.
 - Select your intended memory provider before removing an active provider plugin.
   Removing a plugin is not erasure of its memory store, a migration, or deletion

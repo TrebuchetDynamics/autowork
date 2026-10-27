@@ -25,7 +25,10 @@ Use `--menu` when you want to select components interactively:
 
 The suite includes the Pi package, `autowork` command/TUI, `tx` launcher, Hermes
 fleet setup, and Claude Code and Codex plugins with their complete portable skill
-suites. `--full` (`--all`) is the default; `--skip` excludes components. Host CLIs
+suites, including [bundled Ponytail](cross-host.md#bundled-ponytail-on-every-host).
+All Autowork skills apply its shared method within their existing authority; no
+separate Ponytail plugin, hooks or persistent modes are installed. Existing external
+Ponytail installs are not changed or removed. `--full` (`--all`) is the default; `--skip` excludes components. Host CLIs
 must already be installed: full mode reports missing hosts as skipped, while
 `--only` reports a requested missing host as failed. Hermes also needs a Hermes
 home (`~/.hermes`, or `--hermes-home`/`HERMES_HOME`); a default home that does not
@@ -67,7 +70,7 @@ still leave partial setup.
 See [compatibility](testing.md#compatibility) for the verified environment.
 
 Setup is broader than installing this plugin: the current source inventory targets
-all profiles for OMH, Ponytail, Graphify, speech support and OMH memory. With the
+all profiles for OMH, Graphify, speech support and OMH memory. With the
 checked-in defaults, setup requests bounded `auto-safe` capture while preserving
 existing store bindings. An explicitly stored mode is retained only when the
 configured `memory_mode` is `preserve`; binding preservation alone does not preserve
@@ -511,9 +514,18 @@ saved link and moves the clone beside it instead of deleting it; it also takes
 
 Native plugin loading provisions every bundled skill and its support files into
 the selected profile, including Impeccable, Beautify GitHub README, Autoresearch,
-Grill Me and the pinned engineering protocols. No separate hub installation is needed for these skills.
+Grill Me, Ponytail and the pinned engineering protocols. No separate hub installation
+is needed for these skills.
 Fleet setup provisions the same bundle across existing live profiles. Existing
 local or categorized skill installations are preserved rather than overwritten.
+Existing `shared/` support directories receive missing Markdown files only, with
+atomic no-replace publication; local edits stay intact. A symlinked shared directory
+is refused rather than written through. This also makes the new Ponytail method
+available when installing over an older profile; use the normal updater to refresh
+existing skill contents. If the old external Ponytail plugin owns a command, setup
+and doctor require the corresponding `autowork:ponytail-*` skill registration and
+report it under `bundled_skill_fallbacks`; they do not treat the external command
+as an Autowork handler or remove it. Other foreign command collisions remain errors.
 `hermes autowork doctor --core` checks registration; full setup and full diagnostics
 still apply to external integrations such as Graphify and OMH. This does not install
 the entire public skill catalog or guarantee optional browser/service readiness.

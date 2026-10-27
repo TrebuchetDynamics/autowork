@@ -6,6 +6,8 @@ license: MIT
 
 # Cron Autowork
 
+Apply the [shared Ponytail method](../shared/PONYTAIL.md) within this workflow's scope.
+
 `/cron_autowork` (CLI also `/cron-autowork`) sets up recurring Autowork execution.
 Use the current scheduler's supported tools; this skill is not a second scheduler.
 Creating this skill or installing the plugin never creates a job automatically.

@@ -92,7 +92,10 @@ Start with a configured host and model; portable adapters need no Hermes install
 From a checkout, `install.sh` installs every available component with verbose output:
 the Pi package, the `autowork` command and TUI, the `tx` tmux launcher, the Hermes
 plugin (every live profile), the Claude Code plugin and the Codex plugin, including
-their complete portable skill suites. A host whose CLI is missing is skipped and explained. Each item runs that host's own install
+their complete portable skill suites, including pinned Ponytail skills and its optional
+read-only codebase-map script. Every Autowork skill applies the shared smallest-complete-change
+method within its existing scope; no separate Ponytail plugin or startup hooks are installed.
+A host whose CLI is missing is skipped and explained. Each item runs that host's own install
 command, listed below; `tx` keeps an existing `~/.tmux.conf`.
 
 ```sh
@@ -193,7 +196,7 @@ not a filesystem sandbox.
 | --- | --- | --- | --- |
 | Native Hermes plugin | Selected profile | Advisory only | Runtime defaults unless opted out |
 | `bash install-plugins.sh --bundle-only` | Every live profile | Skips external-source setup | Bundle defaults unless opted out |
-| `bash install-plugins.sh --yes-deps` | Every live profile | OMH, Ponytail, speech, Graphify | Bundle defaults and OMH setup |
+| `bash install-plugins.sh --yes-deps` | Every live profile | OMH, speech, Graphify | Bundle defaults and OMH setup |
 
 ### Fleet setup from source
 

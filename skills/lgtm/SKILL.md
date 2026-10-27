@@ -9,6 +9,8 @@ metadata:
 
 # LGTM — resolve and continue
 
+Apply the [shared Ponytail method](../shared/PONYTAIL.md) within this workflow's scope.
+
 Treat the user's approval as permission to carry out the understood next step.
 Start work promptly; no classification ceremony, mandatory acknowledgment, new plan,
 extra review or second approval round. Applies to every profile and channel.

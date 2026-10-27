@@ -32,6 +32,40 @@ def _publish(staged, target):
         raise OSError(error, os.strerror(error), str(target))
 
 
+def supplement_shared(source, target, *, dry_run=False):
+    """Add missing shared Markdown only; never replace a profile's existing content."""
+    if target.is_symlink():
+        raise ValueError(f'Symlinked shared support destination: {target}')
+    missing = [p for p in sorted(source.glob('*.md'))
+               if not (target / p.name).exists() and not (target / p.name).is_symlink()]
+    if dry_run or not missing:
+        return len(missing)
+    # Anchor POSIX publication to the actual directory, not a swappable symlink.
+    anchored = os.link in os.supports_dir_fd and hasattr(os, 'O_NOFOLLOW')
+    fd = os.open(target, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW) if anchored else None
+    added = 0
+    try:
+        with tempfile.TemporaryDirectory(prefix='.install-shared-', dir=target.parent) as temporary:
+            for source_file in missing:
+                staged = Path(temporary) / source_file.name
+                shutil.copy2(source_file, staged)
+                try:
+                    if fd is not None:
+                        os.link(staged, source_file.name, dst_dir_fd=fd)
+                    else:
+                        # Windows rename is no-replace, like directory installation.
+                        if target.is_symlink():
+                            raise ValueError(f'Symlinked shared support destination: {target}')
+                        _publish(staged, target / source_file.name)
+                    added += 1
+                except FileExistsError:
+                    pass  # A concurrent writer's file wins, including a symlink.
+    finally:
+        if fd is not None:
+            os.close(fd)
+    return added
+
+
 def install(source, profiles, *, dry_run=False, report=print, skills=None):
     if not source.is_dir() or source.is_symlink():
         raise ValueError(f'Missing or symlinked skills folder: {source}')
@@ -65,6 +99,21 @@ def install(source, profiles, *, dry_run=False, report=print, skills=None):
                     report(f'Failed: {skill.name} ({name}): incomplete existing skill at {target}; preserved')
                     failed += 1
                     continue
+                if skill.name == 'shared':
+                    try:
+                        added = supplement_shared(skill, target, dry_run=dry_run)
+                    except (OSError, ValueError) as error:
+                        report(f'Failed: shared ({name}): {error}')
+                        failed += 1
+                        continue
+                    if added:
+                        report(f'{"Plan" if dry_run else "Installed"}: shared ({name}): '
+                               f'{added} missing support files; existing files preserved')
+                        if dry_run:
+                            planned += 1
+                        else:
+                            installed += 1
+                        continue
                 report(f'Skip: {skill.name} ({name}) already exists: {target}')
                 skipped += 1
                 continue
@@ -111,7 +160,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(
         prog='install-skills.sh',
         description='Copy local skills/ to default and all existing Hermes profiles. '
-                    'Existing skill paths are skipped; no configuration or gateways are changed.')
+                    'Existing skills are preserved; missing shared Markdown is added. '
+                    'No configuration or gateways are changed.')
     parser.add_argument('--dry-run', action='store_true', help='show destinations without writing')
     parser.add_argument('--hermes-home', type=Path, metavar='ROOT',
                         help='default Hermes root (otherwise HERMES_HOME or ~/.hermes)')

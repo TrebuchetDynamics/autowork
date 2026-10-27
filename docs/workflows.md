@@ -25,6 +25,17 @@ and a saved answer is not proof that a held task advanced. Static skill tests an
 offline command-routing fixtures verify these instructions and routing, not live
 model adherence, successful recovery or service delivery.
 
+## Bundled Ponytail
+
+All workflows apply the [shared Ponytail method](../skills/shared/PONYTAIL.md)
+within their existing authority. `/ponytail [lite|full|ultra|off]` reports or changes
+only the conversation's Autowork preference. `/ponytail-review`, `/ponytail-audit`,
+`/ponytail-debt`, `/ponytail-gain` and `/ponytail-help` are one-shot reports;
+they do not implement, publish, start an extra reviewer or change persistent modes.
+See [portable host invocations](cross-host.md#bundled-ponytail-on-every-host).
+Existing external command owners keep their handlers; the bundled skills remain
+available as `autowork:ponytail` and `autowork:ponytail-review` (and the other names).
+
 ## Commands
 
 Use `/autowork status` for the read-only runner fleet and `/autowork status NAME`
