@@ -1185,28 +1185,71 @@ class EngineTests(Fixture):
 
     def test_a_long_review_runs_beside_the_loop_so_other_work_starts(self):
         """TOOLSET-183-d6: a 25-minute review idled a whole runner: no dispatch, no status."""
-        self.plan({'verify:A': ['slow_review']})
-        runner = self.start_runner('--interval', '1')
+        self.plan({'verify:A': ['prefix_tail'], 'worker:B': ['released']})
         log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
-        deadline = time.monotonic() + 60
-        while 'A: verifying' not in log():
-            self.assertLess(time.monotonic(), deadline, log())
-            time.sleep(0.2)
-        time.sleep(1)
-        status = next(self.state.glob('*/status.json'))
-        first = json.loads(status.read_text())['updated_at']
-        # The review sleeps 8 s: the loop keeps cycling meanwhile, so status moves before A integrates.
-        while json.loads(status.read_text())['updated_at'] <= first:
-            self.assertNotIn('A: integrated', log())
-            self.assertLess(time.monotonic(), deadline, log())
-            time.sleep(0.2)
-        self.assertNotIn('A: integrated', log())
-        while not ((self.repo / 'C.txt').exists() and self.done('A', 'B', 'C')):
-            self.assertLess(time.monotonic(), deadline, log())
-            time.sleep(0.5)
-        runner.send_signal(signal.SIGINT)
-        runner.communicate(timeout=60)
-        self.assertIn('A: integrated', log())
+        started = time.monotonic()
+        deadline = started + 60  # unchanged overall bound, including final integration
+        stages = {}
+        identity = self.root / 'runner-process.json'
+        # The guard subreaps the runner and fake children, even after an assertion fails.
+        # Files, not undrained pipes: runner output must never block its progress.
+        with (self.root / 'runner-output').open('w+') as output:
+            runner = subprocess.Popen(
+                [sys.executable, str(ROOT / 'pi-autowork/pi_autowork/pi_process.py'),
+                 '--identity', str(identity), '--deadline', '120', '--',
+                 'bash', str(RUNNER), '--until-empty', '--workers', '2', '--interval', '1'],
+                cwd=self.repo, env=self.env, stdout=output, stderr=subprocess.STDOUT)
+
+            def wait(stage, predicate):
+                while not (value := predicate()):
+                    output.flush()
+                    details = (f'{stage}; stages={stages}; load={os.getloadavg()}\n{log()}\n'
+                               + (self.root / 'runner-output').read_text())
+                    self.assertIsNone(runner.poll(), details)
+                    self.assertLess(time.monotonic(), deadline, details)
+                    time.sleep(0.1)
+                stages[stage] = round(time.monotonic() - started, 3)
+                return value
+
+            try:
+                wait('review and worker held', lambda: (self.root / 'tail-review-ready').exists()
+                     and (self.root / 'ready-B').exists())
+                status = wait('status available', lambda: list(self.state.glob('*/status.json')))[0]
+                first = json.loads(status.read_text())['updated_at']
+                # Hold a real review until the loop advances AND independent B finishes.
+                # Neither a one-second observation delay nor an eight-second review race
+                # should spend the later A/B/C integration budget on a loaded suite host.
+                (self.root / 'release-B').touch()
+                wait('status advanced', lambda: json.loads(status.read_text())['updated_at'] > first)
+                wait('B implemented during review', lambda: 'B: implemented' in log())
+                self.assertNotIn('A: integrated', log())
+                self.assertNotIn('C', [r['task'] for r in self.runs('worker')])
+                (self.root / 'tail-review-release').touch()
+                stages['review released'] = round(time.monotonic() - started, 3)
+                wait('A/B/C integrated', lambda: self.done('A', 'B', 'C')
+                     and all(f'{task}: integrated' in log() for task in 'ABC'))
+                # Completion keeps its 60 s bound; joining used a separate 60 s
+                # communicate allowance before this hardening, not its leftover time.
+                runner.wait(timeout=60)
+                self.assertEqual(runner.returncode, 0, log())
+                self.assertEqual(self.closed(), {'A', 'B', 'C'})
+            finally:
+                # Unblock both fakes before stopping; the supervisor also covers children
+                # in their own process groups and reaps them before fixture removal.
+                (self.root / 'release-B').touch()
+                (self.root / 'tail-review-release').touch()
+                if runner.poll() is None:
+                    runner.terminate()
+                try:
+                    runner.wait(timeout=10)
+                finally:
+                    if runner.poll() is None:
+                        runner.kill()
+                        runner.wait()
+                print(f'LONG_REVIEW_STAGES {stages}; load={os.getloadavg()}', flush=True)
+                self.assertTrue(identity.is_file(), 'missing runner cleanup receipt:\n'
+                                + (self.root / 'runner-output').read_text())
+                self.assertTrue(json.loads(identity.read_text())['cleanup_complete'], log())
 
     def test_reloads_sent_while_the_runner_re_executes_never_end_it(self):
         """A SIGHUP sent while a runner re-executed, before its new handler existed, killed it,
