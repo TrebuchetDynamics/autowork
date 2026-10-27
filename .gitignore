@@ -15,3 +15,6 @@ __pycache__/
 # Local subagent runtime artifacts.
 /.pi-subagents/
 /parallel-0/
+
+# Local archive of retired skills and commands (never published).
+/.archive/
