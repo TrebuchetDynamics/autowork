@@ -699,6 +699,129 @@ class ScopedUpdateTests(unittest.TestCase):
         self.assertEqual((self.home/'skills/demo/SKILL.md').read_text(), 'old\n')
         self.assertEqual(config.read_text(), 'model: unchanged\n')
 
+    def scan_blocked_receipt(self):
+        def refuse(action, *args):
+            if action == 'scan':
+                raise ValueError('native scanner caution requires approval')
+            return self.fake_native(action, *args)
+        with patch.object(self.mod, 'native_call', refuse):
+            self.assertEqual(self.deploy()['status'], 'incomplete')
+        return self.home/'maintenance/toolset-update/scoped.json'
+
+    def cancel_receipt(self, receipt, **kwargs):
+        import hashlib
+        return self.mod.cancel_scoped(self.home, hashlib.sha256(receipt.read_bytes()).hexdigest(), **kwargs)
+
+    def test_cancel_unpublished_missing_source_archives_evidence_and_allows_new_deployment(self):
+        import shutil
+        receipt = self.scan_blocked_receipt()
+        before = receipt.read_bytes()
+        backup = Path(json.loads(before)['backup'])
+        replacement = self.root/'replacement'
+        self.git(self.root, 'clone', str(self.remote), str(replacement))
+        shutil.rmtree(self.remote)
+        preview = self.cancel_receipt(receipt, check=True)
+        self.assertEqual(preview['status'], 'cancellation_available')
+        self.assertEqual(receipt.read_bytes(), before)
+        self.assertFalse(Path(preview['archive']).exists())
+        result = self.cancel_receipt(receipt)
+        self.assertEqual(result['status'], 'cancelled')
+        self.assertFalse(receipt.exists())
+        self.assertEqual(Path(result['archive']).read_bytes(), before)
+        self.assertEqual((backup/'manifest.json').read_bytes(), before)
+        self.assertTrue((self.home/'plugins/autowork').is_symlink())
+        self.assertEqual((self.home/'skills/demo/SKILL.md').read_text(), 'old\n')
+        self.calls.clear()
+        result = self.mod.scoped_update(self.home, replacement, self.revision, ['default'], 'python3')
+        self.assertEqual(result['status'], 'updated')
+        self.assertIn(('scan', str(self.home)), self.calls)
+        self.assertNotEqual(result['backup'], str(backup))
+
+    def test_cancel_requires_exact_receipt_and_idle_updater(self):
+        import fcntl
+        receipt = self.scan_blocked_receipt()
+        before = receipt.read_bytes()
+        with self.assertRaisesRegex(ValueError, 'changed|SHA-256'):
+            self.mod.cancel_scoped(self.home, '0' * 64)
+        with (receipt.parent/'lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with self.assertRaisesRegex(ValueError, 'updater'):
+                self.cancel_receipt(receipt)
+        self.assertEqual(receipt.read_bytes(), before)
+
+    def test_cancel_refuses_publication_or_malformed_state_without_archiving(self):
+        receipt = self.scan_blocked_receipt()
+        original = json.loads(receipt.read_bytes())
+        manifest = Path(original['backup'])/'manifest.json'
+        mutations = []
+        for phase in ('backed_up', 'slot_saved', 'installed', 'ready', 'unknown'):
+            mutations.append(lambda r, phase=phase: r['profiles']['default'].update(phase=phase))
+        mutations.extend([
+            lambda r: r.update(status='updated'),
+            lambda r: r.update(managed={}),
+            lambda r: r.update(selected=[]),
+            lambda r: r.update(selected=['../escape']),
+            lambda r: r.update(profiles={}),
+            lambda r: r['profiles']['default'].update(status='ready'),
+            lambda r: r['profiles']['default'].update(installed_hashes={}),
+            lambda r: r.update(backup=str(self.root/'outside')),
+        ])
+        for mutate in mutations:
+            with self.subTest(mutation=mutate):
+                run = json.loads(json.dumps(original))
+                mutate(run)
+                data = json.dumps(run).encode()
+                receipt.write_bytes(data); manifest.write_bytes(data)
+                with self.assertRaises(ValueError):
+                    self.cancel_receipt(receipt)
+                self.assertEqual(receipt.read_bytes(), data)
+                self.assertEqual(list(receipt.parent.glob('scoped-cancelled-*')), [])
+
+    def test_cancel_refuses_disagreeing_manifest_or_saved_plugin_slot(self):
+        receipt = self.scan_blocked_receipt()
+        before = receipt.read_bytes()
+        backup = Path(json.loads(before)['backup'])
+        manifest = backup/'manifest.json'
+        manifest.write_text('{}')
+        with self.assertRaisesRegex(ValueError, 'manifest|evidence'):
+            self.cancel_receipt(receipt)
+        manifest.write_bytes(before)
+        (backup/'default/plugin').symlink_to(self.root/'missing')
+        with self.assertRaisesRegex(ValueError, 'publication|slot'):
+            self.cancel_receipt(receipt)
+        self.assertEqual(receipt.read_bytes(), before)
+
+    def test_cancel_refuses_symlinked_evidence_and_archive_collision(self):
+        receipt = self.scan_blocked_receipt()
+        before = receipt.read_bytes()
+        archive = Path(self.cancel_receipt(receipt, check=True)['archive'])
+        archive.write_text('prior evidence')
+        with self.assertRaisesRegex(ValueError, 'archive|exists'):
+            self.cancel_receipt(receipt)
+        self.assertEqual(archive.read_text(), 'prior evidence')
+        archive.unlink()
+        saved = receipt.with_name('saved.json'); receipt.rename(saved); receipt.symlink_to(saved)
+        with self.assertRaisesRegex(ValueError, 'symlink'):
+            self.cancel_receipt(receipt)
+        self.assertEqual(saved.read_bytes(), before)
+
+    def test_cancel_cli_previews_then_archives_without_source_arguments(self):
+        import hashlib
+        receipt = self.scan_blocked_receipt()
+        token = hashlib.sha256(receipt.read_bytes()).hexdigest()
+        args = ['--hermes-home', str(self.home), '--cancel-scoped', token]
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            code = self.mod.main([*args, '--check'])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(output.getvalue())['status'], 'cancellation_available')
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            code = self.mod.main(args)
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(output.getvalue())['status'], 'cancelled')
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(self.mod.main(args), 1)
+        self.assertEqual(json.loads(output.getvalue())['status'], 'refused')
+
     def test_dirty_source_and_wrong_reviewed_revision_refuse(self):
         (self.remote/'plugin.yaml').write_text('local change')
         with self.assertRaisesRegex(ValueError, 'source'):
