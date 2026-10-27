@@ -174,9 +174,11 @@ operational acceptance, and keep the parent goal unverified; a split is not a wa
 
 If an answer
 authorizes a bounded continuation after another worker exits, record scope and wait
-condition, then recheck that worker's terminal state: execute the continuation now
-if satisfied, otherwise keep one pending request for the existing coordinator. A
-scope expansion to a shared runtime or upgrade stays conditional on a supported
-candidate proving the required operations; planning acceptance permits neither the
+condition, then recheck that worker's terminal state: if satisfied, return the ready
+continuation to the existing authorized coordinator for execution outside standalone
+planning under existing scope and limits; otherwise keep one pending request for that
+coordinator. Do not ask again for settled authorization or erase an explicit current
+no-execution limit. A scope expansion to a shared runtime or upgrade stays conditional
+on a supported candidate proving the required operations; planning acceptance permits neither the
 upgrade nor job resumption, and preserves existing pauses. No new
 scheduler, parallel backlog, automatic deployment or invented acceptance.
