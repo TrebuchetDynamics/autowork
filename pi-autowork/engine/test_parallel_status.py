@@ -44,6 +44,34 @@ class StatusWaitTests(unittest.TestCase):
         self.assertEqual(value['outcome'], 'PARALLEL_STATUS')
         self.assertEqual([r['task'] for r in value['tasks']], ['A', 'B'])
 
+    def test_clock_regression_preserves_status_and_marks_timings_unknown(self):
+        for stamps, now, backwards, before_latest in (
+                ((10, 5), 20, 1, False), ((5, 10), 7, 0, True)):
+            with self.subTest(stamps=stamps, now=now):
+                events = [dict(timestamp=stamp, event='dispatch_observed', waiting=[
+                    dict(id='A', reason=reason, blocked_by=[])])
+                    for stamp, reason in zip(stamps, ('old observation', 'latest observation'))]
+                path = self.common / 'journal.jsonl'
+                raw = ''.join(json.dumps(event) + '\n' for event in events)
+                path.write_text(raw)
+                value = status.snapshot(self.repo, now=now)
+                self.assertEqual(value['outcome'], 'PARALLEL_STATUS')
+                self.assertEqual(value['journal_timing'], dict(
+                    reliable=False, backwards=backwards, observation_before_latest=before_latest))
+                self.assertEqual(next(r for r in value['tasks'] if r['task'] == 'A')['reason'],
+                                 'latest observation')
+                self.assertEqual(value['task_source']['observed_at'], now)
+                for key in ('wall_seconds', 'worker_seconds', 'integration_seconds', 'waiting_seconds'):
+                    self.assertIsNone(value['metrics'][key], key)
+                self.assertTrue(all(row['elapsed_seconds'] is None for row in value['tasks']))
+                self.assertEqual(value['metrics']['peak_workers'], 0)
+                self.assertIn('unknown', status.render(value))
+                self.assertEqual(status.journal(self.common), events)
+                self.assertEqual(path.read_text(), raw)
+                if backwards:
+                    with self.assertRaisesRegex(ValueError, 'timestamps moved backwards'):
+                        status.state.journal.read(self.common, ordered=True)
+
     def test_completed_owners_invalidate_historical_file_waits_only(self):
         event = dict(timestamp=1, event='dispatch_observed', waiting=[
             dict(id='B', reason='overlapping paths with A', blocked_by=['A'])])
