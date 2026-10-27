@@ -123,11 +123,17 @@ class InstallMenuTests(unittest.TestCase):
         self.addCleanup(setattr, install_menu, 'run_command', original)
         answers = [(1, 'ValueError: Destination changed since preflight: /x/skills/SKILL.md'), (0, '')]
         install_menu.run_command = lambda argv, output: answers.pop(0)
+        continued = self.home / 'after-retry'
+        def next_step():
+            continued.touch()
+            return 'finished next step'
         item = install_menu.Item('hermes', 'Hermes plugin', steps=[
-            install_menu.Step('update_bundle.py', ['true'], retry_on='changed since preflight')])
+            install_menu.Step('update_bundle.py', ['true'], retry_on='changed since preflight'),
+            install_menu.Step('dependent step', run=next_step)])
         code = install_menu.install([item], {'hermes'}, output=install_menu.Output('never', 0))
         self.assertEqual(code, 0)
         self.assertEqual(answers, [])  # the second (successful) run consumed the queue
+        self.assertTrue(continued.exists())
 
     def test_a_failure_without_the_retry_marker_is_not_retried(self):
         import sys
@@ -273,6 +279,70 @@ class InstallMenuTests(unittest.TestCase):
                      env={'AUTOWORK_INSTALL_REPORT': str(report)})
         rows = {r['item']: r for r in map(json.loads, report.read_text().splitlines())}
         self.assertEqual(rows['codex'], {'item': 'codex', 'status': 'skipped', 'exit': None})
+
+    def test_failed_marketplace_update_preserves_plugin_and_continues_other_hosts(self):
+        self.fake('claude', LOGGING + '''
+if [[ "$*" == "plugin marketplace update autowork" ]]; then
+    echo "fixture marketplace unavailable" >&2
+    exit 23
+fi
+''')
+        report = self.home / 'install.jsonl'
+        result = self.install('--only', 'claude,codex', '-q',
+                              env={'AUTOWORK_INSTALL_REPORT': str(report)})
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual(self.calls('claude'), [
+            'claude plugin marketplace add TrebuchetDynamics/autowork',
+            'claude plugin marketplace update autowork'])
+        self.assertIn('codex plugin add autowork@autowork-marketplace', self.calls('codex'))
+        import json
+        rows = {row['item']: row for row in map(json.loads, report.read_text().splitlines())}
+        self.assertEqual(rows['claude'], {'item': 'claude', 'status': 'failed', 'exit': 23})
+        self.assertEqual(rows['codex'], {'item': 'codex', 'status': 'installed', 'exit': 0})
+
+    def test_step_exceptions_stop_only_the_failed_component(self):
+        import contextlib
+        import io
+        for failure in ('missing executable', 'callable OS error', 'callable subprocess error'):
+            with self.subTest(failure=failure):
+                dependent, independent = [], []
+                def fail():
+                    if failure == 'callable OS error':
+                        raise OSError('fixture denied')
+                    raise subprocess.CalledProcessError(7, 'fixture')
+                step = (install_menu.Step('missing executable', [str(self.home / 'absent')])
+                        if failure == 'missing executable' else install_menu.Step('failed callable', run=fail))
+                items = [install_menu.Item('failed', 'Failed component', steps=[step,
+                             install_menu.Step('dependent step', run=lambda: dependent.append('ran') or 'ok')]),
+                         install_menu.Item('other', 'Independent component', steps=[
+                             install_menu.Step('independent step', run=lambda: independent.append('ran') or 'ok')])]
+                with contextlib.redirect_stdout(io.StringIO()):
+                    code = install_menu.install(items, {'failed', 'other'}, output=install_menu.Output('never', 0))
+                self.assertEqual(code, 1)
+                self.assertEqual(dependent, [])
+                self.assertEqual(independent, ['ran'])
+
+    def test_exhausted_retry_stops_dependent_steps_and_preserves_failure_receipt(self):
+        import contextlib
+        import io
+        import json
+        from unittest.mock import patch
+        attempts = self.home / 'attempts'
+        report = self.home / 'install.jsonl'
+        continued = []
+        script = (f'from pathlib import Path; p = Path({str(attempts)!r}); '
+                  'p.write_text(p.read_text() + "x" if p.exists() else "x"); '
+                  'print("changed since preflight"); raise SystemExit(23)')
+        item = install_menu.Item('retry', 'Retry fixture', steps=[
+            install_menu.Step('retryable command', [sys.executable, '-c', script],
+                              retry_on='changed since preflight'),
+            install_menu.Step('dependent step', run=lambda: continued.append('ran') or 'ok')])
+        with patch.dict(os.environ, AUTOWORK_INSTALL_REPORT=str(report)), contextlib.redirect_stdout(io.StringIO()):
+            code = install_menu.install([item], {'retry'}, output=install_menu.Output('never', 0))
+        self.assertEqual(code, 1)
+        self.assertEqual(attempts.read_text(), 'xx')
+        self.assertEqual(continued, [])
+        self.assertEqual(json.loads(report.read_text()), {'item': 'retry', 'status': 'failed', 'exit': 23})
 
     def test_full_selects_all_hosts_and_bundled_skills(self):
         self.fake('hermes', LOGGING)
