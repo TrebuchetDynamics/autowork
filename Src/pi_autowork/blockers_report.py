@@ -192,6 +192,7 @@ def build(runner):
     lines = [f'{runner.name} — {headline} — READ ONLY',
              'Captured: ' + now.strftime('%Y-%m-%d %H:%M:%S UTC'),
              'Runner: ' + runner.name, 'Repository: ' + (runner.repo or '(unknown)'),
+             '', 'Runtime and source health (separate from task holds)',
              'Service: ' + (runner.service or 'not observed')]
     if runner.minutes is not None:
         lines.append(f'Recorded {runner.state}-state duration: ' + fleet_view.duration(runner.minutes))
@@ -213,7 +214,8 @@ def build(runner):
         if value:
             lines.append(f'{label}: {value}')
     for error in dict.fromkeys(errors):
-        lines.append('Source warning: ' + str(error))
+        if error not in (runner.stop_reason, runner.blocker, runner.gate):
+            lines.append('Source warning: ' + str(error))
     recorded_activity = bool(runner.running or status.get('active_workers') or status.get('in_flight')
                              or runner.job or runner.restarting)
     if runner.running:
@@ -314,8 +316,10 @@ def build(runner):
             for row in rows:
                 if row['task'] == task:
                     reason(row.get('reason'), '  Recorded runtime reason: ')
-    for row in rows:
-        if row.get('state') == 'waiting' and not _deferred_wait(row, deferred):
+    waiting = [row for row in rows if row.get('state') == 'waiting' and not _deferred_wait(row, deferred)]
+    if waiting:
+        lines.extend(['', 'Dependencies and waiting tasks (recorded, not live admission)'])
+        for row in waiting:
             lines.append(f'- {row["task"]}: recorded runtime wait; {row.get("cause") or "cause not recorded"}')
             reason(row.get('reason'), '  Runtime wait: ')
     lines.extend(['', 'Diagnostics are available separately. Observations may be stale; selection is not live admission.',
