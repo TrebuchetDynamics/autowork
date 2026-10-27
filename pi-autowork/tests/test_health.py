@@ -6,6 +6,7 @@ import sys
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import health  # noqa: E402
@@ -404,6 +405,79 @@ class HealthTests(unittest.TestCase):
         rows = {r['name']: r for r in health.fleet(self.state, now=1000, service=lambda _: 'active')}
         self.assertEqual(rows['bad']['state'], 'working')  # equivalent path spellings retain identity
 
+    def test_nullable_main_check_writer_round_trip(self):
+        from pi_autowork import fleet_view, main_check
+        from pi_autowork.coordinator import Coordinator
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'engine'))
+        import store_fixture
+
+        repo = self.state / 'repo'
+        repo.mkdir()
+        store_fixture.write_todo(repo, '## Now\n- [ ] A — Ready task\n')
+        root = self.state / 'runtime'
+        folder, sibling = root / 'repo', root / 'sibling'
+        folder.mkdir(parents=True)
+        sibling.mkdir()
+        live = dict(pid=os.getpid(), start_time=start_time(os.getpid()))
+        for path, identity in ((folder, str(repo)), (sibling, '/x/sibling')):
+            (path / 'runner.json').write_text(json.dumps(dict(live, repo=identity)))
+        health.update(sibling, dict(snapshot(workers=2), tasks=[], roots=[]), now=1000,
+                      runner=dict(repo='/x/sibling'))
+        owner = Coordinator.__new__(Coordinator)
+        owner.state, owner.repo, owner.integ = folder, repo, None
+        owner.pause_until, owner.seen = 0, {}
+        owner.runner_blocker = owner.merge_blocker = ''
+        owner.toolset_rev, owner.mode, owner.stall_after = 'fixture', 'continuous', 1800
+        owner.ledger_errors = []
+        owner.scratch_checkout = lambda *args: str(repo)
+        owner.main_check_port_lease = lambda: None
+        owner.job_environment = lambda **kwargs: {}
+        services = dict(repo='running', sibling='running')
+        def service_runner(name, *args):
+            return fleet_view.Runner(name=name, repo=str(repo) if name == 'repo' else '/x/sibling',
+                                     service='running', enabled=True)
+
+        histories = [{}, dict(crashed='old-crash', gated='old-gate', failures=['test_old'])]
+        histories += [dict(crashed=7), dict(gated=[]), dict(failures={})]
+        for history in histories:
+            invalid = next((key for key, value in history.items()
+                            if not isinstance(value, list if key == 'failures' else str)), None)
+            with self.subTest(history=history):
+                with patch('pi_autowork.supervision.main_checks.subprocess.Popen') as process, \
+                        patch('pi_autowork.supervision.main_checks.tempfile.mkdtemp', return_value=str(self.state)), \
+                        patch('pi_autowork.supervision.main_checks.post_merge_barrier.enabled', return_value=False):
+                    process.return_value.pid = os.getpid()
+                    owner.check_main_start(history, 'new-revision', 'true')
+                written = main_check.read(folder)
+                self.assertEqual(written['state'], 'running')
+                for key in ('crashed', 'gated', 'failures'):
+                    self.assertEqual(written[key], history.get(key))
+                with patch.object(health.time, 'time', return_value=1000):
+                    owner.health_update(dict(snapshot(workers=1), tasks=[], roots=[]))
+                self.assertEqual(json.loads((folder / 'status.json').read_text())['main_check'],
+                                 {k: v for k, v in written.items() if k not in ('pid', 'path', 'tmp')})
+                before = {p: p.read_bytes() for p in root.rglob('*') if p.is_file()}
+                rows = {r['name']: r for r in health.fleet(root, now=1000, service=lambda _: 'active')}
+                self.assertEqual((rows['sibling']['state'], rows['sibling']['workers']), ('working', 2))
+                if invalid:
+                    self.assertEqual((rows['repo']['state'], rows['repo']['workers']), ('unavailable', None))
+                    self.assertIn(f'main_check: invalid {invalid}', rows['repo']['blocker'])
+                    self.assertIn(str(folder / 'status.json'), rows['repo']['blocker'])
+                else:
+                    self.assertEqual((rows['repo']['state'], rows['repo']['workers']), ('working', 1))
+                    self.assertEqual(rows['repo']['main_check'],
+                                     {k: v for k, v in written.items() if k not in ('pid', 'path', 'tmp')})
+                with patch.object(fleet_view, '_service_states', return_value=services), \
+                        patch.object(fleet_view, '_service_runner', side_effect=service_runner):
+                    runners = {r.name: r for r in fleet_view.collect(root, self.state / 'env', now=1000)}
+                self.assertEqual(runners['repo'].state, 'unavailable' if invalid else 'working')
+                self.assertEqual(runners['sibling'].running, 2)
+                self.assertEqual([row.task for row in runners['repo'].snapshot.rows], ['A'])
+                self.assertEqual(runners['repo'].snapshot.counts[-1], 1)
+                if invalid:
+                    self.assertTrue(any('status.json' in error for error in runners['repo'].snapshot.errors))
+                self.assertEqual({p: p.read_bytes() for p in root.rglob('*') if p.is_file()}, before)
+
     def test_invalid_observation_values_do_not_prove_current_activity(self):
         folder = self.state / 'runner'
         folder.mkdir()
@@ -418,15 +492,24 @@ class HealthTests(unittest.TestCase):
                   ('held', {}), ('waiting_groups', [{'count': '2'}]),
                   ('task_source', []), ('maintainer', []), ('main_check', []),
                   ('main_check', {'state': 'green', 'rev': None}),
-                  ('main_check', {'state': 'running', 'started': None}),
+                  ('main_check', {'state': 'running', 'rev': 'abc', 'started': None}),
+                  ('main_check', {'state': 'running'}), ('main_check', {'rev': 'abc'}),
+                  ('main_check', {'state': None, 'rev': 'abc'}),
+                  ('main_check', {'state': [], 'rev': 'abc'}),
+                  ('main_check', {'state': 'running', 'rev': 7}),
+                  ('main_check', {'state': 'running', 'rev': 'abc', 'flaky': None}),
+                  ('crashed', None), ('gated', None), ('failures', None),
                   ('tasks', 3), ('task_observations', [{'task': []}]), ('errors', 4)]
         for key, value in cases:
             with self.subTest(key=key, value=value):
                 status = dict(repo='/x/runner', state='working', updated_at=1000, active_workers=2)
                 status[key] = value
                 (folder / 'status.json').write_text(json.dumps(status))
+                before = {p: p.read_bytes() for p in folder.iterdir()}
                 row, = health.fleet(self.state, now=1000, service=lambda _: 'active')
+                self.assertEqual({p: p.read_bytes() for p in folder.iterdir()}, before)
                 self.assertEqual(row['state'], 'unavailable')
+                self.assertIn(str(folder / 'status.json'), ' '.join(row['errors']))
                 self.assertIsNone(row['workers'])
                 self.assertIsNone(row['since'])
                 self.assertIn(key, ' '.join(row['errors']))

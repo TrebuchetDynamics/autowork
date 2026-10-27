@@ -922,6 +922,15 @@ non-finite timestamps cannot establish current activity. Runtime counts from an
 invalid observation are unknown, not zero; independently readable committed task
 inventory remains available. The task snapshot's separate status reread applies
 the same validation. Healthy sibling runners keep their current observations.
+Main-check history fields `crashed`, `gated` and `failures` may be null when no
+prior crash, gate or failure history exists: the running-check writer emits these
+values and health publication preserves them. Non-null values still require strings
+for `crashed`/`gated` and an array for `failures`; a nonempty main-check record also
+requires string `state` and `rev` values. This exception does not permit nulls in
+other validated fields. The offline writer-to-publication-to-fleet regression in
+`tests/test_health.py` covers nullable history, non-null history, malformed controls,
+healthy siblings, independent committed inventory and byte-preserving reads; it
+does not qualify installed adoption or live recovery.
 When multiple folders name one repository, collection prefers verified live runner
 identity, then valid observations and their update time; retained historical-folder
 errors remain visible without replacing the chosen current row.
