@@ -1340,6 +1340,68 @@ def recovery_freshness(root, profiles, run):
                 raise ValueError(f'Destination permissions changed since preflight: {path}')
 
 
+def cancel_scoped(root, expected_sha256, *, check=False):
+    """Archive an exact, provably pre-publication attempt; never waive admission."""
+    import hashlib
+    if not re.fullmatch(r'[0-9a-f]{64}', expected_sha256):
+        raise ValueError('Cancellation requires the exact scoped.json SHA-256')
+    state = root_home(root) / 'maintenance/toolset-update'
+    receipt = state / 'scoped.json'
+    safe_path(receipt)
+    safe_path(state / 'lock')
+    with (state / 'lock').open('a') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ValueError('Another updater is running')
+        data = receipt.read_bytes()
+        if hashlib.sha256(data).hexdigest() != expected_sha256:
+            raise ValueError('Scoped receipt changed; inspect it and supply its current SHA-256')
+        run = json.loads(data)
+        if (not isinstance(run, dict) or run.get('status') != 'incomplete'
+                or 'managed' in run or run.get('ordinary_pending')):
+            raise ValueError('Only an incomplete scoped attempt can be cancelled')
+        names, rows = run.get('selected'), run.get('profiles')
+        if (not isinstance(names, list) or not names
+                or any(not isinstance(n, str) or not re.fullmatch(r'[A-Za-z0-9_-]+', n) for n in names)
+                or len(set(names)) != len(names) or not isinstance(rows, dict) or set(rows) != set(names)):
+            raise ValueError('Incomplete or malformed selected-profile evidence')
+        if any(not isinstance(row, dict) or row.get('phase') is not None
+               or row.get('status') not in ('pending', 'deferred', 'incomplete')
+               or 'installed_hashes' in row or 'commands' in row for row in rows.values()):
+            raise ValueError('Publication may have begun; resume the original attempt instead')
+        raw_backup = run.get('backup')
+        if not isinstance(raw_backup, str):
+            raise ValueError('Missing original backup evidence')
+        backup = Path(raw_backup)
+        if backup.parent != state or not re.fullmatch(r'scoped-[0-9]+', backup.name):
+            raise ValueError('Unsafe original backup record')
+        manifest = backup / 'manifest.json'
+        safe_path(manifest)
+        if manifest.read_bytes() != data:
+            raise ValueError('Backup manifest disagrees with scoped receipt; preserve both for recovery')
+        for name in names:
+            folder = backup / name
+            if folder.is_symlink() or (folder.exists() and not folder.is_dir()):
+                raise ValueError('Unsafe profile backup evidence')
+            original = folder / 'plugin'
+            if original.exists() or original.is_symlink():
+                raise ValueError('Saved plugin slot indicates possible publication; resume instead')
+        archive = state / f'scoped-cancelled-{expected_sha256}.json'
+        safe_path(archive)
+        if archive.exists():
+            raise ValueError('Cancellation archive already exists; preserve existing evidence')
+        result = {'status': 'cancellation_available' if check else 'cancelled',
+                  'receipt_sha256': expected_sha256, 'archive': str(archive),
+                  'backup': str(backup), 'revision': run.get('revision'), 'selected': names}
+        if not check:
+            # Exclusive creation preserves evidence even on a name collision. A crash
+            # before unlink leaves the active guard in place, never an unrecorded reset.
+            os.link(receipt, archive)
+            receipt.unlink()
+        return result
+
+
 def scoped_update(root, source, revision, names, python, *, check=False, _recovery=None, _locked=False):
     """Deploy one reviewed local commit; never advance shared sources or frozen helpers."""
     source = Path(source).expanduser().resolve(strict=True)
@@ -1889,12 +1951,24 @@ def main(argv=None):
     parser.add_argument('--source', type=Path, help='Reviewed clean local Git checkout; no fetch')
     parser.add_argument('--revision', help='Exact reviewed 40-character local commit')
     parser.add_argument('--native-python', help='Python from the selected Hermes installation')
+    parser.add_argument('--cancel-scoped', metavar='SHA256',
+                        help='Archive this exact unpublished scoped.json attempt; --check previews')
     parser.add_argument('--pin-profile', metavar='NAME', help='Replace this profile\'s plugin link with a clone of the same revision')
     parser.add_argument('--unpin-profile', metavar='NAME', help='Restore the plugin link saved by the last pin')
     parser.add_argument('--dry-run', action='store_true', help='Preview only; no network or recovery writes')
     parser.add_argument('--restart-when-quiet', type=int, metavar='UPDATE_ID', help=argparse.SUPPRESS)
     parser.add_argument('--gateway-pid', type=int, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    if args.cancel_scoped is not None:
+        if any((args.profile, args.source, args.revision, args.native_python,
+                args.pin_profile, args.unpin_profile, args.restart_when_quiet is not None, args.gateway_pid)):
+            parser.error('--cancel-scoped cannot be combined with deployment, pin or restart options')
+        try:
+            result = cancel_scoped(args.hermes_home, args.cancel_scoped, check=args.check or args.dry_run)
+        except (ValueError, OSError) as error:
+            result = {'status': 'refused', 'error': str(error)}
+        print(json.dumps(result, indent=2))
+        return int(result['status'] == 'refused')
     if args.restart_when_quiet is not None:
         live_profiles = _AUTOWORK_COMPAT.peer(globals(), 'setup_bundle').live_profiles
         root = root_home(args.hermes_home)

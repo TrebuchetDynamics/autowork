@@ -596,6 +596,27 @@ An interruption can leave plugin and skill publication at different phases.
 Rerun the same command to resume the original source, selection, staging and
 backup. A different revision/selection, including the same profiles in a different order,
 is refused while that run is incomplete.
+
+If the original source is gone and **publication never began**, inspect the receipt
+and its backup manifest, then cancel only that exact attempt:
+
+```bash
+sha256sum /path/to/hermes-home/maintenance/toolset-update/scoped.json
+python3 update_bundle.py --hermes-home /path/to/hermes-home \
+  --cancel-scoped <receipt-sha256> --check
+# After inspecting the preview, repeat without --check.
+```
+
+Cancellation takes the updater lock, requires matching receipt/backup evidence,
+and refuses any recorded publication phase (including `backed_up`), saved plugin
+slot, malformed state or archive collision. It archives the original receipt
+unchanged as `scoped-cancelled-<receipt-sha256>.json` beside the active journal;
+all staging and backups remain. It does not require the vanished source, alter
+profiles, restart services or accept a scanner caution. Retry a reviewed deployment
+normally afterward; native admission still applies. Partially published attempts
+must instead resume their original recovery path. Never delete their journal to
+force another deployment.
+
 Completed unchanged deployments perform no native installation or scan; drift is
 still checked. Retain the run directory: native installation provenance points to its staged local
 source, and its original backups support later reconciliation.
