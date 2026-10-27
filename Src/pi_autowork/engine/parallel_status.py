@@ -23,7 +23,16 @@ STATUS_LOCK_WAIT = 2  # seconds; brief dispatch/integration writes should not fa
 
 
 def journal(common):
-    return state.journal.read(common, ordered=True)['events']
+    return state.journal.read(common)['events']
+
+
+def journal_timing(events, now):
+    """Append order is authoritative; wall-clock order only qualifies durations."""
+    backwards = sum(after['timestamp'] < before['timestamp']
+                    for before, after in zip(events, events[1:]))
+    before_latest = any(event['timestamp'] > now for event in events)
+    return dict(reliable=not (backwards or before_latest), backwards=backwards,
+                observation_before_latest=before_latest)
 
 
 def metrics(events, now):
@@ -67,6 +76,9 @@ def metrics(events, now):
                 phases.setdefault(item['id'], 'waiting')
         totals['peak_workers'] = max(totals['peak_workers'], sum(p in WORKING for p in phases.values()))
         last = stamp
+    if not journal_timing(events, now)['reliable']:
+        for key in ('wall_seconds', 'worker_seconds', 'integration_seconds', 'waiting_seconds'):
+            totals[key] = None
     return totals
 
 
@@ -195,8 +207,9 @@ def _snapshot(repo, common, now):
     task_source = dict(workspace=str(repo), repository_identity=str(Path(task_queue._git(
         repo, 'rev-parse', '--path-format=absolute', '--git-common-dir').decode().strip()).resolve()),
         revision=revision, observed_at=now)
-    history = state.journal.read(common, ordered=True)
+    history = state.journal.read(common)
     events = history['events']
+    timing = journal_timing(events, now)
     coordinator = state.lease(common)
     last_coordinator = next((e['coordinator'] for e in reversed(events) if e['event'] == 'coordinator_claimed'), {})
     capacity = (coordinator or last_coordinator).get('max_workers', 0)
@@ -315,6 +328,9 @@ def _snapshot(repo, common, now):
                 waits = sorted(deferred_roots & _ends(row['task'], by_id, {row['task']}))
                 if waits:
                     row['reason'] = 'wait for deferred ' + ', '.join(waits)
+    if not timing['reliable']:
+        for row in rows:
+            row['elapsed_seconds'] = None
     return dict(outcome='PARALLEL_STATUS', workspace=str(repo), task_source=task_source,
                 active_workers=active, max_workers=capacity,
                 tasks=rows, roots=root_rows, completed=sum(r['state'] == 'closed' for r in rows),
@@ -322,6 +338,7 @@ def _snapshot(repo, common, now):
                                                   and not r.get('paused')) for r in rows),
                 integration_queue=sum(r['state'] in ('reported', 'integrating') for r in rows),
                 metrics=metrics(events, now),
+                **({'journal_timing': timing} if not timing['reliable'] else {}),
                 **({'journal_skipped': history['skipped']} if any(history['skipped'].values()) else {}),
                 **({'merge_backlog': observed['merge_backlog']} if 'merge_backlog' in observed else {}))
 
@@ -334,10 +351,15 @@ def render(value):
              f"{'Task':<20} {'State':<12} {'Slot':>4} {'Elapsed':>9}  Blocked reason"]
     for row in value['tasks']:
         word = 'paused' if row.get('paused') and row['state'] in ('interrupted', 'released') else row['state']
+        elapsed = 'unknown' if row['elapsed_seconds'] is None else f"{row['elapsed_seconds']:.1f}s"
         lines.append(f"{text(row['task'], 20):<20} {word:<12} {str(row['slot'] or '-'):>4} "
-                     f"{row['elapsed_seconds']:>8.1f}s  {text(row['reason'] or '-', 70)}")
+                     f"{elapsed:>9}  {text(row['reason'] or '-', 70)}")
     lines.append(f"Completed: {value['completed']}  Failed: {value['failed']}  Integration queue: {value['integration_queue']}")
     m = value['metrics']
-    lines += [f"Wall: {m['wall_seconds']:.1f}s  Worker: {m['worker_seconds']:.1f}s  Integration: {m['integration_seconds']:.1f}s  Waiting/blocked: {m['waiting_seconds']:.1f}s",
+    def duration(key):
+        return 'unknown' if m[key] is None else f'{m[key]:.1f}s'
+    lines += [f"Wall: {duration('wall_seconds')}  Worker: {duration('worker_seconds')}  Integration: {duration('integration_seconds')}  Waiting/blocked: {duration('waiting_seconds')}",
               f"Peak workers: {m['peak_workers']}  Conflicts: {m['conflicts']}  Retries: {m['retries']}"]
+    if not value.get('journal_timing', {}).get('reliable', True):
+        lines.append('Timing: unknown — journal wall-clock order is unreliable; task state uses append order.')
     return '\n'.join(lines)

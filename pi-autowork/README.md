@@ -982,6 +982,16 @@ when absent, rather than borrowing a new write time. Offline producer/cache/heal
 fixtures cover these contracts; they do not prove a deployed runner loaded this
 source or qualify SSH responsiveness.
 
+Status replays journal events in physical append order, not wall-clock order.
+A decreasing event timestamp or an observation time before the latest event no
+longer hides valid task/slot state. The JSON response adds `journal_timing` when
+clock order is unreliable (`reliable: false`, `backwards` count and
+`observation_before_latest` flag). Its four aggregate duration metrics and
+journal-derived row elapsed times are then `null`; text renders them as `unknown`.
+Event-derived counts remain available. Ordered histories retain their numeric
+output, strict journal readers remain strict, and status never sorts or repairs
+journal bytes. This is observation fault isolation, not proof of clock recovery.
+
 Engine status reads wait up to two seconds for the writer lock, so brief dispatch
 or integration writes do not immediately fail a read. If a read still fails,
 health keeps its last observed state for that one failure, with the snapshot's
