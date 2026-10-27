@@ -316,8 +316,19 @@ elif behavior == 'released':  # finish only at the scheduling boundary chosen by
         time.sleep(0.05)
     work(); finish(text='done')
 elif behavior == 'stuck_command':  # a tool command that would hang for a minute, then the work
-    subprocess.run(['sleep', '60'])
-    work(); finish(text='done')
+    started = time.monotonic()
+    command = subprocess.Popen(['sleep', '60'])
+    try:
+        returncode = command.wait()
+        stopped = time.monotonic()
+    finally:
+        if command.poll() is None:
+            command.kill()
+        command.wait()  # reap the real command even if the fake fails
+    work()
+    note({'stuck_command': {'started': started, 'stopped': stopped,
+                           'finished': time.monotonic(), 'returncode': returncode}})
+    finish(text='done')
 elif behavior == 'slow':  # busy for a few seconds, then finishes normally
     open(os.path.join(os.environ['FAKE_PI_ROOT'], 'busy-' + task), 'w').write(str(os.getpid()))
     subprocess.run(['sleep', '6'])  # a running tool command, as real Pi has: an active session
@@ -1357,7 +1368,21 @@ class EngineTests(Fixture):
         self.env['PI_AUTOWORK_COMMAND_TIMEOUT'] = '3'
         started = time.monotonic()
         result = self.run_runner('--until-empty', timeout=120)
-        self.assertLess(time.monotonic() - started, 50, result.stdout)  # not the command's 60 s
+        finished = time.monotonic()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        commands = [row['stuck_command'] for row in map(json.loads, self.log.read_text().splitlines())
+                    if 'stuck_command' in row]
+        self.assertEqual(len(commands), 1, result.stdout)
+        command = commands[0]
+        timing = dict(before_command=command['started'] - started,
+                      command=command['stopped'] - command['started'],
+                      worker_completion=command['finished'] - command['stopped'],
+                      integration=finished - command['finished'])
+        # Release setup, reviews and A/B/C integration are not the command's runtime.
+        # Keep the runner's separate 120 s bound; the real sleep must not finish naturally.
+        print('STUCK_COMMAND_TIMING ' + json.dumps(timing), flush=True)
+        self.assertLess(timing['command'], 50, timing)
+        self.assertEqual(command['returncode'], -signal.SIGTERM, timing)
         self.assertTrue(self.done('A', 'B', 'C'), result.stdout)
         self.assertEqual([r['task'] for r in self.runs('worker')].count('A'), 1)  # same attempt
         logs = ''.join(p.read_text(errors='replace') for p in self.repo.glob('.git/autowork-execution/slot-data/A/*/worker.log'))
