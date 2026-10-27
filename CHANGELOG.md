@@ -87,6 +87,7 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Distinguish verified coordinator activity from current, stale, unavailable or unknown task observations in fleet JSON, CLI/TUI diagnostics and idle logs; suppress cached runtime counts without changing scheduling. (TOOLSET-400-75c00b1d)
 - Harden the stuck-command engine fixture by measuring real command termination separately from queue overhead, requiring SIGTERM, and reaping its subprocess while retaining same-attempt A/B/C completion checks. (TOOLSET-404-85e17473)
 - Repair active bundled link validation for the pinned Ponytail report's upstream-only benchmark harness reference while retaining missing-link failures for active skills, protocols and shared references. (TOOLSET-402-d72ea0aa)
 - Fix runner health reads to accept legitimately null main-check crash, gate and failure history while preserving corruption guards and read-only inventory access. (TOOLSET-400-6453fbbd)
