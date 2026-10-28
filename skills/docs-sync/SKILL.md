@@ -519,10 +519,13 @@ Needs decision or focus is not eligibility or live availability. "No eligible
 follow-ups" requires every goal met with executed evidence; otherwise report the
 actual gap.
 
-Someone working on a task outside the runner holds it with `autowork tasks hold ID
---by WHO [--until YYYY-MM-DD]` (its `Held by:` note) and lifts the hold with
-`autowork tasks release ID`. There is no in-progress status. Report held tasks
-separately from new open selections, because a held task is not new work to claim.
+Apply the [task-hold policy](../shared/TODO-WORKCENTER.md#task-holds-require-an-explicit-user-request):
+leave tasks open by default. Only an explicit user request permits adding or
+renewing `Held by:` with `autowork tasks hold ID --by WHO [--until YYYY-MM-DD]`.
+Planning or working outside the runner is not such a request; use supported leases
+and workspace locks for execution ownership. Preserve existing claims and pauses;
+release only reconciled holds with `autowork tasks release ID`. There is no
+in-progress status. Report real holds separately from new open selections.
 
 ### Put deferred qualification last
 

@@ -60,9 +60,11 @@ Use the existing task record or planning receipt for a compact continuation:
 - evidence paths and source revision/file fingerprints where available;
 - changed documents, exact checks/results and their input bindings;
 - next executable action and any genuine retry condition;
-- **Queue disposition:** draft/pending, left in `Next` for the authorized runner,
-  or held for this session through the existing supported mechanism; say who may
-  start and when. "No code this pass" is not a reservation;
+- **Queue disposition:** accepted tasks stay open in `Now` or `Next` for the
+  authorized runner. Name genuine pending inputs separately. Add a hold only for
+  an explicit user pause, with its scope and release condition under the
+  [task-hold policy](TODO-WORKCENTER.md#task-holds-require-an-explicit-user-request).
+  "No code this pass" is not a reservation;
 - expected implementation merge count and review-gate count, separate from the
   planning commit; name the execution-method assumption or give conditional counts.
   These are estimates under the actual execution contract, not new mandatory gates.
@@ -79,9 +81,9 @@ material unknown only on its dependent tasks; independent accepted work stays re
 Inspect current writers and dirty files before choosing where to save. Prefer a
 dedicated plan file over appending to another session's dirty shared plan. If the
 existing owner must be updated, coordinate the write and stage only attributable
-owned hunks; do not absorb unrelated lines. Keep unreviewed scope outside runnable
-publication through the repository's existing draft/hold flow, not a filename
-convention. Before later implementation, recheck actual ownership; if a runner
+owned hunks; do not absorb unrelated lines. Keep genuinely unaccepted scope in its
+existing proposal or draft owner, not in an invented hold. Do not downgrade complete
+accepted tasks to drafts to prevent dispatch. Before later implementation, recheck actual ownership; if a runner
 already owns the task, preserve attributable scratch and coordinate rather than
 implementing the same task in parallel.
 
@@ -144,8 +146,9 @@ No start_goal API, fallback file or Kanban card is required.
 
 Under execution authority, the current coordinator executes the selected contract, retaining task IDs, scope,
 sources, expected change, acceptance, verification and stop conditions. There is
-no in-progress status; work held outside the runner carries a `Held by:` note
-(`autowork tasks hold`), lifted with `autowork tasks release`.
+no in-progress status. Work outside the runner uses supported execution leases and
+workspace locks, not an automatic `Held by:` note. Only an explicit user request
+permits a new task hold; preserve existing claims and check actual ownership.
 Optional delegated workers return source-bound results to the integration owner;
 required review and canonical closure stay with that owner under existing authority.
 No historical card lookup, release, native continuation or review transition is a

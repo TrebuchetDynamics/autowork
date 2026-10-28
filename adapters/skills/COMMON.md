@@ -27,6 +27,11 @@ Never change host permissions, memory configuration, model credentials or approv
 policy to make a workflow run. A skill cannot promise unattended execution after
 the current host session ends.
 
+Follow [task holds](../../skills/shared/TODO-WORKCENTER.md#task-holds-require-an-explicit-user-request):
+leave tasks active by default. Only an explicit user request permits a skill to add
+or renew a task hold. Planning-only session scope does not pause the queue.
+Preserve existing user pauses, live claims, dependencies and safety gates.
+
 Explicit invocation authorizes the documented default action within user scope.
 Questions-only/read-only/no-write/no-commit/no-push restrictions propagate through
 all handoffs. Product intent is distinct from proposals and current behavior.

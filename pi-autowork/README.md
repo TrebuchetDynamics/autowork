@@ -511,8 +511,10 @@ explicitly listed in `verified_depends_on`. An authorized owner can record
 `owner_waiver` or `owner_qualification` through `tasks field`; a met-goal write names
 these exceptions. See [closure provenance and owner qualification](task-store.md#writing-and-autowork-tasks).
 
-A task someone works on outside the runner carries a `Held by:` note
-(`autowork tasks hold TASK --by WHO [--until DATE]`); the runner never starts it and asks
+Skills leave tasks active by default. Only an explicit user request permits a
+new or renewed `Held by:` note; manual work uses supported execution leases and
+workspace locks instead. For an explicitly requested pause, use
+`autowork tasks hold TASK --by WHO [--until DATE]`; the runner never starts it and asks
 nothing about it. `autowork tasks release TASK` lifts the hold; a dated hold ends by itself.
 
 The fleet lists runners with open owner questions or task-store setup/repair first,
