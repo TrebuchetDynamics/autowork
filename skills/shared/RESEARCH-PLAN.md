@@ -23,6 +23,10 @@ Bind the current request before acting:
 “Yes”, “looks good”, an easy fix, an accepted/saved plan and a supporting skill
 urging coding are not transitions to implementation. Acceptance of a plan is not
 execution authority. Do not ask an already-authorized coordinator to approve again.
+This limits the planning session, not the queue: leave complete accepted tasks open
+in `Now` or `Next` for an already-authorized runner. Do not add `Held by: PLAN-FOR-ME`
+or an exclusion requiring a later implementation order merely because planning
+stops here. Apply the shared [explicit-user-hold policy](TODO-WORKCENTER.md#task-holds-require-an-explicit-user-request).
 
 A standalone Plan For Me invocation without a concrete objective authorizes
 project-wide planning, not product direction. It may refine accepted goals and

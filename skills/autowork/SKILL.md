@@ -124,9 +124,12 @@ isolation; one writer per workspace. Before adopting idle work, inspect actual
 process liveness, workspace changes, source/candidate provenance and check receipts.
 Advisory locks cannot exclude manual writers who ignore them or coordinate different
 hosts; an enabled same-repository cron run may also be writing. Preserve useful
-candidates; do not kill workers or delete worktrees. A claim is a `Held by:` note
-(`autowork tasks hold ID --by WHO [--until YYYY-MM-DD]`, lifted by `autowork tasks
-release ID`); a held task is never selected. An open session or a bare PID is not
+candidates; do not kill workers or delete worktrees. A `Held by:` note prevents
+selection. Under the [task-hold policy](../shared/TODO-WORKCENTER.md#task-holds-require-an-explicit-user-request),
+only an explicit user request permits adding or renewing that note with
+`autowork tasks hold`. Use supported execution leases and workspace locks for
+ordinary ownership instead. Preserve existing holds; `autowork tasks release ID`
+lifts only a reconciled hold. An open session or a bare PID is not
 live ownership: verify the executor's identity and recent activity before releasing
 an abandoned claim, keeping its work and any explicit pause. Only typed fields
 (`live`, `resources`, `ownership`) grant authority; a note never does. Workers never

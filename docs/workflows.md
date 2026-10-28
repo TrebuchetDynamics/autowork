@@ -364,7 +364,14 @@ For plans requiring builder review, the reviewer reads implementation, tests and
 normative docs before the planning commit or runnable publication. Handoffs state
 queue disposition and expected implementation merge/review counts separately from
 the planning commit; `Next` can be selected by an already authorized runner, and
-"no code this pass" does not reserve work. Shared-file decomposition retains the
+"no code this pass" does not reserve work. Skills leave accepted tasks active by
+default. Only an explicit user request permits a new or renewed task hold, including
+`Held by: PLAN-FOR-ME`. Planning-only instructions limit the current session, not
+an already-authorized runner; do not copy them into task exclusions as a requirement
+for another implementation order. Use execution leases and workspace locks for
+ownership. Existing user pauses, live claims, real dependencies and safety gates
+remain in force. See the [task-hold policy](../skills/shared/TODO-WORKCENTER.md#task-holds-require-an-explicit-user-request).
+Shared-file decomposition retains the
 existing admission/ranking rules, not invented dependency locks. Planning commits
 include only attributable changes and never amend another session's runner merge.
 These instruction contracts do not prove live model adherence or queue delivery.

@@ -153,8 +153,13 @@ explicit coordinator-verified closure and a matching passing receipt, or a recor
 This applies to named dispatch, sequential execution and task-wait retries too. Ordinary
 `depends_on` still accepts any done prerequisite. A superseded prerequisite satisfies neither.
 
-**Holding a task.** Git status is never a lease, so there is no `in_progress`. A person or
-an interactive session keeps the runner off an open task with
+**Holding a task.** Git status is never a lease, so there is no `in_progress`.
+Skills leave tasks active by default; only an explicit user request permits adding
+or renewing a task hold. Planning-only session scope is not a queue pause. Manual
+execution uses supported leases and workspace locks, while existing live claims,
+dependencies and safety gates remain in force. See the
+[task-hold policy](../skills/shared/TODO-WORKCENTER.md#task-holds-require-an-explicit-user-request).
+An explicitly requested pause keeps the runner off an open task with
 `autowork tasks hold ID --by WHO [--until YYYY-MM-DD]`, which writes the record's
 `- Held by: WHO; until DATE` note and nothing else (the contract hash is unchanged);
 `autowork tasks release ID` removes it. A held task is never selected (`HELD`), never
