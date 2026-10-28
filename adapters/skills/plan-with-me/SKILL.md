@@ -39,7 +39,7 @@ resolved progress without fabricated answers. Do not habitually offer to skip at
 the opening; an explicit switch to Plan For Me reuses existing evidence/decisions.
 Honor questions-only/read-only without writing files.
 
-`/plan_with_me blockers [repo|name]` is [`/blockers`](../blockers/SKILL.md): routine
+`/plan-with-me blockers [repo|name]` is [`/blockers`](../blockers/SKILL.md): routine
 planning repairs first, then genuine owner questions, easiest first; replanning happens here
 before the next question.
 

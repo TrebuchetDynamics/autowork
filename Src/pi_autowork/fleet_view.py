@@ -35,9 +35,9 @@ DEFAULT_MODEL = 'openai-codex/gpt-6.1-sol'           # pi_runtime's defaults
 DEFAULT_FALLBACK = 'openrouter/deepseek/deepseek-v4.1-flash'
 MODEL_KEYS = {'model': 'PI_AUTOWORK_PRIMARY', 'fallback': 'PI_AUTOWORK_FALLBACK'}
 SETUP_LABELS = {
-    'none': 'Setup required — run /docs_sync',
-    'uncommitted': 'Setup required — run /docs_sync',
-    'no_repository': 'Setup required — run /docs_sync',
+    'none': 'Setup required — run /docs-sync',
+    'uncommitted': 'Setup required — run /docs-sync',
+    'no_repository': 'Setup required — run /docs-sync',
     'legacy': 'Migration required — Force converts legacy planning',
     'invalid': 'Task store needs repair',
     'conversion_pending': 'Task store needs repair',
@@ -1748,11 +1748,11 @@ def how_to_fix(ready):
                          '(Force here asks for confirmation); plain Prepare may defer or refuse.')
         elif problem == 'tasks':
             hints.append(f'Run `autowork tasks prepare {ready.repo}` to convert legacy planning; '
-                         'with no accepted intent, plan the work with /docs_sync (`autowork plan`, '
+                         'with no accepted intent, plan the work with /docs-sync (`autowork plan`, '
                          'or Plan here). No tasks are invented.')
         elif problem.startswith('task store preparation:'):
             hints.append(f'Run `autowork tasks prepare {ready.repo}` and resolve its outcome through '
-                         '/docs_sync (`autowork plan`, or Plan here).')
+                         '/docs-sync (`autowork plan`, or Plan here).')
         elif problem.startswith('commit tasks/ on '):
             hints.append(problem)
         elif problem.startswith('main checked out') or problem.startswith('a branch'):
@@ -1763,11 +1763,13 @@ def how_to_fix(ready):
 
 
 def skill_command(agent, skill):
-    """A workflow skill as the agent's own slash command: Claude Code namespaces plugin
-    skills (`/autowork:plan-for-me`); Pi and Codex register them with underscores
-    (`/plan_for_me`, adapters/pi.mjs)."""
+    """Use Claude Code's namespace or Pi's hyphenated command; preserve other agents."""
     name = os.path.basename(agent[0]) if agent else ''
-    return f'/autowork:{skill}' if name == 'claude' else '/' + skill.replace('-', '_')
+    if name == 'claude':
+        return f'/autowork:{skill}'
+    if name == 'pi':
+        return f'/{skill}'
+    return '/' + skill.replace('-', '_')
 
 
 def blockers_prompt(agent, repo):
@@ -1776,7 +1778,7 @@ def blockers_prompt(agent, repo):
 
 
 def plan_prompt(agent, repo):
-    """`/plan_for_me` for a repository without tasks: Docs Sync prepares the store and the
+    """`/plan-for-me` for a repository without tasks: Docs Sync prepares the store and the
     planner saves tasks from the accepted intent; no runner or schedule starts it."""
     return (f'{skill_command(agent, "plan-for-me")} Plan the work of {repo}: prepare the task store '
             f'and the missing core docs with {skill_command(agent, "docs-sync")}, then investigate the '

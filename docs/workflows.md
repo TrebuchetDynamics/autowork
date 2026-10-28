@@ -238,7 +238,7 @@ then validates and reports real reductions and unknowns. It never optimizes by
 silently skipping tests or weakening CI. This is an agent-guided skill, not an
 automatic test-deletion script.
 
-Examples (Hermes CLI; Pi uses `/test_optimizer`, Claude Code
+Examples (Hermes CLI; Pi uses `/test-optimizer`, Claude Code
 `/autowork:test-optimizer`, Codex `$autowork:test-optimizer`):
 
 ```text

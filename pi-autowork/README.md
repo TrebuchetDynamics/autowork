@@ -350,7 +350,7 @@ On an unready repository, Play offers **Prepare**, **Prepare and start**, **Plan
 **Force** and **Cancel**. Prepare runs `autowork tasks prepare` without blocking the
 TUI and can commit a legacy conversion; it displays the outcome code, every refusal
 and the next step, then refreshes the repository's readiness and tree label.
-`NO_STORE` directs you to plan accepted intent with `/docs_sync`; it creates no goals
+`NO_STORE` directs you to plan accepted intent with `/docs-sync`; it creates no goals
 or tasks. Deferred, blocked, invalid
 and toolchain outcomes are not readiness. Prepare and start asks to start only
 after successful preparation and a fresh readiness check; Prepare alone never
@@ -537,7 +537,7 @@ The fleet lists runners with open owner questions or task-store setup/repair fir
 then other runners; each group is alphabetical. An idle runner with open questions
 reads `Waiting on you`, not `Idle`. The headline and Needs field follow the
 read-only `autowork tasks prepare --check` result: no store reads
-`Setup required — run /docs_sync`; a legacy TODO.md + goals.json
+`Setup required — run /docs-sync`; a legacy TODO.md + goals.json
 queue reads `Migration required — Force converts legacy planning`; an invalid store
 or interrupted conversion reads `Task store needs repair`. Docs Sync prepares and
 reconciles the store; `autowork migrate` remains available as direct CLI conversion recovery.

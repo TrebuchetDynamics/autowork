@@ -35,10 +35,10 @@ Existing external Ponytail installations are left alone; check command collision
 | Hermes | `/ponytail-review` (or bundled `autowork:ponytail-review` via skill tools if another plugin owns the command) |
 | Claude Code | `/autowork:ponytail-review` |
 | Codex | `$autowork:ponytail-review` |
-| Pi | `/ponytail_review` or `/skill:ponytail-review` |
+| Pi | `/ponytail-review` or `/skill:ponytail-review` |
 
 The suite also includes `ponytail`, `ponytail-audit`, `ponytail-debt`, `ponytail-gain`
-and `ponytail-help`; Pi command aliases replace hyphens with underscores.
+and `ponytail-help`; Pi command aliases use the same hyphenated names.
 `ponytail lite|full|ultra|off` changes the conversation's Autowork preference only;
 no argument reports it (default `full`). The other commands report without edits.
 Gain displays attributed upstream benchmarks, never inferred local savings.
@@ -79,7 +79,7 @@ coverage. No new executable helper or external dependency is installed.
 | Hermes | `/test-optimizer tests/parser; apply one batch; no push` |
 | Claude Code | `/autowork:test-optimizer tests/parser; apply one batch; no push` |
 | Codex | `$autowork:test-optimizer tests/parser; apply one batch; no push` |
-| Pi | `/test_optimizer tests/parser; apply one batch; no push` |
+| Pi | `/test-optimizer tests/parser; apply one batch; no push` |
 
 Portable invocation is explicit-only; `read-only` changes nothing. See
 [workflow and evidence requirements](workflows.md#test-optimizer).
@@ -104,10 +104,10 @@ Invoke with the existing host prefix:
 | Hermes | `/bug-harvest one bug in the parser; no push` |
 | Claude Code | `/autowork:bug-harvest one bug in the parser; no push` |
 | Codex | `$autowork:bug-harvest one bug in the parser; no push` |
-| Pi | `/bug_harvest one bug in the parser; no push` |
+| Pi | `/bug-harvest one bug in the parser; no push` |
 
-Pi also exposes `/autonomous_codebase_improver`, `/skill_folder_refactor` and
-`/unused_code`; native `/skill:<hyphenated-name>` invocation remains available.
+Pi also exposes `/autonomous-codebase-improver`, `/skill-folder-refactor` and
+`/unused-code`; native `/skill:<hyphenated-name>` invocation remains available.
 Portable entries are explicit-only. Existing bare command/skill collisions are
 not overwritten: select the verified Autowork namespace or installed adapter path,
 not an unrelated same-named personal skill.
@@ -249,22 +249,25 @@ Use `/reload` in an existing Pi session, or start a new one inside your project.
 Local installs refer to this checkout; keep it in place. The extension registers:
 
 ```text
-/plan_with_me questions only: ask one question about this project
-/grill_me challenge this plan; questions only, no implementation
-/plan_for_me investigate the next useful improvement; save the plan
-/plan_for_me
-/docs_sync update the docs and tasks
+/plan-with-me questions only: ask one question about this project
+/grill-me challenge this plan; questions only, no implementation
+/plan-for-me investigate the next useful improvement; save the plan
+/plan-for-me
+/docs-sync update the docs and tasks
 /autowork complete the next ready task; commit locally, no push
-/autoresearch_debug diagnose the failing test
+/autoresearch-debug diagnose the failing test
 ```
 
-All 13 `/autoresearch_<protocol>` commands are available. The other commands are
-`/cron_autowork` (scheduling guidance through host capabilities, not a Hermes timer),
-`/autoresearch`, `/engineering`, `/impeccable`, `/ui_taste`, `/beautify_github_readme`,
-`/lgtm` and `/git_commit_push` (`/git_commit_push pull` or `merge <branch>` integrates
+All 13 `/autoresearch-<protocol>` commands are available. The other commands are
+`/cron-autowork` (scheduling guidance through host capabilities, not a Hermes timer),
+`/autoresearch`, `/engineering`, `/impeccable`, `/ui-taste`, `/beautify-github-readme`,
+`/lgtm` and `/git-commit-push` (`/git-commit-push pull` or `merge <branch>` integrates
 upstream changes). Native `/skill:<name>` invocation is also
-available; skill names use hyphens. Command arguments remain literal prompt text.
-`/grill_me` loads Plan With Me with explicit challenge mode and preserves the
+available; both skill names and command aliases use hyphens. Underscore aliases
+are no longer registered in Pi; update saved prompts and shortcuts, then `/reload`
+after updating the package. Hermes Telegram aliases are unchanged.
+Command arguments remain literal prompt text.
+`/grill-me` loads Plan With Me with explicit challenge mode and preserves the
 request unchanged. The old standalone `grill-me` skill is no longer discoverable;
 use `$autowork:plan-with-me` in Codex or `/skill:plan-with-me` in Pi with
 `challenge` in the request. Autoresearch stays independent; its `plan` selector
@@ -904,7 +907,8 @@ session has run a workflow from it yet.
 Validated locally with Codex CLI 0.162.1 and Pi 1.2.0: native marketplace/plugin
 and Pi installation into isolated temporary homes, Codex app-server skill discovery
 and Pi's installed resource loader discovered 11 portable skills and Pi loaded 25
-commands, including `/grill_me` compatibility and all 13 research selectors. That run
+commands, including the then-spelled `/grill_me` compatibility command and all 13
+research selectors. That run
 predates UI Taste, Beautify GitHub README and the Git Pull Merge merge into Git Commit
 Push: the package now ships 12 skills and 26 Pi commands, checked offline by `tests/portable_pi.test.mjs`; no live Codex or Pi
 install has been rerun. Archive extraction tests check installed references, literal

@@ -4,45 +4,45 @@ import { fileURLToPath } from 'node:url';
 const skillsRoot = new URL('./skills/', import.meta.url);
 const protocols = JSON.parse(await readFile(new URL('../skills/autoresearch/UPSTREAM.json', import.meta.url), 'utf8')).commands;
 const workflows = {
-  plan_with_me: ['plan-with-me', 'Ask questions and plan together'],
-  plan_for_me: ['plan-for-me', 'Investigate, decide and save the plan'],
-  docs_sync: ['docs-sync', 'Keep documentation and the tasks/ store accurate'],
-  cron_autowork: ['cron-autowork', 'Create or update an Autowork schedule'],
+  'plan-with-me': ['plan-with-me', 'Ask questions and plan together'],
+  'plan-for-me': ['plan-for-me', 'Investigate, decide and save the plan'],
+  'docs-sync': ['docs-sync', 'Keep documentation and the tasks/ store accurate'],
+  'cron-autowork': ['cron-autowork', 'Create or update an Autowork schedule'],
   autowork: ['autowork', 'Plan, execute, verify and commit a useful task'],
   autoresearch: ['autoresearch', 'Run bounded research or experiments'],
   engineering: ['engineering', 'Apply a focused engineering method'],
-  test_optimizer: ['test-optimizer', 'Reduce redundant tests while preserving real regression protection'],
-  bug_harvest: ['bug-harvest', 'Hunt evidence-backed bugs within scope and limits'],
-  autonomous_codebase_improver: ['autonomous-codebase-improver', 'Improve a repository through reviewed bounded slices'],
-  skill_folder_refactor: ['skill-folder-refactor', 'Split one named folder without changing behavior'],
-  unused_code: ['unused-code', 'Remove only proven unreachable code'],
+  'test-optimizer': ['test-optimizer', 'Reduce redundant tests while preserving real regression protection'],
+  'bug-harvest': ['bug-harvest', 'Hunt evidence-backed bugs within scope and limits'],
+  'autonomous-codebase-improver': ['autonomous-codebase-improver', 'Improve a repository through reviewed bounded slices'],
+  'skill-folder-refactor': ['skill-folder-refactor', 'Split one named folder without changing behavior'],
+  'unused-code': ['unused-code', 'Remove only proven unreachable code'],
   ponytail: ['ponytail', 'Choose Ponytail simplicity guidance or level'],
-  ponytail_review: ['ponytail-review', 'Review a change and connected code'],
-  ponytail_audit: ['ponytail-audit', 'Audit a repository or folder'],
-  ponytail_debt: ['ponytail-debt', 'Report deferred shortcut comments'],
-  ponytail_gain: ['ponytail-gain', 'Show upstream Ponytail benchmark results'],
-  ponytail_help: ['ponytail-help', 'Explain bundled Ponytail commands'],
+  'ponytail-review': ['ponytail-review', 'Review a change and connected code'],
+  'ponytail-audit': ['ponytail-audit', 'Audit a repository or folder'],
+  'ponytail-debt': ['ponytail-debt', 'Report deferred shortcut comments'],
+  'ponytail-gain': ['ponytail-gain', 'Show upstream Ponytail benchmark results'],
+  'ponytail-help': ['ponytail-help', 'Explain bundled Ponytail commands'],
   impeccable: ['impeccable', 'Improve interface design'],
-  ui_taste: ['ui-taste', 'Improve UI taste with Uizze playbooks'],
-  beautify_github_readme: ['beautify-github-readme', 'Redesign or audit a GitHub README'],
-  grill_me: ['plan-with-me', 'Plan With Me challenge mode (compatibility)', 'challenge'],
+  'ui-taste': ['ui-taste', 'Improve UI taste with Uizze playbooks'],
+  'beautify-github-readme': ['beautify-github-readme', 'Redesign or audit a GitHub README'],
+  'grill-me': ['plan-with-me', 'Plan With Me challenge mode (compatibility)', 'challenge'],
   lgtm: ['lgtm', 'Continue the last approved action'],
   blockers: ['blockers', 'Answer what blocks the queue, one picked option at a time'],
-  git_commit_push: ['git-commit-push', 'Commit and push, or pull and merge, owned changes'],
+  'git-commit-push': ['git-commit-push', 'Commit and push, or pull and merge, owned changes'],
 };
 
 /** Native Pi command adapter. No subprocess, permission changes or install hooks. */
 export default function register(pi) {
   const entries = Object.entries(workflows).map(([command, [skill, description, mode]]) => ({command, skill, description, mode}));
   for (const protocol of protocols) {
-    entries.push({command: `autoresearch_${protocol}`, skill: 'autoresearch',
+    entries.push({command: `autoresearch-${protocol}`, skill: 'autoresearch',
       description: `Autoresearch ${protocol}`, protocol});
   }
   for (const {command, skill, description, protocol, mode} of entries) {
     pi.registerCommand(command, {
       description,
       handler: async (args, ctx) => {
-        // `/autowork blockers` and `/plan_with_me blockers` are `/blockers`.
+        // `/autowork blockers` and `/plan-with-me blockers` are `/blockers`.
         const [first, ...rest] = (args || '').trim().split(/\s+/);
         const routed = ['autowork', 'plan-with-me'].includes(skill) && !mode && first === 'blockers';
         const target = routed ? 'blockers' : skill;

@@ -1171,7 +1171,7 @@ class BrowseScreen(ReadScreen, Screen):
                         info.append(f'{key}: {step[key]}\n')
             info.append((report.get('next') or 'Resolve the reported problem, then run Prepare again.') + '\n')
             if report['outcome'] == 'NO_STORE':
-                info.append('Plan accepted intent with /docs_sync; no goals or tasks were created.\n')
+                info.append('Plan accepted intent with /docs-sync; no goals or tasks were created.\n')
         self.query_one('#info', Static).update(info)
 
     def action_start(self):

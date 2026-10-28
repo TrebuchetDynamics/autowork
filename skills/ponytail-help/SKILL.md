@@ -28,9 +28,9 @@ Display the following Autowork-specific reference, not the upstream help card.
   bundled `autowork:ponytail-review` skill if an external command has that name.
 - Claude Code: `/autowork:ponytail-review`.
 - Codex: `$autowork:ponytail-review`.
-- Pi: `/ponytail_review` or `/skill:ponytail-review`.
+- Pi: `/ponytail-review` or `/skill:ponytail-review`.
 
-Substitute another name above; Pi command aliases use underscores. `lite` names
+Substitute another name above; Pi command aliases use hyphens. `lite` names
 the smaller option, `full` chooses the smallest complete result, `ultra` also
 questions unjustified scope. Explicit `off` or “stop ponytail” disables the method
 for this conversation's Autowork work, not safety or verification requirements.

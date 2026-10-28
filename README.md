@@ -18,7 +18,7 @@ Start the Linux Pi runner separately when you want it to continue through the qu
 | **Hermes** | [Native plugin](#try-the-native-plugin-in-one-profile) | `/plan-with-me` |
 | **Claude Code** | [Marketplace plugin](#claude-code) | `/autowork:plan-with-me` |
 | **Codex** | [Marketplace plugin](#codex) | `$autowork:plan-with-me` |
-| **Pi** | [Git package](#pi) | `/plan_with_me` |
+| **Pi** | [Git package](#pi) | `/plan-with-me` |
 
 For example, in **Hermes CLI** after installation (illustrative, not a run receipt):
 
@@ -274,7 +274,7 @@ Examples use **Hermes CLI**. Portable workflows use the host-specific prefixes a
   evidence-backed gaps, then saves the highest-value executable frontier without
   asking you for a goal. `read-only` saves nothing.
 - **Answer blockers:** `/blockers [repo|runner]` (also `/autowork blockers`,
-  `/plan_with_me blockers`) reconciles routine planning issues first, then asks
+  `/plan-with-me blockers`) reconciles routine planning issues first, then asks
   only for missing owner decisions or inputs, easiest first. Resolutions become
   task-record edits for the runners; an idle reviewed candidate needs no new
   ownership choice when local integration is already authorized.
@@ -316,7 +316,7 @@ The locally authored [Test Optimizer](docs/workflows.md#test-optimizer) adds
 repeated setup and unsupported scenarios while retaining distinct regression and
 safety protection. Bare invocation audits; `read-only` writes nothing.
 
-These are current-session skills, not new services. Pi uses underscores; Claude
+These are current-session skills, not new services. Pi uses hyphens; Claude
 Code and Codex use the same namespaced prefixes as other skills. No upstream
 controllers, installers or global activation are imported.
 
@@ -442,7 +442,7 @@ behavior and settings.
 
 Task-editing verbs validate the whole store and never commit; commit their result
 like any change. The `prepare` conversion lifecycle is the exception described below.
-You never set the store up by hand: `/docs_sync` runs `autowork tasks prepare` first,
+You never set the store up by hand: `/docs-sync` runs `autowork tasks prepare` first,
 which converts a repository that still has `TODO.md` and `goals.json` (one proven local
 commit; it refuses while work is in flight), finishes an interrupted conversion, and in
 a new repository lists the accepted plan headings that goals may come from. `autowork
