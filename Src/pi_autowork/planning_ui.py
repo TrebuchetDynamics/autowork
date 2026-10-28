@@ -6,7 +6,7 @@ from pathlib import Path
 from textual.app import ComposeResult
 from textual.binding import Binding
 from rich.text import Text
-from textual.containers import Horizontal, VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen, ModalScreen
 from textual.widgets import Button, Header, Input, Label, OptionList, Select, Static, TabbedContent, TabPane, TextArea
 from textual.widgets.option_list import Option
@@ -19,10 +19,11 @@ from .tui_dialogs import Confirm
 class DecisionPrompt(ModalScreen[dict]):
     """A manual owner decision is distinct from an AI proposal or a verified close."""
     BINDINGS = [Binding('escape', 'cancel', 'Cancel'),
-                Binding('ctrl+enter', 'save', 'Save answer', priority=True)]
+                Binding('ctrl+s,ctrl+enter', 'save', 'Save answer', priority=True)]
     DEFAULT_CSS = '''
     DecisionPrompt { align: center middle; }
     #decision-form { width: 84; max-width: 100%; height: auto; max-height: 95%; padding: 0 1; background: $surface; border: thick $accent; }
+    #decision-fields { height: 1fr; }
     #decision-context { height: 6; }
     #decision-text { height: 5; }
     #decision-status { height: auto; max-height: 3; }
@@ -35,13 +36,14 @@ class DecisionPrompt(ModalScreen[dict]):
         self.ready, self.saving = not loading, False
 
     def compose(self):
-        with VerticalScroll(id='decision-form'):
-            yield Label(f'Answer {self.task_id} · Ctrl+Enter saves · Esc cancels', markup=False)
-            yield TextArea(self.context, read_only=True, show_cursor=False, id='decision-context')
-            yield TextArea(id='decision-text')
-            yield Select([('Save answer — keep section', ''), ('Move to Next', 'Next'),
-                          ('Defer — Needs decision', 'Needs decision'), ('Move to Now', 'Now')],
-                         value='', allow_blank=False, id='decision-section')
+        with Vertical(id='decision-form'):
+            yield Label(f'Answer {self.task_id} · Ctrl+S saves · Esc cancels', markup=False)
+            with VerticalScroll(id='decision-fields'):
+                yield TextArea(self.context, read_only=True, show_cursor=False, id='decision-context')
+                yield TextArea(id='decision-text')
+                yield Select([('Save answer — keep section', ''), ('Move to Next', 'Next'),
+                              ('Defer — Needs decision', 'Needs decision'), ('Move to Now', 'Now')],
+                             value='', allow_blank=False, id='decision-section')
             yield Static('Loading current task…' if not self.ready else
                          'Saves locally, pending commit. Does not grant live permission or verify completion.',
                          markup=False, id='decision-status')
@@ -82,7 +84,7 @@ class QuestionPicker(ModalScreen[str]):
     DEFAULT_CSS = '''
     QuestionPicker { align: center middle; }
     #answer-picker { width: 84; max-width: 100%; height: auto; max-height: 90%; border: thick $accent; }
-    #answer-questions { height: auto; max-height: 18; }
+    #answer-questions { height: 1fr; max-height: 18; }
     '''
 
     def __init__(self, questions):
@@ -90,7 +92,7 @@ class QuestionPicker(ModalScreen[str]):
         self.questions = questions
 
     def compose(self):
-        with VerticalScroll(id='answer-picker'):
+        with Vertical(id='answer-picker'):
             yield Label('Answer a question · ↑/↓ choose · Enter opens · Esc cancels')
             yield OptionList(*(Option(Text(f'{q.id} · {q.effort} · unblocks {q.unblocks}\n{q.needs}'), id=q.id)
                                for q in self.questions), id='answer-questions')

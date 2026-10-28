@@ -203,6 +203,8 @@ class DecisionScreen(ReadScreen, DecisionPrompt):
                    if question else 'Owner direction for this task.')
         store = runner.snapshot.store if runner.snapshot is not None else None
         dependents = sorted(t.id for t in store.tasks.values() if t.status == 'open' and task in t.depends_on) if store else []
+        if runner.triage_failures:
+            context += '\n\n' + fleet_view.recovery_detail(runner)
         context += '\nDependent tasks (committed snapshot): ' + (
             ', '.join(dependents) if dependents else ('None' if store else 'unavailable'))
         super().__init__(task, context, loading=True)
@@ -338,7 +340,8 @@ class NewTask(ReadScreen, ModalScreen[dict]):
     BINDINGS = [Binding('escape', 'cancel', 'cancel')]
     DEFAULT_CSS = '''
     NewTask { align: center middle; }
-    NewTask > VerticalScroll { width: 90; height: auto; max-height: 90%; border: thick $accent; background: $surface; padding: 1 2; }
+    NewTask > Vertical { width: 90; max-width: 100%; height: auto; max-height: 90%; border: thick $accent; background: $surface; padding: 1 2; }
+    #new-task-fields { height: 1fr; }
     NewTask Input, NewTask Select { margin-bottom: 1; }
     NewTask Horizontal { height: auto; align-horizontal: right; }
     NewTask Button { margin-left: 2; }
@@ -358,14 +361,15 @@ class NewTask(ReadScreen, ModalScreen[dict]):
         self.query_one('#goal', Select).set_options([(f'{gid}  {title}'[:70], gid) for gid, title in goals])
 
     def compose(self) -> ComposeResult:
-        with VerticalScroll():
+        with Vertical():
             yield Label(Text('New task', style='bold'))
-            yield Input(placeholder='Title: the outcome, in a sentence', id='title')
-            yield Input(placeholder='Short title for task lists (at most 40 characters)', id='short', max_length=40)
-            yield Select([(f'{gid}  {title}'[:70], gid) for gid, title in self.goals], prompt='Goal', id='goal')
-            yield Select([(name, name) for name in PickSection.SECTIONS], value='Next', allow_blank=False, id='section')
-            yield Input(placeholder='Scope (optional)', id='scope')
-            yield Input(placeholder='Acceptance (optional): the test that proves it', id='acceptance')
+            with VerticalScroll(id='new-task-fields'):
+                yield Input(placeholder='Title: the outcome, in a sentence', id='title')
+                yield Input(placeholder='Short title for task lists (at most 40 characters)', id='short', max_length=40)
+                yield Select([(f'{gid}  {title}'[:70], gid) for gid, title in self.goals], prompt='Goal', id='goal')
+                yield Select([(name, name) for name in PickSection.SECTIONS], value='Next', allow_blank=False, id='section')
+                yield Input(placeholder='Scope (optional)', id='scope')
+                yield Input(placeholder='Acceptance (optional): the test that proves it', id='acceptance')
             with Horizontal():
                 yield Button('Add', variant='primary', id='add')
                 yield Button('Cancel', id='cancel')
@@ -391,19 +395,21 @@ class PortalSetup(ModalScreen[dict]):
     BINDINGS = [Binding('escape', 'cancel', 'cancel')]
     DEFAULT_CSS = '''
     PortalSetup { align: center middle; }
-    PortalSetup > VerticalScroll { width: 86; height: auto; max-height: 95%; border: thick $accent; background: $surface; padding: 1 2; }
+    PortalSetup > Vertical { width: 86; max-width: 100%; height: auto; max-height: 95%; border: thick $accent; background: $surface; padding: 1 2; }
+    #portal-fields { height: 1fr; }
     PortalSetup Input { margin-bottom: 1; }
     PortalSetup Horizontal { height: auto; align-horizontal: right; }
     '''
 
     def compose(self) -> ComposeResult:
-        with VerticalScroll():
+        with Vertical():
             yield Label('Nous Portal through the local Hermes proxy')
-            yield Label('No login, proxy start, model request or service change. Preview before consent.')
-            yield Input(value='nous-local', placeholder='Selected Pi provider entry', id='portal-provider')
-            yield Input(placeholder='Exact model ID from your Portal plan', id='portal-model')
-            yield Input(value=portal.DEFAULT_ENDPOINT, placeholder='Loopback /v1 endpoint', id='portal-endpoint')
-            yield Static('', id='portal-result', markup=False)
+            with VerticalScroll(id='portal-fields'):
+                yield Label('No login, proxy start, model request or service change. Preview before consent.')
+                yield Input(value='nous-local', placeholder='Selected Pi provider entry', id='portal-provider')
+                yield Input(placeholder='Exact model ID from your Portal plan', id='portal-model')
+                yield Input(value=portal.DEFAULT_ENDPOINT, placeholder='Loopback /v1 endpoint', id='portal-endpoint')
+                yield Static('', id='portal-result', markup=False)
             with Horizontal():
                 yield Button('Preview', id='portal-preview', variant='primary')
                 yield Button('Cancel', id='portal-cancel')
@@ -1394,7 +1400,7 @@ class FleetApp(App):
         Binding('r', 'run("r")', 'Restart', show=False),
         Binding('m', 'pick_model("model")', 'Model', show=False),
         Binding('t', 'run("t")', 'Tasks', show=False),
-        Binding('e', 'answer_question', 'Answer', show=False),
+        Binding('a,e', 'answer_question', 'Answer', show=False),
         Binding('b', 'show_blockers', 'Blockers', show=False),
         Binding('i', 'toggle_details', 'Details', show=False),
         Binding('g', 'run("g")', 'Plan', show=False),
@@ -1402,7 +1408,7 @@ class FleetApp(App):
         Binding('n', 'browse', 'New', show=False),
         Binding('q', 'quit', 'Quit', show=False),
     ]
-    CONTROL = {'run', 'browse', 'pick_model'}
+    CONTROL = {'run', 'browse', 'pick_model', 'answer_question'}
 
     def __init__(self, *, command, script, state_root, env_dir, systemctl='systemctl',
                  journalctl='journalctl', agent=None, runner_cmd=subprocess.run, view_only=False, browse_root=None,
@@ -1761,6 +1767,8 @@ class FleetApp(App):
         detail = self.query_one('#detail', Static)
         runner = self.current()
         menubar = self.query_one('#menubar', MenuBar)
+        # Mouse mode and keyboard use the same bindings and check_action guards.
+        clicks = {key: 'app.' + binding.action for binding in self.BINDINGS for key in binding.key.split(',')}
         self.show_overview(runner)
         if runner is None:
             errors = (*(self.fleet_snapshot.errors if self.fleet_snapshot else ()),
@@ -1775,19 +1783,18 @@ class FleetApp(App):
             self.query_one('#overview', Static).update(detail.render())
             self.query_one('#lanes', DataTable).display = False
             menubar.show([] if self.view_only else [('g', 'Plan'), ('n', 'New'), ('q', 'Quit')],
-                         click_actions={'g': 'app.run("g")'})
+                         click_actions=clicks)
             return
         # The keys go in the menu bar at the top, like a GUI app's menu; the pane holds the facts.
         if self.view_only:
             menubar.show([('l', 'Log'), ('i', 'Summary' if self.details_open else 'Details'),
                           ('b', 'Blockers'), ('q', 'Quit')], prefix='view only',
-                         click_actions={'b': 'app.show_blockers', 'i': 'app.toggle_details'})
+                         click_actions=clicks)
         else:
             menubar.show([(a.key, a.label) for a in self.available(runner)]
                          + [('i', 'Summary' if self.details_open else 'Details'),
                             ('b', 'Blockers'), ('n', 'New'), ('q', 'Quit')],
-                         click_actions={'b': 'app.show_blockers', 'i': 'app.toggle_details', 'g': 'app.run("g")',
-                                        'e': 'app.answer_question'})
+                         click_actions=clicks)
         text = Text()
         # First the answer to "is it stuck, and why": one sentence, wrapped, never cut.
         sentence, style = fleet_view.verdict(runner)
@@ -1801,6 +1808,8 @@ class FleetApp(App):
             detail_row(text, 'Tasks', f'{total} open · {active} active · {mergeable} mergeable · {waiting} waiting · {blocker} blocker'
                        + f' · {decision} in Needs decision')
         detail_row(text, 'Inventory', fleet_view.freshness(runner), 'dim')
+        if runner.triage_failures:
+            detail_row(text, 'Recovery', fleet_view.recovery_detail(runner), 'bold yellow')
         if runner.preparation is not None:
             audit = runner.preparation
             detail_row(text, 'Preparation', f'{audit.state} · diagnostic audit {fleet_view.ago(max(0, int(time.time() - audit.observed_at)))}'
@@ -1902,7 +1911,7 @@ class FleetApp(App):
 
     # -- actions ----------------------------------------------------------------
     def available(self, runner):
-        answers = [fleet_view.Action('e', 'Answer', [])] if self.answerable_questions(runner) else []
+        answers = [fleet_view.Action('a', 'Answer', [])] if self.answerable_questions(runner) else []
         return answers + [action for action in fleet_view.actions(
             runner, command=self.command, script=self.script, agent=self.agent)
             if action.key not in ('f', 'b')] + [fleet_view.Action('g', 'Plan', [])]
