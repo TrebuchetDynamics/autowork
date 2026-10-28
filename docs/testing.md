@@ -65,6 +65,42 @@ fix-of-a-fix chains; `--json`) guides which files to refactor or test first.
 
 ## Verify
 
+### Prepare the pinned Textual cache
+
+The optional renderer checks use `uv run --offline --no-project --with textual==8.2.8`.
+They never install from the network during a check. Before offline execution,
+prepare the cache explicitly on a network-enabled host:
+
+```sh
+uv run --no-project --with textual==8.2.8 python3 -c 'import textual; print(textual.__version__)'
+```
+
+Use the same Python interpreter, platform and uv cache for preparation and tests.
+For workers with a shared cache, set `UV_CACHE_DIR` to that cache before both
+commands. Installing Textual in an unrelated virtual environment does not prepare
+this uv environment. Confirm preparation without network access:
+
+```sh
+uv run --offline --no-project --with textual==8.2.8 python3 -c 'import textual; print(textual.__version__)'
+python3 scripts/check.py tests/test_task_prepare.py tests/test_check.py pi-autowork/tests/test_blockers_report.py pi-autowork/tests/test_fleet_view.py pi-autowork/tests/test_planning_ui.py pi-autowork/tests/test_task_history.py pi-autowork/tests/test_tui_controls.py pi-autowork/tests/test_tui_layout.py pi-autowork/tests/test_tui_mouse.py
+```
+
+An unavailable pinned cache produces explicit dependency skips, not rendered
+passes. The shared test helper recognizes uv's exit-1 resolver diagnostic
+(`textual was not found in the cache`, pinned `8.2.8`, and `network was disabled`)
+and the exit-2 offline unavailable-cache diagnostic. Other resolver errors, import
+errors and pilot assertions still fail. Import-graph and non-renderer checks remain
+enforced when optional renderer subtests skip. Deterministic subprocess fixtures
+exercise available, unavailable and failing outcomes without a network or renderer.
+They do not qualify rendering. Record actual pilot execution separately when the
+cache is available; otherwise report rendered behavior as unverified.
+
+The normal full-main gate remains required. Preserve its test results and skip
+counts. Neither fixture coverage nor dependency skips qualify live services,
+installed adoption or rendered behavior.
+
+### Other offline checks
+
 Repository-status chat coverage runs through the normal offline entry point:
 
 ```sh

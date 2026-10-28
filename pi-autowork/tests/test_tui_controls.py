@@ -8,6 +8,9 @@ import time
 import unittest
 from unittest.mock import patch
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts'))
+from offline_textual import textual_unavailable
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import fleet_view, task_snapshot
 import test_task_history
@@ -140,7 +143,7 @@ class TuiControlsTests(unittest.TestCase):
             self.skipTest('uv is needed for pinned Textual')
         result = subprocess.run(['uv', 'run', '--offline', '--quiet', '--no-project', '--with', 'textual==8.2.8',
                                  'python', __file__, '--pilot', case], capture_output=True, text=True, timeout=90)
-        if result.returncode == 2 and 'offline' in result.stderr.lower() and 'textual' in result.stderr.lower():
+        if textual_unavailable(result):
             self.skipTest('textual==8.2.8 is not in the offline cache')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

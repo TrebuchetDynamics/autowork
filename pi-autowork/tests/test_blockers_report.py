@@ -7,6 +7,9 @@ import sys
 import tempfile
 import unittest
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts'))
+from offline_textual import textual_unavailable
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import fleet_view, blockers_report
 
@@ -345,7 +348,7 @@ class BlockersPilotTests(unittest.TestCase):
         result = subprocess.run(['uv', 'run', '--offline', '--no-project', '--with', 'textual==8.2.8',
                                  'python', str(Path(__file__).with_name('blockers_pilot.py'))],
                                 capture_output=True, text=True, timeout=90)
-        if result.returncode == 2 and 'offline' in result.stderr.lower() and 'textual' in result.stderr.lower():
+        if textual_unavailable(result):
             self.skipTest('textual==8.2.8 is not in the offline cache')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

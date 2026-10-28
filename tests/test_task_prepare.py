@@ -24,11 +24,13 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 COMMAND = ROOT / 'pi-autowork/pi_autowork/command.py'
 LEGACY = ROOT / 'tests/fixtures/task_migrate'
+sys.path.insert(0, str(ROOT / 'scripts'))
 sys.path.insert(0, str(ROOT / 'pi-autowork/engine'))
 sys.path.insert(0, str(ROOT / 'pi-autowork'))
 from pi_autowork import task_migrate  # noqa: E402
 from pi_autowork.legacy import reader  # noqa: E402
 from task_store import TaskStore  # noqa: E402
+from offline_textual import textual_unavailable  # noqa: E402
 
 PLAN = '''# Product plan
 
@@ -677,6 +679,36 @@ class ForceTests(Repo):
 
 
 class PackageImportTests(unittest.TestCase):
+    def test_optional_renderers_do_not_disable_graph_or_other_import_checks(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            package = root / 'Src/pi_autowork'
+            package.mkdir(parents=True)
+            (package / 'planning_ui.py').write_text('')
+            other = package / 'z_other.py'
+            other.write_text('')
+
+            def run(command, **kwargs):
+                error = ('error: textual==8.2.8 is not available in the offline cache'
+                         if command[0] == 'uv' else 'ImportError: broken non-renderer')
+                return subprocess.CompletedProcess(command, 2 if command[0] == 'uv' else 1, '', error)
+            method = 'test_every_module_imports_in_isolation_and_all_import_edges_are_acyclic'
+            with mock.patch.dict(globals(), ROOT=root), mock.patch('shutil.which', return_value='uv'), \
+                    mock.patch('subprocess.run', side_effect=run):
+                result = unittest.TestResult()
+                PackageImportTests(method).run(result)
+                self.assertEqual(len(result.skipped), 1)
+                self.assertEqual(len(result.failures), 1)
+                self.assertIn('broken non-renderer', result.failures[0][1])
+                # A deferred cycle must fail before any optional dependency check.
+                (package / 'planning_ui.py').write_text('def f():\n    import pi_autowork.z_other\n')
+                other.write_text('import pi_autowork.planning_ui\n')
+                result = unittest.TestResult()
+                PackageImportTests(method).run(result)
+                self.assertEqual(result.skipped, [])
+                self.assertEqual(len(result.failures), 1)
+                self.assertIn('import cycle', result.failures[0][1])
+
     def test_every_module_imports_in_isolation_and_all_import_edges_are_acyclic(self):
         package = ROOT / 'Src/pi_autowork'
         modules = {}
@@ -723,8 +755,7 @@ class PackageImportTests(unittest.TestCase):
                 result = subprocess.run([*python, '-c', script, str(ROOT / 'pi-autowork'),
                                          str(ROOT / 'pi-autowork/engine'), str(package / 'legacy'), name],
                                         capture_output=True, text=True, timeout=60)
-                if name in renderers and result.returncode == 2 and \
-                        'textual' in result.stderr.lower() and 'offline' in result.stderr.lower():
+                if name in renderers and textual_unavailable(result):
                     self.skipTest('textual==8.2.8 is not in the uv cache (offline)')
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

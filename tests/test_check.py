@@ -10,9 +10,78 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / 'scripts/check.py'
+
+
+class TextualDependencyTests(unittest.TestCase):
+    def test_optional_checks_skip_only_unavailable_dependencies(self):
+        # Replay the saved uv diagnostic at each public unittest seam. A zero
+        # exit represents an executed pilot; its original marker checks still apply.
+        missing = '''  × No solution found when resolving `--with` dependencies:
+  ╰─▶ Because textual was not found in the cache and you require
+      textual==8.2.8, we can conclude that your requirements are
+      unsatisfiable.
+
+      hint: Packages were unavailable because the network was disabled. When
+      the network is disabled, registry packages may only be read from the
+      cache.
+'''
+        legacy = 'error: textual==8.2.8 is not available in the offline cache'
+        cases = [
+            ('tests/test_task_prepare.py', 'PackageImportTests',
+             'test_every_module_imports_in_isolation_and_all_import_edges_are_acyclic', 3),
+            ('pi-autowork/tests/test_blockers_report.py', 'BlockersPilotTests',
+             'test_pinned_textual_report_interactions', 1),
+            ('pi-autowork/tests/test_fleet_view.py', 'FleetViewTests',
+             'test_the_tui_drives_the_same_actions_headless', 1),
+            ('pi-autowork/tests/test_planning_ui.py', 'PlanningUiTests',
+             'test_fleet_answers_preserve_authority_and_stale_edits', 1),
+            ('pi-autowork/tests/test_planning_ui.py', 'PlanningUiTests',
+             'test_planning_chat_navigation_preview_and_apply', 1),
+            ('pi-autowork/tests/test_task_history.py', 'TaskHistoryPilotTests',
+             'test_pinned_textual_open_and_closed_navigation', 1),
+            *[('pi-autowork/tests/test_tui_controls.py', 'TuiControlsTests', name, 1)
+              for name in ('test_answer_mnemonic_portable_save_and_small_screen',
+                           'test_compact_forms_and_long_confirmations_keep_controls_visible',
+                           'test_fleet_menu_clicks_match_keyboard_without_running_commands')],
+            ('pi-autowork/tests/test_tui_layout.py', 'TuiLayoutTests',
+             'test_responsive_layout_preserves_evidence_and_read_only_controls', 1),
+            *[('pi-autowork/tests/test_tui_mouse.py', 'MouseSelectionTests', name, 1)
+              for name in ('test_click_mode_is_opt_in_and_preserved_for_the_browser',
+                           'test_terminal_defaults_to_native_drag_selection')],
+        ]
+        scenarios = [(1, missing, 'skip'), (2, legacy, 'skip'), (0, '', 'pass'),
+                     (0, missing, 'pass'), (3, missing, 'fail'),
+                     (2, legacy.replace('8.2.8', '8.2.80'), 'fail'),
+                     (2, legacy.replace('8.2.8', '8.2.8.post1'), 'fail'),
+                     (1, "ModuleNotFoundError: No module named 'textual'", 'fail'),
+                     (1, 'AssertionError: pilot failed', 'fail'),
+                     (2, 'error: invalid option --offline for textual', 'fail'),
+                     (1, missing.replace('textual was not found', 'other was not found'), 'fail'),
+                     (1, missing.replace('8.2.8', '9.0.0'), 'fail')]
+        with mock.patch.object(sys, 'path', [str(ROOT / 'pi-autowork/tests'), *sys.path]), \
+                mock.patch('shutil.which', return_value='uv'):
+            for path, cls, method, skip_count in cases:
+                spec = importlib.util.spec_from_file_location('fixture_' + Path(path).stem, ROOT / path)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                for code, stderr, outcome in scenarios:
+                    with self.subTest(test=method, code=code, stderr=stderr):
+                        def run(command, **kwargs):
+                            if command[0] != 'uv':
+                                return subprocess.CompletedProcess(command, 0, '', '')
+                            self.assertIn('--offline', command)
+                            self.assertIn('textual==8.2.8', command)
+                            return subprocess.CompletedProcess(command, code, 'LAYOUT PILOT OK', stderr)
+                        result = unittest.TestResult()
+                        with mock.patch('subprocess.run', side_effect=run):
+                            getattr(module, cls)(method).run(result)
+                        self.assertEqual(result.errors, [])
+                        self.assertEqual(len(result.skipped), skip_count if outcome == 'skip' else 0)
+                        self.assertEqual(bool(result.failures), outcome == 'fail', result.failures)
 
 
 class OfflineCheckTests(unittest.TestCase):

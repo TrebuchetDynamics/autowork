@@ -2,7 +2,11 @@
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import unittest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts'))
+from offline_textual import textual_unavailable
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -22,7 +26,7 @@ with patch.object(tui.FleetApp, 'run', return_value=None) as run:
 '''
         result = subprocess.run(['uv', 'run', '--offline', '--no-project', '--with', 'textual==8.2.8',
                                  'python', '-c', code], cwd=ROOT, capture_output=True, text=True, timeout=40)
-        if result.returncode == 2 and 'textual' in result.stderr.lower() and 'offline' in result.stderr.lower():
+        if textual_unavailable(result):
             self.skipTest('textual==8.2.8 is not in the uv cache (offline)')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -50,7 +54,7 @@ assert '--mouse' in shlex.split(tui_web.command('aw', 'pa.sh'))
 '''
         result = subprocess.run(['uv', 'run', '--offline', '--no-project', '--with', 'textual==8.2.8',
                                  'python', '-c', code], cwd=ROOT, capture_output=True, text=True, timeout=40)
-        if result.returncode == 2 and 'textual' in result.stderr.lower() and 'offline' in result.stderr.lower():
+        if textual_unavailable(result):
             self.skipTest('textual==8.2.8 is not in the uv cache (offline)')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
