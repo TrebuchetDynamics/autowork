@@ -87,6 +87,7 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Publish accepted TUI screen reads after mount instead of discarding results that complete while Compose/Mount is still running; add deterministic browser label regression and document the lifecycle. (TOOLSET-401-cd15e01e)
 - Harden the long-review runner regression with explicit review/worker gates, stage diagnostics and supervised child cleanup without extending its completion deadline. (TOOLSET-403-1128bef9)
 - Distinguish verified coordinator activity from current, stale, unavailable or unknown task observations in fleet JSON, CLI/TUI diagnostics and idle logs; suppress cached runtime counts without changing scheduling. (TOOLSET-400-75c00b1d)
 - Harden the stuck-command engine fixture by measuring real command termination separately from queue overhead, requiring SIGTERM, and reaping its subprocess while retaining same-attempt A/B/C completion checks. (TOOLSET-404-85e17473)
