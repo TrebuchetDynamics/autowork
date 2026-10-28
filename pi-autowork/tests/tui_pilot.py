@@ -668,6 +668,38 @@ async def main():
                 assert labels[tree / 'ready'].ready, labels
                 assert labels[tree / 'legacy'].problems == ['legacy planning'], labels
                 await pilot.press('escape')
+                await pilot.pause()
+                # A directory-label read may finish while BrowseScreen is current but
+                # still completing its Mount dispatch. Keep that accepted result for
+                # post-mount publication instead of dropping it with the screen guard.
+                forced = {}
+                original_read_labels, original_mount = BrowseScreen.read_labels, BrowseScreen.on_mount
+                def capture_labels(screen, paths):
+                    forced['token'] = original_read_labels(screen, paths)
+                    return forced['token']
+                async def held_mount(screen):
+                    original_mount(screen)
+                    token = forced.get('token')
+                    assert token is not None, 'directory-label read was not submitted while mounting'
+                    await asyncio.wait_for(token.wait(), 10)
+                    assert tree / 'ready' not in screen.query_one('#tree').readiness_cache, \
+                        'directory labels published before the screen finished mounting'
+                with mock.patch.object(BrowseScreen, 'read_labels', new=capture_labels), \
+                        mock.patch.object(BrowseScreen, 'on_mount', new=held_mount):
+                    await pilot.press('n')
+                    await pilot.pause()
+                    browser = app.screen
+                    assert isinstance(browser, BrowseScreen), browser
+                    forced_labels = browser.query_one('#tree').readiness_cache
+                    async def forced_loaded():
+                        while tree / 'ready' not in forced_labels and not browser.__dict__.get('_read_errors'):
+                            await asyncio.sleep(0.01)
+                    await asyncio.wait_for(forced_loaded(), 10)
+                    await drain_reads(app)
+                    assert not browser.__dict__.get('_read_errors'), browser.__dict__.get('_read_errors')
+                    assert forced_labels[tree / 'ready'].ready, forced_labels
+                    await pilot.press('escape')
+                    await pilot.pause()
             # Blockers must accept a real immutable committed snapshot, while detaching
             # mutable runner data for its background report read.
             source = app.current()

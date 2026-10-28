@@ -123,11 +123,42 @@ class ReadScreen:
             self._reader = self.app.reads.owner(self._read_done)
         token = self._reader.request(kind, identity, (self.app.read_epoch, getattr(self, '_read_epoch', 0)), loader)
         token.apply, token.failed = apply, failed
+        self.__dict__.setdefault('_read_requests', {})[kind] = token.generation
         return token
 
     def _read_done(self, token, value, error):
-        if not self.app.is_running or not self.is_mounted or not self.is_current:
+        if not self.app.is_running or not self.is_current:
             return
+        if not self.is_mounted:
+            # A screen's first read can finish while Compose/Mount is still running.
+            # Keep the accepted result for publication after mounting; a changed
+            # owner, epoch or screen clears it before it can be applied.
+            self.__dict__.setdefault('_pending_reads', {})[token.kind] = (token, value, error)
+            self.call_after_refresh(self._flush_pending_reads)
+            return
+        self._publish_read(token, value, error)
+
+    def _on_mount(self, event):
+        # Mount dispatch finishes after this hook, so publish pending reads after
+        # Textual has marked the screen mounted and completed its first refresh.
+        if self.__dict__.get('_pending_reads'):
+            self.call_after_refresh(self._flush_pending_reads)
+
+    def _flush_pending_reads(self):
+        pending = self.__dict__.get('_pending_reads')
+        if not pending or not self.app.is_running or not self.is_current or not self.is_mounted:
+            return
+        self._pending_reads = {}
+        owner, requests = getattr(self, '_reader', None), self.__dict__.get('_read_requests', {})
+        for kind, (token, value, error) in pending.items():
+            # The coordinator records an applied generation before publish, so
+            # accepts() is already false by the time a pre-mount result is applied.
+            if owner is None or owner.closed or token.cancelled or requests.get(kind) != token.generation:
+                continue
+            if owner.current.get(kind) == (token.identity, token.epoch):
+                self._publish_read(token, value, error)
+
+    def _publish_read(self, token, value, error):
         errors = self.__dict__.setdefault('_read_errors', {})
         if error:
             errors[token.kind] = str(error)
@@ -141,6 +172,8 @@ class ReadScreen:
             token.apply(value)
 
     def invalidate_read(self):
+        self.__dict__.pop('_pending_reads', None)
+        self.__dict__.pop('_read_requests', None)
         self._read_epoch = getattr(self, '_read_epoch', 0) + 1
         if hasattr(self, '_reader'):
             self._reader.invalidate()
@@ -156,6 +189,8 @@ class ReadScreen:
                     break
 
     def on_unmount(self):
+        self.__dict__.pop('_pending_reads', None)
+        self.__dict__.pop('_read_requests', None)
         if hasattr(self, '_reader'):
             self._reader.close()
 
