@@ -18,11 +18,13 @@ only the selected workflow and relevant references. Resolve links relative to th
 loaded skill file. The canonical primary workflows are Plan With Me, Plan For Me,
 Docs Sync and Autowork. Autoresearch remains independently discoverable with all
 13 research selectors. Grill Me is Plan With Me's challenge mode, not a separate
-public skill; Pi retains `/grill_me` as a compatibility command. In native skill
+public skill; Pi retains `/grill-me` as a compatibility command. In native skill
 invocation (`/autowork:plan-with-me` in Claude Code), select `plan-with-me`
 and request challenge mode.
 Shared source files are reference material; this contract takes
 precedence over Hermes-specific execution procedures in linked upstream material.
+Pi command aliases use hyphens, including `/autoresearch-<protocol>`; use these
+spellings even when linked Hermes references show Telegram's underscore aliases.
 Never change host permissions, memory configuration, model credentials or approval
 policy to make a workflow run. A skill cannot promise unattended execution after
 the current host session ends.

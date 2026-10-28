@@ -54,14 +54,14 @@ class AttentionTests(unittest.TestCase):
         self.assertEqual(Path.cwd(), original)
 
     def test_plan_starts_the_planner_in_the_repository_and_records_its_minutes(self):
-        agent = self.repo / 'agent'
+        agent = self.repo / 'pi'
         agent.write_text('#!/bin/sh\nprintf %s "$*" > "$0.args"\n')
         agent.chmod(0o700)
         with mock.patch.object(command, 'resolve', return_value=(str(self.repo), 'fixture')), \
                 mock.patch.object(command.fleet_view, 'blockers_agent', return_value=[str(agent)]), \
                 mock.patch('time.monotonic', side_effect=[100, 160]):
             self.assertEqual(command.main(['plan', str(self.repo), '--legacy']), 0)
-        self.assertTrue(Path(str(agent) + '.args').read_text().startswith(f'/plan_for_me Plan the work of {self.repo}'))
+        self.assertTrue(Path(str(agent) + '.args').read_text().startswith(f'/plan-for-me Plan the work of {self.repo}'))
         usage = scorecard.measure(self.repo, 7)['usage']
         self.assertEqual((usage['owner_minutes'], usage['attention_categories']), (1, {'planning': 1}))
         with mock.patch.object(command, 'resolve', return_value=(str(self.repo), 'fixture')), \

@@ -1065,7 +1065,7 @@ async def main():
                     assert not screen.chosen.ready and task_files() == original_tasks, info
                     assert 'ready' not in tree_widget.render_line(node.line).text
                     if outcome == 'NO_STORE':
-                        assert '/docs_sync' in info and 'no heading is marked Status: Accepted' in info, info
+                        assert '/docs-sync' in info and 'no heading is marked Status: Accepted' in info, info
                     elif outcome == 'MIGRATION_DEFERRED':
                         assert 'conversion deferred' in info, info
                 if starts:

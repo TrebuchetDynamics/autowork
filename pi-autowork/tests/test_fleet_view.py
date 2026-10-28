@@ -251,12 +251,12 @@ class FleetViewTests(unittest.TestCase):
     def test_prepare_states_label_setup_migration_and_repair_instead_of_idle(self):
         runner = fleet_view.Runner('repo', repo=str(self.base), state='idle')
         for state, label in (
-                ('none', 'Setup required — run /docs_sync'),
+                ('none', 'Setup required — run /docs-sync'),
                 ('legacy', 'Migration required — Force converts legacy planning'),
                 ('conversion_pending', 'Task store needs repair'),
                 ('invalid', 'Task store needs repair'),
-                ('uncommitted', 'Setup required — run /docs_sync'),
-                ('no_repository', 'Setup required — run /docs_sync'),
+                ('uncommitted', 'Setup required — run /docs-sync'),
+                ('no_repository', 'Setup required — run /docs-sync'),
                 ('converted', '')):
             with self.subTest(state=state), mock.patch(
                     'pi_autowork.task_prepare.prepare', return_value={'state': state}) as prepare:
@@ -1003,12 +1003,12 @@ class FleetViewTests(unittest.TestCase):
         # Claude Code namespaces plugin skills; the others take /blockers directly.
         self.assertEqual(fleet_view.blockers_prompt(['/usr/bin/claude'], '/r'), '/autowork:blockers /r')
         self.assertEqual(fleet_view.blockers_prompt(['pi', '--model', 'x'], '/r'), '/blockers /r')
-        # `autowork plan` (the TUI's Plan) is /plan_for_me with Docs Sync, in the same spelling.
+        # `autowork plan` (the TUI's Plan) uses the host's hyphenated skill commands.
         claude, pi = fleet_view.plan_prompt(['claude'], '/r'), fleet_view.plan_prompt(['pi'], '/r')
         self.assertTrue(claude.startswith('/autowork:plan-for-me Plan the work of /r'), claude)
         self.assertIn('/autowork:docs-sync', claude)
-        self.assertTrue(pi.startswith('/plan_for_me Plan the work of /r'), pi)
-        self.assertIn('/docs_sync', pi)
+        self.assertTrue(pi.startswith('/plan-for-me Plan the work of /r'), pi)
+        self.assertIn('/docs-sync', pi)
         self.assertIn('Do not invent intent', pi)
 
     def test_a_runner_without_tasks_offers_planning_in_an_agent(self):

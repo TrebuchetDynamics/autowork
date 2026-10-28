@@ -9,7 +9,8 @@ test('Pi registers workflows and all 13 research commands; routes literal argume
     sendUserMessage: (...args) => messages.push(args)});
   assert.equal(commands.size, 38);
   assert.equal(commands.has('autogoal'), false);
-  assert.equal(commands.has('cron_autowork'), true);
+  for (const name of commands.keys()) assert.match(name, /^[a-z0-9]+(?:-[a-z0-9]+)*$/, name);
+  assert.equal(commands.has('cron-autowork'), true);
   const {readFile} = await import('node:fs/promises');
   const {fileURLToPath} = await import('node:url');
   const assertWorkflow = async (skill) => {
@@ -20,28 +21,28 @@ test('Pi registers workflows and all 13 research commands; routes literal argume
     assert.equal(message.includes('(../COMMON.md)'), true, skill);
   };
   const raw = 'read-only\n$(literal); --no-push';
-  await commands.get('ui_taste').handler(raw, {isIdle: () => true});
+  await commands.get('ui-taste').handler(raw, {isIdle: () => true});
   await assertWorkflow('ui-taste');
   assert.equal(messages.at(-1)[0].endsWith(raw), true);
   messages.length = 0;
-  await commands.get('plan_with_me').handler(raw, {isIdle: () => true});
+  await commands.get('plan-with-me').handler(raw, {isIdle: () => true});
   await assertWorkflow('plan-with-me');
   assert.equal(messages[0][0].endsWith(raw), true);
   assert.equal(messages[0][1], undefined);
   messages.length = 0;
-  await commands.get('plan_for_me').handler('', {isIdle: () => true});
+  await commands.get('plan-for-me').handler('', {isIdle: () => true});
   assert.match(messages[0][0], /Selected route: autonomous project discovery/);
   assert.match(messages[0][0], /Do not ask for a goal/);
-  await commands.get('plan_for_me').handler('implement offline support', {isIdle: () => true});
+  await commands.get('plan-for-me').handler('implement offline support', {isIdle: () => true});
   assert.equal(messages[1][0].includes('Selected route: autonomous project discovery'), false);
   assert.equal(messages[1][0].endsWith('implement offline support'), true);
   messages.length = 0;
-  await commands.get('autoresearch_debug').handler(raw, {isIdle: () => false});
+  await commands.get('autoresearch-debug').handler(raw, {isIdle: () => false});
   assert.match(messages[0][0], /Selected subcommand: debug/);
   assert.deepEqual(messages[0][1], {deliverAs: 'followUp'});
   // The actual shared boundary is loaded, not just command registration/skill metadata.
   const boundary = await readFile(new URL('../skills/shared/RESEARCH-PLAN.md', import.meta.url), 'utf8');
-  for (const name of ['plan_with_me', 'plan_for_me', 'grill_me', 'autoresearch_plan']) {
+  for (const name of ['plan-with-me', 'plan-for-me', 'grill-me', 'autoresearch-plan']) {
     await commands.get(name).handler(raw, {isIdle: () => true});
     assert.equal(messages.at(-1)[0].includes(boundary), true, name);
     assert.equal(messages.at(-1)[0].endsWith(raw), true, name);
@@ -49,7 +50,7 @@ test('Pi registers workflows and all 13 research commands; routes literal argume
   await commands.get('autoresearch').handler(`plan ${raw}`, {isIdle: () => true});
   assert.equal(messages.at(-1)[0].includes(boundary), true);
   assert.equal(messages.at(-1)[0].endsWith(`plan ${raw}`), true);
-  await commands.get('grill_me').handler(raw, {isIdle: () => false});
+  await commands.get('grill-me').handler(raw, {isIdle: () => false});
   await assertWorkflow('plan-with-me');
   assert.match(messages.at(-1)[0], /Selected mode: challenge/);
   assert.equal(messages.at(-1)[0].endsWith(raw), true);
@@ -57,24 +58,24 @@ test('Pi registers workflows and all 13 research commands; routes literal argume
   const selectors = JSON.parse(await readFile(new URL('../skills/autoresearch/UPSTREAM.json', import.meta.url))).commands;
   assert.equal(selectors.length, 13);
   for (const selector of selectors) {
-    await commands.get(`autoresearch_${selector}`).handler(raw, {isIdle: () => false});
+    await commands.get(`autoresearch-${selector}`).handler(raw, {isIdle: () => false});
     assert.match(messages.at(-1)[0], new RegExp(`Selected subcommand: ${selector}`));
     assert.equal(messages.at(-1)[0].endsWith(raw), true);
     assert.deepEqual(messages.at(-1)[1], {deliverAs: 'followUp'});
     await readFile(new URL(`../skills/autoresearch/upstream/${selector}.md`, import.meta.url));
   }
   for (const [name, skill] of Object.entries({
-    plan_with_me: 'plan-with-me', plan_for_me: 'plan-for-me', docs_sync: 'docs-sync',
-    cron_autowork: 'cron-autowork', autowork: 'autowork', autoresearch: 'autoresearch',
-    engineering: 'engineering', impeccable: 'impeccable', ui_taste: 'ui-taste',
-    beautify_github_readme: 'beautify-github-readme', grill_me: 'plan-with-me',
-    lgtm: 'lgtm', blockers: 'blockers', git_commit_push: 'git-commit-push',
-    ponytail: 'ponytail', ponytail_review: 'ponytail-review', ponytail_audit: 'ponytail-audit',
-    ponytail_debt: 'ponytail-debt', ponytail_gain: 'ponytail-gain', ponytail_help: 'ponytail-help',
-    bug_harvest: 'bug-harvest', autonomous_codebase_improver: 'autonomous-codebase-improver',
-    skill_folder_refactor: 'skill-folder-refactor', unused_code: 'unused-code',
-    test_optimizer: 'test-optimizer',
-    ...Object.fromEntries(selectors.map(selector => [`autoresearch_${selector}`, 'autoresearch'])),
+    'plan-with-me': 'plan-with-me', 'plan-for-me': 'plan-for-me', 'docs-sync': 'docs-sync',
+    'cron-autowork': 'cron-autowork', autowork: 'autowork', autoresearch: 'autoresearch',
+    engineering: 'engineering', impeccable: 'impeccable', 'ui-taste': 'ui-taste',
+    'beautify-github-readme': 'beautify-github-readme', 'grill-me': 'plan-with-me',
+    lgtm: 'lgtm', blockers: 'blockers', 'git-commit-push': 'git-commit-push',
+    ponytail: 'ponytail', 'ponytail-review': 'ponytail-review', 'ponytail-audit': 'ponytail-audit',
+    'ponytail-debt': 'ponytail-debt', 'ponytail-gain': 'ponytail-gain', 'ponytail-help': 'ponytail-help',
+    'bug-harvest': 'bug-harvest', 'autonomous-codebase-improver': 'autonomous-codebase-improver',
+    'skill-folder-refactor': 'skill-folder-refactor', 'unused-code': 'unused-code',
+    'test-optimizer': 'test-optimizer',
+    ...Object.fromEntries(selectors.map(selector => [`autoresearch-${selector}`, 'autoresearch'])),
   })) {
     await commands.get(name).handler('questions only', {isIdle: () => true});
     await assertWorkflow(skill);
@@ -180,6 +181,7 @@ test('installed archive resolves portable references and commands without checko
       sendUserMessage: (...args) => messages.push(args)});
     assert.equal(commands.size, 38);
     for (const [name, handler] of commands) {
+      assert.match(name, /^[a-z0-9]+(?:-[a-z0-9]+)*$/, name);
       await handler.handler('read-only; $(literal)\nno push', {isIdle: () => false});
       assert.equal(messages.at(-1)[0].endsWith('read-only; $(literal)\nno push'), true, name);
       assert.deepEqual(messages.at(-1)[1], {deliverAs: 'followUp'});
