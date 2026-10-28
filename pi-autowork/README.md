@@ -24,6 +24,12 @@ source checks, TUI code stamps and review fingerprints inspect actual implementa
 Runtime state lives outside the repository, under
 `${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key>/`.
 
+Automatic toolset updates use the exact Git package source registered in `pi list`,
+including its ref. A local-path package is owner-managed, even when its checkout
+has a Git remote. Local, missing or unreadable package declarations do not trigger
+an update fetch or `pi update`. Running processes keep their selected immutable
+release until a supported reload or restart selects a committed replacement.
+
 | Module | Role |
 | --- | --- |
 | `pi_autowork/engine/task_store.py` | Read-only, pinned-commit TaskStore used by the engine and committed fleet inventory; [schema and API](task-store.md) |

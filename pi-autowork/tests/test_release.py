@@ -172,6 +172,17 @@ class ReleaseCheckTests(unittest.TestCase):
         self.assertFalse(result['ok'])
         self.assertIn('cannot read this state (schema 1; it reads [2])', result['reason'])
 
+    def test_the_registered_ref_not_origin_head_controls_schema_compatibility(self):
+        self.git(self.work, 'checkout', '-qb', 'stable')
+        (self.work / STATE).write_text('STATE_SCHEMA = 2\nSTATE_SCHEMA_READS = (2,)\n')
+        self.git(self.work, 'add', STATE)
+        self.git(self.work, 'commit', '-qm', 'stable needs schema 2')
+        self.git(self.work, 'push', '-q', 'origin', 'HEAD:stable')
+        result = release.check(self.state_root, self.own, self.toolset,
+                               source='git:github.com/example/toolset@stable')
+        self.assertFalse(result['ok'])
+        self.assertIn('cannot read this state (schema 1; it reads [2])', result['reason'])
+
     def test_fetched_declarations_are_parsed_never_executed(self):
         self.publish("STATE_SCHEMA_READS = __import__('os').system('touch pwned')\n", 'hostile')
         self.assertEqual(self.check()['reason'], 'could not read the state schema declarations')
@@ -220,6 +231,110 @@ class InstalledToolsetTests(unittest.TestCase):
             self.assertEqual(listing(('npm:other', base), ('git:github.com/TrebuchetDynamics/old-toolset', old)),
                              str(old.resolve()))
             self.assertIsNone(listing(('npm:other', base)))
+
+class PackageUpdateTests(unittest.TestCase):
+    """Updates must use Pi's declaration, never a local checkout's Git remote."""
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.package = self.root / 'checkout with spaces'
+        self.package.mkdir()
+        subprocess.run(['git', 'init', '-q', str(self.package)], check=True)
+        subprocess.run(['git', '-C', str(self.package), 'remote', 'add', 'origin',
+                        'https://github.com/TrebuchetDynamics/autowork'], check=True)
+        self.listing = self.root / 'listing'
+        self.calls = self.root / 'updates.jsonl'
+        self.pi = self.root / 'pi'
+        self.pi.write_text(f'#!{sys.executable}\nimport json, sys\nfrom pathlib import Path\n'
+                           f'if sys.argv[1:] == ["list"]:\n'
+                           f'    print(Path({str(self.listing)!r}).read_text())\n'
+                           f'else:\n'
+                           f'    with open({str(self.calls)!r}, "a") as out:\n'
+                           f'        out.write(json.dumps(sys.argv[1:]) + "\\n")\n')
+        self.pi.chmod(0o755)
+
+    def declare(self, source):
+        self.listing.write_text(f'User packages:\n  git:github.com/example/other\n'
+                                f'    {self.root / "other"}\n'
+                                f'  {source}\n    {self.package}\n')
+
+    def update(self):
+        from pi_autowork import coordinator
+        runner = coordinator.Coordinator.__new__(coordinator.Coordinator)
+        runner.mode, runner.update_interval, runner.last_update = 'continuous', 1, 0
+        runner.package = runner.toolset = self.package
+        runner.state = self.root / 'state'
+        runner.state.mkdir(exist_ok=True)
+        runner.cfg = {'pi': str(self.pi), 'state_root': str(self.root)}
+        runner.update_wait = 600
+        runner.toolset_rev = 'old'
+        # Old processes can inherit this incorrect flag for a local package.
+        with patch.dict(os.environ, PI_AUTOWORK_PACKAGE_INSTALLED='1'), \
+                patch.object(release, 'check', return_value={'ok': True}) as checkpoint:
+            runner.update_toolset()
+        self.checked_source = checkpoint.call_args.kwargs.get('source') if checkpoint.called else None
+        calls = [json.loads(line) for line in self.calls.read_text().splitlines()] if self.calls.exists() else []
+        return calls, checkpoint.call_count
+
+    def test_local_packages_never_fetch_or_update_even_with_an_old_installed_flag(self):
+        for source in ('../../git/autowork', str(self.package)):
+            with self.subTest(source=source):
+                self.declare(source)
+                calls, checks = self.update()
+                self.assertEqual(calls, [])
+                self.assertEqual(checks, 0)
+
+    def test_managed_packages_use_the_exact_registered_source_including_ref(self):
+        for source in ('git:github.com/TrebuchetDynamics/autowork',
+                       'git:github.com/TrebuchetDynamics/autowork@main',
+                       'https://github.com/TrebuchetDynamics/autowork'):
+            with self.subTest(source=source):
+                self.calls.unlink(missing_ok=True)
+                self.declare(source + ' (filtered)')
+                calls, checks = self.update()
+                self.assertEqual(calls, [['update', source]])
+                self.assertEqual(checks, 1)
+                self.assertEqual(self.checked_source, source)
+
+    def test_registered_refs_do_not_confuse_ssh_usernames_with_refs(self):
+        for source, expected in (
+                ('git:github.com/example/repo@feature/fix', 'feature/fix'),
+                ('https://github.com/example/repo@stable', 'stable'),
+                ('git:ssh://git@github.com/example/repo@v2', 'v2'),
+                ('git:git@github.com:example/repo@v2', 'v2'),
+                ('git:ssh://git@github.com/example/repo', 'HEAD'),
+                ('git:git@github.com:example/repo', 'HEAD')):
+            with self.subTest(source=source):
+                self.assertEqual(release.package_ref(source), expected)
+
+    def test_bootstrap_marks_only_managed_sources_as_package_installed(self):
+        cli = self.package / 'pi-autowork/pi_autowork/cli.py'
+        cli.parent.mkdir(parents=True)
+        cli.write_text('import os; print(os.environ["PI_AUTOWORK_PACKAGE_INSTALLED"])\n')
+        env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1]),
+                   PI_BIN=str(self.pi), PI_AUTOWORK_RESELECT='auto',
+                   PI_AUTOWORK_ENV_DIR=str(self.root / 'settings'))
+        for source, installed in ((str(self.package), '0'),
+                                  ('../../git/autowork', '0'),
+                                  ('git:github.com/TrebuchetDynamics/autowork', '1')):
+            with self.subTest(source=source):
+                self.declare(source)
+                result = subprocess.run([sys.executable, '-c',
+                    'from pi_autowork import release; import sys; '
+                    'release.launch(sys.argv[1], sys.argv[2], ["--status", "--repo", sys.argv[3]])',
+                    str(cli.parent.parent), str(self.package / 'scripts/pi-autowork.sh'), str(self.package)],
+                    env=env, capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.strip(), installed)
+
+    def test_unknown_or_unreadable_package_declarations_do_not_update(self):
+        self.listing.write_text('User packages:\n  git:github.com/example/other\n'
+                                f'    {self.root / "other"}\n')
+        self.assertEqual(self.update(), ([], 0))
+        self.listing.unlink()
+        self.assertEqual(self.update(), ([], 0))
+
 
 if __name__ == '__main__':
     unittest.main()
