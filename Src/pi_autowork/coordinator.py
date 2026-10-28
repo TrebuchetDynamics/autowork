@@ -3277,9 +3277,9 @@ class Coordinator:
         self.last_update = time.monotonic()
         if os.environ.get('PI_AUTOWORK_PACKAGE_INSTALLED') != '1':
             return  # a checkout is updated by its owner, not by the runner
-        source = git(self.package, 'remote', 'get-url', 'origin')
+        source = release.package_source(self.cfg['pi'], self.package)
         if not source:
-            return
+            return  # local or unregistered checkouts are updated by their owner
         import fcntl
         with open(Path(self.cfg['state_root']) / 'toolset-update.lock', 'a') as lock:
             deadline = time.monotonic() + 600
@@ -3292,7 +3292,7 @@ class Coordinator:
                         return
                     time.sleep(1)
             check = release.check(self.cfg['state_root'], self.state, self.package, wait=self.update_wait,
-                                  current_toolset=self.toolset)
+                                  current_toolset=self.toolset, source=source)
             if not check['ok']:
                 # Another runner's work in flight, or a release that cannot read this state.
                 note = check['reason'].split(';')[0]

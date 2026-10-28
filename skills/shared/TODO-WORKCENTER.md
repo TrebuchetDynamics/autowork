@@ -127,6 +127,31 @@ note and `touches` to the widest owning directory. Do not list `tasks/`,
 `BLOCKERS.md`, `TODO.archive.md` or `CHANGELOG.md`: the coordinator owns them.
 `Needs decision` tasks may stay drafts until they become executable.
 
+### Task holds require an explicit user request
+
+Leave accepted tasks open in `Now` or `Next`, available to the authorized runner.
+A skill may add or renew `Held by:` or run `autowork tasks hold` only when the user
+explicitly asks to hold or pause the affected task. Record that request and its
+scope; a skill name such as `PLAN-FOR-ME` is not authorization to hold work.
+This rule applies to planning, Docs Sync, manual execution and delivery alike.
+
+“Plan only”, “no code this pass” and “do not implement in this session” limit the
+current session. They do not pause an existing authorized runner or require a later
+implementation order in the saved task's exclusions. Do not substitute a goal pause,
+`Needs decision`, a fake dependency or an incomplete contract to reserve accepted
+work. Keep genuine unresolved decisions, prerequisites and approval limits explicit;
+open does not mean dependency-ready, admitted or authorized for live operations.
+
+Use supported execution leases, workspace locks and current worker checks to prevent
+duplicate execution, not an unrequested task hold. Preserve existing user pauses,
+live claims, runtime failure holds and safety gates; this rule does not clear them.
+If this pass added a planning-only hold without a user request, remove only that
+attributable hold before handoff with `autowork tasks release`, after verifying no
+live owner or explicit pause relies on it. Preserve other notes and exclusions, and
+use `--expect REV` after an earlier read. Unknown ownership needs investigation,
+not blanket release. Report remaining real blockers separately from skill-created
+reservations.
+
 ### Edit records
 
 | Command | Effect |
@@ -136,7 +161,7 @@ note and `touches` to the widest owning directory. Do not list `tasks/`,
 | `autowork tasks field ID LABEL VALUE` | A typed field (`rank`, `touches`, `checks`, `kind`, ...) or any note label. |
 | `autowork tasks place ID Now\|Next\|"Needs decision" [--decision TEXT]` | Move to the bottom of a section; `--decision` also records an `Owner decision:` note. |
 | `autowork tasks move ID up\|down` | One place up or down within its section. |
-| `autowork tasks hold ID --by WHO [--until YYYY-MM-DD]`, `release ID` | Keep the runner off a task someone works on outside it, and lift that. |
+| `autowork tasks hold ID --by WHO [--until YYYY-MM-DD]`, `release ID` | Apply an explicitly user-requested task pause, or release a reconciled hold under the policy above. |
 | `autowork tasks done ID --by WHO --reason TEXT [--evidence REF]` | Manual close of any task kind; optional evidence is a reference, not verified acceptance. |
 | `autowork tasks supersede ID --by OTHER --reason TEXT` | Replace a task. |
 | `autowork tasks goal ID [--title --source --priority --status --focus/--no-focus --depends-on --evidence]` | Add or change a goal; `--status met` needs evidence and all non-superseded owned tasks done and qualified. |

@@ -24,6 +24,12 @@ source checks, TUI code stamps and review fingerprints inspect actual implementa
 Runtime state lives outside the repository, under
 `${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key>/`.
 
+Automatic toolset updates use the exact Git package source registered in `pi list`,
+including its ref. A local-path package is owner-managed, even when its checkout
+has a Git remote. Local, missing or unreadable package declarations do not trigger
+an update fetch or `pi update`. Running processes keep their selected immutable
+release until a supported reload or restart selects a committed replacement.
+
 | Module | Role |
 | --- | --- |
 | `pi_autowork/engine/task_store.py` | Read-only, pinned-commit TaskStore used by the engine and committed fleet inventory; [schema and API](task-store.md) |
@@ -505,8 +511,10 @@ explicitly listed in `verified_depends_on`. An authorized owner can record
 `owner_waiver` or `owner_qualification` through `tasks field`; a met-goal write names
 these exceptions. See [closure provenance and owner qualification](task-store.md#writing-and-autowork-tasks).
 
-A task someone works on outside the runner carries a `Held by:` note
-(`autowork tasks hold TASK --by WHO [--until DATE]`); the runner never starts it and asks
+Skills leave tasks active by default. Only an explicit user request permits a
+new or renewed `Held by:` note; manual work uses supported execution leases and
+workspace locks instead. For an explicitly requested pause, use
+`autowork tasks hold TASK --by WHO [--until DATE]`; the runner never starts it and asks
 nothing about it. `autowork tasks release TASK` lifts the hold; a dated hold ends by itself.
 
 The fleet lists runners with open owner questions or task-store setup/repair first,

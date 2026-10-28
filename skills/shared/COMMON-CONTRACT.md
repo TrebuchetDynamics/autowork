@@ -16,6 +16,11 @@ may implement, test and commit locally. Loading a supporting skill adds no autho
 Installation, publication, third-party contact and destructive actions require their
 own authorization; specific no-write/no-commit restrictions always take precedence.
 
+Follow [task holds](TODO-WORKCENTER.md#task-holds-require-an-explicit-user-request):
+leave tasks active by default. Only an explicit user request permits a skill to add
+or renew a task hold. Session scope does not pause the queue; existing safety gates
+and live ownership remain in force.
+
 Inspect status and preserve pre-existing edits, untracked files and live ownership.
 Use [worktree isolation](WORKTREE-ISOLATION.md) when a separate writing checkout
 is required. Do not reset, clean, stage or overwrite unrelated work. Keep secrets

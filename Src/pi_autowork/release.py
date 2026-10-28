@@ -21,6 +21,7 @@ import re
 import shutil
 import subprocess
 import sys
+from urllib.parse import urlsplit
 
 from pi_autowork.processes import running  # noqa: E402
 
@@ -144,6 +145,41 @@ def installed_toolset(pi):
     return next((p for other, p in found if not other), found[0][1] if found else None)
 
 
+def package_source(pi, package):
+    """Return the registered Git source for this path, never a local declaration."""
+    try:
+        result = subprocess.run([pi, 'list'], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode:
+        return None
+    source = ''
+    for line in result.stdout.splitlines():
+        # Pi lists a two-space source followed by its four-space resolved path.
+        # Indentation matters: an absolute local source is also a valid path.
+        if line.startswith('    '):
+            path = line.strip()
+            if path.startswith('/') and Path(path).resolve() == Path(package).resolve():
+                return source if source.startswith(('git:', 'https://', 'http://', 'ssh://', 'git://')) else None
+        elif line.startswith('  '):
+            source = line.strip().removesuffix(' (filtered)')
+        else:
+            source = ''
+    return None
+
+
+def package_ref(source):
+    """Read Pi's path@ref suffix without treating an SSH username as a ref."""
+    url = source.removeprefix('git:')
+    if url.startswith('git@'):
+        path, fragment = url.split(':', 1)[1], ''
+    else:
+        parsed = urlsplit(url if '://' in url else 'https://' + url)
+        path, fragment = parsed.path, parsed.fragment
+    _, separator, ref = path.partition('@')
+    return (ref if separator else fragment) or 'HEAD'
+
+
 def repository_option(argv):
     """The last --repo value, respecting options that consume the next token."""
     args, repo = iter(argv), None
@@ -235,7 +271,9 @@ def launch(component, script, argv):
         if not (fallback / 'pi-autowork/pi_autowork/cli.py').is_file():
             fallback = Path(component).resolve().parent
         selected = Path(selected).resolve() if selected else installed or fallback
-        env['PI_AUTOWORK_PACKAGE_INSTALLED'] = '1' if installed and selected == installed.resolve() else '0'
+        env['PI_AUTOWORK_PACKAGE_INSTALLED'] = '1' if (
+            installed and selected == installed.resolve()
+            and package_source(env.get('PI_BIN', 'pi'), selected)) else '0'
     selected = Path(selected).resolve()
     env['PI_AUTOWORK_PACKAGE'] = str(Path(package).resolve()) if package else str(selected)
     env['PI_AUTOWORK_SCRIPT'] = script  # stable launcher, never a prunable snapshot
@@ -275,9 +313,10 @@ def first_seen(state_root, rev, now):
     return now
 
 
-def check(state_root, own, toolset, wait=600, now=None, current_toolset=None):
+def check(state_root, own, toolset, wait=600, now=None, current_toolset=None, source=None):
     now = time.time() if now is None else now
-    fetched = _git(toolset, 'fetch', '-q', 'origin', 'HEAD')
+    ref = package_ref(source) if source else 'HEAD'
+    fetched = _git(toolset, 'fetch', '-q', '--', 'origin', ref)
     if fetched.returncode:
         return dict(ok=False, reason='could not fetch the toolset: ' + fetched.stderr.strip()[:200])
     new_rev = _git(toolset, 'rev-parse', '--short', 'FETCH_HEAD').stdout.strip()

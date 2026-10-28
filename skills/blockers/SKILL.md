@@ -260,9 +260,11 @@ It never implicitly authorizes service migration or broader live operations.
   release: `autowork tasks release ID` removes its `Held by:` note, keeping
   acceptance, dependencies, candidate references, partial delivery evidence and
   pending checks. Successors are not unlocked by this: they still need the task's
-  acceptance. A live claim stays with its current worker; record that answer with
-  `autowork tasks hold ID --by "<who or what>" --until YYYY-MM-DD`, which ends the
-  runner's claim question until that date. A record with a current `Held by:` note
+  acceptance. A live claim stays with its current worker. Add or renew a task hold
+  only when the user explicitly asks for that pause, using
+  `autowork tasks hold ID --by "<who or what>" --until YYYY-MM-DD`; see the
+  [task-hold policy](../shared/TODO-WORKCENTER.md#task-holds-require-an-explicit-user-request).
+  Observing a worker is not permission to create a hold. A record with a current `Held by:` note
   is answered, not open.
 - Retirement without completion: supersede it by the task that replaces it, or,
   with no replacement, place it in `Needs decision` with an `Owner decision` that

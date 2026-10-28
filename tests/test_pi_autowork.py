@@ -84,7 +84,8 @@ if args[:1] == ['list']:
         print(os.environ['FAKE_PI_LIST'])
         sys.exit(0)
     if os.environ.get('FAKE_PI_TOOLSET'):
-        print('User packages:\n  ' + os.environ['FAKE_PI_TOOLSET'] + '\n    ' + os.environ['FAKE_PI_TOOLSET'])
+        print('User packages:\n  ' + os.environ.get('FAKE_PI_SOURCE', os.environ['FAKE_PI_TOOLSET'])
+              + '\n    ' + os.environ['FAKE_PI_TOOLSET'])
     sys.exit(0)
 if args[:1] == ['update']:  # a new toolset commit, as `pi update` brings in
     note({'update': args[1:]})
@@ -3825,7 +3826,8 @@ class SetupTests(Fixture):
         self.git(self.root, 'clone', '-q', '--bare', str(package), str(self.origin))
         self.git(package, 'remote', 'add', 'origin', str(self.origin))
         self.publish(lambda tree: (tree / 'RELEASE').write_text('2\n'), 'release 2')
-        self.env.update(FAKE_PI_TOOLSET=str(package), PI_AUTOWORK_UPDATE_INTERVAL='1')
+        self.env.update(FAKE_PI_TOOLSET=str(package), PI_AUTOWORK_UPDATE_INTERVAL='1',
+                        FAKE_PI_SOURCE='git:github.com/TrebuchetDynamics/autowork')
         return package
 
     def publish(self, change, message):
@@ -3871,7 +3873,7 @@ class SetupTests(Fixture):
         self.assertGreaterEqual(len(starts), 2, out)
         self.assertEqual({pid for _, pid in starts}, {str(runner.pid)}, out)  # exec keeps the PID
         updates = [json.loads(l) for l in self.log.read_text().splitlines() if '"update"' in l]
-        self.assertEqual(updates[0]['update'], [str(self.origin)])
+        self.assertEqual(updates[0]['update'], ['git:github.com/TrebuchetDynamics/autowork'])
 
     def test_a_release_that_cannot_read_current_state_is_never_installed(self):
         package = self.installed_package()

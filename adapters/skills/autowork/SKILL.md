@@ -43,8 +43,10 @@ per goal, and `tasks/evidence/<ID>.toml` for the receipt of a verified close. Ev
 edit goes through `autowork tasks` (it writes the working tree only and validates the
 whole store). Selection reads `tasks/` at the base commit: section (Now before Next),
 then rank, gated by goal focus, priority and dependencies; `autowork tasks why ID`
-explains a pick. A claim is a `Held by:` note (`autowork tasks hold ID --by WHO`,
-lifted by `autowork tasks release ID`). An existing `TODO.archive.md` is frozen
+explains a pick. A `Held by:` note prevents selection. Add or renew it only for an
+explicit user pause under the [task-hold policy](../../../skills/shared/TODO-WORKCENTER.md#task-holds-require-an-explicit-user-request).
+Ordinary execution uses supported leases and workspace locks, not automatic holds.
+Preserve existing claims; `autowork tasks release ID` lifts only a reconciled hold. An existing `TODO.archive.md` is frozen
 history, never written. Explicit read-only runs write nothing.
 
 1. Read repo instructions, `autowork tasks list`, accepted plans and current changes. Reconcile

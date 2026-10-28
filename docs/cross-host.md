@@ -641,7 +641,9 @@ roots still block their downstream tasks; they are not counted as ordinary waiti
 merely because no person is needed. Genuine owner authorization and external-input
 gates remain in force.
 
-A task someone works on outside the runner carries a `Held by:` note
+Skills leave tasks active unless the user explicitly asks to hold them; manual
+work uses supported execution leases and workspace locks, not an automatic hold.
+An explicitly requested pause uses a `Held by:` note
 (`autowork tasks hold TASK --by WHO [--until YYYY-MM-DD]`). The runner never starts it,
 asks nothing about it, and holds back tasks that depend on it or share its resources;
 `autowork tasks release TASK` or the date lifts the hold. Priority is each task's section

@@ -68,7 +68,7 @@ tmux source-file ~/.tmux.conf
 ## Runtime flow
 
 - `install.sh` copies the shared assets into user locations: `tmux.conf`, helper scripts, optional local style, and the `tx` launcher.
-- `tmux.conf` shows the status bar at the bottom with the session, short current path, git branch/status, zoom state, and host. Periodic refresh remains disabled.
+- `tmux.conf` shows a navy/teal status bar with the session, short current path, git branch/status, window tabs, zoom state, and host. Periodic refresh remains disabled.
 - `tx` reads session aliases from its config file, starts or switches to the matching tmux session, and uses the alias as the tmux session name.
 - `style.tmux` stores per-machine colors and is sourced by `tmux.conf` from `~/.tmux/style.tmux`.
 
@@ -132,12 +132,13 @@ tmux set -g window-size latest
 The prefix remains tmux's standard `Ctrl-b`, which works with Termius's extra-key row. Useful phone-friendly bindings:
 
 - `Ctrl-b r` — force a full redraw after a reconnect or orientation change.
-- `Ctrl-b v` — enter copy mode; press `v` to select and `y` to copy.
+- `Ctrl-b v` — enter copy mode. Press `v` to select, then `y` or Enter to copy and exit.
+- Drag to select — release to keep the selection without copying. Press `y` or Enter to copy, or `q` to exit.
 - `Ctrl-b Page Up` — enter scrollback; then use `Page Up`/`Page Down` and `q` to exit.
 - `Ctrl-b m` — toggle mouse/touch scrolling for the current tmux server.
 - `Ctrl-b t` — toggle the status bar when session details are useful.
 
-Mouse mode remains off by default so Termius can handle native touch selection. The status bar keeps path and git details visible at narrow widths. Synchronized output (`terminal-features` sync) is **disabled by default** because mishandled end-of-frame markers can drop whole frames on some mobile SSH clients; re-enable it by uncommenting the two `terminal-features` lines in `tmux.conf`. Detach and reconnect once after installing so tmux recalculates client terminal features.
+Mouse mode is on by default for scrolling and pane selection. Drag release does not copy to the tmux buffer or clipboard. Use `Ctrl-b m` to turn mouse mode off for native terminal selection. The SSH app can have its own copy-on-select setting, which tmux cannot control. Explicit copies use OSC 52 when the SSH client permits clipboard access. `Ctrl-b ]` pastes the tmux buffer even without client clipboard support. Window tabs show each window's number and name, with teal for the current window. Path and git details are limited to leave space for tabs at narrow widths. Synchronized output (`terminal-features` sync) is **disabled by default** because mishandled end-of-frame markers can drop whole frames on some mobile SSH clients; re-enable it by uncommenting the two `terminal-features` lines in `tmux.conf`. Detach and reconnect once after installing so tmux recalculates client terminal features.
 
 ## Local/mobile overrides
 
