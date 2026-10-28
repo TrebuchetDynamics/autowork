@@ -133,6 +133,28 @@ def failure_summary(text):
     return ' '.join(' | '.join(lines[-3:]).split())[-1200:] or 'command failed; inspect the native output'
 
 
+def host_unavailable(binary):
+    """Detect absent CLIs and stale simple wrappers without executing host code."""
+    if not binary:
+        return ''
+    executable = shutil.which(binary)
+    if not executable:
+        return f'{binary} not found'
+    try:
+        with open(executable) as stream:
+            text = stream.read(4096)
+        if text.startswith(('#!/bin/sh\n', '#!/usr/bin/env sh\n', '#!/bin/bash\n', '#!/usr/bin/env bash\n')):
+            words = shlex.split(text.split('\n', 1)[1], comments=True)
+            if (len(words) == 3 and words[0] == 'exec' and words[2] == '$@'
+                    and not any(char in words[1] for char in '$`*?[{')):
+                target = Path(words[1])
+                if target.is_absolute() and (not target.is_file() or not os.access(target, os.X_OK)):
+                    return f'{binary} launcher target is missing or not executable'
+    except (OSError, UnicodeError, ValueError):
+        pass  # Not a recognizable wrapper: leave host admission to its own installer.
+    return ''
+
+
 @dataclass
 class Step:
     describe: str                   # what this step does, for --dry-run and the summary
@@ -153,7 +175,7 @@ class Item:
 
     @property
     def available(self):
-        return not self.missing and (not self.needs or shutil.which(self.needs) is not None)
+        return not self.missing and not host_unavailable(self.needs)
 
 
 def pi_package(source=PI_SOURCE):
@@ -341,9 +363,7 @@ def items(hermes_args):
 
 
 def describe(item):
-    if item.needs and shutil.which(item.needs) is None:
-        return f'{item.needs} not found'
-    return item.missing or item.note
+    return host_unavailable(item.needs) or item.missing or item.note
 
 
 # -- choosing ---------------------------------------------------------------------
