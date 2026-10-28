@@ -210,6 +210,20 @@ the separate `autowork blockers [dir]` command, not this report.
 
 ## The autowork command
 
+Select a runner and press **a Answer** (**e** remains an alias). Multiple editable
+questions open a keyboard picker; **Enter** opens the selected record. **Ctrl+S**
+or **Ctrl+Enter** saves an answer locally with a revision check; **Esc** cancels.
+Saving is not a commit, hold release, technical-recovery retry or live permission.
+Small dialogs keep action buttons visible while their contents scroll. In opt-in
+`--mouse`/browser mode, fleet menu clicks use the same guarded actions as keys;
+normal terminal mode still permits native text selection.
+
+Matching exhausted or held automatic-triage failures appear as **Technical recovery
+needed**, separately from the preserved worker-reported questions. Details and the
+Blockers report show the recorded failure and retained-work reconciliation guidance.
+A technical triage failure is not an owner verdict, and an answer does not provide
+missing operator access or qualification evidence.
+
 In the TUI, Tasks defaults to **1 Open**, excluding closed history and independent
 question annotations from the open count. **6 Closed** keeps completed records
 available for read-only inspection; number keys or Tab/Shift+Tab switch views.

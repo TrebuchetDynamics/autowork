@@ -367,7 +367,7 @@ def paint(text, color, enabled):
 
 
 DISPLAY_ONLY_RUNNER_FIELDS = ('snapshot', 'preparation', 'question_provenance', 'acquisition_errors',
-                             'display_deleted', 'display_recreated')
+                             'display_deleted', 'display_recreated', 'triage_failures')
 
 
 def runner_json(runner):

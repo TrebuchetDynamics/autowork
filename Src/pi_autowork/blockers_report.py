@@ -185,6 +185,7 @@ def build(runner):
                      for r in rows)
     technical |= any(failure_policy.disposition(root)['resolution_owner'] != failure_policy.OWNER
                      for root in [*roots, *runner.roots])
+    technical |= bool(runner.triage_failures)
     interrupted = bool(runner.stop_reason or runner.blocker or runner.gate
                        or runner.main_check.get('state') in ('red', 'broken'))
     headline = ('Awaiting owner decisions' if set(groups) - deferred and runner.state in ('blocked', 'stalled')
@@ -213,6 +214,8 @@ def build(runner):
                          ('Resource gate', runner.gate)]:
         if value:
             lines.append(f'{label}: {value}')
+    if runner.triage_failures:
+        lines.append('Recorded technical triage: ' + fleet_view.recovery_detail(runner))
     for error in dict.fromkeys(errors):
         if error not in (runner.stop_reason, runner.blocker, runner.gate):
             lines.append('Source warning: ' + str(error))

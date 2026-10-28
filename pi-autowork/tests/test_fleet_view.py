@@ -947,7 +947,7 @@ class FleetViewTests(unittest.TestCase):
             (R('a', state='restarting', restarting='onto 0c41776'), 'Restarting onto 0c41776'),
             (R('a', state='restarting', restarting='service'), 'Restarting'),
             (R('a', state='paused'), 'Paused — p resumes it'),
-            (R('a', state='not running'), 'Not running — a starts its service'),
+            (R('a', state='not running'), 'Not running — p starts its service'),
             (R('a', state='idle', questions=[Q('T-1', 'decision', 1, 'choose a target')]),
              'Waiting on you — 1 question, easiest T-1 (unblocks 1): choose a target'),
             (R('a', state='idle'), 'Idle — nothing left to run in Now/Next'),

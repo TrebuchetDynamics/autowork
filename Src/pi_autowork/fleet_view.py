@@ -141,6 +141,7 @@ class Runner:
     preparation: 'Preparation | None' = field(default=None, repr=False, compare=False)
     question_provenance: dict = field(default_factory=dict, repr=False, compare=False)
     acquisition_errors: list = field(default_factory=list, repr=False, compare=False)
+    triage_failures: tuple = field(default=(), repr=False, compare=False)
 
     display_deleted: tuple = field(default=(), repr=False, compare=False)
     display_recreated: tuple = field(default=(), repr=False, compare=False)
@@ -507,7 +508,7 @@ def _service_verdict(runner: Runner) -> Verdict | None:
     if runner.state == 'paused':
         return 'Paused — p resumes it', 'bold yellow'
     if runner.state == 'not running':
-        return 'Not running — a starts its service', 'bold red'
+        return 'Not running — p starts its service', 'bold red'
     if runner.state == 'unavailable':
         return 'Runtime unavailable — ' + (runner.blocker or 'see acquisition errors'), 'bold red'
     return None
@@ -539,6 +540,19 @@ def _working_verdict(runner: Runner) -> Verdict:
     if asks:
         text += f'; {asks} for you'
     return text, 'bold green'
+
+
+def recovery_detail(runner: Runner) -> str:
+    """Recorded technical recovery failures, never owner decisions or hold releases."""
+    return '\n'.join(f'{task}: {failure}; {hold}; not an owner verdict. '
+                     'Reconcile retained work in triage.json and runs before explicit recovery; '
+                     'recording an answer does not retry recovery or provide operator access.'
+                     for task, failure, hold in runner.triage_failures)
+
+
+def _recovery_verdict(runner: Runner) -> Verdict:
+    return ('Technical recovery needed — automatic triage unavailable; '
+            f'{len(runner.questions)} recorded questions retained; i Details / b Blockers', 'bold yellow')
 
 
 def _question_verdict(runner: Runner) -> Verdict:
@@ -594,6 +608,8 @@ def verdict(runner: Runner) -> Verdict:
             return ('Task inventory unavailable — ' + (runner.blocker or 'see acquisition errors')), 'bold yellow'
         if counts[0] or counts[1] or runner.job:
             return _working_verdict(runner)
+        if runner.triage_failures:
+            return _recovery_verdict(runner)
         if runner.questions:
             return _question_verdict(runner)
         if counts[3]:
@@ -606,6 +622,8 @@ def verdict(runner: Runner) -> Verdict:
         return 'Idle — nothing left to run in Now/Next', 'bold green'
     if runner.state == 'working':
         return _working_verdict(runner)
+    if runner.triage_failures:
+        return _recovery_verdict(runner)
     if runner.questions:
         return _question_verdict(runner)
     if runner.state == 'idle':
@@ -1085,6 +1103,38 @@ def _service_runner(name: str, sub: str, env_dir, systemctl: str, errors=None) -
                   observation=health.observation({}))
 
 
+def _triage_failures(state_dir, held, errors):
+    """Join optional recovery markers to the current held reason, not just a task ID."""
+    try:
+        records = json.loads(Path(state_dir, 'triage.json').read_text())
+        if not isinstance(records, dict):
+            raise ValueError('expected an object')
+    except FileNotFoundError:
+        return ()
+    except (OSError, ValueError) as error:
+        errors.append(f'{state_dir}/triage.json: recovery observation unavailable: {error}')
+        return ()
+    failures = []
+    for row in held:
+        marker = records.get(row.get('task'))
+        if row.get('cause') != 'blocker' or not isinstance(marker, dict) or marker.get('phase') != 'failed':
+            continue
+        reason = ' '.join(str(row.get('reason') or '').split())
+        if not reason or marker.get('key') != hashlib.sha256(reason.encode()).hexdigest()[:16]:
+            continue
+        attempts = marker.get('attempts')
+        if type(attempts) is not int or attempts < 1:
+            continue
+        if attempts < 3 and marker.get('replay_blocked') is not True:
+            continue
+        failure = marker.get('failure')
+        if not isinstance(failure, str) or not re.fullmatch(r'[a-z][a-z0-9_]*', failure):
+            failure = 'unknown'
+        hold = 'recovery budget exhausted' if attempts >= 3 else 'automatic replay held'
+        failures.append((row['task'], failure, hold))
+    return tuple(failures)
+
+
 def _health_runner(found: dict[str, Runner], row: dict, now: float) -> Runner | None:
     """Merge a health row into its installed service; orphaned state is only history."""
     if not row.get('repo'):
@@ -1103,6 +1153,8 @@ def _health_runner(found: dict[str, Runner], row: dict, now: float) -> Runner | 
             minutes = int((now - job['started']) // 60)
         # status.json deliberately omits the PID and may outlive a stopped runner.
         check = main_check.read(state_dir, repo, fallback=row.get('main_check'))
+        errors = list(row.get('errors') or [])
+        triage_failures = _triage_failures(state_dir, row.get('held', []), errors)
         return replace(runner, repo=repo, state_dir=state_dir, state=row['state'], minutes=minutes,
                        running=row.get('workers', 0), waiting=row.get('waiting', 0),
                        stopped=row.get('stopped', 0), stopped_groups=row.get('stopped_groups') or [],
@@ -1112,7 +1164,7 @@ def _health_runner(found: dict[str, Runner], row: dict, now: float) -> Runner | 
                        stop_reason=row.get('stop_reason') or '', max_workers=row.get('max_workers'),
                        maintainer=row.get('maintainer') or {}, main_check=check, job=job,
                        observation=row.get('observation') or health.observation({}),
-                       acquisition_errors=list(row.get('errors') or []))
+                       acquisition_errors=errors, triage_failures=triage_failures)
     except (OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError) as exc:
         error = f'{state_dir}: runtime projection unavailable: {exc}'
         return replace(runner, repo=repo, state_dir=state_dir, state='unavailable',
