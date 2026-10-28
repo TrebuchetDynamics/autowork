@@ -84,6 +84,42 @@ class InstallMenuTests(unittest.TestCase):
             self.assertRegex(out, rf'{key}\s+available')
         self.assertRegex(out, r'hermes\s+unavailable.*hermes not found')
 
+    def test_full_skips_a_stale_optional_host_launcher(self):
+        self.fake('hermes', f'#!/bin/sh\nexec {self.home}/missing-hermes "$@"\n')
+        (self.home / '.hermes').mkdir()
+        result = self.install('--full')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertRegex(result.stdout, r'hermes\s+skipped.*launcher target')
+        self.assertIn('codex plugin add autowork@autowork-marketplace', self.calls('codex'))
+        self.assertRegex(self.install('--list').stdout, r'hermes\s+unavailable.*launcher target')
+
+    def test_an_explicit_stale_host_fails_without_stopping_other_components(self):
+        self.fake('hermes', f'#!/bin/sh\nexec {self.home}/missing-hermes "$@"\n')
+        (self.home / '.hermes').mkdir()
+        result = self.install('--only', 'hermes,tx')
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertRegex(result.stdout, r'hermes\s+failed.*launcher target')
+        self.assertTrue((self.home / '.local/bin/tx').is_file())
+
+    def test_dynamic_shell_targets_are_left_to_native_host_admission(self):
+        self.fake('hermes', '#!/bin/sh\nexec "/bin/${AUTOWORK_HOST:-sh}" "$@"\n')
+        (self.home / '.hermes').mkdir()
+        result = self.install('--full', '--dry-run')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertRegex(result.stdout, r'hermes\s+planned')
+
+    def test_a_working_shell_wrapper_is_available_without_executing_it(self):
+        target = self.home / 'real hermes'
+        marker = self.home / 'executed'
+        target.write_text(f'#!/bin/sh\ntouch {marker}\n')
+        target.chmod(0o755)
+        self.fake('hermes', f'#!/bin/sh\nexec "{target}" "$@"\n')
+        (self.home / '.hermes').mkdir()
+        result = self.install('--full', '--dry-run')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertRegex(result.stdout, r'hermes\s+planned')
+        self.assertFalse(marker.exists())
+
     def test_all_installs_every_available_item_in_order(self):
         result = self.install('--all')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

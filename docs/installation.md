@@ -30,7 +30,10 @@ All Autowork skills apply its shared method within their existing authority; no
 separate Ponytail plugin, hooks or persistent modes are installed. Existing external
 Ponytail installs are not changed or removed. `--full` (`--all`) is the default; `--skip` excludes components. Host CLIs
 must already be installed: full mode reports missing hosts as skipped, while
-`--only` reports a requested missing host as failed. Hermes also needs a Hermes
+`--only` reports a requested missing host as failed. Hermes is optional. A simple
+shell launcher whose target is missing or not executable also counts as unavailable;
+full mode skips it without running Hermes setup. Availability detection does not
+start host CLIs or change their settings. Hermes also needs a Hermes
 home (`~/.hermes`, or `--hermes-home`/`HERMES_HOME`); a default home that does not
 exist yet counts as missing. The TUI/web view needs `uv`, and using the tmux
 launcher needs `tmux`. A replaced `~/.local/bin/autowork` or `~/.local/bin/tx` is
