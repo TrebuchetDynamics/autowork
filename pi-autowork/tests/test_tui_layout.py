@@ -10,6 +10,9 @@ import time
 import unittest
 from unittest.mock import patch
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts'))
+from offline_textual import textual_unavailable
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import fleet_view, task_snapshot, blockers_report
 
@@ -159,7 +162,7 @@ class TuiLayoutTests(unittest.TestCase):
     def test_responsive_layout_preserves_evidence_and_read_only_controls(self):
         result = subprocess.run(['uv', 'run', '--offline', '--quiet', '--no-project', '--with', 'textual==8.2.8',
                                  'python3', __file__, '--pilot'], capture_output=True, text=True, timeout=90)
-        if result.returncode == 2 and 'textual' in result.stderr.lower() and 'offline' in result.stderr.lower():
+        if textual_unavailable(result):
             self.skipTest('textual==8.2.8 is not in the uv cache (offline)')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('LAYOUT PILOT OK', result.stdout)
