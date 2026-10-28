@@ -429,9 +429,11 @@ reads share a four-worker coordinator. Each resource has one physical read and a
 most one replaceable pending request. Timer polls do not invalidate a slower active
 read; selection changes, action/interactive return and screen closure discard obsolete
 results. Cancelling a subscription does not free its running thread's resource slot.
-Only the UI loop publishes results and touches widgets. Resize, task filters and
-worker-log wrap use cached data. Directory labels are loaded separately from the
-selected repository's readiness; confirmed Start always requests fresh readiness.
+Only the UI loop publishes results and touches widgets. A screen's first read that
+completes while its Mount dispatch is still running is retained and published after
+mounting; invalidation or unmount discards it. Resize, task filters and worker-log
+wrap use cached data. Directory labels are loaded separately from the selected
+repository's readiness; confirmed Start always requests fresh readiness.
 Model discovery is fresh per opening and uses the selected service's provider context.
 Read failures retain last-good data with a stale/unavailable diagnostic and allow retry.
 
