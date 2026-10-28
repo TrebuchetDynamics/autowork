@@ -3,7 +3,7 @@ schema = 1
 id = "TOOLSET-405-4abc98d0"
 title = "Repair offline Textual dependency handling behind the bfaa7f03 main-check failures"
 short = "Repair offline Textual test setup"
-status = "open"
+status = "done"
 goal = "RELIABILITY-2026-10"
 section = "Now"
 rank = 1000
@@ -16,6 +16,8 @@ scope = "Repair only the offline test setup and missing-dependency handling shar
 acceptance = ["Regression fixtures reproduce the saved exit-1 missing-cache diagnostic as well as the existing supported unavailable-cache form. Named optional renderer checks report explicit dependency skips for those cases, never rendered passes; unrelated nonzero exits, import errors and pilot assertions remain failures. The import-graph/non-renderer checks remain enforced rather than being lost behind an optional-renderer skip.", "With the pinned dependency available, the named Textual/import checks still execute their original assertions and propagate failures. Cover both dependency-present and unavailable branches with deterministic offline fixtures; record actual rendered execution separately if a warm cache is available, and report it unverified otherwise. No network fallback or broad exception-to-skip conversion is introduced.", "Document how to prepare the pinned Textual dependency before offline execution and how unavailable-cache skips differ from rendered qualification. The normal full-main gate remains required; preserve its test results and skip counts without claiming that planning, fixture coverage or dependency skips qualify live or rendered behavior."]
 checks = ["python3 scripts/check.py tests/test_task_prepare.py tests/test_check.py pi-autowork/tests/test_blockers_report.py pi-autowork/tests/test_fleet_view.py pi-autowork/tests/test_planning_ui.py pi-autowork/tests/test_task_history.py pi-autowork/tests/test_tui_controls.py pi-autowork/tests/test_tui_layout.py pi-autowork/tests/test_tui_mouse.py", "python3 scripts/affected_tests.py --run", "python3 scripts/check.py"]
 exclusions = ["No product/TUI behavior changes, installer behavior changes, dependency upgrade, blanket failure suppression, implicit online installation, live model calls, service/profile changes, publication or edits to runtime state/evidence bundles. Commit paths in Touches are attribution context, not permission for unrelated repairs."]
+closure = "coordinator_verified"
+closure_evidence = "tasks/evidence/TOOLSET-405-4abc98d0.toml"
 +++
 - Sources: docs/testing.md#verify; docs/testing.md#read-only-fleet-blocker-report; pi-autowork/README.md (pinned Textual 8.2.8 setup); tests/test_task_prepare.py:717-729; pi-autowork/tests/test_planning_ui.py:15-23; DOCS-MAINTAINER MAIN repair instruction.
 - Evidence: Canonical checkout: .git/autowork-execution/main-evidence/bfaa7f03cc478b7063381527316894f6050ecc52 (read in place: main_check.json, main-check.log, main-check.exit, main-check-reruns.log, flaky_history.json). Checked revision bfaa7f03cc478b7063381527316894f6050ecc52; last green 33130919f8d15b9830758219a1047049021cbeb1; current planning base ac4264b64b51f09a1e99a813ccf2c74aee7aa6ef. Full check exited 1: three directories passed, two failed. Listed commit bfaa7f03cc478b7063381527316894f6050ecc52 changed scripts/install_menu.py, tests/test_install_menu.py and docs/installation.md; this is temporal context, not evidence of an installer-caused renderer defect.
