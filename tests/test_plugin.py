@@ -132,7 +132,7 @@ class PluginTests(unittest.TestCase):
         self.plugin.register(self.ctx)
         args = 'one slice; no push\n$(literal)'
         for name in ('bug-harvest', 'autonomous-codebase-improver',
-                     'skill-folder-refactor', 'unused-code', 'test-optimizer'):
+                     'skill-folder-refactor', 'unused-code', 'test-optimizer', 'apk-get'):
             with self.subTest(skill=name):
                 self.assertIn(name, self.ctx.commands)
                 self.assertEqual(self.ctx.skills[name], ROOT / f'skills/{name}/SKILL.md')

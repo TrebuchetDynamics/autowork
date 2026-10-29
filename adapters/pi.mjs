@@ -11,6 +11,7 @@ const workflows = {
   autowork: ['autowork', 'Plan, execute, verify and commit a useful task'],
   autoresearch: ['autoresearch', 'Run bounded research or experiments'],
   engineering: ['engineering', 'Apply a focused engineering method'],
+  'apk-get': ['apk-get', 'Build a Flutter or React Native ARM64 release APK'],
   'test-optimizer': ['test-optimizer', 'Reduce redundant tests while preserving real regression protection'],
   'bug-harvest': ['bug-harvest', 'Hunt evidence-backed bugs within scope and limits'],
   'autonomous-codebase-improver': ['autonomous-codebase-improver', 'Improve a repository through reviewed bounded slices'],
