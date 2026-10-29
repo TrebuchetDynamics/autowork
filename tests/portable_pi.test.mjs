@@ -83,6 +83,19 @@ test('Pi registers workflows and all 13 research commands; routes literal argume
   }
 });
 
+test('APK Get accepts a bare invocation without requiring an app path', async () => {
+  const commands = new Map();
+  const messages = [];
+  register({registerCommand: (name, handler) => commands.set(name, handler),
+    sendUserMessage: message => messages.push(message)});
+  await commands.get('apk-get').handler('', {isIdle: () => true});
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].endsWith('User request (preserve scope and restrictions):\n'), true);
+  const {readFile} = await import('node:fs/promises');
+  const adapter = await readFile(new URL('../adapters/skills/apk-get/SKILL.md', import.meta.url), 'utf8');
+  assert.equal(messages[0].includes(adapter), true);
+});
+
 test('npm package excludes local bytecode and keeps portable support files', async () => {
   const {execFileSync} = await import('node:child_process');
   const {fileURLToPath} = await import('node:url');
@@ -96,7 +109,7 @@ test('npm package excludes local bytecode and keeps portable support files', asy
   for (const path of ['adapters/pi.mjs', 'adapters/skills/COMMON.md',
     'skills/docs-sync/scripts/docs.py', 'skills/autoresearch/upstream/plan.md', 'skills/impeccable/LICENSE',
     'skills/test-optimizer/SKILL.md', 'skills/engineering/local/test-suite-optimization/PROTOCOL.md',
-    'skills/apk-get/SKILL.md', 'skills/apk-get/scripts/verify_apk.py',
+    'skills/apk-get/SKILL.md', 'skills/apk-get/BUILD.md', 'skills/apk-get/scripts/verify_apk.py',
     'skills/shared/COMMUNICATION.md',
     'autowork_bootstrap.py', 'Src/autowork_bootstrap.py', 'Src/pi_autowork/__init__.py']) {
     assert.equal(paths.has(path), true, path);

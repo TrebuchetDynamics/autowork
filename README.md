@@ -316,9 +316,10 @@ The locally authored [Test Optimizer](docs/workflows.md#test-optimizer) adds
 repeated setup and unsupported scenarios while retaining distinct regression and
 safety protection. Bare invocation audits; `read-only` writes nothing.
 
-[APK Get](skills/apk-get/SKILL.md) adds `/apk-get [app-path]`: find an existing
-Flutter or React Native Android app and build an ARM64-only release APK. It reports
-the verified artifact path and signing status; it does not upload or install the APK.
+[APK Get](skills/apk-get/SKILL.md) adds `/apk-get`: discover the Flutter or React
+Native Android app in the current repository, build an ARM64-only release APK,
+and upload it through the installed `s3upload`. It returns the download link,
+verification evidence and signing status. No app-path argument or Hermes is needed.
 
 These are current-session skills, not new services. Pi uses hyphens; Claude
 Code and Codex use the same namespaced prefixes as other skills. No upstream

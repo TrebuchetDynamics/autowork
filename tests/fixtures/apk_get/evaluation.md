@@ -1,4 +1,4 @@
-# APK Get evaluation receipt
+# APK Get initial build-only evaluation receipt
 
 Evaluated the five [scenarios](scenarios.md) in five fresh-context samples without
 the new skill, then five fresh-context samples with its complete text. Each sample
