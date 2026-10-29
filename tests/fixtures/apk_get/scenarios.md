@@ -1,4 +1,7 @@
-# APK Get behavioral scenarios
+# APK Get initial build-only scenarios
+
+These preserve the initial build-only contract. The later default-upload contract
+is evaluated separately in [upload scenarios](upload_scenarios.md).
 
 Use these five repository snapshots for fresh-context skill evaluations. No real
 SDK, signing key, device, remote builder or application is supplied. Responses

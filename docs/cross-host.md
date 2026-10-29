@@ -88,18 +88,21 @@ This skill is local Autowork content, not an imported pi-toolset protocol.
 ## APK Get
 
 [APK Get](../skills/apk-get/SKILL.md) builds an existing Flutter or React Native
-Android application as an ARM64-only release APK. Use `/apk-get [app-path]` in
-Pi, `/autowork:apk-get [app-path]` in Claude Code, or
-`$autowork:apk-get [app-path]` in Codex. Hermes discovers the same named skill
+Android application as an ARM64-only release APK, then uploads it with the host's
+installed `s3upload`. Use `/apk-get` in Pi, `/autowork:apk-get` in Claude Code,
+or `$autowork:apk-get` in Codex. Hermes discovers the same named skill
 through its existing plugin registration. No host requires Hermes installation.
 
-With no path, one app is selected automatically; multiple apps require a choice.
+No app-path argument is required. The skill finds apps in the current repository;
+one app is selected automatically. Multiple apps without a default require a choice.
 The skill uses project tooling and existing signing configuration, then checks
 actual native ABIs with its Python helper. Release mode is separate from signing:
 an unsigned artifact is reported as not install-ready, not silently replaced with
 a debug build. Missing prerequisites are reported without global SDK installation.
-Build evidence, APK path, size/hash and signing status are returned. Uploads,
-device installation and publication require separate authorization.
+Build evidence, APK path, size/hash, signing status and the reported download link,
+expiry and deletion window are returned. Upload failures retain the verified local
+APK and report the failed delivery. Explicit no-network/no-upload restrictions
+remain binding. Device installation and app-store publication are not authorized.
 
 ## pi-toolset specialists
 
