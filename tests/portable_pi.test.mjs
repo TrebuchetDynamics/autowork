@@ -7,7 +7,8 @@ test('Pi registers workflows and all 13 research commands; routes literal argume
   const messages = [];
   register({registerCommand: (name, handler) => commands.set(name, handler),
     sendUserMessage: (...args) => messages.push(args)});
-  assert.equal(commands.size, 38);
+  assert.equal(commands.size, 39);
+  assert.equal(commands.has('apk-get'), true);
   assert.equal(commands.has('autogoal'), false);
   for (const name of commands.keys()) assert.match(name, /^[a-z0-9]+(?:-[a-z0-9]+)*$/, name);
   assert.equal(commands.has('cron-autowork'), true);
@@ -74,7 +75,7 @@ test('Pi registers workflows and all 13 research commands; routes literal argume
     'ponytail-debt': 'ponytail-debt', 'ponytail-gain': 'ponytail-gain', 'ponytail-help': 'ponytail-help',
     'bug-harvest': 'bug-harvest', 'autonomous-codebase-improver': 'autonomous-codebase-improver',
     'skill-folder-refactor': 'skill-folder-refactor', 'unused-code': 'unused-code',
-    'test-optimizer': 'test-optimizer',
+    'test-optimizer': 'test-optimizer', 'apk-get': 'apk-get',
     ...Object.fromEntries(selectors.map(selector => [`autoresearch-${selector}`, 'autoresearch'])),
   })) {
     await commands.get(name).handler('questions only', {isIdle: () => true});
@@ -95,6 +96,7 @@ test('npm package excludes local bytecode and keeps portable support files', asy
   for (const path of ['adapters/pi.mjs', 'adapters/skills/COMMON.md',
     'skills/docs-sync/scripts/docs.py', 'skills/autoresearch/upstream/plan.md', 'skills/impeccable/LICENSE',
     'skills/test-optimizer/SKILL.md', 'skills/engineering/local/test-suite-optimization/PROTOCOL.md',
+    'skills/apk-get/SKILL.md', 'skills/apk-get/scripts/verify_apk.py',
     'skills/shared/COMMUNICATION.md',
     'autowork_bootstrap.py', 'Src/autowork_bootstrap.py', 'Src/pi_autowork/__init__.py']) {
     assert.equal(paths.has(path), true, path);
@@ -162,7 +164,7 @@ test('installed archive resolves portable references and commands without checko
       }
     };
     await walk(join(installed, 'adapters/skills'));
-    assert.equal(skillCount, 25);
+    assert.equal(skillCount, 26);
     // Execute the packaged CommonJS helper under Autowork's ESM package boundary.
     const mapScript = join(installed, 'skills/ponytail/upstream/scripts/ponytail-map.cjs');
     const map = execFileSync('node', [mapScript, installed], {encoding: 'utf8'});
@@ -179,7 +181,8 @@ test('installed archive resolves portable references and commands without checko
     const {default: installedRegister} = await import(pathToFileURL(join(installed, 'adapters/pi.mjs')));
     installedRegister({registerCommand: (name, handler) => commands.set(name, handler),
       sendUserMessage: (...args) => messages.push(args)});
-    assert.equal(commands.size, 38);
+    assert.equal(commands.size, 39);
+    assert.equal(commands.has('apk-get'), true);
     for (const [name, handler] of commands) {
       assert.match(name, /^[a-z0-9]+(?:-[a-z0-9]+)*$/, name);
       await handler.handler('read-only; $(literal)\nno push', {isIdle: () => false});

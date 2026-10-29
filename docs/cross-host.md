@@ -2,11 +2,11 @@
 
 Autowork provides native packages for four hosts. Claude Code, Codex and Pi
 use the portable adapters, not the Hermes plugin loader. None requires Hermes installed.
-These adapters expose 25 skills: Plan With Me, Plan For Me, Docs Sync, Autowork,
+These adapters expose 26 skills: Plan With Me, Plan For Me, Docs Sync, Autowork,
 Cron Autowork, Autoresearch, Engineering, Impeccable, UI Taste, Beautify GitHub README,
 LGTM, Git Commit Push, Blockers, Pending, the six bundled Ponytail skills,
 and Bug Harvest, Autonomous Codebase Improver, Skill Folder Refactor, Unused Code
-and Test Optimizer.
+and Test Optimizer, plus APK Get.
 Grill Me is Plan With Me's challenge mode, not a separate skill.
 Every adapter is explicit-only: Claude Code and Pi read `disable-model-invocation: true`
 in its frontmatter and Codex reads `agents/openai.yaml`, so the model never starts a
@@ -84,6 +84,22 @@ coverage. No new executable helper or external dependency is installed.
 Portable invocation is explicit-only; `read-only` changes nothing. See
 [workflow and evidence requirements](workflows.md#test-optimizer).
 This skill is local Autowork content, not an imported pi-toolset protocol.
+
+## APK Get
+
+[APK Get](../skills/apk-get/SKILL.md) builds an existing Flutter or React Native
+Android application as an ARM64-only release APK. Use `/apk-get [app-path]` in
+Pi, `/autowork:apk-get [app-path]` in Claude Code, or
+`$autowork:apk-get [app-path]` in Codex. Hermes discovers the same named skill
+through its existing plugin registration. No host requires Hermes installation.
+
+With no path, one app is selected automatically; multiple apps require a choice.
+The skill uses project tooling and existing signing configuration, then checks
+actual native ABIs with its Python helper. Release mode is separate from signing:
+an unsigned artifact is reported as not install-ready, not silently replaced with
+a debug build. Missing prerequisites are reported without global SDK installation.
+Build evidence, APK path, size/hash and signing status are returned. Uploads,
+device installation and publication require separate authorization.
 
 ## pi-toolset specialists
 
