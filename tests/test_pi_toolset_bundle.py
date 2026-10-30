@@ -40,6 +40,20 @@ class PiToolsetBundleTests(unittest.TestCase):
                          {'campaign.md', 'delegation-and-recovery.md',
                           'pressure-scenarios.md', 'evaluation-receipt.md'})
 
+    def test_local_campaign_evaluation_is_linked_and_has_paired_scenarios(self):
+        # Inventory checks only: model decisions and execution need separate evidence.
+        folder = ROOT / 'skills/autonomous-codebase-improver'
+        reference = 'references/adapter-evaluation.md'
+        self.assertIn(f']({reference})', (folder / 'SKILL.md').read_text())
+        scenarios = (folder / reference).read_text()
+        rows = [line.strip('|').split('|') for line in scenarios.splitlines()
+                if re.match(r'^\| A\d+ \|', line)]
+        self.assertEqual([row[0].strip() for row in rows],
+                         [f'A{number}' for number in range(1, 17)])
+        for row in rows:
+            self.assertEqual(len(row), 4, row)
+            self.assertTrue(all(cell.strip() for cell in row), row)
+
     def test_native_profile_receives_self_contained_specialists_and_preserves_edits(self):
         spec = importlib.util.spec_from_file_location('specialist_install', ROOT / 'install_skills.py')
         installer = importlib.util.module_from_spec(spec)
@@ -59,6 +73,9 @@ class PiToolsetBundleTests(unittest.TestCase):
                                 self.assertTrue((source.parent / link.split('#')[0]).exists(),
                                                 (source, link))
                     self.assertTrue((folder / 'upstream/PROTOCOL.md').is_file())
+                evaluation = Path('autonomous-codebase-improver/references/adapter-evaluation.md')
+                self.assertEqual((home / 'skills' / evaluation).read_bytes(),
+                                 (ROOT / 'skills' / evaluation).read_bytes())
                 shared = home / 'skills/shared/PI-TOOLSET.md'
                 self.assertTrue(shared.is_file())
                 if attempt == 0:
