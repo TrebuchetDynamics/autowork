@@ -1,6 +1,6 @@
 ---
 name: apk-get
-description: Use when requesting Flutter or React Native ARM64 APKs.
+description: "Build an ARM64 release APK and upload it."
 license: MIT
 ---
 
@@ -70,3 +70,9 @@ build/ABI/signing evidence. Distinguish link expiry from approximate lifecycle
 deletion; disclose an unreported window. The download URL is a bearer secret:
 return it only to the requesting user, never commit or post it elsewhere.
 The final line contains **only the raw URL returned by s3upload**.
+## Boundaries
+
+- Not for iOS builds, store uploads or signing setup; use the project's own release documentation for those.
+- Not a general Android setup tool: an app that will not build is reported, not repaired by rewriting its build files.
+
+**Done when:** the arm64-only release APK is built, verified and uploaded, and the report names the link, signing status and checks.

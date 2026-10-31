@@ -1,6 +1,6 @@
 ---
 name: skill-folder-refactor
-description: "Use when splitting a named folder without behavior changes."
+description: "Split one folder without behavior change."
 disable-model-invocation: true
 ---
 

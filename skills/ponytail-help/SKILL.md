@@ -1,6 +1,6 @@
 ---
 name: ponytail-help
-description: "Use when asking about bundled Ponytail commands."
+description: "Explain the bundled Ponytail commands."
 license: MIT
 ---
 
@@ -41,3 +41,8 @@ plugin, global mode config, environment variable, band UI, transcript import or
 telemetry is installed or controlled. Existing external installations are unchanged.
 The original [upstream help](../ponytail/upstream/skills/ponytail-help/PROTOCOL.md)
 is retained for provenance only; its plugin setup instructions do not apply here.
+## Boundaries
+
+- Not the method itself; use `/ponytail` to apply it.
+
+**Done when:** the requested command, level or workflow is explained accurately.

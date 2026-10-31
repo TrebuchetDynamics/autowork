@@ -1,6 +1,6 @@
 ---
 name: autonomous-codebase-improver
-description: "Use when improving a repository across multiple work lanes."
+description: "Improve a repository across work lanes."
 disable-model-invocation: true
 ---
 

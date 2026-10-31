@@ -1,6 +1,6 @@
 ---
 name: engineering
-description: "Apply a focused engineering method for planning, implementation or review."
+description: "Select one engineering method for a gap."
 disable-model-invocation: true
 ---
 
@@ -9,6 +9,8 @@ disable-model-invocation: true
 Apply the [shared Ponytail method](../../../skills/shared/PONYTAIL.md) within this workflow's scope.
 
 Use the [ASD-STE100 and project language rules](../../../skills/shared/COMMUNICATION.md) for user-facing text.
+
+Read the [host-neutral Engineering protocols for Hermes workflow](../../../skills/engineering/SKILL.md) first.
 
 Read the [host contract](../COMMON.md).
 

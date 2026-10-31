@@ -1,6 +1,6 @@
 ---
 name: grill-with-docs
-description: "Grill a plan and record decisions as ADRs and terms."
+description: "Grill a plan and record ADRs and terms."
 disable-model-invocation: true
 ---
 

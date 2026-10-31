@@ -1,6 +1,6 @@
 ---
 name: grilling
-description: "Stress-test a plan or idea with rounds of questions."
+description: "Stress-test a plan or idea in rounds."
 disable-model-invocation: true
 ---
 

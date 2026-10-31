@@ -1,6 +1,6 @@
 ---
 name: ui-taste
-description: "Use to build, polish or review web and iOS UI screens."
+description: "Build or review UI with Uizze playbooks."
 version: 0.2.2
 license: Apache-2.0
 ---
@@ -142,3 +142,9 @@ comparison, read [browser validation](references/browser-validation.md).
 
 Report the playbooks used, files changed, what was actually rendered and checked,
 and any limitation that affected the result.
+## Boundaries
+
+- Not whole-product design; use `/impeccable`.
+- Not README art; use `/beautify-github-readme`.
+
+**Done when:** the chosen playbook's UI change is applied or reported with its checks and screenshots when available.

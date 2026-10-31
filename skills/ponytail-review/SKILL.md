@@ -1,6 +1,6 @@
 ---
 name: ponytail-review
-description: "Use when requesting a Ponytail change review."
+description: "Review a change with Ponytail rules."
 license: MIT
 ---
 
@@ -17,3 +17,9 @@ Review the named candidate and connected callers; otherwise inspect uncommitted
 changes, falling back to the last commit. Report findings without editing code.
 When supporting Autowork, contribute these criteria to its existing review lane.
 A `Ship` verdict does not authorize delivery or replace required independent review.
+## Boundaries
+
+- Not a repository audit; use `/ponytail-audit`.
+- Not implementation; use `/autowork`.
+
+**Done when:** findings carry severity, evidence and a verdict, with unverified areas named.

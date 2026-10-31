@@ -1,6 +1,6 @@
 ---
 name: ponytail-audit
-description: "Use when requesting a Ponytail repository audit."
+description: "Audit a repository with Ponytail rules."
 disable-model-invocation: true
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: plan-for-me
-description: "Use to research and save a plan without an interview."
+description: "Research and save a plan without an interview."
 license: MIT
 metadata:
   version: 0.4.0
@@ -197,3 +197,9 @@ a branch-local commit and checks separately from delivery to the actual canonica
 consumer: disclose whether that consumer includes the commit and whether selection
 was checked there. Report runtime and ownership unassessed unless observed.
 A saved plan is not dispatch, delivery or completed work.
+## Boundaries
+
+- Not interactive; use `/plan-with-me`.
+- Not implementation; use `/autowork` after the plan is accepted.
+
+**Done when:** the plan and its tasks are saved through Docs Sync, validated, and the next slice is named.

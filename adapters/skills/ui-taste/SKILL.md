@@ -1,6 +1,6 @@
 ---
 name: ui-taste
-description: "Build, polish and review web and iOS interfaces with Uizze's bundled UI Taste playbooks."
+description: "Build or review UI with Uizze playbooks."
 disable-model-invocation: true
 ---
 

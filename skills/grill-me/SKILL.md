@@ -1,6 +1,6 @@
 ---
 name: grill-me
-description: "Adversarial plan interview before implementation."
+description: "Challenge a plan in frontier rounds."
 version: 2.1.1
 author: "Rafael Zendron (rafaumeu) + Matt Pocock (mattpocock/skills, grilling) + Hermes Agent"
 license: MIT
@@ -100,3 +100,10 @@ Do not act on the plan until the user confirms shared understanding.
 - [ ] Frontier empty (no branch silently assumed) before synthesizing
 - [ ] Produced a clear summary of all decisions and open items
 - [ ] Confirmed user alignment before stopping
+## Boundaries
+
+- Not a general interview of an idea; use `/grilling`.
+- Not the documentation side; use `/grill-with-docs`.
+- Not implementation; use `/autowork` after confirmation.
+
+**Done when:** the frontier is empty, decisions and open items are summarized, and the owner confirms alignment.

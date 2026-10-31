@@ -1,6 +1,6 @@
 ---
 name: beautify-github-readme
-description: "Redesign or audit a GitHub README, or create project-native SVG assets for it."
+description: "Redesign or audit a GitHub README."
 disable-model-invocation: true
 ---
 

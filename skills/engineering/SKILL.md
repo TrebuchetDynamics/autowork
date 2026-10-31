@@ -1,6 +1,6 @@
 ---
 name: engineering
-description: "Use for a specific engineering method or Addy protocol."
+description: "Select one engineering method for a gap."
 version: 0.1.0
 license: MIT
 ---
@@ -127,3 +127,9 @@ Planning receipts accompany the task into execution; workers add implementation,
 debugging and review evidence as needed. A router response, loaded file or list of
 skill names is not application or task completion. Finish with task IDs, artifacts,
 checks and next action; follow Autowork's task status/reporting contract.
+## Boundaries
+
+- Not a workflow or an authority; use `/autowork` to execute.
+- Not planning; use `/plan-for-me`.
+
+**Done when:** the selected protocol's method is applied to the current task and its check is recorded.

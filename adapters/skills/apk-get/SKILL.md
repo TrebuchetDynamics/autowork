@@ -1,6 +1,6 @@
 ---
 name: apk-get
-description: Use when requesting Flutter or React Native ARM64 APKs.
+description: "Build an ARM64 release APK and upload it."
 disable-model-invocation: true
 ---
 

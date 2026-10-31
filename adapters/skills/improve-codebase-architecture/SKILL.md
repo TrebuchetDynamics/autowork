@@ -1,6 +1,6 @@
 ---
 name: improve-codebase-architecture
-description: "Find deepening opportunities and report them visually."
+description: "Find and report deepening opportunities."
 disable-model-invocation: true
 ---
 

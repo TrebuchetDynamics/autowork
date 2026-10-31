@@ -1,6 +1,6 @@
 ---
 name: git-commit-push
-description: "Use to commit, push, pull or merge Git changes."
+description: "Commit, push, pull or merge Git changes."
 version: 2.1.1
 license: MIT
 metadata:
@@ -452,3 +452,9 @@ repository: `python3 skills/git-commit-push/scripts/test_delivery_scope.py -v`.
 `python3 scripts/check.py` discovers this offline suite. These checks pin scope,
 cross-agent eligibility, live-writer exclusions and stale-ledger reconciliation;
 they are policy-contract tests, not proof of model behavior or live publication.
+## Boundaries
+
+- Not a code review; use `/ponytail-review`.
+- Not a way past a failing gate: a red check is reported, never waived.
+
+**Done when:** owned paths are committed, upstream is synced, and any push is read back; otherwise the exact hold is reported.

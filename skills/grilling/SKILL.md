@@ -1,6 +1,6 @@
 ---
 name: grilling
-description: "Stress-test a plan or idea with rounds of questions."
+description: "Stress-test a plan or idea in rounds."
 license: MIT
 ---
 
@@ -39,4 +39,12 @@ limits through every round.
 **Receipt:** subject; rounds asked; decisions settled with the answer source; facts
 gathered and their evidence; open questions; confirmation state; next action.
 
+
+## Boundaries
+
+- Not implementation or delivery.
+- Not durable records; use `/grill-with-docs` when decisions must be written down.
+- For the plan-specific branches use `/grill-me`.
+
+**Done when:** the frontier is empty and the owner confirms the shared understanding.
 [Source and hashes](UPSTREAM.json) · [MIT license](upstream/LICENSE).

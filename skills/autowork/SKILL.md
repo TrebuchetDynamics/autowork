@@ -1,6 +1,6 @@
 ---
 name: autowork
-description: "Use to implement and verify ready repository tasks."
+description: "Implement and verify ready repository tasks."
 version: 0.28.2
 author: Hermes Agent
 platforms: [linux, macos]
@@ -231,3 +231,11 @@ references/native-containment-proof.md
 references/state-and-recovery.md
 references/upstream-goal-selection.md
 references/historical-owner-cycle.md
+## Boundaries
+
+- Not planning; use `/plan-with-me` or `/plan-for-me`.
+- Not open-ended improvement; use `/autonomous-codebase-improver`.
+- Not an architecture review; use `/improve-codebase-architecture`.
+- Not publication by default; use `/git-commit-push` when the request includes push.
+
+**Done when:** one ready task's acceptance is met, its checks ran, and it is closed or reported with the exact blocker.

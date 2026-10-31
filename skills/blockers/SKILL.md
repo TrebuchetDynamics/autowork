@@ -1,6 +1,6 @@
 ---
 name: blockers
-description: "Use to resolve blocked tasks: ask only what the owner must."
+description: "Resolve held tasks and owner questions."
 license: MIT
 metadata:
   version: 0.3.0
@@ -278,3 +278,9 @@ The owner reads this on a phone. Write for them, not for the runner:
   the owner asks; a repair is one line saying what changed.
 - When the runner's view is older than the checkout (a dependency it waits on is
   already done), that is the runner's to catch up, not a question; say it in one line.
+## Boundaries
+
+- Not plan review; use `/grilling`.
+- Not implementation; use `/autowork` once the answer arrives.
+
+**Done when:** each held task or owner question is answered, released within authority, or reported with the precise missing input.

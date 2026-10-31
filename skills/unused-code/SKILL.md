@@ -1,6 +1,6 @@
 ---
 name: unused-code
-description: "Use when removing proven dead or unreachable code."
+description: "Remove proven dead or unreachable code."
 license: MIT
 ---
 
@@ -53,4 +53,11 @@ nothing. Honor read-only, batch and delivery limits.
 **Example:** keep an exported plugin hook with no static callers; remove an
 independently proven private helper only if in scope and its checks pass.
 
+
+## Boundaries
+
+- Not a refactor; use `/skill-folder-refactor`.
+- Not an architecture review; use `/improve-codebase-architecture`.
+
+**Done when:** proven dead code is removed with post-delete checks, or every uncertain candidate is retained with its reason.
 [Source and hashes](UPSTREAM.json) · [MIT license](upstream/LICENSE).

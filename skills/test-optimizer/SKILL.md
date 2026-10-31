@@ -1,6 +1,6 @@
 ---
 name: test-optimizer
-description: "Shrink test suites by removing redundant, low-value tests."
+description: "Shrink test suites that add no protection."
 license: MIT
 ---
 
@@ -115,3 +115,9 @@ Parameterizing 80 tests into one function with 80 cases is code consolidation, n
 from a focused green run.
 
 [Evaluation scenarios and evidence limits](references/evaluation.md).
+## Boundaries
+
+- Not test-first authoring; use the `tdd` protocol through `/engineering`.
+- Not dead-code removal; use `/unused-code`.
+
+**Done when:** supported removals are applied with an oracle mapping and the affected checks pass, or a read-only report is delivered.

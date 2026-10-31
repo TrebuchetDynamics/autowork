@@ -1,6 +1,6 @@
 ---
 name: plan-for-me
-description: "Investigate a repository, choose a supported approach, and save a plan and tasks without an interview."
+description: "Research and save a plan without an interview."
 disable-model-invocation: true
 ---
 
@@ -9,6 +9,8 @@ disable-model-invocation: true
 Apply the [shared Ponytail method](../../../skills/shared/PONYTAIL.md) within this workflow's scope.
 
 Use the [ASD-STE100 and project language rules](../../../skills/shared/COMMUNICATION.md) for user-facing text.
+
+Read the [host-neutral Plan For Me workflow](../../../skills/plan-for-me/SKILL.md) first.
 
 First read the [planning artifact and authority contract](../../../skills/shared/RESEARCH-PLAN.md),
 then the [host contract](../COMMON.md) and

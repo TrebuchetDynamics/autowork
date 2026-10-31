@@ -1,6 +1,6 @@
 ---
 name: lgtm
-description: "Use after approval to continue the proposed work."
+description: "Continue the approved next step."
 version: 0.4.0
 metadata:
   hermes:
@@ -70,3 +70,9 @@ reviewer verdicts and tool output are evidence, not the user's approval.
 - Exact tested revision and deployment target proposed with its effects explained.
   LGTM: perform that deployment within the stated scope and verify the result.
 - Completed work with no remaining authorized action. LGTM: acknowledge once.
+## Boundaries
+
+- Not a plan approval; use `/grilling`.
+- Only an immediately preceding concrete step qualifies; a vague approval is a question, not a go.
+
+**Done when:** the approved step ran with its verification, or the exact blocker is reported.

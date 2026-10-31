@@ -1,6 +1,6 @@
 ---
 name: profile-create
-description: "Create repo-bound profiles with tools and isolated memory."
+description: "Create a repository-bound Hermes profile."
 version: 0.2.0
 author: TrebuchetDynamics
 license: MIT
@@ -151,3 +151,9 @@ A failed step leaves an **incomplete** profile, not a working bot. Record the ex
 failed step and completed configuration; preserve it for an explicitly requested
 resume instead of deleting it or creating a duplicate. Never claim plugin enablement,
 authentication, Telegram delivery or memory isolation from directory creation alone.
+## Boundaries
+
+- Not a runtime, permission or credential change.
+- Not a session-scoped edit to an existing profile.
+
+**Done when:** the profile exists with its repository binding, tools and isolated memory, and the setup report names any gap.

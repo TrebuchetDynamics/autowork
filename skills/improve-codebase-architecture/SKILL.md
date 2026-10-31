@@ -1,6 +1,6 @@
 ---
 name: improve-codebase-architecture
-description: "Find deepening opportunities and report them visually."
+description: "Find and report deepening opportunities."
 license: MIT
 ---
 
@@ -53,4 +53,11 @@ report file, since the visuals load from the network when opened.
 deletion-test evidence; report path; ADR conflicts surfaced; chosen candidate; checks
 run; what stays unverified.
 
+
+## Boundaries
+
+- Not implementation; use `/autowork`.
+- Not multi-lane improvement; use `/autonomous-codebase-improver`.
+
+**Done when:** one HTML report exists at a reported temp path and the owner either picks a candidate or the review stops.
 [Source and hashes](UPSTREAM.json) · [MIT license](upstream/LICENSE).
