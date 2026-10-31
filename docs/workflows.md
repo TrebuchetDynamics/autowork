@@ -254,6 +254,38 @@ The [skill](../skills/test-optimizer/SKILL.md) defines the rare-scenario evidenc
 gate and before/after receipt. Offline packaging and decision probes do not
 establish a measured suite speedup or live host effectiveness.
 
+## Graphify
+
+`/graphify` maps a project into a local knowledge graph, then answers questions
+against `graphify-out/graph.json` instead of long file reads. Hermes uses the
+official skill that its plugin installer adds from
+[Graphify-Labs/graphify](https://github.com/Graphify-Labs/graphify); Claude Code,
+Codex and Pi load the local [adapter](../adapters/skills/graphify/SKILL.md).
+
+The adapter requires the `graphify` command (PyPI `graphifyy`, Python 3.10+) and
+never installs it, adds hooks or asks a model for a semantic pass. It reuses a graph
+that matches the current revision or builds code-only output into an ignored
+directory, then verifies the file, node and link counts, schema and tool version.
+`explain`, `path`, `affected`, `query` and `god-nodes` accept the usual exit codes
+`0`, `3` (several candidates) and `4` (no match).
+
+A graph is orientation. `EXTRACTED` edges are explicit in the source and `INFERRED`
+edges are resolved by Graphify; neither is runtime proof, and absent inbound edges
+never prove dead code. Unused Code keeps its own proof rules and uses the graph only
+to rank candidates. `graphify-out/` is a generated artifact and stays uncommitted.
+A read-only request builds nothing.
+
+Examples (Hermes CLI; Pi uses `/graphify`, Claude Code `/autowork:graphify`, Codex
+`$autowork:graphify`):
+
+```text
+/graphify src/parser; explain parse_statement; read-only
+/graphify this repository; who calls validate_config; no commit
+```
+
+Link and packaging checks do not qualify a live graph build, dead-code finding or
+model behavior.
+
 ## Pinned engineering protocols
 
 `/engineering` (the same spelling in Telegram) selects a technique for a specific

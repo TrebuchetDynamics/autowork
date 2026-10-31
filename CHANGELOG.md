@@ -7,6 +7,15 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `graphify`: an explicit-only Claude Code, Codex and Pi workflow that queries a
+  local Graphify knowledge graph before wide file reads. It calls the official
+  `graphify` CLI, never installs it or adds hooks, verifies the graph version, schema
+  and counts, and treats `EXTRACTED` and `INFERRED` edges as orientation. Unused Code
+  now ranks candidates from a current graph and keeps the pinned Understand Anything
+  pass only as a legacy fallback; the commit workflow lists `graphify-out/` as a
+  generated artifact. Hermes keeps the official upstream skill. Packaging and link
+  checks are not a live graph build or a dead-code claim.
+
 - Shared ASD-STE100 and project glossary rules for all 52 native and portable skill
   entries. The existing Docs Sync writing profile now has one shared owner.
   Skills must select the target project's glossary, keep exact literals and output

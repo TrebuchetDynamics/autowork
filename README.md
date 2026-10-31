@@ -316,6 +316,12 @@ The locally authored [Test Optimizer](docs/workflows.md#test-optimizer) adds
 repeated setup and unsupported scenarios while retaining distinct regression and
 safety protection. Bare invocation audits; `read-only` writes nothing.
 
+[Graphify](docs/workflows.md#graphify) adds `/graphify` where Hermes does not already
+install the official skill: build a local code graph and query it before long file
+reads. Claude Code uses `/autowork:graphify`, Codex `$autowork:graphify` and Pi
+`/graphify`. The adapter calls the installed `graphify` command, never installs it,
+and treats graph edges as orientation, not proof of behavior or dead code.
+
 [APK Get](skills/apk-get/SKILL.md) adds `/apk-get`: discover the Flutter or React
 Native Android app in the current repository, build an ARM64-only release APK,
 and upload it through the installed `s3upload`. It returns the download link,
