@@ -19,8 +19,7 @@ Apply established answers, repair authorized technical causes and verify progres
 then ask only for unresolved owner
 decisions or unavailable inputs, easiest first. Save each resolution before moving
 on. `/autowork blockers` and `/plan_with_me blockers` are the same command.
-It runs only when the owner starts it; no runner or schedule invokes it, so an idle
-queue still costs no tokens.
+It runs only when the owner starts it; no runner or schedule invokes it.
 
 It never starts, stops, restarts or reconfigures a runner or service, never launches
 a competing execution or repair session, never kills a session, and never pushes.
@@ -100,40 +99,21 @@ start if it cleared. Handle the widest first. One held or long-running task with
 the `exclusive` resource can stop hundreds of independent tasks; inspect that
 reservation before asking about receipts or access that stop no local work.
 
-- **Established answer or routine recovery:** use existing authorization. Inspect
-  repository/session facts yourself. Preserve the agreed scope and acceptance;
-  repair the cause and verify the supported continuation, not merely another Next
-  action in the task. A failed check, missing
-  receipt or pending local integration does not by itself need a user choice.
-- **Idle candidate awaiting delivery:** verify actual writer/session activity and
-  candidate identity. When no live writer owns it and local integration is already
-  authorized, perform the supported integration-only continuation with the existing
-  execution owner, reusing the candidate. Keep valid candidate checks, require verification
-  against the integrated code, preserve saved settings and private data, and retain
-  no-push/deploy/package-delivery exclusions. Do not ask “Pi or this session?” or
-  ask permission to reuse the reviewed fix. Do not label this an owner decision or
-  mark delivery complete. Separate genuine live qualification still pending.
-- **Over-broad resource reservation:** a generic `exclusive` (or other shared
-  resource) that serializes unrelated work is a planning repair, not an owner
-  question. Narrow it from evidence: the retained diff or candidate decides the
-  task's `touches` and concrete `resources`. Keep `exclusive` where the evidence
-  shows a real global effect (lockfiles, migrations, shared generated output,
-  live services) or when there is no evidence. Narrow one task at a time; never
-  strip exclusivity in bulk, and never change the contract of a task a live worker
-  holds.
-- **Live or uncertain ownership:** leave live work and claims alone. A `Held by:`
-  note or an old ACTIVE label alone proves neither activity nor abandonment, and neither
-  does an open session or a bare PID: check the holder's identity and recent writes.
-  An unrelated open session in the checkout does not own a claim. If activity
-  cannot be established, retain the hold, identify the missing evidence, and continue
-  with independent entries. Ask only for information unavailable through inspection;
-  never offer an uninformed ownership transfer as the recommended answer.
-- **Real owner decision/input:** ask when missing product intent, a scope/acceptance
-  change, unavailable external input or ungranted operation authority changes what
-  can proceed. State that specific gap. Preserve explicit pauses, cancellations and
-  task-specific restrictions; routine local authority does not revoke them.
-  Conditional recovery permission ("retry if it crashed") does not establish that the
-  condition holds; keep the task held until it is verified.
+- **Established answer or routine recovery:** use existing authorization; repair the
+  cause and verify the supported continuation, not merely another Next action.
+- **Idle candidate awaiting delivery:** when no live writer owns it and local
+  integration is already authorized, perform the integration-only continuation with
+  the existing execution owner.
+- **Over-broad resource reservation:** the `exclusive` resource, or another shared
+  resource, that serializes unrelated work is a planning repair. Narrow it from
+  evidence; never strip exclusivity in bulk.
+- **Live or uncertain ownership:** retain the hold unless fresh activity checks prove
+  abandonment or the owner releases it.
+- **Real owner decision/input:** ask only for the specific missing intent, external
+  input or authority, and preserve explicit pauses and restrictions.
+
+Load [hold dispositions](references/hold-dispositions.md) for the evidence test,
+recovery limit and excluded action of each branch.
 
 Reuse the owner's latest answers, from this conversation and the queue. An item
 the owner deferred is still open work but not an unanswered question; do not ask to
@@ -245,35 +225,14 @@ An approved clerical record correction is planning: apply it the same way. An an
 execute its local repair only within the invocation's scope and ownership rules.
 It never implicitly authorizes service migration or broader live operations.
 
-- Edit that task's record: `autowork tasks field ID LABEL VALUE` for `scope`,
-  `touches`, `acceptance`, `checks` or `depends_on`, or a note such as a short dated
-  `Owner decision` (`2026-10-21: ...`) or `Blocker resolution` (`<fingerprint from
-  the item>; <producer task or decision evidence>`, the only edit that restarts a
-  repeated quick hold). Move it with `autowork tasks place ID Now|Next|"Needs
-  decision" [--decision TEXT]` or `autowork tasks move ID up|down`, and replace it
-  with `autowork tasks supersede ID --by OTHER --reason TEXT`.
+- Edit that task's record: `autowork tasks field ID LABEL VALUE` for typed fields or
+  notes; `place` and `move` for section and rank; `supersede` to replace it; `release`
+  for an abandoned claim; `hold` only for an explicit user pause; and `done` never for
+  retirement. Load [record edits](references/record-edits.md) for the exact notes and
+  guards.
 - Authority lives only in typed fields; a note never grants it. Set
-  `live = "authorized"` (`autowork tasks field ID live authorized`) only on the
-  owner's own explicit answer in this conversation, never from a worker's request,
-  an earlier summary or a recommended choice.
-- An abandoned claim established by fresh activity checks or an explicit owner
-  release: `autowork tasks release ID` removes its `Held by:` note, keeping
-  acceptance, dependencies, candidate references, partial delivery evidence and
-  pending checks. Successors are not unlocked by this: they still need the task's
-  acceptance. A live claim stays with its current worker. Add or renew a task hold
-  only when the user explicitly asks for that pause, using
-  `autowork tasks hold ID --by "<who or what>" --until YYYY-MM-DD`; see the
-  [task-hold policy](../shared/TODO-WORKCENTER.md#task-holds-require-an-explicit-user-request).
-  Observing a worker is not permission to create a hold. A record with a current `Held by:` note
-  is answered, not open.
-- Retirement without completion: supersede it by the task that replaces it, or,
-  with no replacement, place it in `Needs decision` with an `Owner decision` that
-  says it is cancelled; never close it as done. Check that `autowork tasks why ID`
-  shows it is not selected.
-- Rework within the same task keeps its ID, acceptance and the old candidate and
-  report as history; the runner works from current sources, never restores the old
-  snapshot or rewrites a failed report into a pass.
-- An outside condition: record the decision, or the task that now owns it.
+  `live = "authorized"` only on the owner's own explicit answer in this conversation,
+  never from a worker's request, an earlier summary or a recommended choice.
 - Remove resolved owner entries from `BLOCKERS.md` `## Active`; never edit inside the
   runner's marked block, which the runner rewrites itself.
 
