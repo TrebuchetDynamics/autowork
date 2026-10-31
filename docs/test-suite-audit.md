@@ -841,7 +841,6 @@ Directory headings supply each filename's path prefix. Totals: **104 K / six T /
 | `test_check.py:37` | 12 | K — import-free discovery, symlink/live isolation, concurrency, output and nonpassing timeouts. |
 | `test_complete_setup.py:62` | 7 | K — all-profile orchestration, partial failure, preview and symlink refusal. |
 | `test_cron_autoheal.py:63` | 16 | K — exact managed job, uncertain-write no replay, pause/scope, concurrent edits and redaction. |
-| `test_cron_autowork.py:16` | 5 | I — instruction routing/reporting; Telegram/authority obligations are not disposable wording. |
 | `test_doctor_modes.py:40` | 9 | K — core/full asymmetry and foreign-command refusal; G22 table is clarity-only. |
 | `test_engineering_vendor.py:15` | 8 | K — route selection/tamper refusal, immutable hashes and install closure. |
 | `test_impeccable_bundle.py:13` | 2 | K — byte-exact provenance/license and clean-profile support installation. |

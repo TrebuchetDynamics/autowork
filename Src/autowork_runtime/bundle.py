@@ -118,7 +118,7 @@ def inventory():
 
 
 # Workflow commands shown first in the overview, in Telegram spelling.
-LEAD_WORKFLOWS = ('plan_with_me', 'plan_for_me', 'docs_sync', 'autowork', 'cron_autowork', 'git_commit_push')
+LEAD_WORKFLOWS = ('plan_with_me', 'plan_for_me', 'docs_sync', 'autowork', 'git_commit_push')
 
 
 def _ago(started_ns):

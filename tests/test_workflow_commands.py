@@ -47,18 +47,6 @@ class WorkflowCommands(unittest.TestCase):
         for retired in ('repo-docs', 'repo_docs', 'repo-interview', 'repo_interview'):
             self.assertNotIn(retired, self.ctx.commands)
 
-    def test_cron_autowork_command_routes_without_creating_a_schedule(self):
-        self.skill('cron-autowork')
-        self.plugin.register(self.ctx)
-        self.session.update(HERMES_SESSION_PLATFORM='telegram', HERMES_SESSION_CHAT_ID='fixture')
-        # Telegram normalizes /cron_autowork to the registered hyphen spelling.
-        raw = 'every 30m; repository scope; no push'
-        self.ctx.commands['cron-autowork'](raw)
-        prompt, routing = self.ctx.messages[-1]
-        self.assertIn('autowork:cron-autowork', prompt)
-        self.assertTrue(prompt.endswith(raw))
-        self.assertEqual(routing['origin']['chat_id'], 'fixture')
-
     def test_plan_for_me_is_registered_and_installed_from_its_own_source(self):
         source = fixture.ROOT / 'skills/plan-for-me/SKILL.md'
         self.assertTrue(source.is_file())

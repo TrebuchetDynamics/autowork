@@ -323,7 +323,6 @@ Local installs refer to this checkout; keep it in place. The extension registers
 ```
 
 All 13 `/autoresearch-<protocol>` commands are available. The other commands are
-`/cron-autowork` (scheduling guidance through host capabilities, not a Hermes timer),
 `/autoresearch`, `/engineering`, `/impeccable`, `/ui-taste`, `/beautify-github-readme`,
 `/lgtm` and `/git-commit-push` (`/git-commit-push pull` or `merge <branch>` integrates
 upstream changes). Native `/skill:<name>` invocation is also

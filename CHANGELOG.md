@@ -5,6 +5,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ## [Unreleased]
 
+### Removed
+
+- `cron-autowork`: the scheduling skill and its Claude Code, Codex and Pi adapters
+  are gone, with their command, menu priority and documentation. Use the host's own
+  cron command. The `autowork-start-notice.py` pre-run script stays where saved jobs
+  reference it, and the bundle no longer edits job configuration.
+
 ### Added
 
 - `writing-for-agents`: mattpocock's skill-writing reference, formerly
