@@ -10,10 +10,6 @@ Apply the [shared Ponytail method](../../../skills/shared/PONYTAIL.md) within th
 
 Use the [ASD-STE100 and project language rules](../../../skills/shared/COMMUNICATION.md) for user-facing text.
 
-For a profile-bound invocation, use the active profile's configured repository by
-default. Never ask which runner to unblock when the profile already owns one; only an
-explicitly fleet-wide request may name another target.
-
 Read the [host contract](../COMMON.md), then follow the
 [blockers protocol](../../../skills/blockers/SKILL.md) in this session. Start at
 once: gather held tasks and owner questions, apply the protocol's filter, execute
