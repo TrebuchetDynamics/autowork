@@ -150,6 +150,43 @@ class InstallMenuTests(unittest.TestCase):
         self.assertIn('claude plugin install autowork@autowork', self.calls('claude'))
         self.assertIn('codex plugin add autowork@autowork-marketplace', self.calls('codex'))
 
+    def test_a_marketplace_from_a_configured_source_is_used_and_not_rewritten(self):
+        # Claude Code refuses `marketplace add` when settings list that marketplace from
+        # another source, here this repository's checkout. That source is the owner's
+        # choice: the install uses it instead of failing or replacing it.
+        refusal = ("its source doesn't match its extraKnownMarketplaces entry "
+                   "in user or managed settings")
+        self.fake('claude', '''#!/usr/bin/env bash
+printf 'claude %s\\n' "$*" >> "$FAKE_LOG"
+if [[ $2 == marketplace && $3 == add ]]; then
+  printf 'Cannot add marketplace autowork: %s\\n' "$REFUSAL" >&2
+  exit 1
+fi
+exit 0
+''')
+        self.env['REFUSAL'] = refusal
+        result = self.install('--only', 'claude')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('claude plugin uninstall --keep-data autowork@autowork', self.calls('claude'))
+        self.assertIn('claude plugin install autowork@autowork', self.calls('claude'))
+        self.assertIn('kept the existing configuration', result.stdout)
+        self.assertRegex(result.stdout, r'claude\s+installed')
+
+    def test_an_unrelated_marketplace_failure_still_fails_the_item(self):
+        self.fake('claude', '''#!/usr/bin/env bash
+printf 'claude %s\\n' "$*" >> "$FAKE_LOG"
+if [[ $2 == marketplace && $3 == add ]]; then
+  echo 'Failed to add marketplace: network unavailable' >&2
+  exit 1
+fi
+exit 0
+''')
+        result = self.install('--only', 'claude')
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('network unavailable', result.stdout)
+        self.assertRegex(result.stdout, r'claude\s+failed')
+        self.assertNotIn('claude plugin install autowork@autowork', self.calls('claude'))
+
     def test_a_transient_preflight_race_is_retried_once(self):
         import sys
         sys.path.insert(0, str(ROOT / 'scripts'))

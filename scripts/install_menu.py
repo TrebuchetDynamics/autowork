@@ -36,6 +36,8 @@ SOURCE = 'TrebuchetDynamics/autowork'
 PI_SOURCE = 'git:github.com/TrebuchetDynamics/autowork'
 HOME = Path(os.environ.get('HOME', str(Path.home())))
 BIN = Path(os.environ.get('AUTOWORK_BIN_DIR') or HOME / '.local' / 'bin')
+# Claude Code's refusal when settings name this marketplace from another source.
+TOLERATE_CLAUDE_SOURCE = "its source doesn't match its extraKnownMarketplaces entry"
 
 
 class Output:
@@ -161,6 +163,7 @@ class Step:
     argv: list = None               # a command to run, or
     run: object = None              # a Python callable returning a message
     retry_on: str = ''              # transient failure text that is retried once (a concurrent writer)
+    tolerate: tuple = ()            # failure text that means the step's goal already holds
 
 
 @dataclass
@@ -346,7 +349,12 @@ def items(hermes_args):
              steps=[Step(f'install {BIN}/tx and completions', run=install_tx)]),
         hermes_item(hermes_args),
         Item('claude', 'Claude Code plugin and full suite + bundled Ponytail', needs='claude',
-             steps=[Step(f'claude plugin marketplace add {SOURCE}', ['claude', 'plugin', 'marketplace', 'add', SOURCE]),
+             # Claude Code refuses `marketplace add` when the owner's settings list that
+             # marketplace from another source, such as this repository's checkout. That
+             # source is the owner's choice: install from it, and never rewrite it here.
+             # The update step below proves the configured marketplace is usable.
+             steps=[Step(f'claude plugin marketplace add {SOURCE}', ['claude', 'plugin', 'marketplace', 'add', SOURCE],
+                         tolerate=(TOLERATE_CLAUDE_SOURCE, 'already added', 'already exists')),
                     Step('claude plugin marketplace update autowork',
                          ['claude', 'plugin', 'marketplace', 'update', 'autowork']),
                     Step('drop the cached plugin, keeping its data', run=drop_claude_plugin),
@@ -484,6 +492,11 @@ def install(all_items, chosen, dry_run=False, output=None, mode='install'):
                                     'failed')
                         continue
                     if code:
+                        if any(marker in text for marker in step.tolerate):
+                            message = 'the goal already holds; kept the existing configuration'
+                            detail.append(message)
+                            output.line('  ' + message)
+                            break
                         outcome, exit_code = 'failed', code
                         cause = failure_summary(text)
                         detail.append(f'{cause} (exit {code})')
