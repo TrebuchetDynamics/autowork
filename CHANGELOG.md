@@ -87,6 +87,7 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Fixed native and portable test-optimizer discovery descriptions to fit the 60-character skill index while preserving suite-reduction guidance. (TOOLSET-406-bf73282e)
 - Fix optional offline Textual checks to skip narrowly recognized unavailable pinned-cache diagnostics while retaining real failures and import enforcement; document explicit cache preparation. (TOOLSET-405-4abc98d0)
 - Publish accepted TUI screen reads after mount instead of discarding results that complete while Compose/Mount is still running; add deterministic browser label regression and document the lifecycle. (TOOLSET-401-cd15e01e)
 - Harden the long-review runner regression with explicit review/worker gates, stage diagnostics and supervised child cleanup without extending its completion deadline. (TOOLSET-403-1128bef9)
