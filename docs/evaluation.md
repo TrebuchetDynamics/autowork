@@ -298,8 +298,9 @@ this planning pass.
 ### Controlled experiment plan
 
 **Do not execute from this plan alone.** Offline implementation fixtures belong to
-the saved tasks. Live/model work remains the existing owner-gated TOOLSET-389 pilot;
-The separate production controls still wait for that installed delivery/recovery proof.
+the saved tasks. Live/model work has no authorized task: the owner deleted the former
+installed-pilot record on 2026-10-31. The separate production controls still wait for
+installed delivery/recovery proof.
 
 1. **Freeze inputs:** record baseline/candidate source and installed release, task
    contract hashes, model/provider, SDK/Pi versions, machine/resources, optimistic and

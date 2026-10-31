@@ -212,8 +212,7 @@ is not an installed release.
    Canonical relocation and the cycle repair are already present in the tested
    baseline; the baseline fixture failures above are not silently qualified.
 2. Qualify a single explicitly owned installed runner, including interrupted-attempt
-   recovery and real engine closure (TOOLSET-389-6dedfd8c). Preserve paused jobs;
-   do not restart a fleet.
+   recovery and real engine closure. Preserve paused jobs; do not restart a fleet.
 3. Measure matched real engineering tasks and quality/check coverage before claiming
    throughput or token improvements. Keep automatic steering off until a production
    control channel and intervention policy are separately qualified.

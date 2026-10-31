@@ -75,7 +75,8 @@ is forbidden. Intervention records belong to the attempt and require freshness.
 - [x] Disposable real-model worker/reviewer pilot and same-invocation stalled-command recovery.
 - [ ] Canonical Src reconciliation/integration (TOOLSET-388-b422fa9e).
 - [ ] Installed-runner/interrupted-engine-attempt qualification and matched real-task
-  measurements (TOOLSET-389-6dedfd8c); no blanket fleet restart.
+  measurements; no blanket fleet restart. The owner deleted the former pilot task on
+  2026-10-31; a new owner-approved task is required.
 - [ ] Production coordinator control channel/policy qualification remains gated on installed-pilot qualification.
 
 Tests precede behavioral changes. Named focused suites are used if affected selection

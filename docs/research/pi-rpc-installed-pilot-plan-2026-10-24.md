@@ -1,9 +1,9 @@
 # Installed Pi RPC delivery pilot — proposed 2026-10-24
 
-Owner: [TOOLSET-389](../../tasks/items/TOOLSET-389-6dedfd8c.md).
-This is preparation, **not pilot authorization, an executed result or fleet
-qualification**. Keep the task owner-owned, Needs decision and `live = "denied"`
-until the target, bounded model use and interruption window are explicitly accepted.
+Status: proposed; no task owner. The owner deleted TOOLSET-389-6dedfd8c on
+2026-10-31. This is preparation, **not pilot authorization, an executed result or
+fleet qualification**. Any future pilot needs a new owner task with an explicit
+target, bounded model use and interruption window; `live` remains denied until then.
 Coordinator steering work remains gated on this pilot; source integration alone must
 not release it.
 
@@ -119,7 +119,7 @@ artifacts and report the exact failure. Do not erase attempts, clear holds, weak
 checks or enable JSON automatically. Explicit rollback is for a future invocation
 only after reconciliation and proven cleanup.
 
-Close TOOLSET-389 only when its acceptance is actually covered, with missing
-measurements or live evidence explicitly remaining open. Then, and only then,
-admit the separate control-channel implementation. Automatic steering remains
+Close any future installed-pilot task only when its acceptance is actually covered,
+with missing measurements or live evidence explicitly remaining open. Then, and only
+then, admit the separate control-channel implementation. Automatic steering remains
 off until its separate bounded policy/channel qualification succeeds.
