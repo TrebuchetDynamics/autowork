@@ -1,6 +1,6 @@
 ---
 name: test-optimizer
-description: "Use to shrink bloated or slow test suites by deleting low-value tests, pruning redundant cases and simplifying fixtures."
+description: "Shrink test suites by removing redundant, low-value tests."
 license: MIT
 ---
 
