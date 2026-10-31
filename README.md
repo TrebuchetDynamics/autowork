@@ -329,6 +329,13 @@ Claude Code uses `/autowork:writing-for-agents`, Codex
 `$autowork:writing-for-agents` and Pi `/writing-for-agents`. The reference is pinned
 byte-exact; the local adapter keeps Autowork scope and delivery limits.
 
+[Grilling](docs/workflows.md#grilling-and-architecture-review) adds `/grilling`,
+`/grill-with-docs` and `/improve-codebase-architecture`: stress-test a plan in rounds
+with a recommended answer per question, record what it settles as ADRs and glossary
+terms, or scan for shallow modules and report the candidates as one HTML file.
+Claude Code prefixes `/autowork:`, Codex `$autowork:`. The references are pinned
+byte-exact; each workflow stops before implementation.
+
 [APK Get](skills/apk-get/SKILL.md) adds `/apk-get`: discover the Flutter or React
 Native Android app in the current repository, build an ARM64-only release APK,
 and upload it through the installed `s3upload`. It returns the download link,

@@ -39,39 +39,15 @@ tasks.
 
 None. The skill works on any plan or raw idea.
 
-## Core Mechanic: Frontier Rounds
+## Run it
 
-Map the plan as a design tree. The **frontier** is every decision whose
-prerequisites are already settled — the questions you can ask NOW without
-guessing at answers you haven't heard yet.
+Load [Grilling](../grilling/SKILL.md) first. It owns the design tree, the frontier,
+the numbered round with one recommendation per question, the fact-versus-decision
+rule, and the empty-frontier done condition. Do not restate or reshape that mechanic
+here.
 
-Work in **rounds**: ask the whole current frontier in one message, numbered,
-each question carrying your recommended answer. Word each question so "yes"
-accepts your recommendation, so agreeing never means answering "no"; a plain
-"yes" to the round accepts every recommendation in it. Then wait. A question whose
-answer depends on another question still open in this round belongs to a
-LATER round, not this one.
-
-Format each round like so:
-
-```
-❓ Q1 — <question title>: <question body, options if relevant>
-➡️ Recommendation: <your recommended answer + one-line why>
-
-❓ Q2 — <question title>: <question body>
-➡️ Recommendation: <...>
-```
-
-Each answer reshapes the tree: settled decisions push the frontier outward
-and unblock dependent questions. Recompute the frontier and ask the next
-round.
-
-**Facts are your job; decisions are the user's.** When a frontier question
-needs a fact from the environment (codebase, filesystem, config, docs), find
-it yourself with `search_files` / `read_file` / `terminal` — or dispatch a
-subagent via `delegate_task` for a heavy exploration. Never ask the user for
-anything you could look up. Don't block on an exploration: only the questions
-downstream of it wait; ask the rest of the frontier now.
+This skill adds the plan-specific branches below to that tree, and the synthesis and
+confirmation gate that end the interview.
 
 ## Question Coverage (work these branches into the tree)
 
@@ -105,8 +81,8 @@ Do not act on the plan until the user confirms shared understanding.
 1. **Asking questions out of dependency order.** A question that depends on
    an unanswered question is a guess wearing a question mark. Keep it for a
    later round.
-2. **Skipping the codebase.** Find facts in code with Hermes tools instead of
-   asking the user.
+2. **Skipping the codebase.** Find facts in code with the host's own tools instead
+   of asking the user.
 3. **Accepting "I don't know" as final.** Suggest options, explain
    trade-offs, make a recommendation.
 4. **Writing code during the interrogation.** Alignment only — code after the

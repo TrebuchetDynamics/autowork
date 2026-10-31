@@ -1,0 +1,29 @@
+{
+  "repository": "https://github.com/mattpocock/skills",
+  "revision": "4ae2317ddb22b046e26455e4f9c9b3aaaf62212d",
+  "license": "MIT",
+  "files": {
+    "skills/engineering/improve-codebase-architecture/HTML-REPORT.md": {
+      "path": "upstream/HTML-REPORT.md",
+      "sha256": "581e8bb5a521e46bbda8ca7e19b15948bed882187108092ebb90c62513b77528"
+    },
+    "skills/engineering/improve-codebase-architecture/LICENSE": {
+      "path": "upstream/LICENSE",
+      "sha256": "0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5"
+    },
+    "skills/engineering/improve-codebase-architecture/PROTOCOL.md": {
+      "path": "upstream/PROTOCOL.md",
+      "sha256": "35b03a3db61e0f5aa333ea59b54963e45a3d2ace6649b2ef4f9576603e2582a6"
+    },
+    "LICENSE": {
+      "path": "upstream/LICENSE",
+      "sha256": "0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5"
+    }
+  },
+  "adaptations": [
+    "Upstream bytes unchanged; SKILL.md relocated to upstream/PROTOCOL.md to prevent duplicate discovery.",
+    "Local SKILL.md owns Autowork scope, host translation, review gates and delivery limits.",
+    "Upstream is user-invoked and calls sibling skills; the local adapter states the composition directly because Autowork hosts expose commands, not a Skill tool.",
+    "No upstream installer, router skill, hooks or global skill activation is imported."
+  ]
+}
