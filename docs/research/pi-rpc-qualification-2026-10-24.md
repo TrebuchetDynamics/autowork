@@ -216,7 +216,7 @@ is not an installed release.
    do not restart a fleet.
 3. Measure matched real engineering tasks and quality/check coverage before claiming
    throughput or token improvements. Keep automatic steering off until a production
-   control channel and intervention policy are separately qualified (TOOLSET-390-e1c2afa6).
+   control channel and intervention policy are separately qualified.
 4. Retain the guard's documented SIGKILL/kernel/hostile-process limitations. Stronger
    containment needs a delegated-cgroup qualification, not a claim from these tests.
 

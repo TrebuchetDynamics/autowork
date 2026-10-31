@@ -299,7 +299,7 @@ this planning pass.
 
 **Do not execute from this plan alone.** Offline implementation fixtures belong to
 the saved tasks. Live/model work remains the existing owner-gated TOOLSET-389 pilot;
-TOOLSET-390 production controls still wait for that installed delivery/recovery proof.
+The separate production controls still wait for that installed delivery/recovery proof.
 
 1. **Freeze inputs:** record baseline/candidate source and installed release, task
    contract hashes, model/provider, SDK/Pi versions, machine/resources, optimistic and

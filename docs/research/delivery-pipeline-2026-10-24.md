@@ -222,7 +222,6 @@ Existing tasks deliberately reused, not duplicated:
 | TOOLSET-386-4288b2e0 | Live-owned JSON/compaction/nested-tool accounting; do not add a competing accounting implementation. |
 | TOOLSET-388-b422fa9e | Integrating at the audit cutoff; integration refresh found coordinator-verified closure in `7e295706`, backed by `tasks/evidence/TOOLSET-388-b422fa9e.toml`. Preserve that closure and the new qualification report; no RPC reimplementation. Installed qualification remains 389. |
 | TOOLSET-389-6dedfd8c | Existing owner-owned, live-denied installed delivery/recovery and matched measurement pilot. Reuse its single authority question; do not schedule it or duplicate a live task. |
-| TOOLSET-390-e1c2afa6 | Still depends on 388 and 389. Reconcile its inactive check handoff; production channel/steering work remains blocked by installed qualification. |
 | TOOLSET-334-f9 / TOOLSET-344-7dadea23 | Manually closed partial parallel-review/optimistic implementation; retain history. New tasks cover specific remaining gaps, not reopened old contracts. |
 | TOOLSET-336-3c / 338-82 / 340-64b75d92 / 341-eb82856d / 342-0153a52b / 384-45005b0c | Existing check reuse, affected checks, half/single concurrency, test-path scheduling and completeness work; no duplicates. |
 | TOOLSET-307-5a / 308-f9 / 309-05 / 310-50 | Existing telemetry, attribution, attention and scorecard; extend the existing report rather than replace them. |
