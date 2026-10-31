@@ -81,11 +81,19 @@ and report, claim no readiness, and still apply scope, live-writer, secret, pres
 and hook rules (repository-mandated commit gates stay binding). A later ship request must
 reconcile fresh upstream and pass the candidate-bound gates.
 
-**Scope is authorization, not authorship.** A path/topic allowlist stays narrow, and
-an autonomous worker or card without repo-wide authorization ships only its owned
-slice. A generic "commit all" does not revoke an earlier KEEP decision: resolve it
-before staging bulk deletions. [Shared-worktree safety](references/shared-worktree-safety.md)
-owns the full rule set for cross-agent scope, live writers, secrets and blind staging.
+**Scope is authorization, not authorship.** An explicit repo-wide ship request covers
+all eligible changes in requested scope, including completed work from other agents or
+earlier sessions. Take delivery ownership after checking provenance, intended scope,
+completion, dependencies, secrets and candidate-bound verification; authorship alone
+never excludes changes or yields NO-OP. Do not ask again merely because the implementer
+is someone else or no card exists. A path/topic allowlist stays narrow, and an
+autonomous worker/card without explicit repo-wide authorization remains limited to its
+owned slice. Local-only requests never authorize push; audit never authorizes Git
+writes. Repo-wide authorization does not override a live writer/lease, unfinished work,
+unapproved product scope, secrets or missing verification. A generic "commit all" does
+not revoke a specific earlier KEEP/preservation decision: resolve it before staging bulk
+deletions. [Shared-worktree safety](references/shared-worktree-safety.md) owns the full
+rule set for cross-agent scope, live writers, secrets and blind staging.
 
 Card branch helper (temporary index, so HEAD, the real index, and other agents' dirty work
 are untouched). It ships with the Autowork engine: `<toolset>` is the installed Autowork
