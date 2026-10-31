@@ -130,6 +130,30 @@ scope, the task store, review gates and delivery limits. The current upstream na
 is `writing-for-agents`; upstream retired `writing-great-skills` without an alias.
 See [workflow and evidence requirements](workflows.md#writing-for-agents).
 
+## Grilling and architecture review
+
+Three mattpocock/skills references are pinned byte-exact with their MIT license:
+[Grilling](../skills/grilling/SKILL.md) owns the interview mechanic,
+[Grill With Docs](../skills/grill-with-docs/SKILL.md) records what it settles as ADRs
+and glossary terms, and
+[Improve Codebase Architecture](../skills/improve-codebase-architecture/SKILL.md)
+scans for shallow modules and writes one HTML report to the temp directory.
+
+| Host | Example |
+| --- | --- |
+| Hermes | `/grilling the retry design; read-only` |
+| Claude Code | `/autowork:grilling the retry design; read-only` |
+| Codex | `$autowork:grilling the retry design; read-only` |
+| Pi | `/grilling the retry design; read-only` |
+
+The upstream entries call sibling skills by name. Portable hosts expose commands
+rather than a Skill tool, so the local workflows state the composition directly:
+Grill With Docs runs Grilling and then the Docs Sync write rules, and the architecture
+review runs Grilling on the chosen candidate. Delegation is optional and uses the
+host's own sub-agent tool. A report is advice, not implementation authority: edits,
+commits and delivery still need their own accepted scope. See
+[workflow and evidence requirements](workflows.md#grilling-and-architecture-review).
+
 ## APK Get
 
 [APK Get](../skills/apk-get/SKILL.md) builds an existing Flutter or React Native

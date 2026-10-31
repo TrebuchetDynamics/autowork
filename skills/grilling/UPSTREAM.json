@@ -1,0 +1,25 @@
+{
+  "repository": "https://github.com/mattpocock/skills",
+  "revision": "4ae2317ddb22b046e26455e4f9c9b3aaaf62212d",
+  "license": "MIT",
+  "files": {
+    "skills/productivity/grilling/LICENSE": {
+      "path": "upstream/LICENSE",
+      "sha256": "0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5"
+    },
+    "skills/productivity/grilling/PROTOCOL.md": {
+      "path": "upstream/PROTOCOL.md",
+      "sha256": "a146842ed93ca43d833550fa9adf02e58cb63c83fea9d4b4522995b82242d4e2"
+    },
+    "LICENSE": {
+      "path": "upstream/LICENSE",
+      "sha256": "0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5"
+    }
+  },
+  "adaptations": [
+    "Upstream bytes unchanged; SKILL.md relocated to upstream/PROTOCOL.md to prevent duplicate discovery.",
+    "Local SKILL.md owns Autowork scope, host translation, review gates and delivery limits.",
+    "Upstream is user-invoked and calls sibling skills; the local adapter states the composition directly because Autowork hosts expose commands, not a Skill tool.",
+    "No upstream installer, router skill, hooks or global skill activation is imported."
+  ]
+}

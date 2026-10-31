@@ -305,6 +305,37 @@ Editing a document is not new authority. Keep every tested contract, move text
 instead of rewriting meaning, and report lines removed with the tests you ran.
 Offline link and packaging checks do not qualify model behavior.
 
+## Grilling and architecture review
+
+Three pinned mattpocock/skills references now run on every host.
+
+`/grilling` is the interview engine: a design tree, a frontier of decisions whose
+prerequisites are settled, one numbered round per frontier with a recommended answer
+for each question, and an empty frontier as the done condition. Facts are the agent's
+job; decisions are the owner's.
+
+`/grill-with-docs` runs that interview for a plan or design, then records what it
+settles: an ADR for a decision with alternatives and a reason, a glossary entry for a
+named concept or resolved ambiguity. It follows Docs Sync for the write rules.
+
+`/improve-codebase-architecture` scans for shallow modules and leaking seams, tests
+them with the deletion test, and writes one self-contained HTML report to the OS temp
+directory with a candidate card and one top recommendation. It proposes no interface
+until the owner picks a candidate, then interviews that candidate.
+
+Examples (Hermes CLI; Pi uses the same hyphen names, Claude Code prefixes
+`/autowork:`, Codex prefixes `$autowork:`):
+
+```text
+/grilling the retry design; recommend answers; read-only
+/grill-with-docs the cache plan; record ADRs; no commit
+/improve-codebase-architecture src/runner; report only
+```
+
+Grill Me remains Plan With Me's challenge mode; it loads Grilling for the mechanic and
+adds only the plan-specific question branches. Offline link and packaging checks do not
+qualify a live interview or a rendered report.
+
 ## Pinned engineering protocols
 
 `/engineering` (the same spelling in Telegram) selects a technique for a specific

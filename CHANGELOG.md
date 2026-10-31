@@ -14,6 +14,14 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- Three pinned mattpocock/skills references on all four hosts. `grilling` owns the
+  design-tree interview mechanic; `grill-with-docs` runs it and records ADRs and
+  glossary terms through the Docs Sync write rules; `improve-codebase-architecture`
+  scans for shallow modules and writes one HTML report to the temp directory before it
+  interviews a chosen candidate. Grill Me now loads Grilling for the mechanic instead
+  of restating it. Pinned bytes and the MIT license are unchanged; no Skill tool,
+  installer or hook is imported.
+
 - `writing-for-agents`: mattpocock's skill-writing reference, formerly
   `writing-great-skills`, pinned byte-exact with its MIT license and mechanics
   reference every host. Hermes, Claude Code, Codex and Pi get the same command. The
