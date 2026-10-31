@@ -80,6 +80,23 @@ tool names. It does not restate the workflow or drift into policy of its own.
 A skill whose job a sibling already does is a candidate for removal, not a rename. The
 repository keeps one owner per job.
 
+## 11. Dispatched work starts fresh
+
+A skill that dispatches a subagent or worker says to start it in a fresh context
+window, states its scope and completion criterion, and marks a read-only run as
+read-only. A fork inherits the context the dispatch was meant to escape.
+
+*Source:* the upstream repository's `AGENTS.md` states this for every skill.
+
+## 12. One map over the set
+
+A growing set of user-invoked skills needs one router skill that names the others and
+when to reach for each: `ask-autowork` here, upstream's `ask-matt`. The router is
+orientation, never authority, and it reads a skill's `SKILL.md` before describing it.
+
+*Source:* upstream `.agents/invocation.md` (router skills) and
+`skills/engineering/ask-matt`.
+
 ## Deliberate differences from upstream
 
 - **No bucket split.** Every folder is discovered; `skills/shared/` holds contracts and
@@ -101,5 +118,8 @@ repository keeps one owner per job.
 - [ ] Handoffs name a command the host exposes.
 - [ ] Claims stop at executed evidence.
 - [ ] The adapter adds host mechanics only.
+- [ ] A dispatching skill says to start the child in a fresh context window.
+- [ ] The router (`ask-autowork`) lists the skill, and the skill's Boundaries name
+      the sibling a confused caller should use instead.
 - [ ] Checks pass: `python3 scripts/check.py tests/test_skill_standard.py` plus the
       modules that read the touched files.

@@ -21,7 +21,7 @@ class DoctorModes(unittest.TestCase):
             'plugins': [{'name': 'autowork', 'enabled': True, 'error': None}],
             'plugin_skills': ['autowork:' + name for name in ('autowork', 'docs-sync', 'plan-with-me', 'blockers', 'plan-for-me', 'autoresearch', 'engineering', 'git-commit-push', 'impeccable', 'lgtm', 'profile-create', 'ui-taste', 'beautify-github-readme', 'pending',
                 'autonomous-codebase-improver', 'bug-harvest', 'skill-folder-refactor', 'test-optimizer', 'unused-code', 'apk-get', 'writing-for-agents', 'grilling', 'grill-with-docs',
-                'improve-codebase-architecture',
+                'improve-codebase-architecture', 'ask-autowork',
                 'ponytail', 'ponytail-review', 'ponytail-audit', 'ponytail-debt', 'ponytail-gain', 'ponytail-help')],
             'commands': [{'command': name.replace('_', '-'), 'source': 'autowork', 'kind': 'plugin'}
                          for name in names],

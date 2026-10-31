@@ -23,6 +23,14 @@ runtime state out of Git. Do not edit or patch upstream Hermes Agent.
 - Keep public examples generic and preserve existing per-profile job state.
   Instruction changes alone do not prove that a cron job completed a task.
 
+## Delegation
+
+Start every dispatched subagent or worker in a **fresh context window**. Some harnesses
+fork the parent conversation by default, and a fork inherits the context the dispatch
+was meant to leave behind. A dispatched run also states its scope, its completion
+criterion and whether it may write; a read-only review stays read-only. The rule in
+[docs/skill-standard.md](docs/skill-standard.md) applies to every skill that dispatches.
+
 ## Worktree location
 
 Interactive sessions (an agent working with the owner, a repository bot, the

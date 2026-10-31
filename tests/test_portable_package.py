@@ -32,7 +32,7 @@ class PortablePackageTests(unittest.TestCase):
             'ponytail-gain', 'ponytail-help', 'bug-harvest',
             'autonomous-codebase-improver', 'skill-folder-refactor', 'unused-code',
             'test-optimizer', 'apk-get', 'graphify', 'writing-for-agents',
-            'grilling', 'grill-with-docs', 'improve-codebase-architecture'})
+            'grilling', 'grill-with-docs', 'improve-codebase-architecture', 'ask-autowork'})
         for source in folder.rglob('*.md'):
             text = source.read_text()
             if source.name == 'SKILL.md':

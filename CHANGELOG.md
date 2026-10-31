@@ -14,6 +14,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `ask-autowork`: one router over the bundle, adapted from mattpocock's `ask-matt`.
+  It names the skill for a situation and the next step, reads the chosen skill before
+  describing it, and names one command. It grants no authority. The skill standard gains
+  the router rule and the fresh-context rule for dispatched work, which now appears in
+  the repository instructions and in the skills that dispatch.
+
 - Three pinned mattpocock/skills references on all four hosts. `grilling` owns the
   design-tree interview mechanic; `grill-with-docs` runs it and records ADRs and
   glossary terms through the Docs Sync write rules; `improve-codebase-architecture`

@@ -27,7 +27,7 @@ follow the interview.
 4. Recompute the frontier after each round. Repeat until it is empty.
 
 Find facts yourself: read the repository, run a read-only command, or delegate one
-bounded search with the host's own sub-agent tool. Ask the owner only for decisions
+bounded search with the host's own sub-agent tool, started in a fresh context window. Ask the owner only for decisions
 and preferences, never for something you can look up. A running search blocks only the
 questions that depend on it; ask the rest now.
 

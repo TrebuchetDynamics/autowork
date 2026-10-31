@@ -305,6 +305,24 @@ Editing a document is not new authority. Keep every tested contract, move text
 instead of rewriting meaning, and report lines removed with the tests you ran.
 Offline link and packaging checks do not qualify model behavior.
 
+## Ask Autowork
+
+`/ask-autowork` is the map over this bundle: one router that names the skill for a
+situation and the next step it implies. It answers "which command do I want?", never
+"what does that command decide?". It reads the chosen skill before describing it, names
+one command, and sends you to that skill's `## Boundaries` when two look close.
+
+The main flow is `/grilling` (or `/grill-with-docs` in a repository, `/grill-me` for an
+existing plan), then `/plan-for-me` or `/plan-with-me`, then `/autowork`, then
+`/git-commit-push`. On-ramps cover a bug (`/bug-harvest`), a bloated suite
+(`/test-optimizer`), dead code (`/unused-code`), a folder split
+(`/skill-folder-refactor`), shallow modules (`/improve-codebase-architecture`), a held
+queue (`/blockers`), drifted docs (`/docs-sync`) and measured research
+(`/autoresearch`).
+
+The router grants no authority. Scope, review gates, publication and live operations
+keep their own rules, and a map is not a substitute for the skill it names.
+
 ## Grilling and architecture review
 
 Three pinned mattpocock/skills references now run on every host.

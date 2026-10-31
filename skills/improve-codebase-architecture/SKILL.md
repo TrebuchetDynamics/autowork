@@ -32,7 +32,8 @@ before naming anything; a decision an ADR records is not yours to re-open silent
 2. **Scan read-only.** Walk the code where understanding one concept means bouncing
    between many small modules, where seams leak, and where behavior is hard to test
    through the current interface. Delegate one bounded exploration with the host's own
-   sub-agent tool when the codebase is large; otherwise read directly. Change no file.
+   sub-agent tool in a fresh context window when the codebase is large; otherwise read
+   directly. Change no file.
 3. **Report.** Write one self-contained HTML file into the OS temp directory, never into
    the repository: `<tmpdir>/architecture-review-<timestamp>.html`. Give each candidate
    files, problem, solution, benefits stated as locality and leverage, a before/after

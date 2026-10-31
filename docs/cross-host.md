@@ -130,6 +130,23 @@ scope, the task store, review gates and delivery limits. The current upstream na
 is `writing-for-agents`; upstream retired `writing-great-skills` without an alias.
 See [workflow and evidence requirements](workflows.md#writing-for-agents).
 
+## Ask Autowork
+
+[Ask Autowork](../skills/ask-autowork/SKILL.md) is the router over the bundle: it names
+the skill for a situation, then the next step. It reads the chosen skill before
+describing it and names one command. Use it when you know the outcome you want but not
+the command.
+
+| Host | Example |
+| --- | --- |
+| Hermes | `/ask-autowork I need to stress-test a plan` |
+| Claude Code | `/autowork:ask-autowork I need to stress-test a plan` |
+| Codex | `$autowork:ask-autowork I need to stress-test a plan` |
+| Pi | `/ask-autowork I need to stress-test a plan` |
+
+The map is orientation, not authority: the named skill keeps its own scope, review and
+delivery rules. See [workflow requirements](workflows.md#ask-autowork).
+
 ## Grilling and architecture review
 
 Three mattpocock/skills references are pinned byte-exact with their MIT license:

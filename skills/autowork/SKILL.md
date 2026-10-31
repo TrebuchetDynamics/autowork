@@ -181,7 +181,9 @@ Loop `--wait --timeout S`, review each `report.json`, `--integrate TASK
 --timeout S --run CHECK...` (`--run` last), `--parallel-close TASK`, commit the
 coordinator files, and refill with `--apply --parallel`; release only after no slot
 is left to integrate or close. Workers never select, merge, close or push. On
-`SEQUENTIAL_FALLBACK`, run the returned contract normally. Follow [parallel workers](references/parallel-workers.md).
+`SEQUENTIAL_FALLBACK`, run the returned contract normally. Start every dispatched worker
+in a fresh context window: a forked parent conversation inherits the context the
+dispatch was meant to leave behind. Follow [parallel workers](references/parallel-workers.md).
 
 ## Owner blockers
 

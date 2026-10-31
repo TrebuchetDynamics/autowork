@@ -360,6 +360,9 @@ Hermes-only scheduler, profiles and fleet management:
 - **Update:** `/autowork update` updates every live profile; see [updating](#updating).
 - **Inspect:** `/autowork list` lists registered commands and their owners.
 
+`/ask-autowork` is the map: ask which command fits and it names one, then the next
+step. Claude Code prefixes `/autowork:`, Codex `$autowork:`.
+
 | Interface | Plan | Docs Sync |
 | --- | --- | --- |
 | Hermes CLI | `/plan-with-me` | `/docs-sync` |
