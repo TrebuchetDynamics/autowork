@@ -18,12 +18,13 @@ pruning, speculative simplification or a repository architecture rewrite.
 ## Prove liveness boundaries first
 
 Inspect status, instructions, entrypoints, manifests, package exports and baseline
-checks. Rank candidates with the [Graphify workflow](../../adapters/skills/graphify/SKILL.md)
-when a current local graph exists; build a code-only graph only when graph generation
-is in scope. A graph or map is orientation and must be verified against live source.
-Stale graphs, zero inbound edges, `INFERRED` edges, low coverage and zero search
-matches never prove unreachability. The pinned protocol's Understand Anything graph
-pass applies only when a legacy `.understand-anything` graph is the sole index.
+checks. Rank candidates with the Graphify workflow described by the Autowork
+repository's `adapters/skills/graphify/SKILL.md` when a current local graph exists;
+build a code-only graph only when graph generation is in scope. A graph or map is
+orientation and must be verified against live source. Stale graphs, zero inbound
+edges, `INFERRED` edges, low coverage and zero search matches never prove
+unreachability. The pinned protocol's Understand Anything graph pass applies only
+when a legacy `.understand-anything` graph is the sole index.
 
 For every candidate check:
 - callers, imports, re-exports, public package/CLI/API entrypoints;
