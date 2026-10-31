@@ -23,7 +23,7 @@ push — and these branches keep the failure modes it meets.
   filesystem export, pass the candidate overrides only to that guard so its
   `git ls-files` sees the curated index rather than an empty parent-repo pathspec.
   Authority validators that discard `GIT_*` are different: never fabricate `.git`
-  metadata for them; follow [canonical-authority validation](references/shared-worktree-safety.md#canonical-authority-validation-for-filesystem-exports).
+  metadata for them; follow [canonical-authority validation](shared-worktree-safety.md#canonical-authority-validation-for-filesystem-exports).
 
 - **Satisfy the snapshot's dependency inputs before gating it.** A snapshot made with
   `git worktree add` or `checkout-index` contains tracked files only: no installed module tree,

@@ -50,7 +50,7 @@ assess it separately when in scope and report any unverified liveness.
 ### Autoresearch intake and task scheduling
 
 For `/autoresearch` findings, plans, experiments or chained handoffs, load
-[the autoresearch adapter](../autoresearch/SKILL.md). Treat run logs, TSV and
+[the autoresearch adapter](../../autoresearch/SKILL.md). Treat run logs, TSV and
 `handoff.json` as evidence inputs; this skill still owns canonical documentation
 and task reconciliation. Narrow Maintain records accepted findings in existing
 owners and schedules bounded work with `autowork tasks add` under the matching
