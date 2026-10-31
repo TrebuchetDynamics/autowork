@@ -322,6 +322,13 @@ reads. Claude Code uses `/autowork:graphify`, Codex `$autowork:graphify` and Pi
 `/graphify`. The adapter calls the installed `graphify` command, never installs it,
 and treats graph edges as orientation, not proof of behavior or dead code.
 
+[Writing For Agents](docs/workflows.md#writing-for-agents) adds
+`/writing-for-agents`: mattpocock's skill-writing reference (formerly
+`writing-great-skills`) for writing and pruning skills, `AGENTS.md` and agent docs.
+Claude Code uses `/autowork:writing-for-agents`, Codex
+`$autowork:writing-for-agents` and Pi `/writing-for-agents`. The reference is pinned
+byte-exact; the local adapter keeps Autowork scope and delivery limits.
+
 [APK Get](skills/apk-get/SKILL.md) adds `/apk-get`: discover the Flutter or React
 Native Android app in the current repository, build an ARM64-only release APK,
 and upload it through the installed `s3upload`. It returns the download link,

@@ -72,6 +72,36 @@ Telegram's menu has limited capacity; the bundle prioritizes only the five workf
 commands in [`telegram_menu_policy.py`](../telegram_menu_policy.py).
 
 
+### Skill style
+
+Write a skill the way the pinned
+[Writing For Agents](../skills/writing-for-agents/SKILL.md) reference teaches it
+(mattpocock's `writing-for-agents`, formerly `writing-great-skills`). Load
+`/writing-for-agents` for a real editing pass; these are the parts that decide review.
+
+- **Pointer wording is the trigger.** The description and any always-loaded line name
+  what the material is and the distinct branches that should reach it. One trigger per
+  branch; drop synonyms that rename the same case.
+- **Steps first, reference behind a pointer.** A reader of the skill follows an ordered
+  sequence. Move material only some branches need into `references/` and keep a live
+  link. Inline what every branch needs.
+- **One meaning, one home.** State a rule once, in the file that owns it, and point at
+  it from elsewhere. Do not cache what the environment shows (`package.json`, `--help`
+  output, the directory layout).
+- **State the positive target** and a completion criterion the agent can check. Keep a
+  prohibition only as a guardrail that cannot be phrased positively.
+- **Hunt no-ops.** A sentence the model already obeys costs tokens to say nothing.
+  Delete the sentence, not just its words.
+- **Prefer a leading word.** One pretrained token (_no-op_, _sprawl_, _pointer_) beats a
+  spelled-out triad, and anchors the behaviour the same way every run.
+- **Cut sprawl by disclosure, never by losing a contract.** Length alone is a smell, not
+  a defect; a flat rule set on one topic can stay in-file. Keep every phrase a test,
+  host or user relies on, and move text rather than restating it.
+
+A documentation edit is not new authority. Read the skill, its adapter, its references
+and the tests that read them before editing, and report lines removed with the checks
+you ran.
+
 ## Portable hosts
 
 Claude Code, Codex and Pi load [portable adapters](../adapters/skills/COMMON.md), not

@@ -31,7 +31,7 @@ class PortablePackageTests(unittest.TestCase):
             'ponytail', 'ponytail-review', 'ponytail-audit', 'ponytail-debt',
             'ponytail-gain', 'ponytail-help', 'bug-harvest',
             'autonomous-codebase-improver', 'skill-folder-refactor', 'unused-code',
-            'test-optimizer', 'apk-get', 'graphify'})
+            'test-optimizer', 'apk-get', 'graphify', 'writing-for-agents'})
         for source in folder.rglob('*.md'):
             text = source.read_text()
             if source.name == 'SKILL.md':

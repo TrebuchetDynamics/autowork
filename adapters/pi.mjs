@@ -14,6 +14,7 @@ const workflows = {
   'apk-get': ['apk-get', 'Find the app, build an ARM64 release APK and upload with s3upload'],
   'test-optimizer': ['test-optimizer', 'Reduce redundant tests while preserving real regression protection'],
   graphify: ['graphify', 'Query a local Graphify code graph before wide reading'],
+  'writing-for-agents': ['writing-for-agents', 'Write and prune skills, AGENTS.md and agent docs'],
   'bug-harvest': ['bug-harvest', 'Hunt evidence-backed bugs within scope and limits'],
   'autonomous-codebase-improver': ['autonomous-codebase-improver', 'Improve a repository through reviewed bounded slices'],
   'skill-folder-refactor': ['skill-folder-refactor', 'Split one named folder without changing behavior'],

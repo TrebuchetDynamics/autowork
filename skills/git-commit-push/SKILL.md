@@ -81,18 +81,11 @@ and report, claim no readiness, and still apply scope, live-writer, secret, pres
 and hook rules (repository-mandated commit gates stay binding). A later ship request must
 reconcile fresh upstream and pass the candidate-bound gates.
 
-**Scope is authorization, not authorship.** An explicit repo-wide ship request covers
-all eligible changes in requested scope, including completed work from other agents
-or earlier sessions. Take delivery ownership after checking provenance, intended
-scope, completion, dependencies, secrets and candidate-bound verification; authorship
-alone never excludes changes or yields NO-OP. Do not ask again merely because the
-implementer is someone else or no card exists. A path/topic allowlist stays narrow;
-an autonomous worker/card without explicit repo-wide authorization remains limited
-to its owned slice. Local-only requests never authorize push; audit never authorizes
-Git writes. Repo-wide authorization does not override a live writer/lease, unfinished
-work, unapproved product scope, secrets, or missing verification. A generic "commit
-all" does not revoke a specific earlier KEEP/preservation decision; resolve it before
-staging bulk deletions.
+**Scope is authorization, not authorship.** A path/topic allowlist stays narrow, and
+an autonomous worker or card without repo-wide authorization ships only its owned
+slice. A generic "commit all" does not revoke an earlier KEEP decision: resolve it
+before staging bulk deletions. [Shared-worktree safety](references/shared-worktree-safety.md)
+owns the full rule set for cross-agent scope, live writers, secrets and blind staging.
 
 Card branch helper (temporary index, so HEAD, the real index, and other agents' dirty work
 are untouched). It ships with the Autowork engine: `<toolset>` is the installed Autowork
@@ -260,87 +253,9 @@ Report the branch and sha it prints. Never point it at main/master or the checke
      a command-plus-duration receipt cannot show which candidate it exercised. Read the actual
      compiler/SDK version against the repository pin; on mismatch use an isolated matching
      toolchain, never another session's shared install. Run `git diff --cached --check`.
-   - If that check flags CSV record-ending carriage returns, inspect raw bytes before
-     changing content. For valid CRLF records, use the command-local check
-     `git -c core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol diff --cached --check`
-     while retaining CSV parsing and content/hash checks. Preserve the ordinary
-     whitespace checks and source bytes: CSV writers commonly emit CRLF, and
-     normalizing preserved research artifacts can invalidate evidence fingerprints.
-   - Scope `GIT_DIR`, `GIT_WORK_TREE` and `GIT_INDEX_FILE` to individual Git/index-aware
-     probes, not the entire gate environment. Never persist snapshot routing with
-     `git config core.worktree`: it redirects other sessions' status, staging and
-     commits even after the gate exits. Use `git -c core.worktree=<snapshot> ...`
-     only for the individual guard that needs it. Build tools can invoke Git inside
-     their own SDK checkout; inherited candidate overrides make those probes read
-     the wrong repository and can corrupt SDK version detection. In Python, keep a separate
-     `git_env` for index/export checks and strip these three keys from the environment
-     passed to Flutter, npm and other build commands. For a Git-backed guard in a
-     filesystem export, pass the candidate overrides only to that guard so its
-     `git ls-files` sees the curated index rather than an empty parent-repo pathspec.
-     Authority validators that discard `GIT_*` are different: never fabricate `.git`
-     metadata for them; follow [canonical-authority validation](references/shared-worktree-safety.md#canonical-authority-validation-for-filesystem-exports).
-   - **Satisfy the snapshot's dependency inputs before gating it.** A snapshot made with
-     `git worktree add` or `checkout-index` contains tracked files only: no installed module tree,
-     no untracked runtime config. The gate then dies on its first check with a missing tool
-     (`local <x> not found`) or the app cannot start, which reads as clean bytes failing for no
-     visible reason. Reuse the already-installed module set only when the manifest and
-     lockfile match. Before linking it, check whether the dev server restricts resolved
-     dependency paths: an external symlink can let SSR succeed while client-entry
-     requests return 403 and hydration never starts. For that demonstrated boundary,
-     make a physical private dependency copy, omit generated dev-server caches,
-     preserve internal symlinks and verify none escape the candidate. Keep the
-     filesystem security policy unchanged; rerun the original failing browser spec
-     before changing application code. Copy required untracked runtime env privately
-     (never stage or commit it), and confirm the failure was a prerequisite rather
-     than the payload. Record the dependency layout with the gate receipt, because
-     matching lockfiles alone do not qualify different filesystem layouts. For Flutter, treat `pubspec.lock` as part of the gated
-     candidate: if `flutter pub get` changes it, either include that exact lockfile delta or restore
-     the lock first and rerun analysis/tests against the restored dependency graph; never ship a
-     lockfile different from the one those checks exercised.
-   - **Decide whether a snapshot-only failure belongs to the snapshot or to the repository.** A
-     guard that passes in the long-lived tree and fails in every clean checkout is resolving against
-     untracked artifacts — a citation to generated output, a file only a local tool run creates.
-     That is a repository defect: fix the citation to name the *tracked producer* (verify the
-     producer from its own usage or argument list, never from its apparent name) or teach the guard
-     to skip ignored output. Re-run it with a deliberately dangling reference injected to prove the
-     guard still fails, so "it passes now" means the reference is sound and not that the check was
-     neutered. Never pre-seed the missing artifact to force green. For generated
-     skills/plugins, test the tracked template and exercise the actual generator
-     or installer in a hermetic fixture; do not assert that an ignored installed
-     payload already exists, because clean candidate exports omit it.
    - Report suite counts from that exact candidate, not a broader dirty-tree run: excluded
      foreign tests can legitimately change the totals. Never import unrelated work merely
      to reproduce an earlier count.
-   - Reconcile a HEAD advance during gating before committing: compare the saved base
-     with fresh HEAD and inspect the intervening commits, real index and owned blobs.
-     Preserve the completed gate's immutable export; prepare a new complete export for
-     eligible newly committed work rather than treating it as a failed check or blindly
-     accepting the new tree. Rerun affected suites and guards; reuse an unaffected suite
-     only after checking its source, transitive imports, fixtures, tools and dependencies.
-     An unchanged component directory alone is insufficient when it imports changed code.
-     When qualification combines fresh affected-suite runs with reused unaffected
-     receipts, label that composition rather than calling it one fresh full-suite run.
-   - Run guards **after** staging. Guards built on `git grep` cannot see untracked files, and a
-     new file can turn them red the moment it is tracked.
-   - If the gate may outlive the terminal timeout, run one tracked background process with
-     completion notification and retain its handle, pinned candidate, per-command logs and
-     exit results. Do not start another suite merely because a foreground wait expires;
-     distinguish a wait-window timeout from an actual process timeout. Inspect once if needed,
-     then use the completion notification rather than repeated waits or pending-status messages.
-     Start the final publication gate in the integration owner's session; a short-lived child's
-     cleanup can kill it before its receipt is written. On an interrupted handoff verify process
-     and receipt, keep partial logs as incomplete, and restart only the missing gate on unchanged
-     inputs. A staged tree hash is not a commit SHA.
-     A running gate is not a pass. Never push while its required checks are still running.
-   - After an interrupted side-effecting command, inspect `HEAD`, `MERGE_HEAD`, the staged diff,
-     relevant refs and process/log/exit receipts before retrying; an interruption does not say
-     whether later merge/commit steps ran. Mark missing evidence unverified rather than inferring
-     success, and recheck canonical HEAD and owned blobs before landing. A switch to standalone
-     planning preserves the delivery checkpoint but does not silently resume the push request.
-   - Preserve the complete requested delivery obligation across asynchronous handoffs:
-     local commit → passing candidate gate → verified remote push → verified PR merge when
-     authorized. Record the next action with the existing delivery receipt and resume from
-     completion evidence; a local-commit status report does not finish a push-and-merge request.
    - On failure, fix the smallest safe cause and rerun only the failed or affected checks
      (load `systematic-debugging` for a real behavior failure). Before reporting HELD,
      distinguish a failed product assertion from an overbroad source-contract guard;
@@ -351,17 +266,12 @@ Report the branch and sha it prints. Never point it at main/master or the checke
      verification metadata from the executed receipt; do not rerun an unchanged passing
      gate just to clear a stale warning or refresh a report. Explicit owner requests for
      a fresh run still apply; identify that run separately from the original qualification.
-   - **Never waive a gate to ship a change that does nothing at runtime.** A guard's own escape
-     hatch — an accepted-drift baseline like `KNOWN_COMMAND_DRIFT`, a `@known-failure` marker —
-     exists for deliberate, permanent divergence. Spending it to push a docs-only or otherwise
-     inert revision past a red gate leaves a stale waiver that hides the next real divergence.
-     Record the owner's decision, leave the deploy queued, and let the blocking fix land first.
-   - If a push already carried a change whose canonical gate had not run, do not rewrite
-     history to hide it: run the gate against the pushed bytes now, report the miss in plain
-     words (naming the commit whose message does not describe what it carried), and fix
-     forward with a scoped commit if it fails. A pushed message cannot be corrected without a
-     force-push, so the honest record is the report plus the after-the-fact result.
-
+   - A running gate is not a pass: never push while its required checks are still
+     running.
+   - Load [candidate gates](references/candidate-gates.md) for the branch playbooks:
+     filesystem-export dependency inputs, snapshot-only failures, a HEAD advance during
+     gating, guards after staging, long or interrupted gates, cross-handoff obligation,
+     CRLF CSV checks, `GIT_*` scoping, gate waivers and after-the-fact misses.
 5. **Commit.**
    - Stage explicit paths only (`git add -- <paths>`); never `git add -A` / `git add .` on a
      shared tree. Use `git --literal-pathspecs add` for collected filenames. Build the add list

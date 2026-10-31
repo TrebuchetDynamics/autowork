@@ -1,0 +1,25 @@
+{
+  "repository": "https://github.com/mattpocock/skills",
+  "revision": "a496f5513d4a4cf889bc48e189e579f4b0bdf6aa",
+  "license": "MIT",
+  "files": {
+    "skills/productivity/writing-for-agents/SKILL.md": {
+      "path": "upstream/PROTOCOL.md",
+      "sha256": "551adca942227b44192edba88acd4e8db911f0121ce58ad16944ccf6a896a74a"
+    },
+    "skills/productivity/writing-for-agents/SKILL-MECHANICS.md": {
+      "path": "upstream/SKILL-MECHANICS.md",
+      "sha256": "c768e6307c7c10728c401c213f2c4ba71c542127eeb7ad2956aabd15a0fa0059"
+    },
+    "LICENSE": {
+      "path": "upstream/LICENSE",
+      "sha256": "0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5"
+    }
+  },
+  "adaptations": [
+    "Upstream bytes unchanged; SKILL.md relocated to upstream/PROTOCOL.md to prevent duplicate discovery.",
+    "Local SKILL.md owns Autowork scope, host translation, task state and delivery limits; the pinned reference owns writing technique.",
+    "Upstream was renamed from writing-great-skills to writing-for-agents with no alias; this copy uses the current upstream name.",
+    "No upstream installer, router skill, hooks or global skill activation is imported."
+  ]
+}
