@@ -82,11 +82,48 @@ throughout the batch. Do not turn a bare "yes" into approval of separate task
 recommendations; clarify only affected unanswered choices. One pending task does
 not hold independent accepted work.
 
+## Method gaps and supporting skills
+
+For a concrete method gap or explicit protocol request, select one technique through
+[engineering](../../engineering/SKILL.md); consult
+[the engineering cycle](../../shared/ENGINEERING-CYCLE.md) only if routing is unclear.
+`interview-me`, planning and documentation protocols are optional techniques for
+those gaps. Questions-only interviews need no planning, graph or documentation pass.
+Do not load a sequence of methods merely because answers mention an API or UI.
+If a supporting skill is missing, continue this workflow and report the fallback
+briefly at handoff; do not install or modify imported skills during the interview.
+This companion includes docs persistence, unlike a standalone intent interview: do
+not adopt upstream defaults that repeatedly re-confirm a clear answer or stop before
+the already requested documentation work. Actual user scope takes precedence.
+
+## Audits and readiness questions
+
+"Audit X", "is X ready?" or "what is left?" asks what to do next, not only for a
+report. Inspect read-only, then answer in this order:
+
+1. The verdict in one line (ready, or not ready and why in a few words).
+2. The gaps that stand between now and ready, each as a task: saved with `autowork
+   tasks add` with acceptance, checks and `touches` like any other, or, when it already
+   exists, named by its task ID with what changed. Tasks the runner can do now go to
+   Now or Next; a gap that needs the owner (live authorization, a product choice, an
+   outside input) goes to `Needs decision` with the one `Question:` note it needs.
+3. What was not checked, in one line.
+
+A list of findings or a "smallest path" without task IDs is not a finished answer.
+When the request is explicitly read-only, propose the same tasks with their full
+text and say they are not saved.
+
 ## Landing pages, READMEs and onboarding
 
 Settle audience, primary action and
 first useful outcome before visual references; screenshots prove appearance, not
 availability or conversion.
+
+Example: for "interview me about onboarding", inspect the current setup docs, play
+back what they cover and ask them to walk you through the last time someone got
+stuck setting up. Use the answer to establish an observable onboarding outcome before
+discussing installer details. Save it in the existing product/setup owner, not a
+competing interview spec.
 
 ## Planning while teaching
 
@@ -160,6 +197,27 @@ still names the old scope, inspect its full saved instruction and disclose the
 mismatch; update it only under existing scheduling authority, preserving cadence,
 paused state, history and no-code/publication limits. A one-time commit/push request
 does not create standing publication permission for future research runs.
+
+## Rolling plans
+
+For future work whose content depends on implementation evidence, follow
+[rolling planning](../../shared/TODO-WORKCENTER.md#rolling-planning): save only the
+first batch whose content is known now, at most 8 new tasks total including one
+closing planning task (`kind = "plan"`, set with `autowork tasks field ID kind plan`)
+under the same goal. Note `Plan round: 1 of 10` by default (`autowork tasks field
+ID "Plan round" "1 of 10"`) and give it dependencies on every building task in the
+batch. Its scope names the goal and what the next round must find out from the
+finished batch's evidence.
+
+When continuing an existing chain, advance N in `Plan round: N of M` without
+resetting its limit; apply the shared stopping rules. A small or single-batch plan
+adds no planning task and keeps the existing saving flow.
+
+For a rolling plan, the final report says the chain will continue on its own under
+an already running, authorized Autowork runner, gives its round limit (10 by default),
+and explains how to stop it: move the planning task to `Needs decision`
+(`autowork tasks place ID "Needs decision"`). Saving the
+chain does not start a runner or grant execution authority.
 
 ## Continuations and live gates
 
