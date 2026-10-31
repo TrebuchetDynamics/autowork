@@ -470,7 +470,8 @@ Report the branch and sha it prints. Never point it at main/master or the checke
 ## Red lines
 
 - Never commit secrets, `.env*`, credentials, private keys, logs, caches, build output,
-  databases or service data roots, `.understand-anything/` or other generated artifacts, or machine state.
+  databases or service data roots, `graphify-out/`, `.understand-anything/` or other
+  generated artifacts, or machine state.
 - **Project ledgers are not generated artifacts.** `tasks/` (task, goal and evidence records,
   written via `autowork tasks` and the engine), `BLOCKERS.md`, and impeccable's `PRODUCT.md`,
   `DESIGN.md` (+ sidecar) and `.impeccable/` config/briefs are tracked project files. Ship them

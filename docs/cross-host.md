@@ -87,6 +87,29 @@ Portable invocation is explicit-only; `read-only` changes nothing. See
 [workflow and evidence requirements](workflows.md#test-optimizer).
 This skill is local Autowork content, not an imported pi-toolset protocol.
 
+## Graphify
+
+[Graphify](https://github.com/Graphify-Labs/graphify) turns a project into a local
+knowledge graph. Hermes installs the official skill and CLI through its plugin
+installer, so `/graphify` there is upstream content. Claude Code, Codex and Pi use
+the local [adapter](../adapters/skills/graphify/SKILL.md), which calls the same
+`graphify` command with Autowork scope, evidence and limit rules.
+
+| Host | Example |
+| --- | --- |
+| Hermes | `/graphify src/parser; explain parse_statement; read-only` |
+| Claude Code | `/autowork:graphify src/parser; explain parse_statement; read-only` |
+| Codex | `$autowork:graphify src/parser; explain parse_statement; read-only` |
+| Pi | `/graphify src/parser; explain parse_statement; read-only` |
+
+Portable invocation is explicit-only. The adapter never installs `graphifyy`, adds
+hooks, changes settings or requests a semantic pass. It reuses a graph that matches
+the current revision or builds code-only output into an ignored directory, and it
+reports the tool version, graph path, counts and exit codes. A graph is orientation,
+not proof: `EXTRACTED` and `INFERRED` edges still need live-source checks, and Unused
+Code keeps its own liveness rules. `graphify-out/` is never committed. See
+[workflow and evidence requirements](workflows.md#graphify).
+
 ## APK Get
 
 [APK Get](../skills/apk-get/SKILL.md) builds an existing Flutter or React Native
