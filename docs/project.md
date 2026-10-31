@@ -2210,9 +2210,9 @@ Source evidence:
 Completed TOOLSET-399-1f9c37c3 supplies malformed-observation isolation, not nullable
 writer compatibility. Preserve its closure and guards. Existing completed
 TOOLSET-378-faaf7ed8 and LIST-READ-01 supply source provenance/stale-working rules.
-The only pre-existing open tasks are the deferred installed pilot
-TOOLSET-389-6dedfd8c and its dependent controls task TOOLSET-390-e1c2afa6; neither
-covers this batch. Leave their gates, ordering, goal focus and contracts unchanged.
+The only pre-existing open owner task is the deferred installed pilot
+TOOLSET-389-6dedfd8c; it does not cover this batch. Leave its gate, ordering, goal
+focus and contract unchanged.
 Reuse RELIABILITY-2026-10 without changing its status, priority or focus.
 
 ### Decisions and complete batch

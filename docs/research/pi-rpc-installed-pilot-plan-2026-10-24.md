@@ -4,8 +4,8 @@ Owner: [TOOLSET-389](../../tasks/items/TOOLSET-389-6dedfd8c.md).
 This is preparation, **not pilot authorization, an executed result or fleet
 qualification**. Keep the task owner-owned, Needs decision and `live = "denied"`
 until the target, bounded model use and interruption window are explicitly accepted.
-[TOOLSET-390](../../tasks/items/TOOLSET-390-e1c2afa6.md) now depends on this gate;
-source integration alone must not release coordinator steering work.
+Coordinator steering work remains gated on this pilot; source integration alone must
+not release it.
 
 ## Current evidence boundary
 
@@ -121,5 +121,5 @@ only after reconciliation and proven cleanup.
 
 Close TOOLSET-389 only when its acceptance is actually covered, with missing
 measurements or live evidence explicitly remaining open. Then, and only then,
-admit TOOLSET-390's control-channel implementation. Automatic steering remains
+admit the separate control-channel implementation. Automatic steering remains
 off until its separate bounded policy/channel qualification succeeds.

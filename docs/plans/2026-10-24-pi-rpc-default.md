@@ -76,7 +76,7 @@ is forbidden. Intervention records belong to the attempt and require freshness.
 - [ ] Canonical Src reconciliation/integration (TOOLSET-388-b422fa9e).
 - [ ] Installed-runner/interrupted-engine-attempt qualification and matched real-task
   measurements (TOOLSET-389-6dedfd8c); no blanket fleet restart.
-- [ ] Production coordinator control channel/policy qualification (TOOLSET-390-e1c2afa6).
+- [ ] Production coordinator control channel/policy qualification remains gated on installed-pilot qualification.
 
 Tests precede behavioral changes. Named focused suites are used if affected selection
 falls back to the entire suite because of unmapped docs. No production token savings,
