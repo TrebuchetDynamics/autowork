@@ -1,8 +1,11 @@
 # Test-suite optimization
 
-Toolset-owned engineering protocol for slow, repetitive or low-signal tests. Aim for
-**minimum sufficient protection against real regressions**, not a minimum count.
-Equal covered lines do not mean equal behavior, branches, assertions or contracts.
+Toolset-owned engineering protocol for slow, repetitive or low-signal tests.
+Actively reduce executed cases, test code and maintenance/runtime cost while keeping
+**minimum sufficient protection against real regressions**. Evidence-backed deletion
+is a primary outcome, not a last resort after cosmetic cleanup. No arbitrary count
+or coverage target justifies losing distinct protection. Equal covered lines do not
+mean equal behavior, branches, assertions or contracts.
 For writing new tests test-first, use the pinned `test-driven-development` protocol;
 this method optimizes existing protection within the caller's authority.
 
@@ -38,8 +41,10 @@ risk, not “more coverage.”
 
 Inspect the slowest/largest modules using existing reports first. Look for repeated
 setup, sleeps, duplicate executions and case families. Stop once evidence supports a
-bounded useful batch; do not require whole-suite experiments for every audit. Prefer
-fixture/execution improvements that preserve every oracle before riskier removals.
+bounded useful batch; do not require whole-suite experiments for every audit.
+Prioritize proven redundant, vacuous and obsolete cases for removal. Do not postpone
+supported deletion merely to polish their fixtures. When removal evidence is missing,
+keep that candidate and pursue independent, supported reductions.
 
 ## Measure first
 
@@ -116,16 +121,23 @@ Read each candidate's body, helpers, setup and oracle against the matrix:
 
 - **Exact duplicates/subsumption:** same seam, preconditions, behavior and oracle;
   subset coverage alone is not proof. Check branches and unique interactions.
-- **Case families:** consolidate equivalent setup/action into labeled table cases;
-  retain every distinct behavior and an identifiable failure per case. Fewer declared
-  methods or moving tests between files is not itself pruning or a speedup.
+- **Case families:** prune proven equivalent inputs to representative cases and
+  distinct boundaries. Use labeled tables to reduce remaining setup/action code.
+  Retain every distinct behavior and an identifiable failure per case. Moving all
+  existing cases into one table is not fewer executions or an inferred speedup.
 - **Expensive setup/execution:** share immutable fixtures and small data builders,
   not mutable databases/processes whose isolation matters. Replace fixed sleeps
   with events or bounded polling. Remove duplicate execution or parallelize only
   when independence and resource limits are established.
+- **Vacuous/obsolete checks:** delete `assert 0 == 0`, tests of a mock's configured
+  answer, framework-only checks and tests of retired behavior when the whole test
+  protects no owned contract or invariant. Inspect setup and execution too: import,
+  startup and error detection can be implicit protection. No replacement test is
+  needed for an obligation that never existed. If a real required behavior lacks
+  detection, repair the smallest relevant detector rather than preserving a tautology.
 - **Weak oracles:** tautologies recomputing the implementation's answer, internal
-  mock-call assertions, side channels and framework-only checks are candidates only
-  when they protect no owned contract. The tautology/public-seam ideas adapt Matt
+  mock-call assertions and side channels are removal candidates only when they
+  protect no owned contract. The tautology/public-seam ideas adapt Matt
   Pocock's MIT-licensed `tdd` skill. A no-exception startup smoke, contractual log,
   externally visible interaction or protocol call ordering may be a valid oracle
   without an explicit assertion. “Assertless” or “mocked” alone is not a verdict.
@@ -147,10 +159,19 @@ Never lose or weaken a still-required obligation:
 
 These are protected risks, not immutable test-file layouts. A named regression may
 move into an equivalent labeled case, but its bug ID and traceable oracle must
-survive. Every deletion maps to a retained test/case **and its oracle**, or documents
-why the product obligation was retired. Delete obsolete tests with deleted behavior,
-not surviving compatibility guarantees. If equivalence cannot be established, keep
-or investigate; green checks, equal coverage and no recorded failures do not prove it.
+survive. Every deletion has one source-backed justification: a retained test/case
+**and its equivalent oracle**, a retired product obligation, or evidence that the
+whole test protects no owned contract/invariant. Do not manufacture a replacement
+for a meaningless test. Delete obsolete tests with deleted behavior, not surviving
+compatibility guarantees. Unsupported deletion stays keep/investigate; green checks,
+equal coverage and no recorded failures do not prove redundancy.
+
+For each retained candidate, identify the distinct failure and why another retained
+detector cannot replace it reliably. Remove helpers/fixtures/data/dependencies used
+only by deleted tests after checking remaining consumers. Do not add replacement
+cases unless they protect a demonstrated missing required risk. Unchanged code and
+tests unrelated to the current diff are not obsolete: distinguish low change frequency
+from unsupported execution paths, including dynamic and external callers.
 
 ## Record tasks, do not edit (audit default)
 
@@ -159,7 +180,9 @@ keep/consolidate/remove/repair/quarantine/investigate map in the existing plan o
 with exact test/fixture IDs, risk-to-oracle mapping, evidence, unknowns, budgets and
 bounded next tasks. Reuse existing audit/suite-thinning IDs and ownership. Unsupported
 candidates remain investigate findings, not executable removal tasks. Order supported
-work by payoff and risk, preferring oracle-preserving fixture improvements.
+work by payoff and risk, preferring supported case removal and then smaller fixtures
+when both preserve the required protection. Do not retain useless cases to preserve
+counts, or turn the cleanup into a larger test framework.
 
 In authorized apply mode, reuse the implementation task and execute one supported
 batch; do not insist on another audit task or approval. Save the same mapping and
@@ -201,8 +224,9 @@ Before claiming an applied batch complete:
   contract; a delegated final gate stays pending until its actual result, not waived;
 - required diff/line/branch obligations remain, and measured critical mutant detection
   does not drop on comparable source/operators; document blind spots and uncertainty;
-- every removed test maps to a retained detector/oracle or a documented retired risk;
-  all merged cases still run, identify failures, and preserve named bug traceability;
+- every removed test maps to a retained equivalent detector/oracle, a documented
+  retired risk, or source-backed evidence of no owned contract/invariant;
+  all retained/merged cases still run, identify failures, and preserve named bug traceability;
 - source-bound before/after evidence covers the actual scope, outcomes and costs;
   quantitative saved-time claims have comparable passing measurements. Unmeasured
   clarity improvements say so. Never claim full-suite equivalence from focused checks.
@@ -213,7 +237,9 @@ qualification use a compact disposable fixture: equivalent table cases; equal-co
 but distinct authorization behaviors; a valuable never-failed regression; an assertless
 smoke oracle; a real handoff absent from mocks; a flaky critical check; equivalent/
 surviving mutants; missing CI/mutation evidence; read-only versus authorized apply;
-and an extra case for a unique boundary risk. Review decisions and artifacts, not
+an extra case for a unique boundary risk; a constant-only assertion with no product
+execution; tests of a retired feature; redundant input families; and valid tests of
+unchanged code outside the current diff. Review decisions and artifacts, not
 heading/phrase compliance. Failures call for narrow corrections to decisions or
 oracles, not another layer of prose-assertion tests. Offline fixture review is not
 live qualification, actual repository pruning or a measured performance result.

@@ -70,9 +70,11 @@ ASD-STE100 compliance or that every live model response follows the rules.
 
 The locally authored [Test Optimizer](../skills/test-optimizer/SKILL.md) reuses
 Engineering's existing test-suite optimization protocol. Bare invocation audits;
-explicit reduction/apply permits a bounded verified batch. It removes only
-evidence-backed redundancy or obsolete/unsupported scenarios, not rare consequential
-coverage. No new executable helper or external dependency is installed.
+explicit reduction/apply permits a bounded verified batch. It prioritizes deleting
+proven redundant, vacuous and obsolete tests, then shrinking the remaining suite.
+Meaningless tests need no replacement. Distinct supported risks remain protected,
+including rare consequential cases and valid tests of unchanged code. No new
+executable helper or external dependency is installed.
 
 | Host | Example |
 | --- | --- |

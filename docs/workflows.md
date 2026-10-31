@@ -224,17 +224,21 @@ state live under `autowork/`; upgrades preserve existing work through migration.
 
 ## Test optimizer
 
-`/test-optimizer` finds the smallest sufficient test suite, not the smallest test
-count. It reuses the existing [test-suite optimization protocol](../skills/engineering/local/test-suite-optimization/PROTOCOL.md).
-Use it for repeated setup, duplicate assertions, equivalent case families and
-contrived scenarios with no supported path. Rare security, data-loss and named
-regression cases are not expendable merely because they rarely fail.
+`/test-optimizer` actively reduces executed cases, test code and maintenance cost.
+It reuses the existing [test-suite optimization protocol](../skills/engineering/local/test-suite-optimization/PROTOCOL.md).
+Prioritize deleting proven redundant, vacuous and obsolete tests, then shrink the
+remaining fixtures and cases. A constant assertion such as `assert 0 == 0` needs
+no replacement when the whole test protects no product contract. Preserve distinct
+supported risks, not test counts. Rare security, data-loss and named regression
+cases are not expendable merely because they rarely fail. Unchanged code or tests
+unrelated to today's diff are not automatically obsolete.
 
 A bare invocation audits; `read-only` writes nothing. Explicit `apply`, a request
 to reduce/optimize the suite, or an existing authorized implementation task permits
 one supported batch without another approval ceremony. It preserves distinct
-behavioral oracles, maps deletions to retained checks or retired obligations,
-then validates and reports real reductions and unknowns. It never optimizes by
+behavioral oracles and justifies deletions with retained equivalent checks, retired
+obligations or evidence of no owned contract/invariant. It then validates and reports
+real reductions and unknowns, without adding replacement tests just to preserve counts. It never optimizes by
 silently skipping tests or weakening CI. This is an agent-guided skill, not an
 automatic test-deletion script.
 

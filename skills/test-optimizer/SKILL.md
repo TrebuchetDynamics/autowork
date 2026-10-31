@@ -1,19 +1,20 @@
 ---
 name: test-optimizer
-description: "Use when reducing redundant tests or low-value scenarios."
+description: "Use to shrink bloated or slow test suites by deleting low-value tests, pruning redundant cases and simplifying fixtures."
 license: MIT
 ---
 
 # Test Optimizer
 
-Reduce test code, duplicate executions and redundant scenarios while retaining the
-smallest sufficient protection against real regressions. Optimize detection per
-unit of maintenance/runtime cost—not a target number of tests.
+Actively reduce executed test cases, test code and maintenance/runtime cost.
+Delete tests that add no meaningful protection. Do not settle for reorganizing a
+bloated suite or moving the same executions into a table. Keep the smallest set
+that detects distinct, supported regressions, not a target count or coverage score.
 
 Apply the [shared Ponytail method](../shared/PONYTAIL.md) and
-
+[common contract](../shared/COMMON-CONTRACT.md).
 Use the [ASD-STE100 and project language rules](../shared/COMMUNICATION.md) for user-facing text.
-[common contract](../shared/COMMON-CONTRACT.md). Reuse the existing
+Reuse the existing
 [test-suite optimization protocol](../engineering/local/test-suite-optimization/PROTOCOL.md)
 for evidence, validation, quarantine and review; do not create a competing method
 or backlog. Load its relevant sections once.
@@ -38,17 +39,49 @@ or backlog. Load its relevant sections once.
 2. **Map protection:** for each candidate name the public behavior, preconditions,
    layer, oracle, unique boundary/incident and cost. Trace helpers and real callers;
    equal coverage, similar names and never failing are not equivalence.
-3. **Simplify first:** shrink fixtures; share immutable setup; eliminate duplicate
-   executions. Use labeled tables for equivalent setup while preserving distinct
-   cases and useful failure IDs. Keep mutable state isolated.
-4. **Classify:** keep, consolidate, remove, repair or investigate. For every removal
-   record `removed ID → retained ID + equivalent oracle`, or evidence the product
-   obligation was retired. Unsupported candidates remain intact.
+3. **Remove before polishing:** prioritize evidence-backed deletion of redundant,
+   vacuous and obsolete tests. Prune equivalent inputs to useful representatives,
+   retaining distinct boundaries. Then shrink fixtures and share immutable setup.
+   Labeled tables may reduce code, but do not count unchanged cases as pruning.
+   Keep mutable state isolated and failure IDs useful.
+4. **Classify:** keep, consolidate, remove, repair or investigate. For each removal,
+   record one reason: a retained equivalent detector and oracle, a retired product
+   obligation, or evidence that the test protects no owned behavior or invariant.
+   Do not invent a replacement for a test that had no meaningful detector.
+   Unproven removal candidates remain intact.
 5. **Apply and verify:** change one coherent batch within scope. Preserve product
    behavior and every distinct required oracle; do not weaken assertions, skip cases
    or lower thresholds to get green. Run affected checks and required acceptance
    gates, inspect the diff and obtain required independent review. A gate delegated
    to the coordinator remains pending, not passed.
+
+## High-value reduction targets
+
+- Delete unconditional checks such as `assert 0 == 0` when their setup/execution
+  also protects no product contract. Check for implicit startup/import or error
+  detection before declaring a test vacuous.
+- Delete tests of retired features or unreachable obsolete paths after tracing
+  supported callers, dynamic/external entrypoints and compatibility obligations.
+- Remove tests that only verify a mock's configured return value, language/framework
+  behavior or copied implementation logic when no independent product oracle exists.
+  If they expose a real coverage gap, repair the smallest relevant detector instead.
+- Remove duplicate cases and layers that protect the same behavior under equivalent
+  conditions. Keep an integration test when it catches a real handoff a unit mock cannot.
+- Reduce oversized fixtures, snapshots and setup to what the retained oracle needs.
+  Remove helpers, data and dependencies used only by deleted tests after checking
+  their remaining consumers. Do not compress unrelated behaviors into one giant test.
+
+For every retained candidate, name the distinct failure it can catch and why the
+remaining suite cannot catch it reliably. If no distinct value can be established,
+investigate the source rather than defending the test count. Prefer a smaller
+suite when the evidence supports it. Add cases only for a demonstrated missing
+required risk, not to replace each deleted test or test these instructions' wording.
+
+“Never touched” needs clarification from evidence, not another approval ceremony.
+Code absent from supported execution paths is a removal lead. Code that rarely
+changes, tests that rarely fail, or tests unrelated to today's diff are not dead.
+Use sound affected-test selection for local iteration, without deleting unrelated
+valid tests or bypassing required deployment/acceptance gates.
 
 ## “Very unlikely” is a lead, not deletion evidence
 
@@ -71,7 +104,8 @@ stays, with its bug ID.
 
 Report:
 - scope/mode and keep/consolidate/remove/investigate decisions;
-- removed IDs mapped to retained oracles or retired obligations;
+- removed IDs mapped to retained oracles, retired obligations or evidence of no
+  owned contract/invariant;
 - before → after test-code lines, declared tests and **executed cases separately**;
 - commands, outcomes, review, remaining risk and pending gates;
 - comparable measured runtime, or **not measured**; stop reason and next action.
