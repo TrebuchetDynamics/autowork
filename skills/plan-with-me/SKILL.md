@@ -36,13 +36,10 @@ owner questions, easiest first, planning each task that needs it with this skill
 answered decisions and maintaining affected docs. Only `questions only`,
 `read-only`, `no changes` or `dry run` means no file changes; an audit or an "is it
 ready?" question is planning like any other and ends with tasks
-([audits and readiness](#audits-and-readiness-questions)). It does not authorize code
+([audits and readiness](references/special-cases.md#audits-and-readiness-questions)). It does not authorize code
 changes or start autowork. Standalone planning narrows this occurrence despite
 earlier unrelated implementation permission; an Autowork-owned planning substep
 returns to that same coordinator without execution inside the substep.
-
-The public skill ID is `plan-with-me`, and the source directory is
-`skills/plan-with-me/`. The public command means ask the user and plan together.
 
 ## Challenge mode
 
@@ -82,17 +79,10 @@ process talk or a list of topics. If the user explicitly switches to Plan For Me
 continue in this conversation with the evidence and accepted decisions already
 gathered; record significant delegated choices as the planner's calls.
 
-For a concrete method gap or explicit protocol request, select one technique through
-[engineering](../engineering/SKILL.md); consult
-[the engineering cycle](../shared/ENGINEERING-CYCLE.md) only if routing is unclear.
-`interview-me`, planning and documentation protocols are optional techniques for
-those gaps. Questions-only interviews need no planning, graph or documentation pass.
-Do not load a sequence of methods merely because answers mention an API or UI.
-If a supporting skill is missing, continue this workflow and report the fallback
-briefly at handoff; do not install or modify imported skills during the interview.
-This companion includes docs persistence, unlike a standalone intent interview: do
-not adopt upstream defaults that repeatedly re-confirm a clear answer or stop before
-the already requested documentation work. Actual user scope takes precedence.
+For a concrete method gap or explicit protocol request, load
+[method gaps](references/special-cases.md#method-gaps-and-supporting-skills) before
+selecting one technique. Questions-only interviews need no planning, graph or
+documentation pass.
 
 ## Ask, listen, adapt
 
@@ -143,23 +133,6 @@ unresolved matters left open. Silence is neither an answer nor acceptance. In
 scheduled/noninteractive runs, report the single highest-value question and leave
 it pending; do not fabricate replies or poll.
 
-## Audits and readiness questions
-
-"Audit X", "is X ready?" or "what is left?" asks what to do next, not only for a
-report. Inspect read-only, then answer in this order:
-
-1. The verdict in one line (ready, or not ready and why in a few words).
-2. The gaps that stand between now and ready, each as a task: saved with `autowork
-   tasks add` with acceptance, checks and `touches` like any other, or, when it already
-   exists, named by its task ID with what changed. Tasks the runner can do now go to
-   Now or Next; a gap that needs the owner (live authorization, a product choice, an
-   outside input) goes to `Needs decision` with the one `Question:` note it needs.
-3. What was not checked, in one line.
-
-A list of findings or a "smallest path" without task IDs is not a finished answer.
-When the request is explicitly read-only, propose the same tasks with their full
-text and say they are not saved.
-
 ## Save answers and finish the plan
 
 During an ongoing interview, save material explicit answers in the existing owner
@@ -196,16 +169,12 @@ acceptance, verification and `touches` (plus `resources` where needed) per the
 disjoint write sets, acceptance that names a failing test, and a pre-mortem whose
 guards land in the owning tasks.
 For future work whose content depends on implementation evidence, follow
-[rolling planning](../shared/TODO-WORKCENTER.md#rolling-planning): save only the
-first batch whose content is known now, at most 8 new tasks total including one
-closing planning task (`kind = "plan"`, set with `autowork tasks field ID kind plan`)
-under the same goal. Note `Plan round: 1 of 10` by default (`autowork tasks field
-ID "Plan round" "1 of 10"`) and give it dependencies on every building task in the
-batch. Its scope names the goal and what the next round must find out from the
-finished batch's evidence.
-When continuing an existing chain, advance N in `Plan round: N of M` without
-resetting its limit; apply the shared stopping rules. A small or single-batch plan
-adds no planning task and keeps the existing saving flow.
+[rolling planning](../shared/TODO-WORKCENTER.md#rolling-planning): at most 8 new
+tasks including one closing planning task (`kind = "plan"`) with dependencies on
+every building task and a `Plan round: 1 of 10` note. Load
+[rolling-plan batches](references/special-cases.md#rolling-plans) for the exact
+fields, chain continuation and saving flow. A small or single-batch plan adds no
+planning task.
 
 Unanswered product choices remain outside executable work. Run the
 [builder check](../shared/PLANNING-CRAFT.md#builder-check-before-handoff) on the
@@ -225,11 +194,9 @@ to the actual canonical consumer: disclose whether that consumer includes the co
 and whether selection was checked there. Report runtime and ownership unassessed
 unless observed. Questions-only/read-only mode finishes with a conversational summary,
 no Maintain pass and no writes.
-For a rolling plan, the final report says the chain will continue on its own under
-an already running, authorized Autowork runner, gives its round limit (10 by default),
-and explains how to stop it: move the planning task to `Needs decision`
-(`autowork tasks place ID "Needs decision"`). Saving the
-chain does not start a runner or grant execution authority.
+For a rolling plan, the final report says the chain will continue on its own, gives
+its round limit, and explains how to stop it: move the planning task to `Needs decision`.
+Save the chain without starting a runner or granting execution authority.
 Docs-only scope leaves the full requested batch undispatched. A later explicit
 instruction to implement enters the execution workflow. An Autowork-owned planning
 substep returns the batch to its same coordinator without another permission
@@ -237,9 +204,3 @@ question; preserve its review and owned-commit requirements.
 When existing execution fails without new product uncertainty, return the exact task
 ID, attempt evidence and failed operation to the same coordinator for supported
 recovery; do not reopen the product interview or create duplicate tasks.
-
-Example: for "interview me about onboarding", inspect the current setup docs, play
-back what they cover and ask them to walk you through the last time someone got
-stuck setting up. Use the answer to establish an observable onboarding outcome before
-discussing installer details. Save it in the existing product/setup owner, not a
-competing interview spec.
