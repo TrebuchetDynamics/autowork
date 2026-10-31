@@ -62,7 +62,6 @@ capacity limit, so some commands must be typed rather than selected in the menu.
 | `/grill-me` | `/grill_me` | Stress-test a plan through questions |
 | `/autoresearch` | `/autoresearch` | Route a research goal or run a bounded metric loop |
 | `/profile-create` | `/profile_create` | Create a repository-bound profile with shared setup |
-| `/cron-autowork` | `/cron_autowork` | Create or update a recurring Autowork job; preserve existing scope. Giving a cadence for a paused job resumes it unless you say to keep it paused |
 | `/impeccable` | `/impeccable` | Design and front-end quality workflow |
 | `/ui-taste` | `/ui_taste` | Uizze's UI Taste playbooks for building, polishing and reviewing web and iOS interfaces |
 | `/beautify-github-readme` | `/beautify_github_readme` | Redesign or audit a GitHub README with project-native SVG assets |
@@ -868,27 +867,21 @@ or permission to resume a schedule.
 
 ## Scheduling behavior
 
-Use `/cron-autowork` (`/cron_autowork` in Telegram) for schedule setup; `/autowork` performs the work. The scheduling
-skill lists existing jobs first, binds the actual repository/workdir and profile,
-updates a matching job, and verifies the saved cadence, prompt and execution limits.
-A new job without a cadence asks for one. `prompt only` creates no job. Portable
-hosts without a scheduler return a specification explicitly marked not scheduled.
-New Hermes jobs default to a resolved Telegram chat/topic, independent of whether
-setup starts in CLI, Telegram or another surface. Explicit delivery/quiet preferences
-remain authoritative. After saving, setup confirms in that Telegram destination;
-recurring jobs report every occurrence by default, including unchanged blockers.
-Setup confirmation, job execution and scheduled message delivery have separate
-receipts. Scheduling alone does not trigger an immediate development run.
+Schedule Autowork work with the host's own cron command; the bundle registers no
+scheduling skill. A job whose prompt loads `/autowork` runs the same workflow as a
+typed request. Keep setup confirmation, job execution and scheduled message delivery
+as separate receipts, and verify actual delivery on the intended chat or topic: a
+saved job is not a delivered message.
 
 Each run of a Telegram-routed Autowork job with the start-notice script attached
-sends a start message before the agent begins, and the run's report when it finishes. The start message comes from the
-bundle's `autowork-start-notice.py` pre-run script, which the plugin copies into
-every profile's `scripts/` folder (Hermes runs cron scripts only from there) and
-`/cron_autowork` attaches to the job unless the job already has a different script
-(it keeps that one and reports the notice as not attached). A same-named script without the bundle
-marker is treated as the user's and never replaced. The script never fails a run;
-a missing token, ambiguous job match or unreachable Bot API is reported in the
-run's own prompt instead.
+sends a start message before the agent begins, and the run's report when it finishes.
+The start message comes from the bundle's `autowork-start-notice.py` pre-run script,
+which the plugin copies into every profile's `scripts/` folder because Hermes runs
+cron scripts only from there. Attach it to a job yourself when you want the notice;
+the bundle no longer edits job configuration. A same-named script without the bundle
+marker is treated as the user's and never replaced. The script never fails a run; a
+missing token, ambiguous job match or unreachable Bot API is reported in the run's
+own prompt instead.
 
 ## TUI confirmation layout and refresh
 

@@ -347,16 +347,16 @@ controllers, installers or global activation are imported.
 
 Hermes-only scheduler, profiles and fleet management:
 
-- **Schedule:** `/cron-autowork every 30 minutes for this repo; no push` creates or
-  updates a matching job and verifies it. **With a cadence, a paused job resumes.**
+- **Schedule:** use the host's own cron command; the bundle adds no scheduling
+  workflow. Existing jobs keep their pre-run notice script.
 - **Set up a profile:** `/profile-create` guides repository-bound profile setup.
 - **Update:** `/autowork update` updates every live profile; see [updating](#updating).
 - **Inspect:** `/autowork list` lists registered commands and their owners.
 
-| Interface | Plan | Docs Sync | Schedule |
-| --- | --- | --- | --- |
-| Hermes CLI | `/plan-with-me` | `/docs-sync` | `/cron-autowork 15m` |
-| Hermes Telegram | `/plan_with_me` | `/docs_sync` | `/cron_autowork 15m` |
+| Interface | Plan | Docs Sync |
+| --- | --- | --- |
+| Hermes CLI | `/plan-with-me` | `/docs-sync` |
+| Hermes Telegram | `/plan_with_me` | `/docs_sync` |
 
 See [commands and workflows](docs/workflows.md) for the full reference, aliases and
 [portable invocations](docs/cross-host.md). Supporting design skills and engineering
