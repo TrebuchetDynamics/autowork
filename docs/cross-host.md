@@ -110,6 +110,26 @@ not proof: `EXTRACTED` and `INFERRED` edges still need live-source checks, and U
 Code keeps its own liveness rules. `graphify-out/` is never committed. See
 [workflow and evidence requirements](workflows.md#graphify).
 
+## Writing for agents
+
+[Writing For Agents](../skills/writing-for-agents/SKILL.md) pins mattpocock's
+skill-writing reference, formerly `writing-great-skills`, with an MIT license and
+byte-exact files. It is reference, not a generator: the skill edits documents you
+name, within their accepted scope.
+
+| Host | Example |
+| --- | --- |
+| Hermes | `/writing-for-agents skills/blockers; remove no-ops; read-only` |
+| Claude Code | `/autowork:writing-for-agents skills/blockers; remove no-ops; read-only` |
+| Codex | `$autowork:writing-for-agents skills/blockers; remove no-ops; read-only` |
+| Pi | `/writing-for-agents skills/blockers; remove no-ops; read-only` |
+
+The reference covers pointer wording, progressive disclosure, completion criteria,
+leading words, positive instruction and pruning. The local adapter keeps Autowork
+scope, the task store, review gates and delivery limits. The current upstream name
+is `writing-for-agents`; upstream retired `writing-great-skills` without an alias.
+See [workflow and evidence requirements](workflows.md#writing-for-agents).
+
 ## APK Get
 
 [APK Get](../skills/apk-get/SKILL.md) builds an existing Flutter or React Native

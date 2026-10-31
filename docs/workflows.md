@@ -286,6 +286,26 @@ Examples (Hermes CLI; Pi uses `/graphify`, Claude Code `/autowork:graphify`, Cod
 Link and packaging checks do not qualify a live graph build, dead-code finding or
 model behavior.
 
+## Writing for agents
+
+`/writing-for-agents` applies mattpocock's skill-writing reference, the skill formerly
+called `writing-great-skills`. Use it to write or prune a skill, an `AGENTS.md` or a
+document an agent reaches through a pointer. Claude Code uses
+`/autowork:writing-for-agents`, Codex `$autowork:writing-for-agents` and Pi
+`/writing-for-agents`.
+
+The pinned [reference](../skills/writing-for-agents/upstream/PROTOCOL.md) owns the
+technique: pointer wording and branches, context and cognitive load, the information
+hierarchy, completion criteria, leading words, positive instruction, progressive
+disclosure and pruning of no-ops. [Skill mechanics](../skills/writing-for-agents/upstream/SKILL-MECHANICS.md)
+answers only the skill-specific questions: model- versus user-invocation and router
+skills. The local [adapter](../skills/writing-for-agents/SKILL.md) adds Autowork scope,
+task-store, review and delivery limits.
+
+Editing a document is not new authority. Keep every tested contract, move text
+instead of rewriting meaning, and report lines removed with the tests you ran.
+Offline link and packaging checks do not qualify model behavior.
+
 ## Pinned engineering protocols
 
 `/engineering` (the same spelling in Telegram) selects a technique for a specific

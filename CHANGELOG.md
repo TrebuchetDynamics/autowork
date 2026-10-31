@@ -7,6 +7,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `writing-for-agents`: mattpocock's skill-writing reference, formerly
+  `writing-great-skills`, pinned byte-exact with its MIT license and mechanics
+  reference every host. Hermes, Claude Code, Codex and Pi get the same command. The
+  local adapter adds Autowork scope, task-store, review and delivery limits, and
+  `docs/contributing.md` now states the skill-writing bar from that reference.
+  Packaging and link checks are not a model-behavior claim.
+
 - `graphify`: an explicit-only Claude Code, Codex and Pi workflow that queries a
   local Graphify knowledge graph before wide file reads. It calls the official
   `graphify` CLI, never installs it or adds hooks, verifies the graph version, schema

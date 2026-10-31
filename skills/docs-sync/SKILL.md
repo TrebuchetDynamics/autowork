@@ -527,19 +527,12 @@ and workspace locks for execution ownership. Preserve existing claims and pauses
 release only reconciled holds with `autowork tasks release ID`. There is no
 in-progress status. Report real holds separately from new open selections.
 
-### Put deferred qualification last
+### Branch playbooks
 
-When the owner asks to leave real-world checks until the end, identify the exact
-checks from the conversation and give their tasks the highest ranks in Next (or
-place them in Needs decision when they need an owner); do not merely add a deferred
-note. Preserve their relative order, acceptance, dependencies and access gates, and
-the relative order of unrelated work. Check selection with `autowork tasks list`:
-rank alone does not exclude a task from execution. Keep that deferred tail intact
-during later priority changes unless the owner changes it. Do not add dependency
-edges from independent implementation or fixture QA to these externally gated
-checks, because that would turn an access gap into a development stop. Deferral is
-neither a pass nor cancellation, and it grants no device, credential or
-live-operation authority.
+Five narrower dispositions have their own reference: deferred qualification, read-only
+pending-task reports, owner-stopped closeout, autoresearch intake and the hard-blocker
+coordination contract. Load [task-store branches](references/task-store-branches.md)
+when the request matches one, and keep the task contract above binding.
 
 ### Closing and retiring tasks
 
@@ -567,35 +560,6 @@ satisfy dependencies or count toward a met goal. For owner-cancelled work withou
 manual-close decision with its reason, or place it in Needs decision with an
 `Owner decision:` note recording the stop. Neither disposition is verified acceptance;
 confirm with `autowork tasks why ID` that it is not selected.
-
-### Read-only pending-task reports
-
-Read the store with `autowork tasks list` and `show`, enumerate open IDs in
-selection order, and calculate section totals from those same IDs. Report
-superseded tasks separately as history, not executable work. Within Needs decision,
-distinguish unresolved owner choices or live-operation authority from accepted
-scope awaiting recovery, qualification or delivery. Describe a `Held by:` note as
-recorded, not as checked liveness, and state whether target identity and deployed
-readiness were assessed. A listing performs no repair, transition or schedule
-change. If an owner stop is not yet reflected in the store, distinguish recorded
-totals from pending work after that stop, and expose the stale entry as a risk;
-never silently count stopped work as authorized or claim its closeout was applied.
-
-### Owner-stopped closeout
-
-Read the current task and latest retained result before interpreting a close request.
-Honor an explicit manual-close decision with `done --by WHO --reason TEXT`; keep
-unmet goal acceptance unqualified unless an owner waiver/qualification is recorded.
-If acceptance is unmet and the intended disposition is unclear, ask once whether to
-stop without completion or retain the task for qualification; reuse an explicit stop
-answer without asking again. Do not run additional experiments to justify
-cancellation. Keep the original contract, withdraw active continuation notes and
-place the task in Needs decision with the stop recorded (`place ID "Needs
-decision" --decision TEXT`), or supersede it when an accepted successor exists;
-never mark it done or fabricate a successor. Keep unmet goal status unmet. Run
-`autowork tasks why ID` and assert it is not selectable before reporting removal
-from execution. Queue exclusion does not prove an already-running worker stopped:
-assess it separately when in scope and report any unverified liveness.
 
 ### Simplify execution, not acceptance
 
@@ -649,25 +613,6 @@ tool returned failure. Eligibility checks current dependencies, focus, section a
 holds; it does not dispatch, and readiness is not implementation authorization.
 Never move tasks, change focus or drop dependencies only to make a task eligible.
 
-### Autoresearch intake and task scheduling
-
-For `/autoresearch` findings, plans, experiments or chained handoffs, load
-[the autoresearch adapter](../autoresearch/SKILL.md). Treat run logs, TSV and
-`handoff.json` as evidence inputs; this skill still owns canonical documentation
-and task reconciliation. Narrow Maintain records accepted findings in existing
-owners and schedules bounded work with `autowork tasks add` under the matching
-goal, with rank, dependencies, full acceptance/checks and preserved ownership.
-Reuse matching task IDs, including held work; repeated evidence creates no
-duplicates. Research recommendations do not manufacture accepted product
-requirements.
-
-Include baseline/target/units, exact Verify/Guard results, run/source references,
-remaining gaps and chosen implementation/verification slices. Run the handoff check
-above and report actual Now/Next eligibility. Scheduling here means ordered tasks,
-not a new timer or dispatch. Continue through autowork only within existing
-implementation authority; explicit audit/read-only and no-implementation limits
-carry across all chained research commands.
-
 ## 6. Language, verification and report
 
 Consult [the STE-inspired writing profile](references/ste-inspired-profile.md)
@@ -705,15 +650,3 @@ tasks or a secondary detail, and do not reopen already answered defaults.
 When graph analysis was used or required, include Graphify coverage/limitations,
 freshness, actual queries, source corroboration
 and the evidence chain behind changed docs and tasks; graph output alone is not delivery.
-
-## Hard-blocker coordination contract
-
-Inspect root BLOCKERS.md during authorized Bootstrap/Maintain. Load `hard-blockers`
-before entry changes; reading/respecting needs no load. Create absent canonical
-Active/Resolved sections with None during bootstrap, not invented blockers: this
-required empty coordination file is the no-empty-scaffold exception. Only USER_INPUT,
-SUDO or USER_DECISION belong there after autonomous paths/decisions are checked;
-internal engineering/review/tool issues stay in tasks. Preserve entries and
-Default if no answer; reference IDs in questionnaires/tasks and continue independent
-work. Change Last checked only after reevaluation. Verify resolution before moving
-to Resolved; never silently delete. Explicit Audit/read-only changes nothing.
