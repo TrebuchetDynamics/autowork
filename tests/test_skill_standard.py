@@ -3,6 +3,7 @@
 See docs/skill-standard.md. These are the mechanical rules; judgement rules (one
 home, disclosure, positive wording) stay with review.
 """
+import re
 from pathlib import Path
 import unittest
 
@@ -56,6 +57,20 @@ class SkillStandardTests(unittest.TestCase):
             with self.subTest(pair=f'{a} -> {b}'):
                 text = (ROOT / 'skills' / a / 'SKILL.md').read_text()
                 self.assertIn(f'`/{b}`', text.split('## Boundaries', 1)[1])
+
+    def test_the_router_names_every_skill(self):
+        # Upstream's rule: a router that never mentions a skill, or still names a
+        # removed one, is a router that lies.
+        router = (ROOT / 'skills/ask-autowork/SKILL.md').read_text()
+        for path in self.skills('skills'):
+            name = path.parent.name
+            if name in ('shared', 'ask-autowork'):
+                continue
+            with self.subTest(skill=name):
+                self.assertIn(f'`/{name}`', router)
+        listed = set(re.findall(r'`/([a-z0-9-]+)`', router))
+        known = {p.parent.name for p in self.skills('skills')} | {'graphify'}
+        self.assertEqual(sorted(listed - known), [], 'router names a missing skill')
 
     def test_portable_adapters_point_at_the_native_skill(self):
         for path in self.skills('adapters/skills'):

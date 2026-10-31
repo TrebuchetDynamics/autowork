@@ -51,7 +51,8 @@ a step, read that skill's `SKILL.md`: a summary here is orientation only.
 | README visuals and SVG assets | `/beautify-github-readme` |
 | Writing or pruning a skill, `AGENTS.md` or agent doc | `/writing-for-agents` |
 | Orientation in code before reading many files | `/graphify` |
-| Ponytail levels, review, audit, debt or benchmarks | `/ponytail` and its siblings |
+| Ponytail guidance, review, audit, debt or benchmarks | `/ponytail`, `/ponytail-review`,
+  `/ponytail-audit`, `/ponytail-debt`, `/ponytail-gain`, `/ponytail-help` |
 | Hermes profile setup | `/profile-create` |
 | What is open, done or next | `/pending` |
 
