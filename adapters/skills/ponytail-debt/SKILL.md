@@ -1,6 +1,6 @@
 ---
 name: ponytail-debt
-description: "Use when listing deferred shortcut comments."
+description: "List deferred shortcut comments."
 disable-model-invocation: true
 ---
 

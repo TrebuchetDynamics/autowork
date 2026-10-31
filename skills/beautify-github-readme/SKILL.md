@@ -1,6 +1,6 @@
 ---
 name: beautify-github-readme
-description: "Use to redesign or audit README visuals and SVG assets."
+description: "Redesign or audit a GitHub README."
 version: 0.1.1
 license: MIT
 ---
@@ -142,3 +142,9 @@ boundaries and unmatched delimiters; a literal-example fix must not hide real im
 
 Report the mode used, files changed, what was deliberately left plain, the checks
 run and any claim you could not verify.
+## Boundaries
+
+- Not product UI design; use `/impeccable`.
+- Not application UI review; use `/ui-taste`.
+
+**Done when:** README assets and layout are updated, checked in light and dark rendering, and reported with anything unverified.

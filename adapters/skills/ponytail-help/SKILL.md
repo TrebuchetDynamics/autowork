@@ -1,6 +1,6 @@
 ---
 name: ponytail-help
-description: "Use when asking about bundled Ponytail commands."
+description: "Explain the bundled Ponytail commands."
 disable-model-invocation: true
 ---
 

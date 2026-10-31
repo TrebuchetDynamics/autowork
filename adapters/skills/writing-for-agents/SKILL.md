@@ -1,6 +1,6 @@
 ---
 name: writing-for-agents
-description: "Write and prune skills, AGENTS.md and agent docs."
+description: "Write and prune skills and agent docs."
 disable-model-invocation: true
 ---
 

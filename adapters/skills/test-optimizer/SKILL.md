@@ -1,6 +1,6 @@
 ---
 name: test-optimizer
-description: "Shrink test suites by removing redundant, low-value tests."
+description: "Shrink test suites that add no protection."
 disable-model-invocation: true
 ---
 

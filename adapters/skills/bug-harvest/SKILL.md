@@ -1,6 +1,6 @@
 ---
 name: bug-harvest
-description: "Use when hunting unknown bugs in a continuing campaign."
+description: "Hunt evidence-backed bugs one at a time."
 disable-model-invocation: true
 ---
 

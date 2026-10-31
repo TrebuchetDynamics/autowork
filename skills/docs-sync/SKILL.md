@@ -1,6 +1,6 @@
 ---
 name: docs-sync
-description: "Use when maintaining repo docs and goal-linked tasks."
+description: "Maintain docs and goal-linked tasks."
 version: 0.15.0
 license: MIT
 metadata:
@@ -650,3 +650,9 @@ tasks or a secondary detail, and do not reopen already answered defaults.
 When graph analysis was used or required, include Graphify coverage/limitations,
 freshness, actual queries, source corroboration
 and the evidence chain behind changed docs and tasks; graph output alone is not delivery.
+## Boundaries
+
+- Not implementation; use `/autowork`.
+- Not the interview that settles decisions; use `/grilling` or `/grill-with-docs`.
+
+**Done when:** `autowork tasks validate` and the docs checks pass, and the report states what changed, what was verified and what remains.

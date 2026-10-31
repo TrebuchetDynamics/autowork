@@ -1,6 +1,6 @@
 ---
 name: blockers
-description: "Use when reviewing blocked Autowork tasks and resolving missing owner decisions or inputs."
+description: "Resolve held tasks and owner questions."
 disable-model-invocation: true
 ---
 

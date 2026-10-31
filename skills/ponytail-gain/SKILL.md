@@ -1,6 +1,6 @@
 ---
 name: ponytail-gain
-description: "Use when requesting Ponytail benchmark results."
+description: "Show upstream Ponytail benchmark results."
 license: MIT
 ---
 
@@ -18,3 +18,8 @@ Attribute figures to the upstream author's benchmark at the
 [pinned revision](../ponytail/UPSTREAM.json), not Autowork measurements or independently
 verified results. Do not run benchmarks, contact a provider, read session history
 or invent per-repository savings. Display only; no mode or file changes.
+## Boundaries
+
+- Not a benchmark run of this repository.
+
+**Done when:** upstream results are summarized with their source and date.

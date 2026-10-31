@@ -1,6 +1,6 @@
 ---
 name: impeccable
-description: "Improve interface design, usability and visual consistency using the bundled design guidance."
+description: "Design, audit or polish frontend UI."
 disable-model-invocation: true
 ---
 

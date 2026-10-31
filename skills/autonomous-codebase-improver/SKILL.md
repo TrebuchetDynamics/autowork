@@ -1,6 +1,6 @@
 ---
 name: autonomous-codebase-improver
-description: "Use when improving a repository across multiple work lanes."
+description: "Improve a repository across work lanes."
 license: MIT
 ---
 
@@ -137,4 +137,12 @@ Upstream evaluation results are not evidence that this adapted campaign ran.
 Use the [adapter evaluation scenarios](references/adapter-evaluation.md) when
 checking these local rules. Offline checks validate packaging, not model behavior.
 
+
+## Boundaries
+
+- Not one known fix; use `/autowork` for a ready task.
+- Not an architecture report; use `/improve-codebase-architecture`.
+- Not test-suite reduction; use `/test-optimizer`.
+
+**Done when:** the chosen improvement is implemented within scope, verified with affected checks, and committed or reported with its remaining risk.
 [Source and hashes](UPSTREAM.json) · [MIT license](upstream/LICENSE).

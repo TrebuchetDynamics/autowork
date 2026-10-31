@@ -1,6 +1,6 @@
 ---
 name: skill-folder-refactor
-description: "Use when splitting a named folder without behavior changes."
+description: "Split one folder without behavior change."
 license: MIT
 ---
 
@@ -50,4 +50,11 @@ compatibility, checks/review, exact root-file classifications, overall completio
 state, and next slice/stop reason. For example, one authorized move-only slice
 with two remaining candidates is a checkpoint, not “folder refactor complete.”
 
+
+## Boundaries
+
+- Not behavior changes or deletions; use `/unused-code` for removal.
+- Not an architecture review; use `/improve-codebase-architecture`.
+
+**Done when:** a move-only diff passes the same checks before and after, and no behavior change is claimed without them.
 [Source and hashes](UPSTREAM.json) · [MIT license](upstream/LICENSE).

@@ -1,6 +1,6 @@
 ---
 name: ponytail-gain
-description: "Use when requesting Ponytail benchmark results."
+description: "Show upstream Ponytail benchmark results."
 disable-model-invocation: true
 ---
 

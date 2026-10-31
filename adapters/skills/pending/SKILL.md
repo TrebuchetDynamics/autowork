@@ -1,6 +1,6 @@
 ---
 name: pending
-description: "Use to see what is pending or done in a repository's task ledger, without changing it."
+description: "Report open, done and next tasks."
 disable-model-invocation: true
 ---
 

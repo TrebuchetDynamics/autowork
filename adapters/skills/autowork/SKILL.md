@@ -1,6 +1,6 @@
 ---
 name: autowork
-description: "Coordinate repository work: plan missing tasks, implement a useful slice, verify and commit locally."
+description: "Implement and verify ready repository tasks."
 disable-model-invocation: true
 ---
 
@@ -9,6 +9,8 @@ disable-model-invocation: true
 Apply the [shared Ponytail method](../../../skills/shared/PONYTAIL.md) within this workflow's scope.
 
 Use the [ASD-STE100 and project language rules](../../../skills/shared/COMMUNICATION.md) for user-facing text.
+
+Read the [host-neutral Autowork workflow](../../../skills/autowork/SKILL.md) first.
 
 Read the [host contract](../COMMON.md). Use this host's native tools for execution.
 Do not launch Hermes workers (opt-in parallel workers below use this host's own

@@ -1,6 +1,6 @@
 ---
 name: git-commit-push
-description: "Validate, commit and push attributable changes, or pull and merge upstream changes, when requested."
+description: "Commit, push, pull or merge Git changes."
 disable-model-invocation: true
 ---
 
@@ -9,6 +9,8 @@ disable-model-invocation: true
 Apply the [shared Ponytail method](../../../skills/shared/PONYTAIL.md) within this workflow's scope.
 
 Use the [ASD-STE100 and project language rules](../../../skills/shared/COMMUNICATION.md) for user-facing text.
+
+Read the [host-neutral Git Commit Push workflow](../../../skills/git-commit-push/SKILL.md) first.
 
 Read the [host contract](../COMMON.md).
 

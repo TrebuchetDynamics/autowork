@@ -1,6 +1,6 @@
 ---
 name: ponytail
-description: "Use when choosing Ponytail guidance or level."
+description: "Choose Ponytail guidance or a level."
 disable-model-invocation: true
 ---
 

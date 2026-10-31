@@ -77,7 +77,9 @@ commands in [`telegram_menu_policy.py`](../telegram_menu_policy.py).
 Write a skill the way the pinned
 [Writing For Agents](../skills/writing-for-agents/SKILL.md) reference teaches it
 (mattpocock's `writing-for-agents`, formerly `writing-great-skills`). Load
-`/writing-for-agents` for a real editing pass; these are the parts that decide review.
+`/writing-for-agents` for a real editing pass. The [skill standard](skill-standard.md)
+is the review checklist and records where Autowork differs from that reference; these
+are the parts that decide review.
 
 - **Pointer wording is the trigger.** The description and any always-loaded line name
   what the material is and the distinct branches that should reach it. One trigger per

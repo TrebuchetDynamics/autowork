@@ -1,6 +1,6 @@
 ---
 name: pending
-description: "Use to see what is pending or done in a task ledger."
+description: "Report open, done and next tasks."
 license: MIT
 metadata:
   version: 0.2.0
@@ -32,3 +32,9 @@ queries write nothing and run nothing; eligibility is recorded dependency and pr
 evidence, not worker admission or liveness. A repository without `tasks/` is not
 converted yet: say so and name `/docs_sync` (its `autowork tasks prepare` converts it,
 or defers to the runner while work is in flight); do not read TODO.md instead.
+## Boundaries
+
+- Read-only: not a repair; use `/docs-sync` to change the store.
+- Not a blocker resolution; use `/blockers`.
+
+**Done when:** the store was read once and open, done and next are reported with counts and selection order.

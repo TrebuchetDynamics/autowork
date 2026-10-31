@@ -1,6 +1,6 @@
 ---
 name: plan-with-me
-description: "Use to plan together through research and questions."
+description: "Plan together through questions and research."
 license: MIT
 metadata:
   version: 0.3.4
@@ -204,3 +204,10 @@ question; preserve its review and owned-commit requirements.
 When existing execution fails without new product uncertainty, return the exact task
 ID, attempt evidence and failed operation to the same coordinator for supported
 recovery; do not reopen the product interview or create duplicate tasks.
+## Boundaries
+
+- Not unattended discovery; use `/plan-for-me`.
+- Not implementation; use `/autowork` after the plan is accepted.
+- Challenge mode loads `/grill-me`; the interview engine is `/grilling`.
+
+**Done when:** open questions are answered, and the plan and its tasks are saved and validated.

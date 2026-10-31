@@ -1,6 +1,6 @@
 ---
 name: bug-harvest
-description: "Use when hunting unknown bugs in a continuing campaign."
+description: "Hunt evidence-backed bugs one at a time."
 license: MIT
 ---
 
@@ -42,4 +42,11 @@ exist; report what was searched. No automatic commit or push.
 **Example:** “Hunt one bug in the parser; no push” permits one verified fix and a
 checkpoint, not a second repair or a claim that the parser has no remaining bugs.
 
+
+## Boundaries
+
+- Not dead-code removal; use `/unused-code`.
+- Not test reduction; use `/test-optimizer`.
+
+**Done when:** one bug is reproduced with evidence and either fixed with checks or reported with its reproduction.
 [Source and hashes](UPSTREAM.json) · [MIT license](upstream/LICENSE).

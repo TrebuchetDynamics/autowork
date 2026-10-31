@@ -1,6 +1,6 @@
 ---
 name: unused-code
-description: "Use when removing proven dead or unreachable code."
+description: "Remove proven dead or unreachable code."
 disable-model-invocation: true
 ---
 

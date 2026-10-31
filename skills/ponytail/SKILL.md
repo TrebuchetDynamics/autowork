@@ -1,6 +1,6 @@
 ---
 name: ponytail
-description: "Use when choosing Ponytail guidance or level."
+description: "Choose Ponytail guidance or a level."
 license: MIT
 ---
 
@@ -19,3 +19,10 @@ within that task's authority; selecting a level alone does not start work.
 
 See [help](../ponytail-help/SKILL.md) for the six commands. The optional read-only
 codebase map script is documented in the shared method; do not activate hooks.
+## Boundaries
+
+- Not a review; use `/ponytail-review`.
+- Not an audit; use `/ponytail-audit`.
+- Not a deferred-marker list; use `/ponytail-debt`.
+
+**Done when:** the requested guidance or level is stated and applied to the named work.

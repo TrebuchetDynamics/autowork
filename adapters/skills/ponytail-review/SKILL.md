@@ -1,6 +1,6 @@
 ---
 name: ponytail-review
-description: "Use when requesting a Ponytail change review."
+description: "Review a change with Ponytail rules."
 disable-model-invocation: true
 ---
 

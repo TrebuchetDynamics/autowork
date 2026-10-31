@@ -1,6 +1,6 @@
 ---
 name: docs-sync
-description: "Create or maintain source-backed project documentation and the tasks/ work queue."
+description: "Maintain docs and goal-linked tasks."
 disable-model-invocation: true
 ---
 
@@ -9,6 +9,8 @@ disable-model-invocation: true
 Apply the [shared Ponytail method](../../../skills/shared/PONYTAIL.md) within this workflow's scope.
 
 Use the [ASD-STE100 and project language rules](../../../skills/shared/COMMUNICATION.md) for user-facing text.
+
+Read the [host-neutral Docs Sync workflow](../../../skills/docs-sync/SKILL.md) first.
 
 Read the [host contract](../COMMON.md) and use the shared
 [document scaffold](../../../skills/docs-sync/references/document-scaffold.md).

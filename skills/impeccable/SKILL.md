@@ -1,6 +1,6 @@
 ---
 name: impeccable
-description: Use when designing, auditing or polishing frontend UI.
+description: "Design, audit or polish frontend UI."
 version: 4.5.2
 license: Apache 2.0
 ---
@@ -13,3 +13,9 @@ Use the [ASD-STE100 and project language rules](../shared/COMMUNICATION.md) for 
 Read the [upstream Impeccable protocol](PROTOCOL.md) and follow its playbooks.
 Its skill base directory remains this directory. Preserve the requested visual
 quality, accessibility and accepted behavior; simplicity does not mean generic design.
+## Boundaries
+
+- Not README art; use `/beautify-github-readme`.
+- Not the UI Taste playbooks; use `/ui-taste`.
+
+**Done when:** the chosen playbook's artifacts and checks are complete, or the review findings are reported with their evidence.

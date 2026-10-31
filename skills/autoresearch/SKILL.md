@@ -1,6 +1,6 @@
 ---
 name: autoresearch
-description: "Use for repository research and bounded experiments."
+description: "Run bounded research or measured experiments."
 version: 0.2.0
 license: MIT
 ---
@@ -240,3 +240,9 @@ stalled progress, give the verified worker/candidate state and concrete blocker.
 is the upstream SKILL.md renamed to prevent duplicate native skill discovery;
 all upstream contents are otherwise byte-identical. Update this pinned subtree
 deliberately, review command/runtime changes, then rerun distribution/dispatch tests.
+## Boundaries
+
+- Not implementation; use `/autowork` after the research settles.
+- Not an interactive plan; use `/plan-with-me`.
+
+**Done when:** the selected protocol's findings or bounded loop result are saved with evidence and the stop reason.

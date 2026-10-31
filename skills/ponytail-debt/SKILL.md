@@ -1,6 +1,6 @@
 ---
 name: ponytail-debt
-description: "Use when listing deferred shortcut comments."
+description: "List deferred shortcut comments."
 license: MIT
 ---
 
@@ -23,3 +23,8 @@ it can miss other comment styles and tracked-but-ignored files. Disclose relevan
 limits. Blame is optional and requires tracked history. Report only; if persistence
 is explicitly requested, use the existing document/task owner rather than creating
 a competing debt backlog. No-marker output is evidence only for the scanned scope.
+## Boundaries
+
+- Not a fix and not an audit; use `/ponytail-audit` for the repository view.
+
+**Done when:** deferred shortcut markers are listed with path, owner and why.

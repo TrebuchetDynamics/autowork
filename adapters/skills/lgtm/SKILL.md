@@ -1,6 +1,6 @@
 ---
 name: lgtm
-description: "Resolve a short approval against the immediately preceding concrete recommendation."
+description: "Continue the approved next step."
 disable-model-invocation: true
 ---
 
@@ -9,6 +9,8 @@ disable-model-invocation: true
 Apply the [shared Ponytail method](../../../skills/shared/PONYTAIL.md) within this workflow's scope.
 
 Use the [ASD-STE100 and project language rules](../../../skills/shared/COMMUNICATION.md) for user-facing text.
+
+Read the [host-neutral LGTM — resolve and continue workflow](../../../skills/lgtm/SKILL.md) first.
 
 Read the [host contract](../COMMON.md).
 

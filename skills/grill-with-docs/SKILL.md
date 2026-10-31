@@ -1,6 +1,6 @@
 ---
 name: grill-with-docs
-description: "Grill a plan and record decisions as ADRs and terms."
+description: "Grill a plan and record ADRs and terms."
 license: MIT
 ---
 
@@ -37,4 +37,11 @@ glossary vocabulary out of code identifiers unless the repository already uses i
 **Receipt:** decisions recorded with their paths; terms added; decisions left open;
 validation run; anything intentionally unrecorded and why.
 
+
+## Boundaries
+
+- Not implementation; use `/autowork`.
+- Not a record for every passing thought: ephemeral and self-evident reasons are named and skipped.
+
+**Done when:** settled decisions are recorded in the repository's ADR or glossary owners, Docs Sync validation passed, and skipped records are named.
 [Source and hashes](UPSTREAM.json) · [MIT license](upstream/LICENSE).

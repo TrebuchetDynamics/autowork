@@ -1,6 +1,6 @@
 ---
 name: writing-for-agents
-description: "Write and prune skills, AGENTS.md and agent docs."
+description: "Write and prune skills and agent docs."
 license: MIT
 ---
 
@@ -42,9 +42,12 @@ Apply the technique; keep Autowork's scope, task store, review and delivery rule
 
 ## Boundaries
 
-Propose or edit documents only within the accepted scope. Do not rewrite pinned
-upstream bytes, add a hosting dependency, or change what a skill is authorized to do.
-Writing guidance is not authority to weaken review, safety or delivery gates.
+- Not a rewriter of pinned upstream bytes, a hosting dependency or a change to what a
+  skill is authorized to do.
+- Not a review or delivery authority: editing a document never widens scope.
+
+**Done when:** the named document is edited or pruned with its line delta, and the
+affected checks are reported.
 
 **Receipt:** documents changed; lines before and after; meanings moved, deleted or
 merged; pointers added; tests run; unverified claims.

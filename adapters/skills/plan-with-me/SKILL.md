@@ -1,6 +1,6 @@
 ---
 name: plan-with-me
-description: "Research, refine or challenge a plan through focused questions (including Grill Me), and save accepted decisions and tasks."
+description: "Plan together through questions and research."
 disable-model-invocation: true
 ---
 
