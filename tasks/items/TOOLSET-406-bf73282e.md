@@ -1,0 +1,22 @@
++++
+schema = 1
+id = "TOOLSET-406-bf73282e"
+title = "Restore concise test-optimizer descriptions for the skill index"
+short = "Repair optimizer index description"
+status = "open"
+goal = "TEST-OPTIMIZER"
+section = "Now"
+rank = 1000
+depends_on = []
+touches = ["tests/test_skill_descriptions.py", "skills/test-optimizer/SKILL.md", "adapters/skills/test-optimizer/SKILL.md", "skills/engineering/local/test-suite-optimization/PROTOCOL.md", "skills/test-optimizer/references/evaluation.md", "docs/workflows.md", "docs/cross-host.md"]
+resources = []
+kind = "implementation"
+ownership = "worker"
+scope = "Repair test_skill_descriptions.SkillDescriptionTests.test_owned_descriptions_fit_index after 342a1035 by shortening the test-optimizer discovery description to the existing 60-character index limit. Keep native and portable discovery text consistent and meaningful; retain the accepted meaningful suite-reduction guidance in the skill body and protocol. Inspect current sources before editing and make only the bounded metadata repair needed for the failure. Other Touches are investigation and regression context, not instructions to rewrite all intervening files. Produce checks and a report directly; no owner input or coordinator receipt is required."
+acceptance = ["The native test-optimizer description is nonempty, readable and at most 60 characters; its portable description remains consistent and accurately signals test-suite reduction.", "Preserve the meaningful test-removal priority, distinct supported-risk protection, evidence gates, no-write modes and delivery limits introduced by 342a1035. Do not raise the index limit, skip or weaken the failing test, or prune the repository test suite as part of this metadata repair.", "The named description test and full offline check pass on the repaired tree. Report exact commands, results and any unrelated failures honestly; offline checks do not qualify live skill efficacy."]
+checks = ["python3 scripts/check.py"]
+exclusions = ["No product-behavior expansion, actual suite pruning, weakened tests, live/model qualification, installation, remote publication, runtime-state edits or task/goal edits."]
++++
+- Sources: DOCS-MAINTAINER MAIN main-red instruction; docs/workflows.md#test-optimizer; docs/contributing.md#add-or-update-a-skill; docs/testing.md#verify; tests/test_skill_descriptions.py:10-22; tasks/items/TEST-OPTIMIZER-01.md; commit 342a1035e5036d369cfb75ec4cb99d56ec62375b
+- Evidence: Read all five files in place in <git-common-dir>/autowork-execution/main-evidence/342a1035e5036d369cfb75ec4cb99d56ec62375b: main_check.json, main-check.log, main-check.exit, main-check-reruns.log and flaky_history.json. Checked revision 342a1035e5036d369cfb75ec4cb99d56ec62375b; last green 278a48ed8aecb0a1bb0e305112ad541e1af205aa. State red, result_class TEST_FAILURE, exit 1; four test directories passed, one failed, three modules excluded. Full-run test_skill_descriptions.SkillDescriptionTests.test_owned_descriptions_fit_index fails for test-optimizer at tests/test_skill_descriptions.py:22: 120 not less than or equal to 60. Saved isolated unittest rerun also exits 1, one test in 0.008s, same assertion. The test is absent from flaky_history.json and flaky is empty: this is neither three-revision flakiness nor a crashed checker. Sole reported commit since last green: 342a1035 Prioritize meaningful test-suite reduction. Its native and portable frontmatter descriptions remain 120 characters on this checkout. Maintainer independently reproduced the unchanged-tree failure with python3 -m unittest discover -s tests -p test_skill_descriptions.py: exit 1, one test in 0.008s, same assertion. Evidence files remain in the Git common directory and are not copied or committed.
+- Coordination: No open task covers the failing description test; the two pre-existing open tasks concern bounded SDK supervision and installed RPC qualification. This new task is the only open task in Now, satisfying the explicit main-red priority without reordering existing tasks. Touches is the union of the failing test module and the six files changed by 342a1035; shared paths alone add no dependency. TEST-OPTIMIZER-01 is already manually closed; preserve its closure and the partial goal status. No saved slot-data report exists for TEST-OPTIMIZER-01 or MAIN. Do not edit active or retained candidates, expand product scope or bypass scheduler/resource guards.
